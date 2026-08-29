@@ -9,8 +9,9 @@ namespace EndfieldGraphShaderLab
     /// <summary>
     /// Presents only pixels owned by the identity-gated M27 HGBuffer draw.
     /// The private particle depth is written into the canonical depth target
-    /// before ForwardOpaque, preserving the installed deferred-to-forward
-    /// ordering and allowing the actor depth prepass to occlude the shards.
+    /// before ForwardOpaque, then presents color after ForwardOpaque. This
+    /// preserves actor occlusion without letting the CharInfo forward cohort
+    /// overwrite the resolved shards.
     /// </summary>
     internal sealed class EndfieldRecoveredEndminfM27DeferredPresentation :
         IDisposable
@@ -74,6 +75,9 @@ namespace EndfieldGraphShaderLab
             depthPublicationFrame = -1;
             if (!requested)
                 return false;
+            if (EndfieldRecoveredEndminfM27ExactRuntime.Requested &&
+                !EndfieldRecoveredEndminfM27ExactRuntime.HandCrystalPacketSelected)
+                return false;
             if (!gBufferFrameReady || camera == null || gBufferFrame == null)
                 return FailClosed("M27 depth publication inputs are unavailable");
             if (!gBufferFrame.TryGetEndminfM27PresentationInputs(
@@ -134,6 +138,9 @@ namespace EndfieldGraphShaderLab
         {
             Shader.SetGlobalFloat(ReadyId, 0.0f);
             if (!requested)
+                return false;
+            if (EndfieldRecoveredEndminfM27ExactRuntime.Requested &&
+                !EndfieldRecoveredEndminfM27ExactRuntime.HandCrystalPacketSelected)
                 return false;
             if (!deferredConsumerReady)
                 return FailClosed("deferred resolver output is not ready");
@@ -230,9 +237,10 @@ namespace EndfieldGraphShaderLab
                 Debug.Log(
                     "Recovered Endminf M27 deferred presentation active: " +
                     $"camera={camera.name}, size={width}x{height}, " +
-                    "ownerMask=GBufferC.rgb, depthPrepass=Greater+write, " +
+                    "owner=privateDepth>0, depthPrepass=Greater+write, " +
                     "colorTest=Equal, colorDepthWrite=false, " +
-                    "ordering=before-ForwardOpaque, presented=true.");
+                    "ordering=depth-before/color-after-ForwardOpaque, " +
+                    "presented=true.");
                 activationLogged = true;
             }
             loggedFailure = false;
@@ -316,6 +324,8 @@ namespace EndfieldGraphShaderLab
         {
             if (diagnosticRequested ||
                 diagnosticBefore != null ||
+                (EndfieldRecoveredEndminfM27ExactRuntime.Requested &&
+                 !EndfieldRecoveredEndminfM27ExactRuntime.PeakStonePacketSelected) ||
                 !SystemInfo.supportsAsyncGPUReadback ||
                 descriptor.width != width ||
                 descriptor.height != height ||
@@ -478,8 +488,10 @@ namespace EndfieldGraphShaderLab
             int resolvedNonzeroPixels = 0;
             int resolvedMirrorYNonzeroPixels = 0;
             int canonicalEqualsSourcePixels = 0;
-            float resolvedMinimum = float.PositiveInfinity;
-            float resolvedMaximum = float.NegativeInfinity;
+            float resolvedDirectMinimum = float.PositiveInfinity;
+            float resolvedDirectMaximum = float.NegativeInfinity;
+            float resolvedMirrorYMinimum = float.PositiveInfinity;
+            float resolvedMirrorYMaximum = float.NegativeInfinity;
             for (int pixel = 0; pixel < pixels; pixel++)
             {
                 int maskOffset = pixel * 4;
@@ -505,8 +517,12 @@ namespace EndfieldGraphShaderLab
                         pixel * 16 + lane * 4);
                     if (float.IsNaN(value) || float.IsInfinity(value))
                         continue;
-                    resolvedMinimum = Math.Min(resolvedMinimum, value);
-                    resolvedMaximum = Math.Max(resolvedMaximum, value);
+                    resolvedDirectMinimum = Math.Min(
+                        resolvedDirectMinimum,
+                        value);
+                    resolvedDirectMaximum = Math.Max(
+                        resolvedDirectMaximum,
+                        value);
                     resolvedNonzero = resolvedNonzero || value != 0.0f;
                 }
                 if (resolvedNonzero)
@@ -521,10 +537,15 @@ namespace EndfieldGraphShaderLab
                     float value = BitConverter.ToSingle(
                         diagnosticResolvedBytes,
                         mirroredPixel * 16 + lane * 4);
-                    mirrorYNonzero = mirrorYNonzero ||
-                        (!float.IsNaN(value) &&
-                         !float.IsInfinity(value) &&
-                         value != 0.0f);
+                    if (float.IsNaN(value) || float.IsInfinity(value))
+                        continue;
+                    resolvedMirrorYMinimum = Math.Min(
+                        resolvedMirrorYMinimum,
+                        value);
+                    resolvedMirrorYMaximum = Math.Max(
+                        resolvedMirrorYMaximum,
+                        value);
+                    mirrorYNonzero = mirrorYNonzero || value != 0.0f;
                 }
                 if (mirrorYNonzero)
                     resolvedMirrorYNonzeroPixels++;
@@ -538,7 +559,10 @@ namespace EndfieldGraphShaderLab
                 $"canonicalEqualsSourcePixels={canonicalEqualsSourcePixels}, " +
                 $"resolvedNonzeroPixels={resolvedNonzeroPixels}, " +
                 $"resolvedMirrorYNonzeroPixels={resolvedMirrorYNonzeroPixels}, " +
-                $"resolvedRgbRange={resolvedMinimum:R}..{resolvedMaximum:R}, " +
+                $"resolvedDirectRgbRange={resolvedDirectMinimum:R}.." +
+                $"{resolvedDirectMaximum:R}, " +
+                $"resolvedMirrorYRgbRange={resolvedMirrorYMinimum:R}.." +
+                $"{resolvedMirrorYMaximum:R}, " +
                 $"clearScenePacked=0x{clearScenePacked:x8}, sameFrame=true.");
         }
 

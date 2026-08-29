@@ -4,11 +4,15 @@
 The report deliberately keeps two independent gates visible:
 
 * exact M29/M30 draw-resource closure; and
-* render-boundary skin-palette coverage for the character meshes.
+* render-boundary skin-palette coverage for the character meshes;
+* the exact shrinking horizontal-quad opening owner; and
+* a complete immutable D3D11 shader-bytecode archive.
 
 Individual meshes are not necessarily retained in every graphics frame.  The
-palette gate therefore measures unambiguous per-mesh observations across both
-capture bursts instead of requiring every mesh in every frame.
+palette gate therefore measures unambiguous per-mesh observations across the
+capture sequence instead of requiring every mesh in every frame.  Both the
+retired two-burst workflow and the unattended 72-package workflow remain
+explicit, fail-closed policies.
 """
 
 from __future__ import annotations
@@ -21,6 +25,8 @@ from typing import Any
 
 import decode_endminf_endfield_capture_skinning as skinning
 import verify_endminf_m29_m30_capture_completeness as effects
+import verify_endminf_opening_strip_capture as opening
+import verify_endfield_shader_archive as shader_archive
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -32,15 +38,30 @@ DEFAULT_OUTPUT = (
 MINIMUM_TOTAL = {
     "body": 8,
     "cloth_01": 40,
+    "cloth_02": 8,
     "cloth_04": 24,
     "hair": 40,
 }
 MINIMUM_PER_SEQUENCE = {
     "cloth_01": 8,
+    "cloth_02": 4,
     "cloth_04": 4,
     "hair": 8,
 }
 MINIMUM_SEQUENCE_FRAMES = 48
+AUTOMATIC_SEQUENCE_FRAMES = 72
+PEAK_SHADER_PAIRS = {
+    "M20": {
+        (0xE8F38F2F7519383D, 0xFEA38543389B6FF4),
+        (0x04BEF98C73CA34880, 0x246A0F4F2D3C34F4),
+        # Actual retail route observed on the 36-index smoke packet in
+        # automatic full captures 20260828T224210Z/20260828T224407Z.
+        (0x62A5CE6C09171DE9, 0x5558DEDDB1EE6188),
+    },
+    "M21": {
+        (0xE7F5568D34FD467B, 0xC5B21FEE8E9936A6),
+    },
+}
 
 
 class VerificationError(RuntimeError):
@@ -69,6 +90,117 @@ def split_sequences(frames: list[int]) -> list[list[int]]:
     return result
 
 
+def sequence_policy(capture: Path) -> dict[str, Any]:
+    status_path = capture / "runtime.status.json"
+    if not status_path.is_file():
+        return {
+            "name": "legacy_two_burst",
+            "expectedSequenceCount": 2,
+            "minimumFramesPerSequence": MINIMUM_SEQUENCE_FRAMES,
+            "statusPath": None,
+            "errors": [],
+        }
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    new_schedule = (
+        int(status.get("graphicsSequenceMaxFrames", 0))
+        == AUTOMATIC_SEQUENCE_FRAMES
+    )
+    if not new_schedule:
+        return {
+            "name": "legacy_two_burst",
+            "expectedSequenceCount": 2,
+            "minimumFramesPerSequence": MINIMUM_SEQUENCE_FRAMES,
+            "statusPath": str(status_path),
+            "errors": [],
+        }
+
+    errors = []
+    if status.get("endminfAutoTriggerObserved") is not True:
+        errors.append("automatic sequence did not observe the exact Endminf trigger")
+    if status.get("graphicsSequenceAutomatic") is not True:
+        errors.append("72-package sequence was not started automatically")
+    completed = int(status.get("graphicsSequenceFrames", -1))
+    if completed != AUTOMATIC_SEQUENCE_FRAMES:
+        errors.append(
+            f"automatic sequence completed {completed} packages; "
+            f"need {AUTOMATIC_SEQUENCE_FRAMES}"
+        )
+    if status.get("graphicsSequenceActive") is not False:
+        errors.append("automatic sequence is still active")
+    if status.get("framePending") is not False:
+        errors.append("automatic sequence still has a pending frame")
+    if status.get("graphicsSequenceCapturePending") is not False:
+        errors.append("automatic sequence still owns an unpublished package")
+    dropped = int(status.get("graphicsDropped", -1))
+    if dropped != 0:
+        errors.append(f"automatic sequence dropped {dropped} graphics events")
+    return {
+        "name": "automatic_endminf_72",
+        "expectedSequenceCount": 1,
+        "minimumFramesPerSequence": AUTOMATIC_SEQUENCE_FRAMES,
+        "statusPath": str(status_path),
+        "triggerObserved": True,
+        "automatic": True,
+        "completedPackages": completed,
+        "errors": errors,
+    }
+
+
+def logical_sequences(
+    frames: list[int], policy: dict[str, Any]
+) -> list[list[int]]:
+    if not frames:
+        return []
+    # Full-profile resource publication may stall for dozens of Presents.  A
+    # large frame-ID gap is therefore not a second user-triggered burst when
+    # runtime status already identifies one automatic 72-package window.
+    if policy.get("name") == "automatic_endminf_72":
+        return [frames]
+    return split_sequences(frames)
+
+
+def audit_peak_owner_presence(capture: Path) -> dict[str, Any]:
+    """Require the narrow M20 gas and M21 stone owners in an automatic run."""
+    packets: dict[str, list[dict[str, int]]] = {
+        name: [] for name in PEAK_SHADER_PAIRS
+    }
+    for path in frame_paths(capture):
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+        frame = int(metadata.get("frame", path.parent.name))
+        for draw_index, draw in enumerate(metadata.get("drawRecords", [])):
+            if not isinstance(draw, dict):
+                continue
+            identities = {
+                int(row.get("stage", -1)): int(row.get("identityHash", 0))
+                for row in draw.get("shaders", []) if isinstance(row, dict)
+            }
+            pair = (identities.get(0, 0), identities.get(4, 0))
+            for name, accepted in PEAK_SHADER_PAIRS.items():
+                index_count = int(draw.get("count", -1))
+                # The retail M20 program is a shared VFXBaseV2 route. Its
+                # identity alone admits hundreds of unrelated particle
+                # packets; the recovered smoke (2) peak owner is the measured
+                # DrawIndexedInstanced(36, 1, ...) packet.
+                if pair in accepted and (name != "M20" or index_count == 36):
+                    packets[name].append({
+                        "frame": frame,
+                        "drawIndex": draw_index,
+                        "indexCount": index_count,
+                    })
+    errors = [
+        f"automatic sequence contains no exact {name} owner packet"
+        for name, rows in packets.items() if not rows
+    ]
+    return {
+        "status": "validated_peak_owner_presence" if not errors else "rejected",
+        "owners": {
+            name: {"packetCount": len(rows), "packets": rows}
+            for name, rows in packets.items()
+        },
+        "errors": errors,
+    }
+
+
 def palette_resource(metadata: dict[str, Any], resources_path: Path) -> str | None:
     rows = [
         row for row in metadata.get("selectedResourceRecords", [])
@@ -94,7 +226,8 @@ def palette_resource(metadata: dict[str, Any], resources_path: Path) -> str | No
 def audit_palettes(capture: Path) -> dict[str, Any]:
     paths = frame_paths(capture)
     frame_ids = [int(path.parent.name) for path in paths]
-    sequences = split_sequences(frame_ids)
+    policy = sequence_policy(capture)
+    sequences = logical_sequences(frame_ids, policy)
     sequence_by_frame = {
         frame: index for index, sequence in enumerate(sequences) for frame in sequence
     }
@@ -127,13 +260,19 @@ def audit_palettes(capture: Path) -> dict[str, Any]:
                 "matchingDrawRecords": draw["matchingDrawRecords"],
             })
 
-    errors = []
-    if len(sequences) != 2:
-        errors.append(f"expected two graphics bursts, found {len(sequences)}")
+    errors = list(policy["errors"])
+    expected_sequences = int(policy["expectedSequenceCount"])
+    minimum_sequence_frames = int(policy["minimumFramesPerSequence"])
+    if len(sequences) != expected_sequences:
+        errors.append(
+            f"{policy['name']} expected {expected_sequences} graphics "
+            f"sequence(s), found {len(sequences)}"
+        )
     for index, sequence in enumerate(sequences):
-        if len(sequence) < MINIMUM_SEQUENCE_FRAMES:
+        if len(sequence) < minimum_sequence_frames:
             errors.append(
-                f"sequence {index} has {len(sequence)} frames; need {MINIMUM_SEQUENCE_FRAMES}"
+                f"sequence {index} has {len(sequence)} frames; "
+                f"need {minimum_sequence_frames} for {policy['name']}"
             )
     if ambiguous:
         errors.append(f"{len(ambiguous)} mesh observations have ambiguous/invalid b2 metadata")
@@ -165,6 +304,7 @@ def audit_palettes(capture: Path) -> dict[str, Any]:
     return {
         "status": "validated_render_boundary_palette_coverage" if not errors else "rejected",
         "frameCount": len(paths),
+        "sequencePolicy": policy,
         "sequences": [
             {"index": index, "frameCount": len(sequence),
              "firstFrame": sequence[0], "lastFrame": sequence[-1]}
@@ -181,21 +321,49 @@ def audit_palettes(capture: Path) -> dict[str, Any]:
 
 def build_report(capture: Path) -> dict[str, Any]:
     palette = audit_palettes(capture)
+    peak = audit_peak_owner_presence(capture)
     effect_report = None
     effect_error = None
     try:
         effect_report = effects.build_report(capture)
     except (OSError, ValueError, effects.VerificationError) as exc:
         effect_error = str(exc)
-    errors = list(palette["errors"])
+    opening_report = None
+    opening_error = None
+    try:
+        opening_report = opening.build_report(capture)
+    except (OSError, ValueError, opening.VerificationError) as exc:
+        opening_error = str(exc)
+    archive_report = None
+    archive_error = None
+    try:
+        archive_report = shader_archive.build_report(capture)
+    except (OSError, ValueError, shader_archive.VerificationError) as exc:
+        archive_error = str(exc)
+    errors = [*palette["errors"], *peak["errors"]]
     if effect_error:
         errors.append(f"M29/M30: {effect_error}")
+    if opening_error:
+        errors.append(f"opening strip: {opening_error}")
+    elif opening_report is not None:
+        errors.extend(f"opening strip: {row}" for row in opening_report["errors"])
+    if archive_error:
+        errors.append(f"shader archive: {archive_error}")
+    elif archive_report is not None:
+        errors.extend(f"shader archive: {row}" for row in archive_report["errors"])
     return {
-        "schema": "endfield.endminf-combined-graphics-capture.v1",
+        "schema": "endfield.endminf-combined-graphics-capture.v3",
         "status": "validated" if not errors else "rejected",
         "capture": str(capture.resolve()),
+        "peakOwners": peak,
         "effects": effect_report if effect_report is not None else {
             "status": "rejected", "error": effect_error,
+        },
+        "openingStrip": opening_report if opening_report is not None else {
+            "status": "rejected", "error": opening_error,
+        },
+        "shaderArchive": archive_report if archive_report is not None else {
+            "status": "rejected", "error": archive_error,
         },
         "skinning": palette,
         "errors": errors,

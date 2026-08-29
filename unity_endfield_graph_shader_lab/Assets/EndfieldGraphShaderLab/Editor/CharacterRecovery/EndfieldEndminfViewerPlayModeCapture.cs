@@ -52,6 +52,23 @@ namespace EndfieldGraphShaderLabEditor
         // camera state. Environment overrides preserve per-session evidence.
         private const string RecordingGyroscopeInputX = "-0.4604167";
         private const string RecordingGyroscopeInputY = "0.9305556";
+        private const string CleanReferenceGyroscopeTrackEnvironment =
+            "ENDFIELD_ENDMINF_CAPTURE_CLEAN_REFERENCE_GYROSCOPE_TRACK";
+        // Cursor observations from the UI-free 1920x1080 clean-reference
+        // decode. Source frame 90 is requested animation time zero. The
+        // retail UIGyroscopeEffect sees these changes at PreLate and replaces
+        // its active two-second OutQuad on every significant input change.
+        private static readonly GyroscopeTrackSample[] CleanReferenceGyroscopeTrack =
+        {
+            new GyroscopeTrackSample(7.2333333f, -0.4593750f, 0.9277778f),
+            new GyroscopeTrackSample(7.2666667f, -0.4489583f, 0.9388889f),
+            new GyroscopeTrackSample(7.3000000f, -0.4093750f, 0.9703704f),
+            new GyroscopeTrackSample(7.3333333f, -0.2697917f, 0.9962963f),
+            new GyroscopeTrackSample(7.3666667f,  0.0177083f, 0.9962963f),
+            new GyroscopeTrackSample(7.4000000f,  0.4156250f, 0.9962963f),
+            new GyroscopeTrackSample(7.4333333f,  0.7760417f, 0.9962963f),
+            new GyroscopeTrackSample(7.4666667f,  1.0000000f, 0.9962963f),
+        };
         // Direct UI-free registration of the retained retail Uber output places
         // the August 24 no-frame-generation pulse on the authored body clock.
         // The older August 21 route's 0.15-second offset remains available as
@@ -68,6 +85,10 @@ namespace EndfieldGraphShaderLabEditor
         private const int FrameCount = 41;
         private const string LitEffectCompatibilityShader =
             "Hidden/Endfield/Compatibility/Endminf/LitEffectParallax";
+        private const string ExactRefractShader =
+            "Hidden/Endfield/Recovered/Zhuangfy/VFXRefractMRT";
+        private const string ExactSuikuai1MaterialName =
+            "M_fx_common_teleport_03";
         private const string Suikuai1DiagnosticEnvironment =
             "ENDFIELD_ENDMINF_CAPTURE_ADMIT_SUIKUAI1";
         private const string OutputEnvironment =
@@ -83,8 +104,27 @@ namespace EndfieldGraphShaderLabEditor
             "ENDFIELD_ENDMINF_CAPTURE_ENABLE_SECONDARY_DYNAMICS_SOLVER";
         private const string RetainedSkinningDiagnosticEnvironment =
             "ENDFIELD_ENDMINF_CAPTURE_RETAINED_SKINNING";
+        private const string EndminfM21ExactEnvironment =
+            "ENDFIELD_RECOVERED_ENDMINF_M21_PEAK_EXACT";
         private const string SphereOutsidePresentationEnvironment =
             "ENDFIELD_RECOVERED_SPHERE_OUTSIDE_PRESENTATION";
+        // A canonical video export must exercise the same source-backed exact
+        // presentation as the maintained interactive launcher. Keep explicit
+        // environment values (including "0") for controlled A/B runs, but do
+        // not let an ordinary batch render silently omit recovered owners.
+        private static readonly string[] CanonicalVideoDefaultFlags =
+        {
+            // The deferred/SphereOutside chain still depends on the explicitly
+            // content-invalid screen-shadow attachment diagnostic. Enabling it
+            // produces an upside-down body mask over the portrait and regresses
+            // the aligned peak substantially, so it is not presentation policy.
+            // M13 packets 1/2 measurably close the aligned burst shell. Packet
+            // 0 is rejected by the runtime; M14 remains diagnostic-only.
+            "ENDFIELD_RECOVERED_ENDMINF_M13_EXACT",
+            EndminfM21ExactEnvironment,
+            "ENDFIELD_RECOVERED_ENDMINF_M31_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_UBER_EXACT",
+        };
         private const string Suikuai1Material =
             "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf/Effects/Overview/Materials/M_fx_common_teleport_03_p19E6A2A7AE736DA5.mat";
         private static readonly string[] ExpectedRemainingBlockedEffects = {
@@ -98,6 +138,25 @@ namespace EndfieldGraphShaderLabEditor
         private static Camera camera;
         private static string output;
         private static float[] requestedTimes;
+        private static bool replayCleanReferenceGyroscopeTrack;
+        private static int nextGyroscopeTrackSample;
+
+        private readonly struct GyroscopeTrackSample
+        {
+            public readonly float requestedSeconds;
+            public readonly float normalizedMouseX;
+            public readonly float normalizedMouseY;
+
+            public GyroscopeTrackSample(
+                float requestedSeconds,
+                float normalizedMouseX,
+                float normalizedMouseY)
+            {
+                this.requestedSeconds = requestedSeconds;
+                this.normalizedMouseX = normalizedMouseX;
+                this.normalizedMouseY = normalizedMouseY;
+            }
+        }
         private static float captureFps = Fps;
         private static int captureWidth = DefaultWidth;
         private static int captureHeight = DefaultHeight;
@@ -116,7 +175,7 @@ namespace EndfieldGraphShaderLabEditor
         [Serializable]
         private sealed class Report
         {
-            public string schema = "endfield.endminf-viewer-playmode-sequence.v5";
+            public string schema = "endfield.endminf-viewer-playmode-sequence.v8";
             public string status = "ok";
             public int width = captureWidth;
             public int height = captureHeight;
@@ -170,6 +229,7 @@ namespace EndfieldGraphShaderLabEditor
             public string gyroscopeMode;
             public string gyroscopeInputX;
             public string gyroscopeInputY;
+            public bool cleanReferenceGyroscopeTrack;
             public float visualPostPreRollSeconds;
             public bool retainedSkinningDiagnostic;
             public FrameRow[] frames;
@@ -192,11 +252,51 @@ namespace EndfieldGraphShaderLabEditor
             public bool exactEndminfUberRequested;
             public bool exactEndminfUberSubmitted;
             public string exactEndminfUberFailure;
+            public bool endminfOpeningStripExactRequested;
+            public bool endminfOpeningStripExactActive;
+            public bool endminfOpeningStripExactSubmitted;
+            public bool endminfOpeningStripExactValidated;
+            public int endminfOpeningStripExactPacket;
+            public int endminfOpeningStripExactSourceFrame;
+            public string endminfOpeningStripExactFailure;
+            public bool endminfM18ExactRequested;
+            public bool endminfM18ExactActive;
+            public bool endminfM18ExactSubmitted;
+            public bool endminfM18ExactValidated;
+            public string endminfM18ExactFailure;
+            public bool endminfM21ExactRequested;
+            public bool endminfM21ExactActive;
+            public bool endminfM21ExactSubmitted;
+            public bool endminfM21ExactValidated;
+            public string endminfM21ExactFailure;
+            public bool endminfM20ExactRequested;
+            public bool endminfM20ExactActive;
+            public bool endminfM20ExactSubmitted;
+            public bool endminfM20ExactValidated;
+            public string endminfM20ExactFailure;
+            public bool endminfM28ExactRequested;
+            public bool endminfM28ExactActive;
+            public bool endminfM28ExactSubmitted;
+            public bool endminfM28ExactValidated;
+            public string endminfM28ExactFailure;
             public string file;
             public int effectRootCount;
             public int admittedRenderers;
             public int activeAdmittedRenderers;
             public int admittedAliveParticles;
+            public bool sharedCharEffectActive;
+            public int sharedCharEffectAliveParticles;
+            public int sharedCharEffectTrailAliveParticles;
+            public Vector3 sharedCharEffectTrailPositionMin;
+            public Vector3 sharedCharEffectTrailPositionMax;
+            public Vector3 sharedCharEffectTrailFirstSize;
+            public Vector3 sharedCharEffectTrailFirstVelocity;
+            public Vector3 sharedCharEffectTrailRendererBoundsCenter;
+            public Vector3 sharedCharEffectTrailRendererBoundsExtents;
+            public bool sharedCharEffectTrailRendererEnabled;
+            public bool sharedCharEffectTrailRendererActive;
+            public string sharedCharEffectTrailShader;
+            public int sharedCharEffectTrailPassCount;
             public string activeBodyClip;
             public float activeBodyClipTime;
             public bool overviewTransitioning;
@@ -237,6 +337,8 @@ namespace EndfieldGraphShaderLabEditor
             public ParticleRow[] liveRenderers;
             public ParticleRow[] handFamily;
             public ParticleRow[] primaryRockFamily;
+            public int litEffectBindingRowCount;
+            public bool exactSuikuai1BindingReady;
             public SecondaryDynamicsBoneRow[] secondaryDynamicsBones;
             public bool secondaryDynamicsSolverWriteback;
             public string secondaryDynamicsBindingFailure;
@@ -419,6 +521,17 @@ namespace EndfieldGraphShaderLabEditor
             // open_character_recovery_lab.bat. Batch validation must not
             // silently fall back to the preserved gacha-room presentation
             // merely because its parent shell lacks these process variables.
+            bool videoExportRequested = Environment.GetEnvironmentVariable(
+                "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT") == "1";
+            if (videoExportRequested)
+            {
+                foreach (string flag in CanonicalVideoDefaultFlags)
+                {
+                    if (string.IsNullOrWhiteSpace(
+                            Environment.GetEnvironmentVariable(flag)))
+                        Environment.SetEnvironmentVariable(flag, "1");
+                }
+            }
             bool exactEndminfM27 = Environment.GetEnvironmentVariable(
                 "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER") == "1";
             string[] reproductionFlags = {
@@ -503,10 +616,13 @@ namespace EndfieldGraphShaderLabEditor
             next = 0;
             selected = false;
             selectionSettleFrames = 0;
+            replayCleanReferenceGyroscopeTrack =
+                Environment.GetEnvironmentVariable(
+                    CleanReferenceGyroscopeTrackEnvironment) == "1";
+            nextGyroscopeTrackSample = 0;
             bool fineWindow = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_FINE_WINDOW") == "1";
-            bool videoExport = Environment.GetEnvironmentVariable(
-                "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT") == "1";
+            bool videoExport = videoExportRequested;
             string requestedTimesText = Environment.GetEnvironmentVariable(
                 RequestedTimesEnvironment);
             bool targetedTimes = !string.IsNullOrWhiteSpace(requestedTimesText);
@@ -780,6 +896,7 @@ namespace EndfieldGraphShaderLabEditor
                 return;
             float requested = requestedTimes[next];
             float elapsed = Time.time - started;
+            ReplayCleanReferenceGyroscopeTrack(elapsed);
             if (elapsed + 0.0001f < requested) return;
             CharacterRecoveryViewerUI.TryGetSelectedActorRoot(out Transform actor);
             if (actor == null || camera == null) return;
@@ -921,6 +1038,17 @@ namespace EndfieldGraphShaderLabEditor
                     "Exact Endminf M18 peak callback validation failed: " +
                     m18PeakValidationFailure);
             }
+            if (EndfieldRecoveredEndminfOpeningStripExactRuntime.Requested &&
+                EndfieldRecoveredEndminfOpeningStripExactRuntime
+                    .HasPendingValidation &&
+                !EndfieldRecoveredEndminfOpeningStripExactRuntime
+                    .ValidatePendingAfterSynchronizedRender(
+                        out string openingStripValidationFailure))
+            {
+                throw new InvalidOperationException(
+                    "Exact Endminf opening-strip callback validation failed: " +
+                    openingStripValidationFailure);
+            }
             if (EndfieldRecoveredEndminfM28PeakExactRuntime.Requested &&
                 EndfieldRecoveredEndminfM28PeakExactRuntime
                     .HasPendingValidation &&
@@ -941,6 +1069,16 @@ namespace EndfieldGraphShaderLabEditor
                 throw new InvalidOperationException(
                     "Exact Endminf M21 peak callback validation failed: " +
                     m21PeakValidationFailure);
+            }
+            if (EndfieldRecoveredEndminfM20PeakExactRuntime.Requested &&
+                EndfieldRecoveredEndminfM20PeakExactRuntime.HasPendingValidation &&
+                !EndfieldRecoveredEndminfM20PeakExactRuntime
+                    .ValidatePendingAfterSynchronizedRender(
+                        out string m20PeakValidationFailure))
+            {
+                throw new InvalidOperationException(
+                    "Exact Endminf M20 peak callback validation failed: " +
+                    m20PeakValidationFailure);
             }
             if (EndfieldRecoveredEndminfM13ExactRuntime.Requested &&
                 EndfieldRecoveredEndminfM13ExactRuntime.HasPendingValidation &&
@@ -1058,6 +1196,45 @@ namespace EndfieldGraphShaderLabEditor
                 .GetComponent<EndfieldSecondaryDynamicsRuntime>();
             EndfieldCapturedSecondaryDynamicsReplay capturedReplay = actor
                 .GetComponent<EndfieldCapturedSecondaryDynamicsReplay>();
+            GameObject sharedCharEffect = UnityEngine.Object
+                .FindObjectsOfType<GameObject>(true)
+                .FirstOrDefault(value =>
+                    value.name == "CharEffect__CharacterInfoRuntime");
+            ParticleSystem[] sharedCharEffectSystems = sharedCharEffect == null
+                ? Array.Empty<ParticleSystem>()
+                : sharedCharEffect.GetComponentsInChildren<ParticleSystem>(true);
+            ParticleSystem sharedCharEffectTrail = sharedCharEffectSystems
+                .FirstOrDefault(value => value.gameObject.name == "trail");
+            ParticleSystemRenderer sharedCharEffectTrailRenderer =
+                sharedCharEffectTrail == null
+                    ? null
+                    : sharedCharEffectTrail.GetComponent<ParticleSystemRenderer>();
+            int sharedTrailCount = sharedCharEffectTrail == null
+                ? 0
+                : sharedCharEffectTrail.particleCount;
+            ParticleSystem.Particle[] sharedTrailParticles =
+                sharedTrailCount == 0
+                    ? Array.Empty<ParticleSystem.Particle>()
+                    : new ParticleSystem.Particle[sharedTrailCount];
+            if (sharedCharEffectTrail != null && sharedTrailCount != 0)
+                sharedTrailCount = sharedCharEffectTrail.GetParticles(
+                    sharedTrailParticles);
+            Vector3 sharedTrailPositionMin = Vector3.zero;
+            Vector3 sharedTrailPositionMax = Vector3.zero;
+            if (sharedTrailCount != 0)
+            {
+                sharedTrailPositionMin = sharedTrailParticles[0].position;
+                sharedTrailPositionMax = sharedTrailParticles[0].position;
+                for (int index = 1; index < sharedTrailCount; index++)
+                {
+                    sharedTrailPositionMin = Vector3.Min(
+                        sharedTrailPositionMin,
+                        sharedTrailParticles[index].position);
+                    sharedTrailPositionMax = Vector3.Max(
+                        sharedTrailPositionMax,
+                        sharedTrailParticles[index].position);
+                }
+            }
             Frames.Add(new FrameRow {
                 index = next, requestedSeconds = requested, actualSeconds = elapsed, file = file,
                 endminfPostSeconds = endminfPostSeconds,
@@ -1079,10 +1256,106 @@ namespace EndfieldGraphShaderLabEditor
                     .LastRecoveredEndminfExactUberSubmitted,
                 exactEndminfUberFailure = HGCompatRenderPipeline
                     .LastRecoveredEndminfExactUberFailure,
+                endminfOpeningStripExactRequested =
+                    EndfieldRecoveredEndminfOpeningStripExactRuntime.Requested,
+                endminfOpeningStripExactActive =
+                    EndfieldRecoveredEndminfOpeningStripExactRuntime.ActiveThisFrame,
+                endminfOpeningStripExactSubmitted =
+                    EndfieldRecoveredEndminfOpeningStripExactRuntime.SubmittedThisFrame,
+                endminfOpeningStripExactValidated =
+                    EndfieldRecoveredEndminfOpeningStripExactRuntime.ValidatedThisFrame,
+                endminfOpeningStripExactPacket =
+                    EndfieldRecoveredEndminfOpeningStripExactRuntime
+                        .SelectedPacketThisFrame,
+                endminfOpeningStripExactSourceFrame =
+                    EndfieldRecoveredEndminfOpeningStripExactRuntime
+                        .SourceFrameThisFrame,
+                endminfOpeningStripExactFailure =
+                    EndfieldRecoveredEndminfOpeningStripExactRuntime.Failure,
+                endminfM18ExactRequested =
+                    EndfieldRecoveredEndminfM18PeakExactRuntime.Requested,
+                endminfM18ExactActive =
+                    EndfieldRecoveredEndminfM18PeakExactRuntime.ActiveThisFrame,
+                endminfM18ExactSubmitted =
+                    EndfieldRecoveredEndminfM18PeakExactRuntime.SubmittedThisFrame,
+                endminfM18ExactValidated =
+                    EndfieldRecoveredEndminfM18PeakExactRuntime.ValidatedThisFrame,
+                endminfM18ExactFailure =
+                    EndfieldRecoveredEndminfM18PeakExactRuntime.Failure,
+                endminfM21ExactRequested =
+                    EndfieldRecoveredEndminfM21PeakExactRuntime.Requested,
+                endminfM21ExactActive =
+                    EndfieldRecoveredEndminfM21PeakExactRuntime.ActiveThisFrame,
+                endminfM21ExactSubmitted =
+                    EndfieldRecoveredEndminfM21PeakExactRuntime.SubmittedThisFrame,
+                endminfM21ExactValidated =
+                    EndfieldRecoveredEndminfM21PeakExactRuntime.ValidatedThisFrame,
+                endminfM21ExactFailure =
+                    EndfieldRecoveredEndminfM21PeakExactRuntime.Failure,
+                endminfM20ExactRequested =
+                    EndfieldRecoveredEndminfM20PeakExactRuntime.Requested,
+                endminfM20ExactActive =
+                    EndfieldRecoveredEndminfM20PeakExactRuntime.ActiveThisFrame,
+                endminfM20ExactSubmitted =
+                    EndfieldRecoveredEndminfM20PeakExactRuntime.SubmittedThisFrame,
+                endminfM20ExactValidated =
+                    EndfieldRecoveredEndminfM20PeakExactRuntime.ValidatedThisFrame,
+                endminfM20ExactFailure =
+                    EndfieldRecoveredEndminfM20PeakExactRuntime.Failure,
+                endminfM28ExactRequested =
+                    EndfieldRecoveredEndminfM28PeakExactRuntime.Requested,
+                endminfM28ExactActive =
+                    EndfieldRecoveredEndminfM28PeakExactRuntime.ActiveThisFrame,
+                endminfM28ExactSubmitted =
+                    EndfieldRecoveredEndminfM28PeakExactRuntime.SubmittedThisFrame,
+                endminfM28ExactValidated =
+                    EndfieldRecoveredEndminfM28PeakExactRuntime.ValidatedThisFrame,
+                endminfM28ExactFailure =
+                    EndfieldRecoveredEndminfM28PeakExactRuntime.CurrentFailure,
                 effectRootCount = roots.Length, admittedRenderers = renderers.Count(value => value.enabled),
                 activeAdmittedRenderers = renderers.Count(value => value.enabled && value.gameObject.activeInHierarchy),
                 admittedAliveParticles = renderers.Where(value => value.enabled && value.gameObject.activeInHierarchy)
                     .Sum(value => value.GetComponent<ParticleSystem>().particleCount),
+                sharedCharEffectActive = sharedCharEffect != null &&
+                    sharedCharEffect.activeInHierarchy,
+                sharedCharEffectAliveParticles = sharedCharEffectSystems
+                    .Sum(value => value.particleCount),
+                sharedCharEffectTrailAliveParticles =
+                    sharedTrailCount,
+                sharedCharEffectTrailPositionMin = sharedTrailPositionMin,
+                sharedCharEffectTrailPositionMax = sharedTrailPositionMax,
+                sharedCharEffectTrailFirstSize = sharedTrailCount == 0
+                    ? Vector3.zero
+                    : sharedTrailParticles[0].GetCurrentSize3D(
+                        sharedCharEffectTrail),
+                sharedCharEffectTrailFirstVelocity = sharedTrailCount == 0
+                    ? Vector3.zero
+                    : sharedTrailParticles[0].velocity,
+                sharedCharEffectTrailRendererBoundsCenter =
+                    sharedCharEffectTrailRenderer == null
+                        ? Vector3.zero
+                        : sharedCharEffectTrailRenderer.bounds.center,
+                sharedCharEffectTrailRendererBoundsExtents =
+                    sharedCharEffectTrailRenderer == null
+                        ? Vector3.zero
+                        : sharedCharEffectTrailRenderer.bounds.extents,
+                sharedCharEffectTrailRendererEnabled =
+                    sharedCharEffectTrailRenderer != null &&
+                    sharedCharEffectTrailRenderer.enabled,
+                sharedCharEffectTrailRendererActive =
+                    sharedCharEffectTrailRenderer != null &&
+                    sharedCharEffectTrailRenderer.gameObject.activeInHierarchy,
+                sharedCharEffectTrailShader =
+                    sharedCharEffectTrailRenderer == null ||
+                    sharedCharEffectTrailRenderer.sharedMaterial == null ||
+                    sharedCharEffectTrailRenderer.sharedMaterial.shader == null
+                        ? string.Empty
+                        : sharedCharEffectTrailRenderer.sharedMaterial.shader.name,
+                sharedCharEffectTrailPassCount =
+                    sharedCharEffectTrailRenderer == null ||
+                    sharedCharEffectTrailRenderer.sharedMaterial == null
+                        ? 0
+                        : sharedCharEffectTrailRenderer.sharedMaterial.passCount,
                 activeBodyClip = activeBodyClip,
                 activeBodyClipTime = activeBodyClipTime,
                 overviewTransitioning = overview != null && overview.IsTransitioning,
@@ -1161,6 +1434,15 @@ namespace EndfieldGraphShaderLabEditor
                     .Select(value => Particle(value.renderer))
                     .OrderBy(value => value.path, StringComparer.Ordinal)
                     .ToArray(),
+                litEffectBindingRowCount = roots
+                    .SelectMany(value => value.GetComponentsInChildren<
+                        EndfieldEndminfLitEffectCompatibilityBinding>(true))
+                    .Sum(value => (value.rows ?? Array.Empty<
+                        EndfieldEndminfLitEffectCompatibilityBinding.Row>())
+                        .Count(row => row != null && row.renderer != null &&
+                            row.material != null && row.mesh != null)),
+                exactSuikuai1BindingReady = renderers.Count(value =>
+                    IsExactSuikuai1BindingReady(value)) == 1,
                 secondaryDynamicsBones = captureSecondaryDynamics
                     ? CaptureSecondaryDynamicsBones(actor)
                     : Array.Empty<SecondaryDynamicsBoneRow>(),
@@ -1221,9 +1503,36 @@ namespace EndfieldGraphShaderLabEditor
                 Frames.All(value => value.rootMotionPositionDelta.sqrMagnitude <= 1.0e-10f);
             FrameRow firstEntranceFrame = Frames.FirstOrDefault(value =>
                 value.effectRootCount == 4);
+            int litEffectM01Count = firstEntranceFrame == null ||
+                firstEntranceFrame.primaryRockFamily == null
+                ? 0
+                : firstEntranceFrame.primaryRockFamily.Count(value =>
+                    value.materials != null &&
+                    value.materials.SequenceEqual(new[] {
+                        "M_fx_endminm_gfx_01" }));
+            int litEffectM38Count = firstEntranceFrame == null ||
+                firstEntranceFrame.primaryRockFamily == null
+                ? 0
+                : firstEntranceFrame.primaryRockFamily.Count(value =>
+                    value.materials != null &&
+                    value.materials.SequenceEqual(new[] {
+                        "M_fx_endminm_gfx_38" }));
+            int litEffectM27Count = firstEntranceFrame == null ||
+                firstEntranceFrame.primaryRockFamily == null
+                ? 0
+                : firstEntranceFrame.primaryRockFamily.Count(value =>
+                    value.materials != null &&
+                    value.materials.SequenceEqual(new[] {
+                        "M_fx_endminm_gfx_27" }));
             bool observedPrimaryRockCompatibilityBinding =
                 firstEntranceFrame != null &&
                 firstEntranceFrame.admittedRenderers == 68 &&
+                firstEntranceFrame.litEffectBindingRowCount == 11 &&
+                firstEntranceFrame.primaryRockFamily != null &&
+                firstEntranceFrame.primaryRockFamily.Length == 11 &&
+                litEffectM01Count == 7 && litEffectM38Count == 3 &&
+                litEffectM27Count == 1 &&
+                firstEntranceFrame.exactSuikuai1BindingReady &&
                 firstEntranceFrame.blockedRendererIdentities != null &&
                 firstEntranceFrame.blockedRendererIdentities.Length ==
                     ExpectedRemainingBlockedEffects.Length &&
@@ -1310,7 +1619,13 @@ namespace EndfieldGraphShaderLabEditor
             if (!observedPrimaryRockCompatibilityBinding)
                 missingObservations.Add(
                     "eleven-row LitEffect crystal compatibility plus exact suikuai (1) " +
-                    "binding with two separate blocked effects");
+                    "binding with two separate blocked effects " +
+                    $"(rows={firstEntranceFrame?.litEffectBindingRowCount ?? 0}/11, " +
+                    $"M01={litEffectM01Count}/7, M38={litEffectM38Count}/3, " +
+                    $"M27={litEffectM27Count}/1, " +
+                    $"suikuai={firstEntranceFrame?.exactSuikuai1BindingReady ?? false}, " +
+                    $"admitted={firstEntranceFrame?.admittedRenderers ?? 0}/68, " +
+                    $"blocked={firstEntranceFrame?.blockedRendererIdentities?.Length ?? 0}/2)");
             if (!observedCanonicalSecondaryReplay)
                 missingObservations.Add(
                     "captured retail hair/cape trajectory without diagnostic solver ownership");
@@ -1403,10 +1718,20 @@ namespace EndfieldGraphShaderLabEditor
             bool exactEndminfUberRequested = Frames.Any(
                 value => value.exactEndminfUberRequested);
             bool observedExactEndminfUberSubmitted =
-                Frames.Count > 0 && Frames.All(
+                Frames.Count > 0 && Frames.Any(
                     value => value.exactEndminfUberSubmitted);
+            // Capture 20260827T183054Z frame 1818 is the sole certified Uber
+            // packet, at overview phase 4.350000 s. The runtime assembly keeps
+            // its transport internal, so mirror only this evidence constant in
+            // the editor-side report gate.
+            const float capturedUberPhaseSeconds = 4.35f;
+            bool capturedUberPhaseIncluded = Frames.Any(value =>
+                Mathf.Abs(
+                    value.endminfPostSeconds -
+                    capturedUberPhaseSeconds) <= 1.0f / 120.0f);
             bool exactEndminfUberRequirementReady =
                 !exactEndminfUberRequested ||
+                !capturedUberPhaseIncluded ||
                 observedExactEndminfUberSubmitted;
             string exactEndminfUberFailure = Frames
                 .Select(value => value.exactEndminfUberFailure)
@@ -1503,6 +1828,8 @@ namespace EndfieldGraphShaderLabEditor
                     EndfieldRecoveredCharInfoGyroscopeCameraState.InputXEnvironmentVariable),
                 gyroscopeInputY = Environment.GetEnvironmentVariable(
                     EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable),
+                cleanReferenceGyroscopeTrack =
+                    replayCleanReferenceGyroscopeTrack,
                 // The _02 owner is destroyed before the full sequence report
                 // is published, which deliberately clears the live clock.
                 // Preserve the observed first-frame phase difference instead.
@@ -1556,6 +1883,11 @@ namespace EndfieldGraphShaderLabEditor
                         "endminf_overview_start_and_loop_no_framegen",
                         "reference_no_framegen_vs_unity_4fps.png",
                         "reference_no_framegen_comparison.json");
+                    BuildSideBySideComparison(
+                        "endminf_overview_clean_2026-08-26",
+                        "endminf_overview_start_and_loop_clean",
+                        "reference_clean_vs_unity_4fps.png",
+                        "reference_clean_comparison.json");
                 }
                 catch (Exception error)
                 {
@@ -1574,6 +1906,28 @@ namespace EndfieldGraphShaderLabEditor
                 ": roots=" + Frames.Last().effectRootCount +
                 " admitted=" + Frames.Last().admittedRenderers + " output=" + output);
             EditorApplication.ExitPlaymode();
+        }
+
+        private static void ReplayCleanReferenceGyroscopeTrack(float elapsed)
+        {
+            if (!replayCleanReferenceGyroscopeTrack || camera == null)
+                return;
+            EndfieldRecoveredCharInfoGyroscopeTween tween =
+                camera.GetComponent<EndfieldRecoveredCharInfoGyroscopeTween>();
+            if (tween == null)
+                return;
+            while (nextGyroscopeTrackSample <
+                   CleanReferenceGyroscopeTrack.Length)
+            {
+                GyroscopeTrackSample sample =
+                    CleanReferenceGyroscopeTrack[nextGyroscopeTrackSample];
+                if (elapsed + 0.0001f < sample.requestedSeconds)
+                    break;
+                tween.RetargetNormalizedMouseInput(
+                    sample.normalizedMouseX,
+                    sample.normalizedMouseY);
+                nextGyroscopeTrackSample++;
+            }
         }
 
         private static bool IsCharInfoBackgroundActive()
@@ -1978,6 +2332,27 @@ namespace EndfieldGraphShaderLabEditor
                 firstParticleRandomSeed = first.randomSeed,
                 firstParticleCustom1 = custom1.Count > 0 ? custom1[0] : Vector4.zero,
             };
+        }
+
+        private static bool IsExactSuikuai1BindingReady(
+            ParticleSystemRenderer renderer)
+        {
+            if (renderer == null || !renderer.enabled ||
+                renderer.transform.parent == null ||
+                renderer.gameObject.name != "suikuai (1)" ||
+                renderer.transform.parent.gameObject.name != "all" ||
+                renderer.renderMode != ParticleSystemRenderMode.Mesh ||
+                !renderer.enableGPUInstancing || renderer.meshCount != 4)
+                return false;
+
+            Material[] materials = renderer.sharedMaterials;
+            Material material = materials != null && materials.Length == 1
+                ? materials[0]
+                : null;
+            return material != null &&
+                material.name == ExactSuikuai1MaterialName &&
+                material.shader != null &&
+                material.shader.name == ExactRefractShader;
         }
 
         private static string Hierarchy(Transform value)

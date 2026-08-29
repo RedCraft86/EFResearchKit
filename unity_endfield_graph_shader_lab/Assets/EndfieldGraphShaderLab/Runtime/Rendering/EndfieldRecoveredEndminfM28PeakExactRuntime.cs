@@ -43,6 +43,8 @@ namespace EndfieldGraphShaderLab
         private bool active;
         private bool failed;
         private bool submissionPending;
+        private bool submittedThisFrame;
+        private bool validatedThisFrame;
         private uint validatedDrawCount;
         private string failure = string.Empty;
         private bool loggedActivation;
@@ -63,11 +65,22 @@ namespace EndfieldGraphShaderLab
         public static bool HasPendingValidation =>
             activeInstance != null && activeInstance.submissionPending;
 
+        public static bool ActiveThisFrame =>
+            activeInstance != null && activeInstance.active;
+        public static bool SubmittedThisFrame =>
+            activeInstance != null && activeInstance.submittedThisFrame;
+        public static bool ValidatedThisFrame =>
+            activeInstance != null && activeInstance.validatedThisFrame;
+        public static string CurrentFailure =>
+            activeInstance != null ? activeInstance.failure : string.Empty;
+
         internal string Failure => failure;
 
         internal bool PrepareBeforeCulling(Camera camera)
         {
             active = false;
+            submittedThisFrame = false;
+            validatedThisFrame = false;
             RestoreSourceRenderers();
             if (!Requested || failed || camera == null)
                 return false;
@@ -133,6 +146,20 @@ namespace EndfieldGraphShaderLab
                 return Fail(
                     "the live M28 SceneColor descriptor does not match its native snapshot");
             }
+            try
+            {
+                if (sceneColor.descriptor.width <= 0 ||
+                    sceneColor.descriptor.height <= 0 ||
+                    Native.SetOutputDimensions(
+                        (uint)sceneColor.descriptor.width,
+                        (uint)sceneColor.descriptor.height) != 1)
+                    return Fail("the native M28 output-size gate rejected its input");
+            }
+            catch (Exception exception)
+            {
+                return Fail("the native M28 output-size gate failed: " +
+                    exception.Message);
+            }
 
             var command = new CommandBuffer
             {
@@ -152,6 +179,7 @@ namespace EndfieldGraphShaderLab
             context.ExecuteCommandBuffer(command);
             command.Release();
             submissionPending = true;
+            submittedThisFrame = true;
 
             if (!loggedActivation)
             {
@@ -353,7 +381,14 @@ namespace EndfieldGraphShaderLab
                         unchecked((uint)result).ToString("x8");
                     return Fail(validationFailure);
                 }
+                if (Native.GetScreenSizePatchStatus() != 1)
+                {
+                    validationFailure =
+                        "native M28 screen constants were not patched";
+                    return Fail(validationFailure);
+                }
                 validatedDrawCount = draws;
+                validatedThisFrame = true;
                 if (!loggedValidation)
                 {
                     Debug.Log(
@@ -492,6 +527,14 @@ namespace EndfieldGraphShaderLab
                 IntPtr t0,
                 IntPtr t1,
                 IntPtr t2);
+
+            [DllImport(NativeLibrary, EntryPoint =
+                "EndfieldOriginalDxbcSetM28PeakOutputDimensions")]
+            internal static extern uint SetOutputDimensions(uint width, uint height);
+
+            [DllImport(NativeLibrary, EntryPoint =
+                "EndfieldOriginalDxbcGetM28PeakScreenSizePatchStatus")]
+            internal static extern uint GetScreenSizePatchStatus();
 
             [DllImport(NativeLibrary, EntryPoint =
                 "EndfieldOriginalDxbcResetM28PeakRuntimeState")]

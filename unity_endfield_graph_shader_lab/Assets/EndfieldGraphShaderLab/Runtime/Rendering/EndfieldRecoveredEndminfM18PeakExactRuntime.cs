@@ -32,6 +32,8 @@ namespace EndfieldGraphShaderLab
         private static bool failed;
         private static bool active;
         private static bool submissionPending;
+        private static bool submittedThisFrame;
+        private static bool validatedThisFrame;
         private static string failure = string.Empty;
         private static bool loggedActivation;
         private static bool loggedValidation;
@@ -40,12 +42,17 @@ namespace EndfieldGraphShaderLab
         public static bool Requested => string.Equals(
             Environment.GetEnvironmentVariable(EnvironmentVariable),
             "1", StringComparison.Ordinal);
-        internal static string Failure => failure;
+        public static string Failure => failure;
         public static bool HasPendingValidation => submissionPending;
+        public static bool ActiveThisFrame => active;
+        public static bool SubmittedThisFrame => submittedThisFrame;
+        public static bool ValidatedThisFrame => validatedThisFrame;
 
         internal static bool PrepareBeforeCulling(Camera camera)
         {
             active = false;
+            submittedThisFrame = false;
+            validatedThisFrame = false;
             if (!Requested || failed || camera == null)
                 return false;
             if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.Direct3D11)
@@ -167,6 +174,20 @@ namespace EndfieldGraphShaderLab
                 return false;
             if (camera == null || sceneDepth == null || renderEvent == IntPtr.Zero)
                 return Fail("the exact M18 peak render resources are incomplete");
+            try
+            {
+                if (sceneColor.descriptor.width <= 0 ||
+                    sceneColor.descriptor.height <= 0 ||
+                    Native.SetOutputDimensions(
+                        (uint)sceneColor.descriptor.width,
+                        (uint)sceneColor.descriptor.height) != 1)
+                    return Fail("the native M18 output-size gate rejected its input");
+            }
+            catch (Exception exception)
+            {
+                return Fail("the native M18 output-size gate failed: " +
+                    exception.Message);
+            }
             var command = new CommandBuffer
             {
                 name = "Recovered exact Endminf M18 amber diffusion shell"
@@ -178,6 +199,7 @@ namespace EndfieldGraphShaderLab
             context.ExecuteCommandBuffer(command);
             command.Release();
             submissionPending = true;
+            submittedThisFrame = true;
             if (!loggedActivation)
             {
                 Debug.Log("Recovered exact Endminf M18 diffusion shell submitted " +
@@ -208,11 +230,18 @@ namespace EndfieldGraphShaderLab
                         unchecked((uint)result).ToString("x8");
                     return Fail(validationFailure);
                 }
+                if (Native.GetScreenSizePatchStatus() != 1)
+                {
+                    validationFailure =
+                        "native M18 screen constants were not patched";
+                    return Fail(validationFailure);
+                }
                 if (!loggedValidation)
                 {
                     Debug.Log("Recovered exact Endminf M18 diffusion shell validated S_OK.");
                     loggedValidation = true;
                 }
+                validatedThisFrame = true;
                 return true;
             }
             catch (Exception exception)
@@ -247,6 +276,12 @@ namespace EndfieldGraphShaderLab
                 "EndfieldOriginalDxbcSetM18PeakTextureResources")]
             internal static extern uint SetTextureResources(
                 IntPtr t0, IntPtr t1, IntPtr t2, IntPtr t3, IntPtr t4);
+            [DllImport(NativeLibrary, EntryPoint =
+                "EndfieldOriginalDxbcSetM18PeakOutputDimensions")]
+            internal static extern uint SetOutputDimensions(uint width, uint height);
+            [DllImport(NativeLibrary, EntryPoint =
+                "EndfieldOriginalDxbcGetM18PeakScreenSizePatchStatus")]
+            internal static extern uint GetScreenSizePatchStatus();
             [DllImport(NativeLibrary, EntryPoint =
                 "EndfieldOriginalDxbcResetM18PeakRuntimeState")]
             internal static extern void ResetRuntimeState();

@@ -23,6 +23,7 @@ class CaptureSkinningTests(unittest.TestCase):
         names = {
             "body": "S_actor_endminf_body_01_lod0.asset",
             "cloth_01": "S_actor_endminf_cloth_01_lod0.asset",
+            "cloth_02": "S_actor_endminf_cloth_02_lod0.asset",
             "cloth_03": "S_actor_endminf_cloth_03_lod0.asset",
             "cloth_04": "S_actor_endminf_cloth_04_lod0.asset",
             "hair": "S_actor_endminf_hair_01_lod0.asset",
@@ -155,6 +156,21 @@ class CaptureSkinningTests(unittest.TestCase):
         self.assertEqual(result["meshObservationCounts"], {"hair": 1, "cloth_04": 0})
         self.assertIn("hair", result["frames"][0]["meshes"])
         self.assertEqual(result["frames"][0]["missingMeshes"], ["cloth_04"])
+
+    def test_partial_mode_reports_package_without_resource_payload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            frame = self.make_frame(root)
+            metadata_path = frame / "metadata.json"
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            metadata["resourcesFile"] = None
+            metadata["selectedResourceRecords"].clear()
+            metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+            (frame / "resources.bin").unlink()
+            result = MODULE.decode_session(root, ["hair"], allow_partial=True)
+        self.assertEqual(result["meshObservationCounts"], {"hair": 0})
+        self.assertEqual(result["frames"][0]["missingMeshes"], ["hair"])
+        self.assertIn("no retained resource payload", result["frames"][0]["resourceError"])
 
     def test_partial_mode_still_rejects_ambiguous_present_mesh(self):
         with tempfile.TemporaryDirectory() as temporary:

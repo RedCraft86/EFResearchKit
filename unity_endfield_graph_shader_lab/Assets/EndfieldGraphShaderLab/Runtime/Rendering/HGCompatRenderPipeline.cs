@@ -171,6 +171,8 @@ namespace EndfieldGraphShaderLab
             Shader.PropertyToID("_EndfieldRecoveredVFXSoftDepthReady");
         private static readonly int RecoveredPostUberWorldUiReadyId =
             Shader.PropertyToID("_EndfieldRecoveredPostUberWorldUiReady");
+        private static readonly int RecoveredPostUberPortraitDepthId =
+            Shader.PropertyToID("_EndfieldRecoveredPostUberPortraitDepth");
         private static readonly int NonJitteredViewNoTransProjMatrixId =
             Shader.PropertyToID("_NonJitteredViewNoTransProjMatrix");
         private static readonly int WorldSpaceCameraPosInternalId =
@@ -657,6 +659,8 @@ namespace EndfieldGraphShaderLab
         private bool loggedRecoveredLiveCharInfoAutoExposureDispatchFailure;
         private bool loggedRecoveredPostUberWorldUi;
         private bool loggedRecoveredPostUberWorldUiFailure;
+        private bool loggedRecoveredPostUberPortraitDepthSync;
+        private bool loggedRecoveredPostUberPortraitDepthSyncFailure;
         private bool loggedRecoveredPreGBufferDepthOwnerFailure;
         private bool loggedRecoveredSceneMV;
         private bool loggedRecoveredSceneMVFailure;
@@ -1009,6 +1013,9 @@ namespace EndfieldGraphShaderLab
             bool exactEndminfM21PeakPrepared =
                 EndfieldRecoveredEndminfM21PeakExactRuntime
                     .PrepareBeforeCulling(camera);
+            bool exactEndminfM20PeakPrepared =
+                EndfieldRecoveredEndminfM20PeakExactRuntime
+                    .PrepareBeforeCulling(camera);
             bool exactEndminfM18PeakPrepared =
                 EndfieldRecoveredEndminfM18PeakExactRuntime
                     .PrepareBeforeCulling(camera);
@@ -1017,6 +1024,9 @@ namespace EndfieldGraphShaderLab
                     .PrepareBeforeCulling(camera);
             bool exactEndminfM13Prepared =
                 EndfieldRecoveredEndminfM13ExactRuntime
+                    .PrepareBeforeCulling(camera);
+            bool exactEndminfOpeningStripPrepared =
+                EndfieldRecoveredEndminfOpeningStripExactRuntime
                     .PrepareBeforeCulling(camera);
             bool exactEndminfVFXBaseV2PeakPrepared =
                 EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
@@ -1973,18 +1983,6 @@ namespace EndfieldGraphShaderLab
                 recoveredDeferredExactConsumer.RecoveredHlslOutput,
                 canonicalColorTarget,
                 canonicalDepthTarget);
-            recoveredEndminfM27DeferredPresentation.Render(
-                context,
-                camera,
-                renderWidth,
-                renderHeight,
-                recoveredDeferredExactConsumerReady,
-                recoveredDeferredGBufferFrame,
-                recoveredDeferredExactConsumer.RecoveredHlslOutput,
-                cameraColorDescriptor,
-                canonicalColorTarget,
-                canonicalDepthTarget);
-
             recoveredScreenDirectAudit.BeginForward(
                 context,
                 camera,
@@ -2042,6 +2040,23 @@ namespace EndfieldGraphShaderLab
                 useRecoveredSceneMV ? recoveredSceneMV : null,
                 useRecoveredSceneMV ? recoveredPrimarySceneDepth : null);
 
+            // M27 depth is published before ForwardOpaque so the actor can
+            // occlude its exact deferred fragments. Present its resolved color
+            // only after ForwardOpaque: the CharInfo forward/background cohort
+            // otherwise overwrites all 921 certified peak pixels even though
+            // the deferred command itself succeeds.
+            recoveredEndminfM27DeferredPresentation.Render(
+                context,
+                camera,
+                renderWidth,
+                renderHeight,
+                recoveredDeferredExactConsumerReady,
+                recoveredDeferredGBufferFrame,
+                recoveredDeferredExactConsumer.RecoveredHlslOutput,
+                cameraColorDescriptor,
+                canonicalColorTarget,
+                canonicalDepthTarget);
+
             if (asset.drawSkybox || drawRecoveredCharInfoSky)
                 context.DrawSkybox(camera);
 
@@ -2095,6 +2110,25 @@ namespace EndfieldGraphShaderLab
                 recoveredSceneColorPingAllocated = true;
                 if (mainReady)
                     recoveredCurrentSceneColor = composedSceneColor;
+                // Frames 1896-1965 retain the retail owner interval as
+                // M31(first) -> transparent pre-M29/M30 work -> M31(second).
+                if (mainReady && exactEndminfM31PeakPrepared)
+                {
+                    mainReady =
+                        EndfieldRecoveredEndminfM31PeakExactRuntime.RenderFirst(
+                            context,
+                            camera,
+                            recoveredCurrentSceneColor,
+                            recoveredSceneMV,
+                            recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M31 first split transport failed " +
+                            "closed: " +
+                            EndfieldRecoveredEndminfM31PeakExactRuntime.Failure;
+                    }
+                }
                 if (mainReady && exactEndminfVFXBaseV2PeakPrepared)
                 {
                     mainReady = EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
@@ -2126,22 +2160,6 @@ namespace EndfieldGraphShaderLab
                         compositorFailure =
                             "exact Endminf M30 transport failed closed: " +
                             EndfieldRecoveredEndminfM30ExactRuntime.Failure;
-                    }
-                }
-                if (mainReady && exactEndminfM31PeakPrepared)
-                {
-                    mainReady =
-                        EndfieldRecoveredEndminfM31PeakExactRuntime.Render(
-                            context,
-                            camera,
-                            recoveredCurrentSceneColor,
-                            recoveredSceneMV,
-                            recoveredPrimarySceneDepth);
-                    if (!mainReady)
-                    {
-                        compositorFailure =
-                            "exact Endminf M31 peak transport failed closed: " +
-                            EndfieldRecoveredEndminfM31PeakExactRuntime.Failure;
                     }
                 }
                 if (mainReady)
@@ -2193,6 +2211,30 @@ namespace EndfieldGraphShaderLab
                             EndfieldRecoveredEndminfM29ExactRuntime.Failure;
                     }
                 }
+                if (mainReady && exactEndminfM31PeakPrepared)
+                {
+                    mainReady =
+                        EndfieldRecoveredEndminfM31PeakExactRuntime.RenderSecond(
+                            context,
+                            camera,
+                            recoveredCurrentSceneColor,
+                            recoveredSceneMV,
+                            recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M31 second split transport failed " +
+                            "closed: " +
+                            EndfieldRecoveredEndminfM31PeakExactRuntime.Failure;
+                    }
+                }
+                if (!mainReady && exactEndminfM31PeakPrepared &&
+                    EndfieldRecoveredEndminfM31PeakExactRuntime
+                        .HasPendingFirstSubmission)
+                {
+                    EndfieldRecoveredEndminfM31PeakExactRuntime.AbortPendingSplit(
+                        "the retail M31/M29/M30 owner interval failed");
+                }
                 if (mainReady && exactEndminfVFXBaseV2PeakPrepared)
                 {
                     mainReady = EndfieldRecoveredEndminfVFXBaseV2PeakCohortRuntime
@@ -2226,6 +2268,22 @@ namespace EndfieldGraphShaderLab
                             EndfieldRecoveredEndminfM14ExactRuntime.Failure;
                     }
                 }
+                if (mainReady && exactEndminfOpeningStripPrepared)
+                {
+                    mainReady =
+                        EndfieldRecoveredEndminfOpeningStripExactRuntime.Render(
+                            context,
+                            camera,
+                            recoveredCurrentSceneColor,
+                            recoveredSceneMV,
+                            recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf opening-strip transport failed closed: " +
+                            EndfieldRecoveredEndminfOpeningStripExactRuntime.Failure;
+                    }
+                }
                 // Full frame 2775 records the M21 stone shell at ordinal 74,
                 // immediately before the exact M13 ring at ordinal 75.
                 if (mainReady && exactEndminfM21PeakPrepared)
@@ -2254,6 +2312,25 @@ namespace EndfieldGraphShaderLab
                         compositorFailure =
                             "exact Endminf M13 transport failed closed: " +
                             EndfieldRecoveredEndminfM13ExactRuntime.Failure;
+                    }
+                }
+                // Retail frame 1748 records the 36-index M20 gas plume after
+                // the M21 stone shell and adjacent M13 peak owner. Its live
+                // program writes SceneColor plus SceneMV and samples the
+                // current scene depth with the captured runtime atlas.
+                if (mainReady && exactEndminfM20PeakPrepared)
+                {
+                    mainReady = EndfieldRecoveredEndminfM20PeakExactRuntime.Render(
+                        context,
+                        camera,
+                        recoveredCurrentSceneColor,
+                        recoveredSceneMV,
+                        recoveredPrimarySceneDepth);
+                    if (!mainReady)
+                    {
+                        compositorFailure =
+                            "exact Endminf M20 peak transport failed closed: " +
+                            EndfieldRecoveredEndminfM20PeakExactRuntime.Failure;
                     }
                 }
                 // Full frame 2775 records the broad M18 diffusion shell at
@@ -3269,6 +3346,7 @@ namespace EndfieldGraphShaderLab
                     out openingStripSelectorFailure);
             bool useRecoveredEndminfOpeningStrip =
                 useRecoveredPostSemantics &&
+                !EndfieldRecoveredEndminfOpeningStripExactRuntime.ActiveThisFrame &&
                 recoveredEndminfOpeningStripMaterial != null &&
                 hasOpeningStripSelector &&
                 EndfieldEndminfVisualCompatibilityClock.TryEvaluateOpeningStrip(
@@ -3722,7 +3800,11 @@ namespace EndfieldGraphShaderLab
                     postColorTarget,
                     recoveredPrimarySceneDepth,
                     width,
-                    height);
+                    height,
+                    hasEndminfPost &&
+                        endminfPost.mode > 0.5f &&
+                        endminfPost.radialIntensity +
+                            endminfPost.chromaticIntensity > 0.00001f);
             }
 
             commandBuffer = new CommandBuffer
@@ -3753,12 +3835,73 @@ namespace EndfieldGraphShaderLab
             RenderTargetIdentifier postColorTarget,
             RenderTexture primarySceneDepth,
             int width,
-            int height)
+            int height,
+            bool compatibilityUberWarpActive)
         {
             CommandBuffer commandBuffer = new CommandBuffer
             {
                 name = "Recovered post-Uber CharInfo world UI"
             };
+            bool diagnosticDepthSyncRequested = IsEnabledSelectorValue(
+                System.Environment.GetEnvironmentVariable(
+                    "ENDFIELD_DIAGNOSTIC_SYNC_POST_UBER_PORTRAIT_DEPTH"));
+            bool diagnosticDepthSyncReady = false;
+            RenderTargetIdentifier portraitSceneDepth =
+                new RenderTargetIdentifier(primarySceneDepth);
+            if (diagnosticDepthSyncRequested && compatibilityUberWarpActive)
+            {
+                int depthSyncPass = postProcessMaterial != null
+                    ? postProcessMaterial.FindPass("ENDMINF_POST_UBER_DEPTH_SYNC")
+                    : -1;
+                bool formatReady = SystemInfo.IsFormatSupported(
+                    GraphicsFormat.R32_SFloat,
+                    FormatUsage.Render);
+                if (depthSyncPass >= 0 && formatReady)
+                {
+                    var depthDescriptor = new RenderTextureDescriptor(
+                        width,
+                        height,
+                        GraphicsFormat.R32_SFloat,
+                        0)
+                    {
+                        msaaSamples = 1,
+                        sRGB = false,
+                        useMipMap = false,
+                        autoGenerateMips = false,
+                        enableRandomWrite = false,
+                        useDynamicScale = false
+                    };
+                    commandBuffer.GetTemporaryRT(
+                        RecoveredPostUberPortraitDepthId,
+                        depthDescriptor,
+                        FilterMode.Bilinear);
+                    // Diagnostic only: use the exact compatibility-Uber sample
+                    // footprint and retain the nearest raw scene depth among all
+                    // color contributors. This tests whether the body-shaped
+                    // portrait cutout is caused by post-Uber color sampling
+                    // against the untouched primary depth. It is not source
+                    // authority for changing the canonical _SceneDepth owner.
+                    commandBuffer.Blit(
+                        primarySceneDepth,
+                        RecoveredPostUberPortraitDepthId,
+                        postProcessMaterial,
+                        depthSyncPass);
+                    portraitSceneDepth = new RenderTargetIdentifier(
+                        RecoveredPostUberPortraitDepthId);
+                    diagnosticDepthSyncReady = true;
+                }
+                else if (!loggedRecoveredPostUberPortraitDepthSyncFailure)
+                {
+                    Debug.LogWarning(
+                        "Diagnostic post-Uber portrait-depth synchronization " +
+                        "failed closed: " +
+                        (depthSyncPass < 0
+                            ? "the ENDMINF_POST_UBER_DEPTH_SYNC shader pass is unavailable"
+                            : "R32_SFloat render targets are unavailable") +
+                        ". The portrait continues to sample primary scene depth.");
+                    loggedRecoveredPostUberPortraitDepthSyncFailure = true;
+                }
+            }
             // The retail pass samples the primary general scene depth while a
             // distinct generated output-depth target is paired with the post
             // color. The selected UI pass is ZTest Always/ZWrite Off, so this
@@ -3767,7 +3910,7 @@ namespace EndfieldGraphShaderLab
             // a read-only DSV, and the distinct retail output-depth descriptor
             // is not source-closed.
             commandBuffer.SetRenderTarget(postColorTarget);
-            commandBuffer.SetGlobalTexture(SceneDepthId, primarySceneDepth);
+            commandBuffer.SetGlobalTexture(SceneDepthId, portraitSceneDepth);
             commandBuffer.SetGlobalVector(
                 SceneDepthTexelSizeId,
                 new Vector4(1.0f / width, 1.0f / height, width, height));
@@ -3814,8 +3957,21 @@ namespace EndfieldGraphShaderLab
             commandBuffer.SetGlobalFloat(RenderPathInjectedId, 0.0f);
             commandBuffer.SetGlobalFloat(HGFlipXId, 0.0f);
             commandBuffer.SetGlobalFloat(HGFlipYId, 0.0f);
+            if (diagnosticDepthSyncReady)
+                commandBuffer.ReleaseTemporaryRT(RecoveredPostUberPortraitDepthId);
             context.ExecuteCommandBuffer(commandBuffer);
             commandBuffer.Release();
+
+            if (diagnosticDepthSyncReady &&
+                !loggedRecoveredPostUberPortraitDepthSync)
+            {
+                Debug.Log(
+                    "Diagnostic post-Uber portrait-depth synchronization is " +
+                    "active: _SceneDepth contains the nearest primary depth " +
+                    "from the compatibility Uber color-sampling footprint. " +
+                    "This is a causality probe, not a canonical render change.");
+                loggedRecoveredPostUberPortraitDepthSync = true;
+            }
 
             if (!loggedRecoveredPostUberWorldUi)
             {

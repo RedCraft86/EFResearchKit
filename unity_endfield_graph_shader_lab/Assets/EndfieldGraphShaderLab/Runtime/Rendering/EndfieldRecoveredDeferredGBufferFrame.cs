@@ -573,7 +573,12 @@ namespace EndfieldGraphShaderLab
             out string failure)
         {
             sourceSceneColor = sceneColor;
-            mask = gBufferC;
+            // Keep MRT0 available to the one-shot color diagnostic. It is not
+            // the presentation owner: MRT0 marks emissive output only and
+            // therefore omits deferred-lit stone faces. The presenter gates
+            // both passes with this same publication's private reversed-Z
+            // depth attachment instead.
+            mask = sceneColor;
             depth = depthStencil;
             failure = string.Empty;
             if (!endminfM27Requested)

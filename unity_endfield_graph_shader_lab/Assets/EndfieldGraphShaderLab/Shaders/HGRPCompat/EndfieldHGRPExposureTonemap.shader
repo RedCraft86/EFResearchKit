@@ -109,72 +109,40 @@ Shader "Hidden/Endfield/HGRPCompat/ExposureTonemap"
                     _MainTex, float4(clampedUv, 0.0, 0.0));
             }
 
-            float3 SampleEndminfRecoveredRadialChromatic(
+            float3 SampleEndminfRecoveredRadial(
                 float2 uv,
                 float2 center,
                 float radialIntensity,
-                float chromaticIntensity,
                 float effectivePower)
             {
-                // Direct translation of shipped UberPost DXBC fragment
-                // 3f490e1504c435541769ee03e881583df554e652df155e5b942a3a410d8e086b
-                // (BLOOM + RADIAL_BLUR_CHROMATIC_ABERRATION), specialized to
-                // Endminf's two active components. Both exact
-                // serialized _averageSteps values are zero, so the DXBC keeps
-                // the powered radial vector unnormalized.
+                // Direct translation of the active Endminf UberPost fragment
+                // 86a732cef7eedb150cbcafb35a994c1e3f7b1ef837dc618131a95e9dfe030c97
+                // (BLOOM + RADIAL_BLUR + VIGNETTE). It accumulates the center
+                // plus five same-RGB radial taps at 0.5-step intervals and
+                // multiplies by 1/6. The captured radial average-steps lane is
+                // zero, so its distance-normalization factor is exactly one.
                 float2 delta = uv - center;
-                float distanceSquared = dot(delta, delta);
+                float distanceFromCenter = length(delta);
                 float2 poweredRadial = delta * pow(
-                    max(distanceSquared, 1e-8), effectivePower * 0.5);
-
-                // The shipped kernel uses SampleLevel(..., 0) for every
-                // source-color fetch. Implicit tex2D derivatives select
-                // coarser mips across the warped coordinates and visibly
-                // break Endminf's thin late-pulse ring.
-                float3 source = SampleEndminfSceneLod0(uv).rgb;
-                if (_EndminfVisualCompatibilityParams.z > 3.0)
-                {
-                    float combined = chromaticIntensity + radialIntensity;
-                    float3 accumulated = float3(source.r, 0.0, 0.0);
-                    accumulated.r += SampleEndminfSceneLod0(
-                        uv - poweredRadial * combined).r;
-                    accumulated.r += SampleEndminfSceneLod0(
-                        uv - poweredRadial * (2.0 * combined)).r;
-
-                    accumulated.g += SampleEndminfSceneLod0(
-                        uv - poweredRadial * chromaticIntensity).g;
-                    accumulated.g += SampleEndminfSceneLod0(
-                        uv - poweredRadial *
-                        (2.0 * chromaticIntensity + radialIntensity)).g;
-                    accumulated.g += SampleEndminfSceneLod0(
-                        uv - poweredRadial *
-                        (3.0 * chromaticIntensity + 2.0 * radialIntensity)).g;
-
-                    accumulated.b += SampleEndminfSceneLod0(
-                        uv - poweredRadial * (2.0 * chromaticIntensity)).b;
-                    accumulated.b += SampleEndminfSceneLod0(
-                        uv - poweredRadial *
-                        (3.0 * chromaticIntensity + radialIntensity)).b;
-                    accumulated.b += SampleEndminfSceneLod0(
-                        uv - poweredRadial *
-                        (4.0 * chromaticIntensity + 2.0 * radialIntensity)).b;
-                    return accumulated * 0.333333403;
-                }
-
-                // The DXBC low branch keeps source red and samples green/blue
-                // once along the same powered vector.
-                return float3(
-                    source.r,
-                    SampleEndminfSceneLod0(uv - poweredRadial *
-                        (2.0 * chromaticIntensity + radialIntensity)).g,
-                    SampleEndminfSceneLod0(uv - poweredRadial *
-                        (3.0 * chromaticIntensity + 2.0 * radialIntensity)).b);
+                    max(distanceFromCenter, 1e-8), effectivePower);
+                float3 accumulated = SampleEndminfSceneLod0(uv).rgb;
+                accumulated += SampleEndminfSceneLod0(
+                    uv - poweredRadial * (radialIntensity * 0.5)).rgb;
+                accumulated += SampleEndminfSceneLod0(
+                    uv - poweredRadial * radialIntensity).rgb;
+                accumulated += SampleEndminfSceneLod0(
+                    uv - poweredRadial * (radialIntensity * 1.5)).rgb;
+                accumulated += SampleEndminfSceneLod0(
+                    uv - poweredRadial * (radialIntensity * 2.0)).rgb;
+                accumulated += SampleEndminfSceneLod0(
+                    uv - poweredRadial * (radialIntensity * 2.5)).rgb;
+                return accumulated * 0.166666672;
             }
 
             float3 DecodeEndminfUberBloomInput(float3 bloom)
             {
-                // The shipped combined BLOOM +
-                // RADIAL_BLUR_CHROMATIC_ABERRATION Uber variant conditionally
+                // The captured BLOOM + RADIAL_BLUR + VIGNETTE Uber variant
+                // conditionally
                 // decodes each bloom channel before the merge. Endminf/CharInfo
                 // uses BloomParams.z == 0, so the retail condition is simply
                 // channel > 0.3 and no blend-mode source subtraction remains.
@@ -196,28 +164,26 @@ Shader "Hidden/Endfield/HGRPCompat/ExposureTonemap"
                 float2 presentUv = input.uv;
                 presentUv.y = lerp(presentUv.y, 1.0 - presentUv.y, _EndfieldPresentFlipY);
                 float radial = _EndminfVisualCompatibilityParams.x;
-                float chromatic = _EndminfVisualCompatibilityParams.y;
                 float4 source = tex2D(_MainTex, presentUv);
                 bool endminfWarpActive =
                     _EndminfVisualCompatibilityParams.z > 0.5 &&
-                    radial + chromatic > 0.00001;
+                    radial > 0.00001;
                 if (endminfWarpActive)
                 {
-                    source.rgb = SampleEndminfRecoveredRadialChromatic(
+                    source.rgb = SampleEndminfRecoveredRadial(
                         presentUv,
                         _EndminfVisualCompatibilityCenter,
                         radial,
-                        chromatic,
                         _EndminfVisualCompatibilityParams.w);
                 }
                 float3 bloom = max(tex2D(_BloomTex, presentUv).rgb, 0.0);
                 float bloomIntensity = _EndfieldRecoveredPostSemantics > 0.5
                     ? EF_BloomIntensityFromSerialized(_BloomIntensity)
                     : _BloomIntensity;
-                // The shipped combined Uber variant warps the source-color
+                // The shipped radial Uber variant warps the source-color
                 // input first, then combines its separate bloom input at the
                 // presentation UV. Bloom must not be resampled at each radial
-                // or chromatic tap.
+                // tap.
                 float3 color;
                 if (_EndfieldRecoveredPostSemantics > 0.5)
                 {
@@ -407,6 +373,84 @@ Shader "Hidden/Endfield/HGRPCompat/ExposureTonemap"
                         _BloomBicubicParams),
                     0.0);
                 return float4(lerp(highMip, lowMip, _BloomScatter), 1.0);
+            }
+            ENDCG
+        }
+
+        Pass
+        {
+            Name "ENDMINF_POST_UBER_DEPTH_SYNC"
+
+            CGPROGRAM
+            #pragma target 3.0
+            #pragma vertex vert_img
+            #pragma fragment EndminfPostUberDepthFrag
+            #include "UnityCG.cginc"
+
+            sampler2D _MainTex;
+            float4 _EndminfVisualCompatibilityParams;
+            float2 _EndminfVisualCompatibilityCenter;
+
+            float SampleEndminfRawDepth(float2 uv)
+            {
+                return tex2Dlod(
+                    _MainTex,
+                    float4(saturate(uv), 0.0, 0.0)).r;
+            }
+
+            void RetainNearestEndminfDepth(
+                float2 uv,
+                inout float nearestRawDepth,
+                inout float nearestLinearDepth)
+            {
+                float rawDepth = SampleEndminfRawDepth(uv);
+                float linearDepth = LinearEyeDepth(rawDepth);
+                if (linearDepth < nearestLinearDepth)
+                {
+                    nearestRawDepth = rawDepth;
+                    nearestLinearDepth = linearDepth;
+                }
+            }
+
+            float EndminfPostUberDepthFrag(v2f_img input) : SV_Target
+            {
+                float2 uv = input.uv;
+                float nearestRawDepth = SampleEndminfRawDepth(uv);
+                float nearestLinearDepth = LinearEyeDepth(nearestRawDepth);
+                float radialIntensity = _EndminfVisualCompatibilityParams.x;
+                bool warpActive =
+                    _EndminfVisualCompatibilityParams.z > 0.5 &&
+                    radialIntensity > 0.00001;
+                if (!warpActive)
+                    return nearestRawDepth;
+
+                float2 delta = uv - _EndminfVisualCompatibilityCenter;
+                float distanceFromCenter = length(delta);
+                float2 poweredRadial = delta * pow(
+                    max(distanceFromCenter, 1e-8),
+                    _EndminfVisualCompatibilityParams.w);
+                RetainNearestEndminfDepth(
+                    uv - poweredRadial * (radialIntensity * 0.5),
+                    nearestRawDepth,
+                    nearestLinearDepth);
+                RetainNearestEndminfDepth(
+                    uv - poweredRadial * radialIntensity,
+                    nearestRawDepth,
+                    nearestLinearDepth);
+                RetainNearestEndminfDepth(
+                    uv - poweredRadial * (radialIntensity * 1.5),
+                    nearestRawDepth,
+                    nearestLinearDepth);
+                RetainNearestEndminfDepth(
+                    uv - poweredRadial * (radialIntensity * 2.0),
+                    nearestRawDepth,
+                    nearestLinearDepth);
+                RetainNearestEndminfDepth(
+                    uv - poweredRadial * (radialIntensity * 2.5),
+                    nearestRawDepth,
+                    nearestLinearDepth);
+
+                return nearestRawDepth;
             }
             ENDCG
         }

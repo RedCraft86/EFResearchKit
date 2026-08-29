@@ -309,7 +309,18 @@ complete frame without a client fault.
   evidence for combined velocity. Four full retail D3D11 FrameAnalysis captures
   independently close the transient output as full-native-resolution
   `R16G16_FLOAT` with SRV, RTV, and UAV bindings: the 3840x2160 packed input is
-  decoded by a 480x270 dispatch of the 8x8 kernel. Unity now publishes the same
+  decoded by a 480x270 dispatch of the 8x8 kernel. Four retained retail peak
+  frames also close the actual consumer route rather than merely its producer:
+  full-resolution `R11G11B10_FLOAT` scene color flows through that exact
+  velocity-combine dispatch into a Streamline evaluation with reverse-Z
+  `D32S8` depth/exposure, producing full-resolution `RGBA16_FLOAT`; bloom then
+  reads that RGBA16 surface into a half-resolution `R11G11B10_FLOAT` chain and
+  the exact Uber resolves it to `RGBA8_UNorm`. None of those frames executes
+  any of the three ordinary TAAU shader hashes. This proves the retained-frame
+  consumer is Streamline and excludes the ordinary TAAU path; the static
+  quality mapping makes DLAA mode 6 overwhelmingly likely, but exact-frame
+  `slDLSSSetOptions` evidence is still required before labeling that invocation
+  mode-exact. Unity now publishes the same
   temporary `R16G16_SFloat` `_CombinedVelocity` producer without enabling a
   DLSS/DLAA consumer or changing beauty. Direct attachment of every retail
   non-character motion producer remains open. The same-frame reset is exactly large de-jittered camera
@@ -1961,8 +1972,23 @@ PS b0[28], and PS b1[26]; live c0 is approximately
 patches only screen/exposure and dynamic c0 radial lanes, and creates explicit
 typed SRVs for Unity's typeless FP16 backing resources. The focused 4.4333 s
 render validates one native draw with no failure and removes the false RGB
-split. The broad M31 ring/shell, gas, and missing stones remain the dominant
-peak mismatch; the neutral radial average alone does not close those owners.
+split. Ruri decompilation closes its radial source kernel: center plus five
+same-RGB `SampleLevel` taps at factors `0.5,1,1.5,2,2.5`, averaged by `1/6`.
+The canonical compatibility shader now uses that kernel instead of the older
+per-channel combined variant. At matched 4.35-second phase the focused D3D11
+full-frame PSNR changes `18.5790 -> 18.7057 dB` and the conspicuous RGB
+silhouettes disappear. Keep chromatic curve transport for producer auditing,
+but do not apply it as channel-separated source taps at this captured peak.
+The broad M31 ring/shell, gas, and missing stones remain the dominant peak
+mismatch; the neutral radial average alone does not close those owners.
+
+The clean opening reference contains horizontal slices throughout ticks 4-20,
+while the current explicit rectangle table closes only ticks
+`4,6-12,18-20`. Do not fill the missing ticks with one repeated procedural
+band: their rectangles, displacements, and RGB edges vary per frame. The next
+valid automatic opening capture must retain the source before/after fullscreen
+surfaces needed to close ticks `5,13-17` and the additional bands on already
+admitted ticks.
 
 Frame 1818 also closes a narrower exact M31 checkpoint: two owner-gated
 `M_fx_endminm_gfx_31` draws (metadata draw indices 13 and 20) share the captured
@@ -2082,6 +2108,58 @@ and restore the authored particle renderer on adjacent ticks. A phase-matched
 `+/-0.05`-second repeated-packet control. Keep geometry, UVs, tint, and bloom
 fixed unless another captured frame supplies a different packet.
 
+The complete M21 stone-shell packet is now enabled in the normal interactive
+Endminf reproduction profile. A fresh isolated three-frame targeted A/B at
+4.4833/4.5000/4.5167 seconds improves effect-ROI MAE on every row
+(35.684/34.622/33.270 to 35.463/34.550/33.233) and leaves M18/M28 opt-in;
+the latter still lack an equally complete temporal or captured-texture
+contract. Enabling all sparse exact peak transports together is rejected as a
+canonical default: over the 4.30-4.75 second window it improves temporal-delta
+MAE 23.470 to 22.662 but worsens ROI/effect MAE 24.211/29.160 to
+26.623/32.448 because one-tick packets suppress authored neighboring output.
+The corresponding 770-frame M21-only canonical render passes every sequence,
+background, VFX-cleanup, and no-foreground-UI gate, submits and validates M21
+exactly once at 4.5000 seconds, and improves aggregate ROI/effect/temporal MAE
+from 21.6325/22.7560/14.1828 to 21.6304/22.7547/14.1827. Canonical video
+exports therefore default this owner on; an explicit environment value of `0`
+remains a full-sequence A/B override.
+
+The Viewer report schema now records requested, active, submitted, validated,
+and failure state independently for the exact M18/M21/M28 packets. A focused
+60 Hz run proves all three are submitted and callback-validated only at the
+4.5000-second sample, with adjacent rows inactive and failure-free. A separate
+exact-Uber A/B around 4.35-4.55 seconds retains the pre-Bloom temporal resolve:
+disabling it worsens mean character/effect ROI MAE from 27.935/35.212 to
+28.375/35.623. The broad peak blur is therefore not evidence for bypassing
+history or moving Uber ahead of the recovered temporal stage.
+
+The remaining broad late echoes were an Uber pulse-registration error, not a
+stage-order error. Retail frame 1818 maps the late radial peak to clean frame
+264 / phase 4.3500 seconds; the former curve peaked five 60 Hz samples later at
+4.4333. Advancing only that late pulse preserves the captured envelope and
+puts the exact Uber at radial/chromatic 0.109/0.101 on 4.3500. Across the 11
+shared focused samples, character ROI MAE improves 27.935 to 27.581, effect ROI
+MAE improves 35.212 to 34.690, and temporal-delta MAE improves 29.301 to
+25.685. Keep temporal -> bloom -> actor-inclusive exact Uber ordering intact.
+The subsequent 770-frame exact-Uber render completed without a crash and kept
+the best global phase offset at -1; its aggregate ROI/effect/temporal MAE is
+21.134/22.069/11.889. Do not compare its first two aggregates directly with
+the older 20.972/21.937 compatibility-Uber run, because that baseline did not
+request the native exact Uber. The full verifier still fails closed on the
+pre-existing incomplete eleven-row LitEffect plus exact `suikuai (1)` binding;
+successful image export alone does not close that admission gap.
+
+The retained exact `overview_02/all/suikuai (1)` branch now survives focused
+character/effect rebuilds even when the disposable broad importer stage is
+absent. Its targeted repair accepts the one known stale fail-closed boundary
+(authored-enabled marker, disabled renderer, empty material array) only after
+revalidating the pinned source material, BlendTex, four-mesh palette, shader,
+PathIDs, and particle contract. A canonical 41-frame Viewer run now passes
+`status=ok` with 68 admitted renderers, exactly the two expected blocked rows,
+and live `M_fx_common_teleport_03` VFXRefract shards through transition and
+cleanup. This closes the former misleading eleven-row LitEffect/`suikuai (1)`
+admission failure; it does not replace the still-needed M20 capture.
+
 The distinct drifting plume is not one of those three draws. Source evidence
 identifies `overview_02/all/smoke (2)`, material `M_fx_endminm_gfx_20`, starting
 at 4.46 seconds with six near-peak billboards and textures
@@ -2090,17 +2168,664 @@ M20 shader pair nor a 36-index draw appears in Full frame 2775, whose direct
 match is clean frame 273. Exact M20 replay therefore needs one priority capture
 around clean frames 276-281 after the current M18/M28 evidence is integrated.
 
-Hair/cape replay remains source-incomplete independently of peak post effects.
-The dense oracle has no `cloth_02` observations even though
-`S_actor_endminf_cloth_02_lod0` weights both transparent left/right cape bone
-chains; current `MC_Coat` closure covers only 52 of 71 authored proxy
-transforms. The clean-reference overrides disagree with the older session by
-about 12.1 mm and 4.87 degrees on average, so the cross-session merge is not a
-sound exact-motion source. Peak frame 269 must not judge raw geometry because
-Uber/temporal history shifts the final silhouette; use pre-Uber frames 219,
-257, 273, and settled loop 407. The next dynamics evidence must retain hair
-and all `cloth_01`-`cloth_04` LOD0 palettes in one initialization, then make
-complete renderer/bone coverage a fail-closed oracle gate.
+EndfieldCapture now priority-retains both exact source-compiled M20 shader
+routes: non-instanced VS/PS `e8f38f2f7519383d`/`fea38543389b6ff4` and
+SRP-instanced VS/PS `4bef98c73ca34880`/`246a0f4f2d3c34f4`. The retained packet
+includes draw-local IA, constant-buffer allocations, samplers, and PS resources.
+The exact-Endminf trigger starts one 72-package sequence without human input in
+both the graphics-only proxy and general runtime: 24 opening requests as quickly
+as the complete-frame lifecycle permits, then 48 at six-Present target spacing.
+The request-target arithmetic ends at relative Present 311, but that is not the
+captured-frame span. Every request needs one Present to arm the following frame
+and another to complete it, so the ideal first-to-last package span is at least
+453 Presents (about 7.55 seconds), with full-profile readback able to widen it.
+This crosses M20's 4.433-second onset and cleanup when the overview remains
+alive for at least ten seconds. Automatic full sessions `20260828T224210Z` and
+`20260828T224407Z` close the live identity gap: retail binds a third VFXBaseV2
+route, VS/PS `62a5ce6c09171de9`/`5558deddb1ee6188`, rather than either
+source-compiled pair. Session `224210Z` is the cleaner authority: it completed
+all 72 packages with zero drops and retains five 36-index packets, including
+frame 1748 near the expected plume onset, plus IA, VS t0, PS t0-t1, constants,
+samplers, and the complete shader archive. The retail program is shared by
+unrelated VFX draws, so identity-only admission is unsound; require the measured
+36-index peak geometry. Its pixel route samples only scene input t0 and one
+atlas-backed Main texture t1. This supersedes the extracted source-variant
+assumption that M20 necessarily samples the standalone Main/Sample0/Sample1
+texture trio and explains the shifted plume UV in the compatibility render.
+
+The first automatic-trigger implementation admitted only source-combined Uber
+fragment prefix `3f490e1504c43554`. That is insufficient: validated live capture
+`20260827T183054Z` and the native Unity exact transport both use the independent
+Endminf `BLOOM + RADIAL_BLUR + VIGNETTE` fragment prefix
+`86a732cef7eedb15`. The live identity belongs to a reusable post-process family,
+so admitting it directly could consume the one-shot sequence before Endminf.
+The recovered Endminf LOD0 body has one 16,524-index submesh, that count is
+unique across the current playable-character mesh export, and live capture
+observes the exact `DrawIndexedInstanced(16524,1,0,0,0)` before its Uber pass.
+EndfieldCapture therefore lets the source-combined route arm directly but gates
+the validated live route on that prior body draw. Adjacent shader identities and
+nearby draw arguments fail focused tests; Release x64 and all 15 native tests
+pass. Sequence intervals are target Present spacing rather than a promise of
+consecutive packages: the next request waits for prior readback/publication, so
+frame IDs in the live result remain the authority for actual cadence.
+
+Both decompiled M20 vertex variants declare a VS t0 `ByteAddressBuffer` and
+contain live structured loads for their skin/instance branches. EndfieldCapture
+now retains that draw-local VS t0 buffer in addition to M20's IA, VS/PS
+constants, samplers, and six PS resource slots. The WARP test covers vertex-SRV
+buffer readback, stage/slot ownership, coexistence with compute aliases, and IA
+alias publication; Release x64 and all 15 native tests pass. This closes a
+capture-tool omission before the next live run rather than discovering an
+unreplayable M20 packet afterward.
+
+The unattended sequence should use the `full` profile. Its selected-resource
+table now retains 96 entries, matching the 96 indexed-draw records, while the
+aggregate payload remains bounded at 128 MiB. This leaves metadata capacity for
+late exact M20 IA/VS/PS owners after broad full-profile collection. Release x64
+and all 15 native tests pass with the enlarged bounded table.
+
+The combined graphics validator now recognizes that unattended workflow as a
+separate fail-closed policy instead of requiring the retired two-burst shape.
+An automatic session must report the exact Endminf trigger, automatic ownership,
+72 completed packages, inactive/quiescent sequence state, no pending frame,
+zero dropped events, and one 72-package logical sequence before the existing per-mesh
+palette and M29/M30/M31 resource-closure gates run. Runtime status owns the
+single logical window, so full-profile readback stalls cannot be mistaken for
+separate bursts merely because frame IDs have a large gap. Old 64-package
+sessions remain on the legacy two-burst policy and cannot accidentally certify
+the new workflow. The focused validator suite has ten passing tests.
+
+A focused M21 ablation also clarifies its presentation boundary. Its source
+material has no authored texture and the zero VS buffer is valid for the
+non-skinned branch; the exact frame-2775 stones become most visible in following
+temporal-resolve samples. Disabling the one-frame packet removes those stones
+from the follow-up sequence, so M21 remains canonical. A single targeted PNG at
+the callback tick is not a valid M21 visibility test.
+
+Decompiling source variants 0876/0877 and 4950/4951 closes M20's static sampler
+ABI: t0 scene depth uses LinearClamp, t1 Main uses LinearRepeat, t2 Sample0
+uses LinearMirror, and t3 Sample1 uses LinearMirrorOnce. The recovered BaseV2
+shader previously used texture-paired samplers (and PointClamp depth) for this
+soft two-sample specialization. Keep these routes because bytecode proves the
+ABI, not because one noisy aggregate happens to improve. Focused runs have a
+three-image shader/mip warm-up boundary: images 3-12 and all reported M20
+particle states repeat byte-for-byte, while images 0-2 vary after every process
+start. On the stable ten-image suffix, paired versus exact samplers score
+26.642271/30.849221/21.745348 versus 26.650365/30.863199/21.739843
+(ROI/effect/temporal-delta MAE): spatial movement is a tiny regression and
+temporal movement a tiny improvement, both dwarfed by the unresolved transport
+gap. Extending stock Unity's packed particle-color translation to M20 and
+routing Sample0 custom speed through retail Custom1.Y were separately tested
+and rejected; retail c13/stream carriers are not equivalent to multiplying or
+reinterpreting the current extracted procedural streams. The admission
+verifier hash-gates both M20 source pairs and the exact sampler translation.
+
+The clean recording also contains a late live-cursor move that the former
+single-endpoint gyroscope replay could not represent. Source-native behavior
+restarts a two-second OutQuad at PreLate whenever the evaluated input endpoint
+changes by more than `1e-10` squared. Replaying the observed clean-reference
+cursor samples from requested time 7.2333-7.4667 seconds improves every tested
+late checkpoint: across clean source frames 523/529/537/559/589/619/639, mean
+character ROI MAE falls from 21.632 to 19.256 and effect ROI MAE from 22.950
+to 19.278. The directly observed final clamp `(1,0.9962963)` is stronger than
+the bounded `(1,1)` alternative, whose effect ROI MAE is 20.226. Keep this
+recording-specific track opt-in and preserve the general source retarget API;
+do not replace it with a static camera or backdrop offset. A subsequent
+770-frame schema-v8 render completed `status=ok` with the track active and kept
+the global best phase offset at -1. Versus the immediately preceding exact-Uber
+full render, aggregate ROI/effect MAE improves 21.134/22.069 to 21.035/21.902;
+temporal-delta MAE changes 11.889 to 12.053, so the track closes the coordinated
+late composition drift but does not replace the remaining particle/Uber
+temporal work.
+
+The clean recording's initial pointer endpoint is also the best bounded
+source-native settled state; the near-zero endpoint from a different runtime
+session and an extreme `(-1,1)` input are both rejected. At requested times
+6.75/6.7833/6.8167 seconds and the established -1-frame alignment, moving from
+the clean pointer `(-0.4604167,0.9305556)` to the extreme endpoint worsens
+actor/effect ROI MAE from 15.0059/13.4783 to 16.5791/15.8456 and portrait-left
+ROI MAE from 13.8433 to 15.0397. The recovered curves are already saturated
+near the pointer state, so the residual portrait/grid mismatch is not evidence
+for another gyroscope, RectTransform, or screenshot-fit offset. Keep the clean
+pointer default and require new same-session camera evidence before changing
+composition again.
+
+The CharInfo portrait's remaining inversion was a tight-sprite UV error, not
+another RectTransform or camera offset. Generated portrait quads now swap
+`vMin`/`vMax` inside the sprite's asymmetric `textureRect`; a full-texture
+`1-v` transform would select the wrong packed crop. A focused D3D11 render is
+upright and improves the portrait-left ROI MAE from about 29.7 to 27.5 against
+the clean reference despite a three-tick pose difference. Keep the recovered
+Lua/layout placement fixed.
+
+M01/M38 stone texture identity is closed: their Unity materials already bind
+the exact recovered base, RG normal, MRO, and parallax maps. The flat-yellow
+surface came from the forward compatibility shader. Decompiled LitEffect
+proves roughness/metallic/occlusion in MRO R/G/B, parallax color from the green
+sample, and SceneColor energy gated by base alpha squared and `NdotV`; it does
+not clamp every parallax sample up to `_ParallaxMinBrightness`. The
+compatibility shader now follows those gates and uses the recovered MRO
+channels for bounded GGX lighting. Focused 4.5-second output changes the ten
+primary rocks from solid yellow shards to dark textured faces with amber
+energy regions, matching the retail surface class. This remains a non-exact
+ForwardOnly substitute for the retail HGBuffer/deferred path, so owner shape,
+lighting, and peak composition remain open.
+
+The opening fracture is no longer a random 34-pixel distortion diagnostic.
+Clean-reference frames 91-109 establish a partial, high-confidence table for
+effect-clock frames 4-20: 3-21-pixel horizontal bands, 77-253-pixel rightward
+copies, and 1-2.5-pixel RGB separation at explicit destination rectangles.
+The canonical pre-Bloom/Uber pass samples `destinationX-offset` only where the
+shifted CharacterPrePass owns the source, leaving GridFar and the portrait
+stationary. The broad compatibility camera pull now retains 45% of its former
+opening magnitude and ends at 0.1 seconds, matching the clean recording's
+three-tick loss of broad ghosting while slices persist. Focused D3D11 renders
+compile and complete `targeted_ok`. The table intentionally omits bands whose
+source coordinates are not yet identifiable; exact closure needs the new
+automatic sequence rather than invented random rows.
+
+The first full-sequence comparison after the portrait flip, measured strip
+table, and canonical stone update uses the established -1-frame source
+alignment and 558 comparable samples. It scores 21.1617 actor-ROI MAE,
+21.9621 effect-ROI MAE, and 12.0616 temporal-delta MAE. The opening 0.0-0.8 s
+window remains 22.1516 effect-ROI MAE (the prior gyro build was 22.1368), and
+side-by-side frames show retail carrying many simultaneous horizontal copies
+while the compatibility table emits only isolated fragments. The change is
+therefore not a proven net fidelity gain. Keep the measured rows, but close the
+remaining opening transport from the automatic exact-Uber sequence rather than
+expanding rectangles from temporal-video heuristics.
+
+Canonical batch video export now defaults to the same source-backed deferred,
+M13/M14/M21/M27, binning, shadow, and SphereOutside presentation flags as the
+interactive launcher; an explicit environment value, including `0`, remains an
+A/B override. A fresh 770-frame render with that profile remains complete and
+UI-free. Against the clean recording at the established -1-frame alignment it
+scores 21.2970 actor-ROI MAE, 21.8941 effect-ROI MAE, and 11.9846 temporal-delta
+MAE. The exact profile improves the opening and crystal windows relative to the
+earlier batch that silently omitted parts of that profile (opening effect
+21.7863 versus 22.1516; crystal effect 23.5660 versus 24.4083; crystal temporal
+15.8459 versus 16.6837), while settled actor ROI regresses slightly. This is a
+real peak-presentation gain, not parity. M27 already consumes the four exact
+captured base/MRO/normal/parallax textures, and M21's textureless white default
+is source-valid, so the remaining visibly wrong stone appearance belongs to
+deferred lighting/compositing and gas transport rather than texture extraction.
+
+M27's prior `presentationReady` signal was not visual proof. A peak-targeted
+same-command readback showed GBufferC claiming all 2,073,600 pixels while the
+presentation changed zero. SceneColor identifies only the 1,801 emissive
+fragments and is not a complete ownership mask: it discards deferred-lit stone
+faces. The exact Default Lit resolver has the opposite row orientation, with
+zero nonzero samples at direct coordinates versus 1,730 at mirrored Y. Both
+presentation passes now use the isolated sidecar's positive reversed-Z depth as
+the complete M27 owner while retaining mirrored-Y resolver sampling, depth
+before ForwardOpaque, and color after ForwardOpaque. A focused D3D11 probe at
+4.4833/4.5000/4.5167 seconds is `targeted_ok`; the joined diagnostic measures
+1,801 emissive pixels, and the peak same-command presentation changes 1,671,106
+pixels while visibly restoring dark angular stone pieces around the hand and
+burst. Frames 2978-3027 remain identity-gated as M27; earlier M01/M38 draws
+sharing the shader pair remain excluded. A controlled 1920x1080 A/B at
+0.5667/1.9833/4.1667 seconds proves that this exclusion is necessary: routing
+those early packets through the M27 private-depth presentation introduces
+large black/gray triangles across the backdrop, while the hand-gated control
+does not. Recover the early rows' distinct owner transforms/state before
+attempting exact deferred M01/M38 presentation. The preceding complete 770-frame
+sequence still scores 21.4410 actor ROI, 22.2208 effect ROI, and 11.8080
+temporal-delta MAE versus the prior 21.2970/21.8941/11.9846; the private-depth
+correction has not yet received a complete-sequence comparison or user review.
+Treat the remaining color/gas gap as deferred light/resource and transport
+recovery, not as solved fidelity or a texture-substitution problem.
+
+Automatic full session `20260828T121603Z` closes the hair/cape capture gap.
+All 72 packages contain one unambiguous body, hair, and every
+`cloth_01`-`cloth_04` LOD0 palette, with zero drops or incomplete packages.
+The v6 replay uses both previous/current palettes for 144 samples and writes
+all 74 primary dynamic bones plus the six transparent-cape
+`clothes_touming_{L,R}_b_{1,2,3}_jnt` bones. Their parent and child tracks now
+come from the same session, so the former fail-closed sparse extension is
+runtime-eligible. Present IDs are not a clock: full readback stalls produce
+0.135-0.250 s package gaps. Sample times therefore come from capture QPC,
+anchored by exact Uber frame 1977 at 4.35 s, and preserve the immediately
+previous 60 Hz palette. The generated 144-sample/80-bone asset validates and a
+targeted D3D11 run reports the replay bound and applied at every checkpoint.
+
+A focused post-integration audit rejects another fixed hair/cape clock or
+bone-space offset, but does not close temporal fidelity. All 80 recovered bones
+bind and apply, root-space transforms remain orthonormal at unit actor scale,
+and retail-versus-Unity motion correlation is 0.78-0.90 with best offsets
+within two frames. However, the 144 retained states are 72 previous/current
+pairs spread across 13.87 seconds: 70 interpolation intervals exceed eight
+60-Hz frames and the worst hole is 14.03 frames. Linear position interpolation
+and quaternion Slerp suppress unsampled extrema and create the visibly
+constant-arc hair motion. Thresholded motion remains narrower by about 6.5%
+for hair, 16% for the left cape, and 32% for the right cape. Dense native
+palette cadence is therefore the primary missing owner; post-skin output,
+alpha/depth visibility, and temporal softness remain secondary silhouette
+gaps rather than justification for inventing intermediate bone transforms.
+
+The first downstream renderer-state audit found two real compatibility
+regressions. `M_actor_endminf_cloth_03` is source-opaque alpha-test despite its
+legacy alpha-content hint and `BlendMode=4`; material setup must not normalize
+it into transparent blending. Pipeline disposal also must not overwrite the
+transparent hair shell's captured `ZTest Less` with the general `LessEqual`
+fallback. The global reset is now opaque-only, while the transparent cape
+retains queue 3000, `Cull Off`, and its captured depth state. The body-material
+and CharacterOutline verifiers pass, but this correct state does not by itself
+close the remaining post-skin silhouette/visibility gap.
+
+The corresponding camera/background audit also rejects a fixed portrait or
+camera-endpoint nudge. In settled frames Unity places the character about 50
+pixels left of retail but the farther portrait about 130 pixels left, a
+depth-dependent discrepancy consistent with missing gyroscope-camera parallax
+rather than one shared translation. Opening and peak frames are contaminated by
+motion/VFX, and GridFar registration is not stable enough to authorize a source
+transform change. Keep the source-derived endpoint and recover the temporal
+camera/parallax owner before changing portrait or grid placement.
+
+The same session strengthens but does not complete peak/opening effects. It
+retains exact M29/M30 resource closure and nine M31 phases from 2.863329 to
+4.564017 s with draw counts `2,2,2,2,2,2,2,3,1`. The unchanged native M31
+callback originally could not submit those packets in retail order: all seven
+two-draw packets are `M31 -> M29/M30 -> M31`, not two contiguous M31 draws.
+The callback and render pipeline now split the packet into one native event on
+each side of pre-M29/M30 work, M30, queue 3000, and M29. A focused D3D11 run
+submits both events and validates two draws with `S_OK`. The three-draw peak
+and one-draw tail remain unsupported and restore the ordinary renderer. No M20 shader identity
+occurs, and the only opening-strip package inside the maintained 0.0667-0.35 s
+interval is frame 1758 at about 0.2325 s. This capture therefore must not be
+used to invent M20 ownership or expand the partial strip table. Runtime strip
+admission now exactly matches shader-backed frames and no longer issues the
+unsupported frame-13 no-op pass.
+
+The older canonical M27 payload remains authoritative because this session
+lacks its exact 1,080-index/15-copy peak. Its runtime clock is now normalized
+from the live actor animation every frame by the established two-tick viewer
+lead. Requested 4.5000 s therefore selects frame 2978's 15-stone peak rather
+than frame 2987's four-stone tail. A focused D3D11 run validates the native
+packet and preserves 921 deferred-presentation pixels into the saved frame;
+this fixes missing geometry but does not close the known dark/gray deferred
+lighting gap.
+
+Although all 72 automatic packages published, their QPC gaps are
+135.2-250.5 ms (195.1 ms mean), with every gap over the 25 ms native-cadence
+limit. Full-profile synchronous readback therefore makes this session valid
+for retained packet/resource closure and same-session palette identity, but
+not as a Present-spaced opening or short-lived M20 clock. Automatic capture
+now has a bounded 72-slot/4-GiB deferred staging ring: Present callbacks copy
+per-slot backbuffer, selected resources, and metadata without synchronous
+mapping; later Presents drain with render-thread `DO_NOT_WAIT`, and the worker
+publishes only CPU-ready packages. Release builds and all 15 synthetic/WARP/
+proxy tests pass, including deferred copy/map byte validation. This closes the
+tool architecture in tests, but the first real-game run must still prove
+`72/72` staged, drained, and published with `cadenceValid=true` before it is
+accepted as native-cadence temporal evidence.
+
+The current split-M31/80-bone checkpoint has a complete 770-frame D3D11
+render and a 558-frame clean-reference comparison. Within the documented
+one-frame anchor uncertainty, offset -1 is best at 22.7765 actor-ROI MAE,
+23.5194 effect-ROI MAE, and 12.2248 effect temporal-delta MAE. Against the
+earlier clean-gyroscope checkpoint (23.7086/23.6431/13.7609), this improves
+actor alignment, effect spatial error, and especially temporal behavior, but
+does not close fidelity. The peak window remains 25.4235/29.1226/19.8482; its
+largest visible omissions are the broad flash/gas and shell composition.
+
+The first exact M13 packet is source-matched at 4.3833 s. Its former
+nearest-packet window repeated that ring backward to 4.325 s, producing the
+large white ring at 4.35 s where the clean reference has none. Admission now
+uses a one-tick lower bound for the first packet while preserving the
+established continuous nearest-packet suffix. A focused D3D11 comparison at
+4.35/4.4167/4.50 improves effect-ROI MAE to 33.8108 versus 34.4416 for
+fully sparse exact admission and 34.9943 for ordinary M13 rendering.
+
+The captured combined Uber packet is not a reusable animated post shader.
+Capture `20260827T183054Z` frame 1818 contains the active
+`BLOOM + RADIAL_BLUR + VIGNETTE` variant at overview phase 4.350000 s, while
+its PS constants retain frame-local values including chromatic intensity.
+Replaying it over the full sequence regresses 558-frame spatial and temporal
+metrics and visibly creates a severe full-character smear. The exact transport
+therefore remains default-off and admits only the nearest 60 Hz sample around
+4.35 s when explicitly requested; adjacent frames use the compatibility Uber.
+A focused D3D11 run proves submission only at 4.350000 s and no submission at
+4.333333/4.366667 s. Even that one exact frame is rejected from canonical
+presentation by the clean-reference visual boundary, not promoted on a small
+static-MAE improvement.
+
+The clean canonical cloth-state render at
+`exports/endminf_overview_20260828_cloth_state_fix/frames` completes 770/770
+with exact Uber disabled. At offset -1 its 558-frame scores are 22.9257 actor
+ROI, 23.8478 effect ROI, and 12.1997 temporal-delta MAE. The renderer-state
+correction slightly improves temporal behavior but increases raw spatial MAE;
+retain it because the state is source-backed, and do not compensate by
+inventing alpha or depth values. Five-stage peak diagnostics also reject a
+global bloom increase: the recovered peak crosses from under- to over-bright
+within adjacent samples, so the remaining gap is flash/gas ownership and pulse
+shape/timing rather than one global intensity scalar.
+
+The next complete D3D11 checkpoint at
+`exports/endminf_overview_20260828_radial_uber/frames` also completes 770/770
+with temporal resolve enabled, exact packet replay disabled, the Character Info
+background and portrait present, and foreground UI absent. Ruri decompilation
+of the active retail `BLOOM + RADIAL_BLUR + VIGNETTE` pixel shader proves that
+its radial path averages the center sample with five same-RGB taps at radial
+factors 0.5, 1.0, 1.5, 2.0, and 2.5; it does not apply the prior compatibility
+RGB channel split. Replacing only that sampling equation removes the invented
+colored silhouettes. At the same offset -1, the 558-frame scores become
+22.8468 actor ROI, 23.6537 effect ROI, and 12.4339 temporal-delta MAE: spatial
+error improves by 0.0788/0.1940 while temporal error regresses by 0.2342. Treat
+this as a bounded source-correct transport improvement, not closure of the
+missing gas, stones, particles, opening-strip, hair, or cape gaps. Pause at
+this checkpoint for user visual review before another complete render.
+
+Frame-local M31 evidence does not justify admitting the three-draw 4.35-second
+packet at the current compositor boundaries. Session `20260828T121603Z` frame
+1977 closes all three M31 draw payloads, so a controlled native probe embedded
+those exact draws at the available pre-cohort, mid-cohort, and post-M18
+insertion points. Direct3D11 submitted and validated all three events, but the
+matched clean-reference frame regressed actor/effect ROI MAE from
+`25.1910/32.0855` to `27.2113/35.9731` and introduced a blue rectangular shell
+absent from retail. The experiment was fully reverted. Treat frame 1977 as
+valid packet evidence but keep its three-draw presentation blocked on exact
+SceneColor and intervening-owner chronology; do not substitute its constants
+into the older two-draw transport.
+
+Automatic session `20260828T121603Z` contains the exact M21 shader pair in
+frames 1977, 1989, and 2000, but it does not close the stone texture binding.
+The capture hook did not classify M21 as a retained owner, so each M21 draw has
+an empty draw-local resource table even though unrelated frame-wide textures
+were read back. The serialized `M_fx_endminm_gfx_21` material has a null
+`_MainTex`, which supports but does not prove Unity's white fallback. The
+capture hook now recognizes the exact M21 VS/PS identities and retains its IA,
+constants, and PS t0-t5 in the same unattended sequence as M20 and the other
+peak owners. Release build and all 15 synthetic/WARP/proxy tests pass; one new
+real-game automatic sequence is still required to establish the live M21 t0
+resource and deferred 72/72 native cadence.
+
+The first deferred real-game attempt, `20260828T155751Z`, failed before any
+frame package was publishable. It staged 30 Full-profile frames, drained and
+published zero, reached 4,259,378,888 bytes of the 4-GiB staging budget, and
+then failed closed; `graphics/frames` is empty. The game subsequently exited,
+but the deterministic staging exhaustion is sufficient to reject the old
+architecture independently of the crash. Deferred capture now drains and
+publishes completed slots while later samples remain active, releasing each
+slot's GPU/readback allocation back to the bounded budget instead of waiting
+for all 72 samples. Automatic sequences also suppress the broad per-frame
+compute-resource sweep while retaining every draw/dispatch record, copied
+constant/palette slices, the 4K backbuffer, and resources selected by exact
+Endminf material owners. The rejected broad sweep copied a 63-MiB UAV plus
+pooled 16-MiB buffers into otherwise redundant samples and could still outrun
+single-package publication during the dense prefix. Superseded-DLL session
+`20260828T160748Z` confirms that distinction: continuous drain published 18 of
+48 staged packages, but their 141-155-MiB broad payloads still reached
+4,269,389,000 staging bytes and failed closed. Its opening packages contain no
+M20/M21 peak draw, so they are not dense cloth/hair or peak evidence. Their
+3840x2160 DXGI-format-28 backbuffers are RGBA, not BGRA; decoding them as RGBA
+preserves the retail opening-strip burst and correct colors.
+
+The pruned automatic build is validated by session `20260828T181119Z`: all 72
+Full packages published with no pending slot, failure, or drop, and its exact
+M21/M27 packets, character palettes, and M29/M30/M31 closure are usable peak
+evidence. It still is not a complete peak-owner capture. Its tail samples are
+six Presents apart, and no package contains either exact M20 shader pair; the
+strict combined validator now requires M20 and M21 explicitly and rejects this
+session instead of accepting a superficially complete sequence. M21's live t0
+identity has zero captured bytes, so its existing white fallback remains
+source-compatible rather than byte-closed.
+
+The same session closes the fullscreen-strip hypothesis without staging more
+texture payload. Across all 71 normal-Uber samples, none of Uber's t0/t1/t2
+resource identities matches an earlier retained `DrawInstanced(3,1)` RTV in
+the frame. SceneColor therefore enters the retained fullscreen resolver chain
+already containing the opening strips; do not attribute them to or invent an
+additional pre-Uber fullscreen distortion pass. Recover their transport from
+the pre-Uber geometry/material owners while retaining the measured rectangles
+only as bounded visual evidence. M17 `baoshan` remains a separate crystal-peak
+owner and must not be conflated with the opening fracture.
+
+Sessions `20260828T181119Z` and `20260828T212621Z` close the opening owner's
+shader, geometry, and static resource binding. Exact VFXRefract pair
+`297e7323cb0a7c42`/`76db04f0bc22dd3e` submits four shrinking independent-quad
+packets: 11,610, 7,998, 4,176, and 420 indices, or 1,935, 1,333, 696, and 70
+quads. Every packet is overwhelmingly horizontal, uses the 60-byte particle
+vertex layout, R16 indices, 3840x2160 target, and SrcAlpha/InvSrcAlpha blend.
+The byte-identical programs already exist in AnimeStudio's exported
+`HGRP_Effect_VFXRefract` variants 0546/0547 with `HG_ENABLE_MV +
+SRP_INSTANCING_ON + _USE_RBOFFSET`. Their source owner is the shared Character
+Info `CharEffect/trail` and `M_UI_charChoose_12`, not an Endminf overview
+material. Unity reproduces the fixed-seed particle population closely: 1,930,
+1,286, 608, and 10 live particles at 0.1500, 0.1833, 0.2167, and 0.2500 seconds,
+bracketing the retained six-Present retail samples. The renderer is active,
+has the exact material/pass, and is accepted by the Distortion request scan,
+but stock SRP submission emits no visible generated particle geometry; even a
+solid fragment and clip/depth probes remain absent. The retained D3D11 replay
+closes submission transport: generated payloads preserve all four IA and
+shader-used constant ranges and submit the exact 0546/0547 programs. Per-frame
+diagnostics map requested phases 0.1500, 0.1833, 0.2167, and 0.2500 seconds to
+capture frames 1034-1037 and validate every native draw with `S_OK`; clean-video
+source frame 90 is requested phase zero, so those samples correspond to clean
+frames 99, 101, 103, and 105. Session `20260828T212621Z` priority-retains five
+more exact packets with 11,568, 7,956, 4,134, 372, and 60 indices. Their PS t0
+owner is one byte-identical 256x256 BC7-sRGB payload in all five packets; its
+SHA-256 is
+`d25b9741808a5d8cbd9264d899091ac6af623a3f30d98bf2522a304130a8045f`.
+PS t1 is the live full-resolution scene-color input: it is bound consistently
+but is an unsupported dynamic format with no retained static payload, and
+replay must supply the current Unity scene snapshot. The native replay now
+creates PS t0 directly from the captured BC7 blocks instead of sampling
+AnimeStudio's mismatched `T_fx_mask_01_M` extraction; the four reference packet
+geometries/constants and dynamic t1 remain unchanged. Its runtime admission no
+longer depends on that superseded AnimeStudio material or texture being spawned;
+the optional ordinary source renderer is disabled when present, while the
+native API accepts only the live scene-color resource. The strict verifier
+requires VS t0 and PS t0 payload closure plus a bound dynamic PS t1 and accepts
+both particle-count realizations by their descending horizontal-quad shape.
+The old bounded rectangle compatibility pass remains the fail-closed fallback.
+Do not reinterpret this owner as a fullscreen post effect or recapture shader
+bytes.
+
+EndfieldCapture now detects either exact M20 shader pair inside the indexed-draw
+callback and, when the ordinary three-slot producer gate would skip it, arms a
+fourth bounded deferred package before recording that same draw. Status and
+summary expose `graphicsSequencePriorityM20DrawArms` and
+`deferredPriorityM20DrawArms`. The session now also archives every immutable
+D3D11 shader program under `graphics/shaders/`, deduplicated by SHA-256, so a
+newly observed material owner can be decompiled without another capture.
+Session `20260828T212621Z` proved a startup race: all expected M20 bytecode
+identities were absent from its otherwise complete 413-file archive, so their
+objects were created before the asynchronous proxy bootstrap published capture
+state and the exact detector could never arm. The proxy device exports now join
+that bootstrap before forwarding device creation, then install device/context
+hooks before returning the game device. A real proxy regression creates a
+shader immediately before the ready handshake and requires its exact bytecode
+in the final archive. All 16 native tests pass in the launcher's `build-local`
+tree. Sessions `20260828T224210Z` and `20260828T224407Z` close the real-game
+gate with 72/72 automatic packages and no drops; `224210Z` is the cleaner
+authority. The live owner is the third VFXBaseV2 pair
+`62a5ce6c09171de9`/`5558deddb1ee6188`, admitted only with the measured 36-index
+packet shape because the programs are shared by unrelated effects. Frame 1748
+draw 77 closes exact IA, five VS and four PS constant buffers, the 4 MiB VS t0
+ByteAddressBuffer, scene-depth PS t0, and the runtime 256x128 BC7-sRGB PS t1
+atlas. The exact Unity transport submits and validates this packet once at
+4.433333 seconds; its native shader/layout validator and six-export ABI
+validator pass. No further M20 capture is required.
+
+The first complete M20-integrated review has 770/770 1920x1080 frames, report
+status `ok`, and one requested/active/submitted/validated M20 frame with zero
+failures. Dense comparison against the clean reference selects source offset
+-1, within the recorded plus-or-minus-one-frame anchor uncertainty. The burst
+window remains the largest measured error: at 4.433333 seconds actor ROI MAE is
+55.37 and effect ROI MAE is 53.15. Retail has broad overexposed radial/temporal
+smear across the actor while Unity remains sharp and darker around a localized
+burst. Treat the next crystal-peak work as Uber/temporal/bloom composition and
+remaining owner-order recovery, not another standalone M20 texture substitute.
+
+The M13, M14, M20, and M21 native BaseV2 transports previously replayed captured
+3840x2160 `_ScreenSize`/viewport vectors at the 1920x1080 review target. Their
+reflected VS b2 and PS b1 rows c0/c1/c5 are now patched fail-closed to the live
+target, with explicit viewport/scissor ownership and restoration. Native builds
+and focused callback validation pass. Earlier M13/M20 visual scores were invalid:
+the clean August 26 MKV begins with another character, so treating video frame
+zero as Endminf phase zero compared the packets against the wrong frames. Peak
+pose/effect cross-correlation selects local offset +86. At that alignment M13
+packets 1/2 improve the effect ROI by 0.50/0.36 dB at 4.5000/4.5333 seconds;
+packet 0 regresses its pre-peak checkpoint and is rejected by maintained replay.
+M14 remains neutral/slightly worse, and M20's isolated gain is only about 0.01 dB,
+so both remain diagnostic-only. Corrected M21 remains admitted at its one
+certified stone-shell tick.
+
+A six-frame clean-reference A/B across 4.406667-4.516667 seconds keeps accepted
+M13/M31 constant and toggles M18/M20/M21/M28 together. The exact group produces
+a small net gain at the best bounded source offset: mean actor/effect ROI MAE
+changes from 28.6668/36.3826 to 28.5186/36.1777. Almost all improvement is at
+the first M20-onset sample, whose actor/effect ROI MAE improves by 0.7457/1.1033;
+the 4.5000-second sample slightly regresses by 0.1008/0.1509 and the final sample
+is pixel-identical. Keep the group available for the next complete review, but
+do not describe this narrow gain as closure of the visibly missing soft bloom,
+gas, and temporal smear.
+
+The resulting `endminf_full_clean_presentation_v4_20260829` checkpoint completes
+770/770 1920x1080 frames with report status `ok`. It observes the authored
+start-to-loop transition, settled loop, entrance VFX cleanup, and animator/root
+motion contracts; foreground UI remains absent. M18, M20, M21, and M28 each
+activate, submit, and validate at their one certified tick with no native
+failure. A 12.833-second H.264 review render and eight-frame contact sheet live
+beside the generated report in scratch. This supersedes v3 for visual review,
+but not the fail-closed evidence limitations above.
+
+Full clean-reference comparison over 555 shared frames selects the allowed
+source offset -1 and measures mean actor/effect ROI MAE 21.5466/22.3183 with
+temporal-delta MAE 12.1147. The largest residual is opening motion from about
+0.50-1.23 seconds (body yaw, arms, cape, and hair); the second is the
+4.25-4.73-second peak, where retail has broad soft bloom/radial temporal smear
+and Unity retains a harder ring/streak; the settled 7.50-9.22-second loop has
+low temporal error but persistent scale, placement, secondary-settle, and grey
+composition differences. This localizes the remaining work without treating a
+whole-window average as evidence for any one renderer owner.
+
+The captured combined Uber packet is now admitted by default only for canonical
+video export at its already certified 4.3500-second phase; explicit environment
+values retain controlled A/B behavior and missing payload/phase fails closed.
+With M13/M18/M20/M21/M28/M31 held constant, a three-frame exact-Uber A/B changes
+mean actor/effect ROI MAE from 27.5229/35.6204 to 27.2709/34.9728. Temporal-delta
+MAE changes from 32.1515 to 32.6694 because the exact packet is one measured
+tick, not a recovered neighboring-frame temporal sequence. The resulting
+`endminf_full_clean_presentation_v5_20260829` render completes 770/770 frames
+with report status `ok`, observes start-to-loop, settled-loop, and VFX-cleanup
+contracts, and submits the exact Uber once with no failure. It supersedes v4 as
+the review candidate while preserving the broader temporal-consumer gap.
+
+The full deferred/SphereOutside diagnostic path is not presentation-ready. Its
+explicitly content-invalid screen-shadow R attachment produces the reported
+vertically inverted body mask over the background portrait. Disabling that one
+attachment restores the correctly oriented portrait and improves the aligned
+4.5000-second full actor/effect crop from 12.69 to 15.75 dB, while making the
+incomplete exact deferred chain fail closed. The maintained launcher and video
+profile therefore omit that diagnostic chain rather than publishing a green
+readiness state with corrupted pixels. Across five aligned 4.3833-4.5833 peak
+checkpoints, the cleaned M13/M21 presentation averages 16.99 dB versus 13.08 dB
+for the former diagnostic-heavy profile.
+
+The exact-owner policy deliberately retains one compute exception: the unique
+8,413,184-byte slot-0 skin-palette UAV required to reconstruct body, hair, and
+all four cloth palettes. A WARP byte test binds that palette beside an
+unrelated UAV, proves the palette's complete first/last bytes, and proves the
+unrelated buffer is excluded. Exact M13 now also retains IA, while the known
+M18 diffusion-shell and M28 refractive-sphere pairs retain IA, constants, and
+PS t0-t5. All 15 native tests pass after these owner-closure corrections.
+
+The reported vertically inverted light appearance does not authorize another
+texture flip. All 70 source `ParticleSystemRenderer.m_Flip` vectors are zero,
+the recovered material Y scales are positive, exact post-VS packets preserve
+their captured UV lanes, and AnimeStudio already performs the required
+vertical row normalization. Peak trails travel toward the same upper-right
+quadrant in matched retail and Unity frames. The apparent orientation gap is
+instead missing/undersized M20 gas, glow, particles, and additive energy; a
+Unity-side `1-y` or negative Y scale would double-flip source assets.
+
+The body-shaped portrait contamination is a color-post mismatch, not an open
+depth-owner choice. Native `UberPass` data flow copies
+`HGRenderPathScene.sceneDepth` into `UberPostPassData.sceneDepthBuffer`; its
+registered callback draws fullscreen Uber, binds that preserved primary depth
+as `_SceneDepth`, then draws standard/ECS/HGUI world UI. The exact
+`CLIP_SCENEDEPTH + HG_WORLD_UI` fragment therefore intentionally clips the
+post-Uber portrait against unwarped primary depth containing CharacterPrePass.
+Compatibility Uber/temporal color currently shifts the visible actor more than
+retail, exposing that undistorted silhouette. Do not remove the clip or replace
+its source-backed owner. A default-off
+`ENDFIELD_DIAGNOSTIC_SYNC_POST_UBER_PORTRAIT_DEPTH=1` probe now warps primary
+depth over the exact compatibility-Uber color-sampling footprint and retains
+the nearest contributor only while radial/chromatic Uber is active. Controlled
+4.35-second runs with temporal resolve and exact Uber disabled reject that
+policy: clean-reference full-frame PSNR changes `18.5790 -> 18.5784 dB` and
+the portrait ROI changes `18.8917 -> 18.8844 dB`; the settled no-warp path
+continues to bind primary depth directly. Keep the probe diagnostic-only. Fix
+the radial/chromatic color transport and temporal input instead of blindly
+warping every contributing depth.
+
+The opening hair/cape defect includes an application-space error, but the
+current evidence also has a hard opening-coverage gap. The old runtime wrote
+captured actor-root-space matrices after an
+independently evaluated Unity body pose and interpolated them across 0.12-0.23
+second package gaps. The v7 oracle now stores each hair pose relative to the
+same captured Head and each cape pose relative to the same captured Spine2;
+runtime publication applies those residuals to Unity's current Head/Spine2
+after Animator evaluation, parent-first. Only measured previous/current 60-Hz
+pairs interpolate; longer unobserved intervals select the nearest retained
+endpoint. A five-checkpoint D3D11 capture validates the 144-sample/80-bone
+binding and keeps the opening hair attached to the head. Its first retained
+palette aligns to clean-reference source frame 115, while the entrance becomes
+visible around source frame 90; frames 90-114 therefore remain uncaptured and
+Unity necessarily holds a later pose at the start. Sparse cadence still limits
+unsampled extrema, so this is not exact dynamics recovery. EndfieldCapture now
+uses 36 palette-focused consecutive opening packages (the unique 8,413,184-byte
+skin-palette UAV every Present and a 4K visual checkpoint every sixth package),
+followed by 36 bounded full-owner packages at eight-Present spacing through the
+peak/loop. Both `build-final` and
+the launcher-owned `build-local` pass all 16 tests. One new unattended Full
+capture is required before further opening-hair tuning. Session
+`20260829T024828Z` did publish all 72 unattended packages with zero dropped
+graphics events and preserves individually complete opening, peak, Uber, and
+settled-loop frames. It does not close the sequence: cadence validation failed
+with 36 unexpected Present gaps, including a 347.262-ms opening gap and a
+2.006-second opening-to-peak gap, so the exact start-to-loop transition remains
+bounded only after retained dispersal frame 2142 and by loop-like frame 2164.
+That session also began before the compute-boundary-enabled observer DLLs were
+rebuilt and therefore contains no `dispatchRecords` or per-frame
+compute-completeness gate. Recapture rather than interpreting its sparse
+extrema or transition timing. At 4.35 seconds the replay selects capture frame
+1977 directly with effectively zero
+interpolation, so that phase separates sparse-motion error from renderer
+plumbing. The retained-skinning probe at exactly 4.35 seconds closes all six
+deforming renderer rows and directly compares frame 1977's retail palette with
+Unity's CPU-side renderer-local palette. The source mesh proves that cloth_02
+uses 2,286 indices and 29 bindposes; the nearby 16,524-index retail draw is the
+body and must not be used as a cape contract. With that mapping corrected,
+mean root rotation error is 6.78 degrees for cloth_02, 6.77 for hair, 12.09 for
+cloth_01, and 17.70 for cloth_04; mean root translation error is respectively
+0.0152, 0.0149, 0.0442, and 0.0911 model units. This rules out a wholesale
+cloth_02 bone-order or import failure and keeps sparse secondary-motion cadence
+as the primary motion gap. The capture omitted the older duplicate source-SRV
+alias row, so this comparison proves the complete source palette and exact draw
+b2 binding separately and reports that limitation; it is not a GPU-submitted
+Unity palette or baked-vertex equality proof.
+
+Sessions `20260829T020746Z` and `20260829T024828Z` are diagnostic-only and do
+not close that gap. The former published 72 packages without drops but retained
+only five exact palettes around clean source frames 113-117. The latter retains
+all six meshes and 74 owner bones in every dense package 1823-1858, with its
+first visual checkpoint aligned around clean source frame 94 plus or minus one,
+but a 347 ms QPC gap between packages 1834 and 1835 skips about 21 nominal 60-Hz
+frames. Consecutive package IDs therefore do not prove continuous frames 94-129.
+The capture path accepts the exact palette from the Endminf body VS t0 binding,
+permits asynchronous dense draining, rejects incomplete dense palettes, and
+derives failure flags from finalized readbacks. It now also arms on the unique
+16,524-index Endminf body draw before Uber and stages 4K backbuffers only at the
+first and final dense packages so intermediate readback cannot accumulate the
+observed stall. All 16 native tests pass. The next capture must use this build
+and pass cadence, resource, and completeness gates before its palettes enter
+replay.
+
+After the next complete Unity sequence, wait for user visual review before
+accepting the render as an improvement or replacing the current canonical
+checkpoint.
 
 ## Main animation gap
 
@@ -2135,35 +2860,33 @@ or shaders rather than hand-editing generated prefabs.
 ## Recovery queue
 
 1. Close the crystal peak in owner order: retain the exact static-LinearClamp
-   M17 `baoshan` transport, now-timed M20 gas, corrected exact Uber variant,
-   and validated two-draw M31 checkpoint. Validate the generated M29 temporal
+   M17 `baoshan` transport, integrated exact M20 gas, source-compatible Uber path,
+   and validated temporal M31 envelope. Validate the generated M29 temporal
    presentation, preserve M31 before the retail 2999/3000 boundary, and use
    Full frames 2262 and 2775 to retain the recovered M18 diffusion shell and
    M28 refractive sphere in their captured ordinal positions and resolve the
    equal-queue M29/M30/M14 ordering. The M13 ring packet/sampler policy and M21
-   stone packet are now exact. After those are integrated, obtain one focused
-   M20 smoke capture at clean frame 276-281; frame 2775 does not contain it.
-   Then rerender the
-   complete 770-frame background+portrait+actor/VFX sequence against the clean
-   no-frame-generation recording. Keep source tint, particle, bloom, and curve
-   values fixed unless stronger evidence supersedes them.
-2. Close the localized opening fracture against clean frames 4-22. Its
-   0.033-0.350-second pre-Uber diagnostic now samples the shifted
-   CharacterPrePass selector before compositing, so character bands protrude
-   while the portrait and `S_GridFar` remain stationary. Keep it diagnostic-only
-   behind `ENDFIELD_ENDMINF_OPENING_STRIP_DIAGNOSTIC=1`: the clean video bounds
-   visible steps to roughly 40-265 pixels but cannot uniquely recover the
-   per-band sampler offsets, and the current 34-pixel amplitude remains only a
-   placement/cadence proof.
-3. Replace the mixed-session Endminf dynamics replay with one same-initialization
-   capture containing hair and every `cloth_01`-`cloth_04` LOD0 skin palette,
-   especially the absent `cloth_02` transparent cape chains. Make complete
-   renderer/weighted-bone coverage fail closed, then re-audit frames
-   219/257/273 pre-Uber and settled loop 407. Do not apply the candidate
-   one-frame clock advance, enable the diagnostic solver, or manually widen
-   cloth before that complete trajectory resolves the timing ambiguity.
-4. Generalize the finished Endminf path and rebuild every playable character
+   stone packet geometry/state are exact, while its live t0 fallback remains
+   unproven; M21 is enabled only at its certified sample in the normal
+   reproduction. The unattended M20 evidence and first complete 770-frame
+   background+portrait+actor/VFX rerender are now closed. Use its measured
+   4.3-4.7-second burst gap to recover the broad retail temporal-consumer and
+   bloom envelope and remaining equal-queue ordering. Capture the actual live
+   temporal boundary before retuning already source-backed M13/M21 or bloom:
+   distinguish Streamline DLAA mode 6 from TAAU, retain consecutive pre/post
+   temporal surfaces plus depth/velocity, jitter/reset, frame token, formats,
+   extents, and resource tags, then stage pre-temporal, bloom-input, bloom, and
+   final-Uber comparisons. Keep source tint, particle,
+   bloom, and curve values fixed unless stronger evidence supersedes them, and
+   wait for user review of this checkpoint before changing the render.
+2. Replace the opening-incomplete 144-sample replay with one unattended Full
+   capture from the earlier-triggered, two-checkpoint 36-frame palette-focused
+   prefix, verify that its
+   first retained palette covers clean source frame 90 rather than 115, then
+   compare it against pre-Uber frames 219/257/273 and settled loop 407. Keep
+   the diagnostic solver off and do not manually widen cloth.
+3. Generalize the finished Endminf path and rebuild every playable character
    without actor-specific renderer forks.
-5. Keep changing inventories and exhaustive validation output under
+4. Keep changing inventories and exhaustive validation output under
    `reports/assets/character_recovery/`; update this file only when the durable
    conclusion or evidence boundary changes.

@@ -20,16 +20,31 @@ class EndminfOpeningStripContractTests(unittest.TestCase):
         values = {
             name: float(value)
             for name, value in re.findall(
-                r"OpeningStrip(Start|Peak|End)Seconds = ([0-9.]+)f;", source
+                r"OpeningStrip(Start|End)Seconds = ([0-9.]+)f;", source
             )
         }
-        self.assertAlmostEqual(values["Start"], 1.0 / 30.0, places=6)
-        self.assertAlmostEqual(values["Peak"], 1.0 / 15.0, places=6)
+        self.assertAlmostEqual(values["Start"], 4.0 / 60.0, places=6)
         self.assertAlmostEqual(values["End"], 0.35, places=6)
-        self.assertIn("elapsed >= OpeningStripEndSeconds", source)
-        self.assertIn("ENDFIELD_ENDMINF_OPENING_STRIP_DIAGNOSTIC", source)
-        self.assertIn("OpeningStripDiagnosticEnvironmentVariable", source)
+        self.assertIn("IsMeasuredOpeningStripFrame(frame)", source)
+        self.assertNotIn("OPENING_STRIP_DIAGNOSTIC", source)
         self.assertIn("if (!TryGetElapsed(out float elapsed))", source)
+
+    def test_runtime_admits_exactly_shader_backed_frames(self) -> None:
+        clock_source = CLOCK.read_text(encoding="utf-8")
+        shader_source = SHADER.read_text(encoding="utf-8")
+        runtime_frames = {
+            int(frame)
+            for frame in re.findall(r"case ([0-9]+):", clock_source)
+        }
+        shader_frames = {
+            int(frame)
+            for frame in re.findall(r"frame == ([0-9]+)", shader_source)
+        }
+        self.assertEqual(runtime_frames, shader_frames)
+        self.assertEqual(
+            runtime_frames,
+            {4, 6, 7, 8, 9, 10, 11, 12, 18, 19, 20},
+        )
 
     def test_pass_is_opt_in_and_pre_uber(self) -> None:
         source = PIPELINE.read_text(encoding="utf-8")
@@ -46,13 +61,21 @@ class EndminfOpeningStripContractTests(unittest.TestCase):
         self.assertIn("hasOpeningStripSelector", gate_text)
         self.assertIn("TryEvaluateOpeningStrip", gate_text)
 
-    def test_shader_keeps_constant_band_x_and_restrained_rgb_split(self) -> None:
+    def test_shader_uses_measured_rightward_bands_and_restrained_rgb_split(self) -> None:
         source = SHADER.read_text(encoding="utf-8")
-        self.assertIn("float band = floor", source)
-        self.assertIn("float displacementPixels = signedOffset * sparse", source)
+        self.assertIn("TryGetMeasuredBand", source)
+        self.assertIn("frame == 4", source)
+        self.assertIn("frame == 20", source)
+        self.assertIn("uv.x - displacementUv", source)
         self.assertIn("float chromaUv", source)
         self.assertIn("shiftedUv + float2(chromaUv, 0.0)", source)
         self.assertIn("shiftedUv - float2(chromaUv, 0.0)", source)
+        self.assertNotIn("OpeningStripHash", source)
+        self.assertNotIn("floor(retailPixel.y / 8.0)", source)
+        self.assertNotIn("rowSelector > 0.88", source)
+        self.assertNotIn("lerp(110.0, 420.0, shiftSelector)", source)
+        self.assertIn("saturate(_EndminfOpeningStripParams.x)", source)
+        self.assertNotIn("Hash11", source)
 
     def test_shader_uses_shifted_character_selector_ownership(self) -> None:
         source = SHADER.read_text(encoding="utf-8")
@@ -60,10 +83,12 @@ class EndminfOpeningStripContractTests(unittest.TestCase):
         selector = source.index("float4 selector = tex2Dlod")
         shifted_uv = source.index("float4(shiftedUv, 0.0, 0.0)", selector)
         owner = source.index("float shiftedOwner = step", shifted_uv)
-        composite = source.index("return lerp(original, shifted, shiftedOwner)", owner)
+        destination = source.index("float destinationOwner = step", owner)
+        composite = source.index("activeBand * shiftedOwner * (1.0 - destinationOwner)", destination)
         self.assertLess(selector, shifted_uv)
         self.assertLess(shifted_uv, owner)
-        self.assertLess(owner, composite)
+        self.assertLess(owner, destination)
+        self.assertLess(destination, composite)
         self.assertNotIn("uv.y + displacement", source)
 
 

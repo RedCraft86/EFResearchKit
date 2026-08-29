@@ -24,6 +24,11 @@ SKINNING_CB_CONSTANTS = 4_096
 MESHES = {
     "body": (16_524, 44),
     "cloth_01": (101_994, 156),
+    # Exact LOD0 source mesh
+    # S_actor_endminf_cloth_02_lod0_p2E18F8A093ADEF65: one 2,286-index
+    # submesh and 29 bind poses.  This transparent cape surface owns the
+    # clothes_touming_* chains missing from the older mixed-session oracle.
+    "cloth_02": (2_286, 29),
     "cloth_03": (4_524, 1),
     "cloth_04": (20_577, 14),
     "hair": (27_615, 28),
@@ -159,14 +164,20 @@ def decode_frame(frame_dir: Path, meshes: list[str], allow_partial: bool = False
     if metadata.get("captureIncomplete") or metadata.get("captureFailed"):
         raise CaptureError(f"{frame_dir} is incomplete or failed")
     try:
-        blob = (frame_dir / metadata.get("resourcesFile", "resources.bin")).read_bytes()
-    except OSError as exc:
-        raise CaptureError(f"cannot read resources for {frame_dir}: {exc}") from exc
-    try:
+        resource_file = metadata.get("resourcesFile")
+        if not isinstance(resource_file, str) or not resource_file:
+            raise CaptureError(
+                f"{frame_dir} has no retained resource payload"
+            )
+        blob = (frame_dir / resource_file).read_bytes()
         palette = resource_bytes(blob, select_resource(metadata, PALETTE_BYTES))
-    except CaptureError as exc:
+    except (CaptureError, OSError) as exc:
         if not allow_partial:
-            raise
+            if isinstance(exc, CaptureError):
+                raise
+            raise CaptureError(
+                f"cannot read resources for {frame_dir}: {exc}"
+            ) from exc
         return {
             "frame": int(metadata["frame"]),
             "frameDirectory": str(frame_dir.resolve()),
@@ -243,7 +254,9 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    meshes = args.mesh or ["cloth_01", "cloth_04", "cloth_03", "hair", "body"]
+    meshes = args.mesh or [
+        "cloth_01", "cloth_02", "cloth_04", "cloth_03", "hair", "body"
+    ]
     try:
         result = decode_session(
             args.session_root.resolve(), meshes, args.allow_partial_frames
