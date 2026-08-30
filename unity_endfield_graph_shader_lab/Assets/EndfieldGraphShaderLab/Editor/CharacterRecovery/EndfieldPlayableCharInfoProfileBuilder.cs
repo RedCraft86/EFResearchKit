@@ -349,10 +349,9 @@ namespace EndfieldGraphShaderLabEditor
             };
             mesh.uv = new[]
             {
-                // The exported PNG is already display-upright and Unity's
-                // TextureImporter normalizes its rows for bottom-origin UVs.
-                // Applying a second vertical flip here inverted the recovered
-                // CharInfo portrait in the final render.
+                // The exported PNG is display-upright. TextureImporter maps
+                // its rows to Unity's bottom-origin sampling convention, so
+                // the source tight-rect UVs must not be flipped a second time.
                 new Vector2(textureRect.xMin / SourceTextureSize, textureRect.yMin / SourceTextureSize),
                 new Vector2(textureRect.xMax / SourceTextureSize, textureRect.yMin / SourceTextureSize),
                 new Vector2(textureRect.xMax / SourceTextureSize, textureRect.yMax / SourceTextureSize),

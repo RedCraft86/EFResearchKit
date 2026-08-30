@@ -11,7 +11,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLOCK = ROOT / "Assets/EndfieldGraphShaderLab/Runtime/Rendering/EndfieldEndminfVisualCompatibilityClock.cs"
 PIPELINE = ROOT / "Assets/EndfieldGraphShaderLab/Runtime/Rendering/HGCompatRenderPipeline.cs"
+CAPTURE = (
+    ROOT / "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery"
+    / "EndfieldEndminfViewerPlayModeCapture.cs"
+)
 SHADER = ROOT / "Assets/EndfieldGraphShaderLab/Shaders/HGRPCompat/EndfieldEndminfOpeningStrip.shader"
+PLUGIN = ROOT / "tools/original_dxbc_exact/OriginalDxbcSwapPlugin.cpp"
 
 
 class EndminfOpeningStripContractTests(unittest.TestCase):
@@ -46,20 +51,170 @@ class EndminfOpeningStripContractTests(unittest.TestCase):
             {4, 6, 7, 8, 9, 10, 11, 12, 18, 19, 20},
         )
 
-    def test_pass_is_opt_in_and_pre_uber(self) -> None:
+    def test_compatibility_pass_is_opt_in_and_pre_temporal(self) -> None:
         source = PIPELINE.read_text(encoding="utf-8")
-        gate = source.index("bool useRecoveredEndminfOpeningStrip")
-        blit = source.index("RecoveredEndminfOpeningStripSourceId,\n                    recoveredEndminfOpeningStripMaterial", gate)
-        bloom = source.index("BuildRecoveredSceneBloomPyramid", blit)
-        uber = source.index("recoveredEndminfUberExactRuntime.Enqueue", bloom)
+        method_start = source.index(
+            "private bool ApplyRecoveredEndminfOpeningStripCompatibilityBeforeTemporal"
+        )
+        method_end = source.index(
+            "private bool EnqueueRecoveredEndminfTemporalResolve", method_start
+        )
+        method = source[method_start:method_end]
+        gate = method.index("bool useRecoveredEndminfOpeningStripCompatibility")
+        blit = method.index(
+            "commandBuffer.Blit(\n                CameraColorId", gate
+        )
+        publish = method.index(
+            "commandBuffer.CopyTexture(\n                "
+            "RecoveredEndminfOpeningStripSourceId", blit
+        )
+        release = method.index("commandBuffer.ReleaseTemporaryRT", publish)
         self.assertLess(gate, blit)
-        self.assertLess(blit, bloom)
-        self.assertLess(bloom, uber)
-        gate_text = source[gate:blit]
+        self.assertLess(blit, publish)
+        self.assertLess(publish, release)
+        gate_text = method[gate:blit]
         self.assertIn("useRecoveredPostSemantics", gate_text)
+        self.assertIn(
+            "!EndfieldRecoveredEndminfOpeningStripExactRuntime.ActiveThisFrame",
+            gate_text,
+        )
         self.assertIn("recoveredEndminfOpeningStripMaterial != null", gate_text)
         self.assertIn("hasOpeningStripSelector", gate_text)
         self.assertIn("TryEvaluateOpeningStrip", gate_text)
+        self.assertIn("compatibility before temporal", method)
+        self.assertIn(
+            "LastRecoveredEndminfOpeningStripCompatibilityApplied = true",
+            method,
+        )
+
+    def test_compatibility_publishes_retail_target1_scene_mv_marker(self) -> None:
+        pipeline = PIPELINE.read_text(encoding="utf-8")
+        shader = SHADER.read_text(encoding="utf-8")
+        self.assertIn("RecoveredEndminfOpeningStripSceneMVId", pipeline)
+        self.assertIn("recoveredSceneMV.descriptor", pipeline)
+        self.assertIn("ENDFIELD_ENDMINF_OPENING_STRIP_SCENEMV", pipeline)
+        selector = pipeline.index("ENDFIELD_ENDMINF_OPENING_STRIP_SCENEMV")
+        selector_end = pipeline.index("System.StringComparison.Ordinal", selector)
+        self.assertIn('"1"', pipeline[selector:selector_end])
+        self.assertIn("LastRecoveredEndminfOpeningStripSceneMVApplied = true", pipeline)
+        self.assertIn("#pragma fragment FragSceneMV", shader)
+        self.assertIn("original.b = max(original.b, coverage)", shader)
+        self.assertIn("preserve XY/A and set B=1", shader)
+
+    def test_exact_transport_uses_independent_target1_blend(self) -> None:
+        source = PLUGIN.read_text(encoding="utf-8")
+        start = source.index("D3D11_BLEND_DESC blend = {};")
+        end = source.index(
+            "device->CreateBlendState(&blend, &g_openingStripBlendState)",
+            start,
+        )
+        block = source[start:end]
+        self.assertIn(
+            "blend.RenderTarget[1].SrcBlend = D3D11_BLEND_SRC_COLOR", block
+        )
+        self.assertIn(
+            "blend.RenderTarget[1].DestBlend = D3D11_BLEND_INV_SRC_COLOR", block
+        )
+        self.assertIn(
+            "blend.RenderTarget[1].DestBlendAlpha = D3D11_BLEND_ONE", block
+        )
+
+    def test_capture_reports_pre_temporal_compatibility_submission(self) -> None:
+        pipeline = PIPELINE.read_text(encoding="utf-8")
+        capture = (
+            ROOT
+            / "Assets/EndfieldGraphShaderLab/Editor/CharacterRecovery"
+            / "EndfieldEndminfViewerPlayModeCapture.cs"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "LastRecoveredEndminfOpeningStripCompatibilityApplied",
+            pipeline,
+        )
+        self.assertIn(
+            "openingStripCompatibilityBeforeTemporal = HGCompatRenderPipeline",
+            capture,
+        )
+        self.assertIn(
+            "observedOpeningStripCompatibilityBeforeTemporal",
+            capture,
+        )
+        self.assertIn("openingStripSceneMVBeforeTemporal", capture)
+        self.assertIn("observedOpeningStripSceneMVBeforeTemporal", capture)
+
+    def test_compatibility_call_precedes_temporal_input_diagnostics(self) -> None:
+        source = PIPELINE.read_text(encoding="utf-8")
+        render_start = source.index("private void RenderPreparedCamera")
+        render_end = source.index("private void ApplyCharacterPostProcess", render_start)
+        render = source[render_start:render_end]
+        compatibility = render.index(
+            "ApplyRecoveredEndminfOpeningStripCompatibilityBeforeTemporal("
+        )
+        before_temporal = render.index("CaptureBeforeTemporalIfArmed", compatibility)
+        post = render.index("ApplyCharacterPostProcess(", before_temporal)
+        self.assertLess(compatibility, before_temporal)
+        self.assertLess(before_temporal, post)
+
+    def test_exact_packet_path_remains_in_scene_render_before_compatibility(self) -> None:
+        source = PIPELINE.read_text(encoding="utf-8")
+        render_start = source.index("private void RenderPreparedCamera")
+        render_end = source.index("private void ApplyCharacterPostProcess", render_start)
+        render = source[render_start:render_end]
+        exact = render.index(
+            "EndfieldRecoveredEndminfOpeningStripExactRuntime.Render("
+        )
+        compatibility = render.index(
+            "ApplyRecoveredEndminfOpeningStripCompatibilityBeforeTemporal("
+        )
+        self.assertLess(exact, compatibility)
+
+    def test_exact_packet_forces_its_required_scene_mv_transport(self) -> None:
+        source = PIPELINE.read_text(encoding="utf-8")
+        collect = source.index(
+            "EndfieldRecoveredSceneMVRequest recoveredSceneMVRequest ="
+        )
+        reset = source.index("ResetRecoveredSceneMVDiagnostic", collect)
+        request_gate = source[collect:reset]
+        self.assertIn("exactEndminfOpeningStripPrepared", request_gate)
+        self.assertIn(
+            "recoveredSceneMVRequest = new EndfieldRecoveredSceneMVRequest(",
+            request_gate,
+        )
+
+    def test_requested_exact_packets_must_submit_and_validate(self) -> None:
+        source = CAPTURE.read_text(encoding="utf-8")
+        self.assertIn("endminfOpeningStripExactRequirementReady", source)
+        self.assertIn("endminfOpeningStripExactRangeIncluded", source)
+        self.assertIn("observedEndminfOpeningStripExactActive &&", source)
+        self.assertIn(
+            "observedEndminfOpeningStripExactSubmitted &&", source
+        )
+        self.assertIn("observedEndminfOpeningStripExactValidated", source)
+        required = source[source.index("bool requiredCaptureContractReady") :]
+        self.assertIn("endminfOpeningStripExactRequirementReady", required)
+
+    def test_exact_transport_refreshes_and_guards_optional_source_renderer(self) -> None:
+        runtime = (
+            ROOT / "Assets/EndfieldGraphShaderLab/Runtime/Rendering"
+            / "EndfieldRecoveredEndminfOpeningStripExactRuntime.cs"
+        ).read_text(encoding="utf-8")
+        prepare = runtime[
+            runtime.index("internal static bool PrepareBeforeCulling") :
+            runtime.index("internal static bool Render(")
+        ]
+        self.assertIn(
+            "RefreshOptionalSourceRendererAndInitializeTransport()", prepare
+        )
+        self.assertIn("if (sourceRenderer != null)", prepare)
+        self.assertIn("sourceRenderer.enabled = false;", prepare)
+        refresh = runtime[
+            runtime.index(
+                "private static bool "
+                "RefreshOptionalSourceRendererAndInitializeTransport"
+            ) :
+            runtime.index("private static int ResolvePacket")
+        ]
+        self.assertIn("if (sourceRenderer == null)", refresh)
+        self.assertIn("if (initialized)", refresh)
 
     def test_shader_uses_measured_rightward_bands_and_restrained_rgb_split(self) -> None:
         source = SHADER.read_text(encoding="utf-8")

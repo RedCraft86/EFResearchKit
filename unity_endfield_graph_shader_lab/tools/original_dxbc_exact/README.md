@@ -53,22 +53,73 @@ Do not enable the keyword or arm the plugin outside this disposable diagnostic.
 ## Endminf combined Uber transport
 
 The build also hash-checks and embeds the exact active Endminf CharInfo
-`BLOOM + RADIAL_BLUR + VIGNETTE` fullscreen pair. WARP validation
-must create both shader objects successfully. The native transport
+ordinary `BLOOM + VIGNETTE` pixel shader and the captured
+`BLOOM + RADIAL_BLUR + VIGNETTE` peak variant with their shared fullscreen
+vertex shader. WARP validation must create all three shader objects
+successfully. The native transport
 uses an immutable 64-packet render-thread ring, stage-local VS/PS constants,
 strict source/bloom/LUT/output descriptors, and complete touched-state restore.
 Canonical Endminf video export enables
 `ENDFIELD_RECOVERED_ENDMINF_UBER_EXACT=1` for the source-certified peak tick;
 an explicit environment value still overrides that default for controlled A/B
 runs. Runtime submission fails closed before drawing when the generated live
-payload or its exact phase gate is unavailable.
+payload is unavailable. It selects the peak pixel shader only in the
+source-certified 4.35-second window and uses the ordinary shader elsewhere.
 Capture `20260827T183054Z`, frame 1818, supplies the active shader identities
-and stage-qualified VS b0 plus PS b0/b1 payloads. Its generic-fullscreen record
-predates active-variant priority tagging, so this is live constant/resource
-evidence but does not claim draw-bound fixed pipeline state.
-`build_endminf_uber_capture_payload.py` converts only that validated report
-into immutable native constant bytes; the older unbound 3DMigoto arena is not
-accepted as runtime state.
+and stage-qualified VS b0 plus PS b0/b1 payloads. Frame 1600 supplies a second
+valid constant payload whose radial/chromatic values register to 0.02256267 s.
+That packet is retained only behind
+`ENDFIELD_RECOVERED_ENDMINF_UBER_EARLY_DIAGNOSTIC=1`: a full 770-frame A/B
+worsened first-frame character/effect ROI MAE by 6.53/1.85 and first-30-frame
+temporal delta MAE by 0.48, so it is rejected from presentation policy. These
+generic-fullscreen records predate active-variant priority tagging, so they are
+live constant/resource evidence but do not claim draw-bound fixed pipeline
+state. `build_endminf_uber_capture_payload.py` converts only the two
+frame-filtered validated reports into immutable native constant bytes; the
+older unbound 3DMigoto arena is not accepted as runtime state.
+Capture `20260829T024828Z` contributes the ordinary pixel shader and 35
+complete ordinary PS-constant witnesses. Every lane read by that shader is
+bit-stable and matches the corresponding peak-template lane, so the ordinary
+variant safely binds the same larger buffers. That cadence-invalid,
+pre-hardening session does not certify current VS b0 or t1 texture bytes;
+those remain explicit recapture gaps rather than parity claims.
+
+Validate the next hardened Full session as one ordinary/peak/ordinary contract:
+
+```powershell
+python unity_endfield_graph_shader_lab\tools\verify_endminf_uber_capture.py `
+  D:\fluffy-dump\scratch\reverse_engineering\endfield_capture\SESSION `
+  --sequence-contract `
+  --output D:\fluffy-dump\tmp\character_recovery\SESSION_uber_sequence.json
+```
+
+The sequence mode requires a complete cadence-valid graphics summary, every
+published frame's exact VS/PS constants and t0/t1/t2 bytes, one peak shader
+bracketed by ordinary shaders, stable shader-read ordinary lanes, and exact
+archived VS/Normal-PS/Peak-PS hashes.
+
+The native build also executes both retail Uber variants on WARP against a
+small deterministic synthetic RGBA16F source/R11 bloom fixture plus the exact
+captured CharInfo LUT, and pins the two output hashes. This proves shader
+execution, constant-buffer ABI, fixed state, and
+variant distinction; it is deliberately not presented as a retail-image
+fidelity fixture.
+
+`ValidateEndminfUberShaders.exe` also has a fail-closed full-resolution replay
+mode for diagnostic captures:
+
+```text
+ValidateEndminfUberShaders.exe LUT SOURCE_RGBA16F WIDTH HEIGHT OUTPUT_RGBA8 peak PS_B0 PS_B1
+```
+
+`PS_B0` and `PS_B1` are mandatory frame-local shader-declared ranges; replay
+never silently combines a retained source with the embedded packet from a
+different frame. Until the exact half-resolution R11 bloom payload is present,
+the replay binds a zero t1 and prints `bloom=zero`. The raw output is the
+pre-copy Uber render target and therefore retains the retail fullscreen
+orientation; vertically resolve it, or replay the following retail copy pass,
+before comparing it with the final backbuffer. This mode isolates missing
+bloom/downstream composition and is not a parity claim.
 
 ## M27 Unity-owned draw substitution
 
@@ -124,3 +175,16 @@ and PS
 `465a86bc25083537c7cfa6d8f481253d907a29e4097fc5ce378d080083e25b57`.
 Unknown hashes remain fail-closed. `RunM14Observation` validates live Unity
 substitution and writes its callback inventory under project-local scratch.
+
+## Endminf M31 fixed state
+
+The split M31 native draw has its own fixed-function contract; it must not
+reuse M14 state. `M31FixedStateContract.h` owns the exact point-clamp and
+linear-wrap samplers, independent SceneColor/SceneMV blends, reversed-Z
+read-only depth/stencil state, and raster state recovered from the serialized
+`HGRP/Effect/VFXBaseV2` pass, `M_fx_endminm_gfx_31`, and retained runtime
+evidence. `VerifyM31FixedState.exe`, run by `build_plugin.ps1`, creates all of
+those objects on WARP and proves the D32/S8 read-only DSV can remain bound while
+its depth plane is simultaneously sampled. The next complete hardened retail
+capture remains the authority for admitting the exact live DSV flags and MRT1
+descriptor.

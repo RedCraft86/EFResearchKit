@@ -3,6 +3,7 @@
 #include <d3d11.h>
 
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -59,6 +60,10 @@ int main(int argc, char** argv)
     using SetTextures = std::uint32_t (*)(void*, void*, void*);
     using QueuePacket = std::uint32_t (*)(
         float, float, float, float, float, float, float);
+    using QueuePacketVariant = std::uint32_t (*)(
+        std::uint32_t, float, float, float, float, float, float, float);
+    using InspectPacket = std::uint32_t (*)(
+        std::uint32_t, std::uint32_t*, float*);
     using Reset = void (*)();
     const GetUint payloadReady = RequiredExport<GetUint>(
         module, "EndfieldOriginalDxbcGetEndminfUberPayloadReady");
@@ -68,6 +73,10 @@ int main(int argc, char** argv)
         module, "EndfieldOriginalDxbcSetEndminfUberTextureResources");
     const QueuePacket queue = RequiredExport<QueuePacket>(
         module, "EndfieldOriginalDxbcQueueEndminfUberPacket");
+    const QueuePacketVariant queueVariant = RequiredExport<QueuePacketVariant>(
+        module, "EndfieldOriginalDxbcQueueEndminfUberPacketVariant");
+    const InspectPacket inspectPacket = RequiredExport<InspectPacket>(
+        module, "EndfieldOriginalDxbcInspectEndminfUberQueuedPacket");
     const Reset reset = RequiredExport<Reset>(
         module, "EndfieldOriginalDxbcResetEndminfUberRuntimeState");
     const GetUint drawCount = RequiredExport<GetUint>(
@@ -79,7 +88,9 @@ int main(int argc, char** argv)
     const GetUint failureStage = RequiredExport<GetUint>(
         module, "EndfieldOriginalDxbcGetEndminfUberFailureStage");
     if (payloadReady == nullptr || getEvent == nullptr || setTextures == nullptr ||
-        queue == nullptr || reset == nullptr || drawCount == nullptr ||
+        queue == nullptr || queueVariant == nullptr || inspectPacket == nullptr ||
+        reset == nullptr ||
+        drawCount == nullptr ||
         failureCount == nullptr || lastResult == nullptr || failureStage == nullptr)
     {
         FreeLibrary(module);
@@ -124,6 +135,16 @@ int main(int argc, char** argv)
         }
         reset();
 
+        if (queueVariant(
+                3u, 1920.0f, 1080.0f, 1.0f,
+                0.5f, 0.5f, 0.1f, 1.0f) != 0u ||
+            failureCount() != 1u || failureStage() != 402u)
+        {
+            FreeLibrary(module);
+            return 9;
+        }
+        reset();
+
         ID3D11Device* device = nullptr;
         ID3D11DeviceContext* context = nullptr;
         D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
@@ -134,11 +155,11 @@ int main(int argc, char** argv)
         ID3D11Texture2D* textures[3] = {};
         if (SUCCEEDED(result))
             result = CreateTexture(
-                device, 1920u, 1080u, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                device, 1280u, 1024u, DXGI_FORMAT_R16G16B16A16_FLOAT,
                 &textures[0]);
         if (SUCCEEDED(result))
             result = CreateTexture(
-                device, 960u, 540u, DXGI_FORMAT_R11G11B10_FLOAT,
+                device, 640u, 512u, DXGI_FORMAT_R11G11B10_FLOAT,
                 &textures[1]);
         if (SUCCEEDED(result))
             result = CreateTexture(
@@ -152,38 +173,51 @@ int main(int argc, char** argv)
             if (context != nullptr) context->Release();
             if (device != nullptr) device->Release();
             FreeLibrary(module);
-            return 9;
+            return 10;
         }
 
         std::uint32_t queuedIds[64] = {};
         for (std::size_t index = 0; index < 64; ++index)
         {
-            queuedIds[index] = queue(
-                1920.0f, 1080.0f, 1.0f,
+            const std::uint32_t variant =
+                static_cast<std::uint32_t>(index % 3u);
+            queuedIds[index] = queueVariant(
+                variant,
+                1280.0f, 1024.0f, 1.0f,
                 0.5f, 0.5f,
                 index == 0 ? 0.0f : 0.1f,
                 1.0f);
             if (queuedIds[index] == 0u)
             {
                 FreeLibrary(module);
-                return 10;
+                return 11;
             }
             for (std::size_t prior = 0; prior < index; ++prior)
             {
                 if (queuedIds[index] == queuedIds[prior])
                 {
                     FreeLibrary(module);
-                    return 11;
+                    return 12;
                 }
+            }
+            std::uint32_t queuedVariant = 99u;
+            float queuedAspect = 0.0f;
+            if (inspectPacket(
+                    queuedIds[index], &queuedVariant, &queuedAspect) != 1u ||
+                queuedVariant != variant ||
+                std::fabs(queuedAspect - 1.25f) > 0.000001f)
+            {
+                FreeLibrary(module);
+                return 13;
             }
         }
         if (queue(
-                1920.0f, 1080.0f, 1.0f,
+                1280.0f, 1024.0f, 1.0f,
                 0.5f, 0.5f, 0.1f, 1.0f) != 0u ||
             failureCount() != 1u || failureStage() != 404u)
         {
             FreeLibrary(module);
-            return 12;
+            return 14;
         }
         reset();
         for (ID3D11Texture2D* texture : textures)
@@ -195,11 +229,13 @@ int main(int argc, char** argv)
         lastResult() != 0 || failureStage() != 0u)
     {
         FreeLibrary(module);
-        return 13;
+        return 15;
     }
     std::printf(
-        "payload_ready=%u exports=9 fail_closed_stage=%u ring_tested=%u reset=1\n",
-        expectedReady, expectedStage, expectedReady != 0u ? 64u : 0u);
+        "payload_ready=%u exports=11 fail_closed_stage=%u ring_tested=%u "
+        "variants_inspected=%u aspect_1280x1024=1.25 reset=1\n",
+        expectedReady, expectedStage, expectedReady != 0u ? 64u : 0u,
+        expectedReady != 0u ? 64u : 0u);
     FreeLibrary(module);
     return 0;
 }

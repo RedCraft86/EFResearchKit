@@ -54,6 +54,8 @@ namespace EndfieldGraphShaderLabEditor
         private const string RecordingGyroscopeInputY = "0.9305556";
         private const string CleanReferenceGyroscopeTrackEnvironment =
             "ENDFIELD_ENDMINF_CAPTURE_CLEAN_REFERENCE_GYROSCOPE_TRACK";
+        private const string CleanReferenceGyroscopeTrackOffsetFramesEnvironment =
+            "ENDFIELD_ENDMINF_CAPTURE_GYROSCOPE_TRACK_OFFSET_FRAMES";
         // Cursor observations from the UI-free 1920x1080 clean-reference
         // decode. Source frame 90 is requested animation time zero. The
         // retail UIGyroscopeEffect sees these changes at PreLate and replaces
@@ -76,8 +78,10 @@ namespace EndfieldGraphShaderLabEditor
         private const string RecordingVisualPostPreRollSeconds = "0";
         // RestartOverviewFromSelection is invoked on an editor update edge;
         // the body Animation has advanced by two 60-Hz simulation ticks before
-        // the first renderable sample. Offset later requested timestamps so
-        // saved frame N observes clip phase N/Fps instead of N/Fps + 2/60.
+        // the first renderable sample. The ordinary/video sequences therefore
+        // use an internal threshold two ticks before their authored target.
+        // The initial clamped thresholds can drain over several editor updates,
+        // so reports must keep target, threshold, and actual clocks distinct.
         private const float PlayModeClipLeadSeconds = 2f / SimulationFps;
         // The recovered entrance is almost six seconds long. Capture far
         // enough past its handoff to prove that the actual viewer reaches and
@@ -118,12 +122,19 @@ namespace EndfieldGraphShaderLabEditor
             // content-invalid screen-shadow attachment diagnostic. Enabling it
             // produces an upside-down body mask over the portrait and regresses
             // the aligned peak substantially, so it is not presentation policy.
+            // The four retained opening-strip packets now own only their exact
+            // bounded phases and validate the native draw synchronously. Their
+            // unresolved temporal accumulation remains a visible downstream
+            // gap, not a reason to substitute the rectangle approximation.
             // M13 packets 1/2 measurably close the aligned burst shell. Packet
-            // 0 is rejected by the runtime; M14 remains diagnostic-only.
+            // 0 is rejected by the runtime; M14 remains diagnostic-only. M31
+            // transport validates, but its current replay sees unclosed live
+            // SceneColor chronology and mildly regresses the aligned result,
+            // so it remains an explicit diagnostic rather than presentation.
             "ENDFIELD_RECOVERED_ENDMINF_M13_EXACT",
             EndminfM21ExactEnvironment,
-            "ENDFIELD_RECOVERED_ENDMINF_M31_PEAK_EXACT",
             "ENDFIELD_RECOVERED_ENDMINF_UBER_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_OPENING_STRIP_EXACT",
         };
         private const string Suikuai1Material =
             "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf/Effects/Overview/Materials/M_fx_common_teleport_03_p19E6A2A7AE736DA5.mat";
@@ -138,7 +149,9 @@ namespace EndfieldGraphShaderLabEditor
         private static Camera camera;
         private static string output;
         private static float[] requestedTimes;
+        private static float[] targetTimes;
         private static bool replayCleanReferenceGyroscopeTrack;
+        private static int cleanReferenceGyroscopeTrackOffsetFrames;
         private static int nextGyroscopeTrackSample;
 
         private readonly struct GyroscopeTrackSample
@@ -175,7 +188,7 @@ namespace EndfieldGraphShaderLabEditor
         [Serializable]
         private sealed class Report
         {
-            public string schema = "endfield.endminf-viewer-playmode-sequence.v8";
+            public string schema = "endfield.endminf-viewer-playmode-sequence.v18";
             public string status = "ok";
             public int width = captureWidth;
             public int height = captureHeight;
@@ -220,7 +233,23 @@ namespace EndfieldGraphShaderLabEditor
             public bool observedEndminfBloomR11;
             public bool exactEndminfUberRequested;
             public bool observedExactEndminfUberSubmitted;
+            public bool observedExactEndminfUberValidated;
             public string exactEndminfUberFailure;
+            public bool observedOpeningStripCompatibilityBeforeTemporal;
+            public bool observedOpeningStripSceneMVBeforeTemporal;
+            public bool endminfOpeningStripExactRequested;
+            public bool observedEndminfOpeningStripExactActive;
+            public bool observedEndminfOpeningStripExactSubmitted;
+            public bool observedEndminfOpeningStripExactValidated;
+            public string endminfOpeningStripExactFailure;
+            public bool unityPublicNgxProxyRequested;
+            public bool observedUnityPublicNgxProxySubmitted;
+            public bool observedUnityPublicNgxProxyValidated;
+            public string unityPublicNgxProxyFailure;
+            public bool endminfM31ExactRequested;
+            public bool observedEndminfM31ExactSubmitted;
+            public bool observedEndminfM31ExactValidated;
+            public string endminfM31ExactFailure;
             public bool observedPreGBufferDepthOwnerReady;
             public bool observedCanonicalCharacterPreGBufferReady;
             public bool deferredExactConsumerRequested;
@@ -230,6 +259,7 @@ namespace EndfieldGraphShaderLabEditor
             public string gyroscopeInputX;
             public string gyroscopeInputY;
             public bool cleanReferenceGyroscopeTrack;
+            public int cleanReferenceGyroscopeTrackOffsetFrames;
             public float visualPostPreRollSeconds;
             public bool retainedSkinningDiagnostic;
             public FrameRow[] frames;
@@ -239,8 +269,10 @@ namespace EndfieldGraphShaderLabEditor
         private sealed class FrameRow
         {
             public int index;
+            public float targetSeconds;
             public float requestedSeconds;
             public float actualSeconds;
+            public float phaseErrorSeconds;
             public float endminfPostSeconds;
             public float endminfPostChromaticIntensity;
             public float endminfPostRadialIntensity;
@@ -249,9 +281,23 @@ namespace EndfieldGraphShaderLabEditor
             public Vector2 endminfPostCenterViewport;
             public string endminfPostSourceGraphicsFormat;
             public string endminfBloomGraphicsFormat;
+            public int endminfBloomWidth;
+            public int endminfBloomHeight;
             public bool exactEndminfUberRequested;
             public bool exactEndminfUberSubmitted;
+            public bool exactEndminfUberValidated;
+            public string exactEndminfUberVariant;
             public string exactEndminfUberFailure;
+            public bool openingStripCompatibilityBeforeTemporal;
+            public bool openingStripSceneMVBeforeTemporal;
+            public bool unityPublicNgxProxyRequested;
+            public bool unityPublicNgxProxySubmitted;
+            public bool unityPublicNgxProxyValidated;
+            public string unityPublicNgxProxyFailure;
+            public Vector2 unityPublicNgxProxyJitterOffset;
+            public int unityPublicNgxProxyJitterPhase;
+            public int unityPublicNgxProxyIndicatorInvertAxisX;
+            public int unityPublicNgxProxyIndicatorInvertAxisY;
             public bool endminfOpeningStripExactRequested;
             public bool endminfOpeningStripExactActive;
             public bool endminfOpeningStripExactSubmitted;
@@ -279,6 +325,14 @@ namespace EndfieldGraphShaderLabEditor
             public bool endminfM28ExactSubmitted;
             public bool endminfM28ExactValidated;
             public string endminfM28ExactFailure;
+            public bool endminfM31ExactRequested;
+            public bool endminfM31ExactExpected;
+            public bool endminfM31ExactActive;
+            public bool endminfM31ExactSubmitted;
+            public bool endminfM31ExactValidated;
+            public int endminfM31ExactPacket;
+            public int endminfM31ExactSourceFrame;
+            public string endminfM31ExactFailure;
             public string file;
             public int effectRootCount;
             public int admittedRenderers;
@@ -560,15 +614,11 @@ namespace EndfieldGraphShaderLabEditor
                 "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT",
                 IncludeBackgroundPortrait ? "1" : "0");
             EndfieldRecoveredCharInfoPresentation.RefreshStandaloneSelection();
-            // Character refreshes rebuild the source actor prefab and can
-            // remove its generated overview-effect requests/spawner. Restore
-            // the complete source-retained entrance-effect contract before the
-            // scene instantiates the actor. The exact source stage is
-            // disposable and may be absent between recovery batches, so the
-            // binding builder preserves the existing effect prefabs and then
-            // repairs the ten certified primary-rock material rows from their
-            // pinned PathIDs and direct tracked assets. This remains opt-in and
-            // does not broaden the four separately blocked non-primary rows.
+            // Character refreshes can replace the generated actor and effect
+            // bindings. Canonical and targeted captures must rebuild all four
+            // roots from the fingerprint-gated source stage; never preserve a
+            // stale generated prefab when that source is missing or drifted.
+            EndfieldEndminfOverviewEffectImporter.BuildAndValidate();
             EndfieldEndminfOverviewEffectBindingBuilder.BuildAndValidate();
             // The overview rebuild refreshes transient source prefabs. Restore
             // the direct LitEffect rows afterward so both compatibility and
@@ -619,6 +669,8 @@ namespace EndfieldGraphShaderLabEditor
             replayCleanReferenceGyroscopeTrack =
                 Environment.GetEnvironmentVariable(
                     CleanReferenceGyroscopeTrackEnvironment) == "1";
+            cleanReferenceGyroscopeTrackOffsetFrames =
+                ParseGyroscopeTrackOffsetFrames();
             nextGyroscopeTrackSample = 0;
             bool fineWindow = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_FINE_WINDOW") == "1";
@@ -691,20 +743,23 @@ namespace EndfieldGraphShaderLabEditor
                         ? "../scratch/character_recovery/endminf_viewer_playmode_fine_window"
                         : "../scratch/character_recovery/endminf_viewer_playmode_sequence"))
                 : Path.GetFullPath(requestedOutput);
-            requestedTimes = targetedTimes
+            targetTimes = targetedTimes
                 ? ParseRequestedTimes(requestedTimesText)
                 : capturePostStages
                 ? new[] { 4.40f, 4.4333334f, 4.4666667f, 4.50f, 4.55f }
                 : capturePrePostHdr
-                ? Enumerable.Range(0, 19).Select(value =>
-                    Mathf.Max(0f, value / Fps - PlayModeClipLeadSeconds)).ToArray()
+                ? Enumerable.Range(0, 19).Select(value => value / Fps).ToArray()
                 : videoExport
                 ? Enumerable.Range(0, VideoFrameCount).Select(value =>
-                    Mathf.Max(0f, value / SimulationFps - PlayModeClipLeadSeconds)).ToArray()
+                    value / SimulationFps).ToArray()
                 : fineWindow
                 ? Enumerable.Range(0, 25).Select(value => 4.30f + value / 60f).ToArray()
-                : Enumerable.Range(0, FrameCount).Select(value =>
-                    Mathf.Max(0f, value / Fps - PlayModeClipLeadSeconds)).ToArray();
+                : Enumerable.Range(0, FrameCount).Select(value => value / Fps).ToArray();
+            requestedTimes = capturePrePostHdr || videoExport ||
+                (!targetedTimes && !capturePostStages && !fineWindow)
+                ? targetTimes.Select(value =>
+                    Mathf.Max(0f, value - PlayModeClipLeadSeconds)).ToArray()
+                : targetTimes.ToArray();
             Directory.CreateDirectory(output);
             EditorApplication.playModeStateChanged += State;
             EditorApplication.EnterPlaymode();
@@ -760,6 +815,7 @@ namespace EndfieldGraphShaderLabEditor
                 "ENDFIELD_RECOVERED_ENDMINF_M13_EXACT",
                 "ENDFIELD_RECOVERED_ENDMINF_M14_EXACT",
                 "ENDFIELD_RECOVERED_ENDMINF_M27_PRESENTATION",
+                "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER",
                 "ENDFIELD_RECOVERED_DEFERRED_GBUFFER_FRAME",
                 SphereOutsidePresentationEnvironment,
                 "ENDFIELD_RECOVERED_CANONICAL_BINNING_BUFFER",
@@ -895,8 +951,13 @@ namespace EndfieldGraphShaderLabEditor
             if (requestedTimes == null || next >= requestedTimes.Length)
                 return;
             float requested = requestedTimes[next];
+            float target = targetTimes[next];
             float elapsed = Time.time - started;
-            ReplayCleanReferenceGyroscopeTrack(elapsed);
+            // The retained cursor samples are keyed to the clean reference's
+            // requested animation clock (source frame 90 = requested zero),
+            // not to editor wall/play elapsed time. The latter leads requested
+            // time by three samples in canonical video capture.
+            ReplayCleanReferenceGyroscopeTrack(requested);
             if (elapsed + 0.0001f < requested) return;
             CharacterRecoveryViewerUI.TryGetSelectedActorRoot(out Transform actor);
             if (actor == null || camera == null) return;
@@ -1026,8 +1087,37 @@ namespace EndfieldGraphShaderLabEditor
             Color32[] pixels = Render(camera);
             // ReadPixels in Render synchronizes this focused D3D11 capture, so
             // the render-thread plugin callback must be observable here. Do
-            // not accept a submitted event as proof that the exact M13 packet
-            // actually drew.
+            // not accept a submitted event as proof that an exact packet drew.
+            if (HGCompatRenderPipeline.LastRecoveredEndminfExactUberRequested &&
+                HGCompatRenderPipeline.LastRecoveredEndminfExactUberSubmitted &&
+                !HGCompatRenderPipeline
+                    .ValidateRecoveredEndminfExactUberAfterSynchronizedRender(
+                        out string exactUberValidationFailure))
+            {
+                throw new InvalidOperationException(
+                    "Exact Endminf Uber synchronized validation failed: " +
+                    exactUberValidationFailure);
+            }
+            if (HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyRequested)
+            {
+                if (!HGCompatRenderPipeline
+                        .LastRecoveredUnityPublicNgxProxySubmitted)
+                {
+                    throw new InvalidOperationException(
+                        "UnityPublicNgxProxy submission failed: " +
+                        HGCompatRenderPipeline
+                            .LastRecoveredUnityPublicNgxProxyFailure);
+                }
+                if (!HGCompatRenderPipeline
+                        .ValidateRecoveredUnityPublicNgxProxyAfterSynchronizedRender(
+                            out string ngxValidationFailure))
+                {
+                    throw new InvalidOperationException(
+                        "UnityPublicNgxProxy synchronized validation failed: " +
+                        ngxValidationFailure);
+                }
+            }
             if (EndfieldRecoveredEndminfM18PeakExactRuntime.Requested &&
                 EndfieldRecoveredEndminfM18PeakExactRuntime.HasPendingValidation &&
                 !EndfieldRecoveredEndminfM18PeakExactRuntime
@@ -1236,7 +1326,12 @@ namespace EndfieldGraphShaderLabEditor
                 }
             }
             Frames.Add(new FrameRow {
-                index = next, requestedSeconds = requested, actualSeconds = elapsed, file = file,
+                index = next,
+                targetSeconds = target,
+                requestedSeconds = requested,
+                actualSeconds = elapsed,
+                phaseErrorSeconds = elapsed - target,
+                file = file,
                 endminfPostSeconds = endminfPostSeconds,
                 endminfPostChromaticIntensity =
                     endminfPostState.chromaticIntensity,
@@ -1250,12 +1345,40 @@ namespace EndfieldGraphShaderLabEditor
                 endminfBloomGraphicsFormat =
                     HGCompatRenderPipeline
                         .LastRecoveredEndminfBloomGraphicsFormat.ToString(),
+                endminfBloomWidth = HGCompatRenderPipeline
+                    .LastRecoveredEndminfBloomWidth,
+                endminfBloomHeight = HGCompatRenderPipeline
+                    .LastRecoveredEndminfBloomHeight,
                 exactEndminfUberRequested = HGCompatRenderPipeline
                     .LastRecoveredEndminfExactUberRequested,
                 exactEndminfUberSubmitted = HGCompatRenderPipeline
                     .LastRecoveredEndminfExactUberSubmitted,
+                exactEndminfUberValidated = HGCompatRenderPipeline
+                    .LastRecoveredEndminfExactUberValidated,
+                exactEndminfUberVariant = HGCompatRenderPipeline
+                    .LastRecoveredEndminfExactUberVariant,
                 exactEndminfUberFailure = HGCompatRenderPipeline
                     .LastRecoveredEndminfExactUberFailure,
+                openingStripCompatibilityBeforeTemporal = HGCompatRenderPipeline
+                    .LastRecoveredEndminfOpeningStripCompatibilityApplied,
+                openingStripSceneMVBeforeTemporal = HGCompatRenderPipeline
+                    .LastRecoveredEndminfOpeningStripSceneMVApplied,
+                unityPublicNgxProxyRequested = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyRequested,
+                unityPublicNgxProxySubmitted = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxySubmitted,
+                unityPublicNgxProxyValidated = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyValidated,
+                unityPublicNgxProxyFailure = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyFailure,
+                unityPublicNgxProxyJitterOffset = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyJitterOffset,
+                unityPublicNgxProxyJitterPhase = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyJitterPhase,
+                unityPublicNgxProxyIndicatorInvertAxisX = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyIndicatorInvertAxisX,
+                unityPublicNgxProxyIndicatorInvertAxisY = HGCompatRenderPipeline
+                    .LastRecoveredUnityPublicNgxProxyIndicatorInvertAxisY,
                 endminfOpeningStripExactRequested =
                     EndfieldRecoveredEndminfOpeningStripExactRuntime.Requested,
                 endminfOpeningStripExactActive =
@@ -1312,6 +1435,25 @@ namespace EndfieldGraphShaderLabEditor
                     EndfieldRecoveredEndminfM28PeakExactRuntime.ValidatedThisFrame,
                 endminfM28ExactFailure =
                     EndfieldRecoveredEndminfM28PeakExactRuntime.CurrentFailure,
+                endminfM31ExactRequested =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime.Requested,
+                endminfM31ExactExpected =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime
+                        .IsCapturedPhase(activeBodyClipTime),
+                endminfM31ExactActive =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime.ActiveThisFrame,
+                endminfM31ExactSubmitted =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime.SubmittedThisFrame,
+                endminfM31ExactValidated =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime.ValidatedThisFrame,
+                endminfM31ExactPacket =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime
+                        .SelectedPacketThisFrame,
+                endminfM31ExactSourceFrame =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime
+                        .SourceFrameThisFrame,
+                endminfM31ExactFailure =
+                    EndfieldRecoveredEndminfM31PeakExactRuntime.Failure,
                 effectRootCount = roots.Length, admittedRenderers = renderers.Count(value => value.enabled),
                 activeAdmittedRenderers = renderers.Count(value => value.enabled && value.gameObject.activeInHierarchy),
                 admittedAliveParticles = renderers.Where(value => value.enabled && value.gameObject.activeInHierarchy)
@@ -1715,11 +1857,24 @@ namespace EndfieldGraphShaderLabEditor
                 missingObservations.Add(
                     "retail R11G11B10_FLOAT Uber bloom handoff");
             }
+            bool observedEndminfBloomDimensions =
+                Frames.Count > 0 && Frames.All(value =>
+                    value.endminfBloomWidth == Mathf.Max(captureWidth / 2, 1) &&
+                    value.endminfBloomHeight == Mathf.Max(captureHeight / 2, 1));
+            if (EndfieldEndminfVisualCompatibilityClock.Requested &&
+                !observedEndminfBloomDimensions)
+            {
+                missingObservations.Add(
+                    "half-source Endminf Uber bloom dimensions");
+            }
             bool exactEndminfUberRequested = Frames.Any(
                 value => value.exactEndminfUberRequested);
             bool observedExactEndminfUberSubmitted =
                 Frames.Count > 0 && Frames.Any(
                     value => value.exactEndminfUberSubmitted);
+            bool observedExactEndminfUberValidated =
+                Frames.Count > 0 && Frames.Any(
+                    value => value.exactEndminfUberValidated);
             // Capture 20260827T183054Z frame 1818 is the sole certified Uber
             // packet, at overview phase 4.350000 s. The runtime assembly keeps
             // its transport internal, so mirror only this evidence constant in
@@ -1732,25 +1887,130 @@ namespace EndfieldGraphShaderLabEditor
             bool exactEndminfUberRequirementReady =
                 !exactEndminfUberRequested ||
                 !capturedUberPhaseIncluded ||
-                observedExactEndminfUberSubmitted;
+                (observedExactEndminfUberSubmitted &&
+                 observedExactEndminfUberValidated);
             string exactEndminfUberFailure = Frames
                 .Select(value => value.exactEndminfUberFailure)
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
                 string.Empty;
+            bool observedOpeningStripCompatibilityBeforeTemporal = Frames.Any(
+                value => value.openingStripCompatibilityBeforeTemporal);
+            bool observedOpeningStripSceneMVBeforeTemporal = Frames.Any(
+                value => value.openingStripSceneMVBeforeTemporal);
+            bool endminfOpeningStripExactRequested = Frames.Any(
+                value => value.endminfOpeningStripExactRequested);
+            FrameRow[] expectedEndminfOpeningStripExactFrames = Frames.Where(
+                value => value.endminfOpeningStripExactRequested &&
+                    value.endminfOpeningStripExactActive).ToArray();
+            bool observedEndminfOpeningStripExactActive =
+                expectedEndminfOpeningStripExactFrames.Length > 0;
+            bool observedEndminfOpeningStripExactSubmitted =
+                observedEndminfOpeningStripExactActive &&
+                expectedEndminfOpeningStripExactFrames.All(value =>
+                    value.endminfOpeningStripExactSubmitted);
+            bool observedEndminfOpeningStripExactValidated =
+                observedEndminfOpeningStripExactActive &&
+                expectedEndminfOpeningStripExactFrames.All(value =>
+                    value.endminfOpeningStripExactValidated);
+            string endminfOpeningStripExactFailure = Frames
+                .Select(value => value.endminfOpeningStripExactFailure)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
+                string.Empty;
+            // The exact retained packet range is 0.1500 through 0.2500 s.
+            // Mirror only its endpoints here so a full/video capture cannot
+            // pass merely because a clock or selection defect activated no
+            // packet. Focused captures wholly outside that range remain valid.
+            bool endminfOpeningStripExactRangeIncluded =
+                Frames.Any(value => value.targetSeconds <= 0.15001f) &&
+                Frames.Any(value => value.targetSeconds >= 0.24999f);
+            bool endminfOpeningStripExactRequirementReady =
+                !endminfOpeningStripExactRequested ||
+                !endminfOpeningStripExactRangeIncluded ||
+                (observedEndminfOpeningStripExactActive &&
+                 observedEndminfOpeningStripExactSubmitted &&
+                 observedEndminfOpeningStripExactValidated);
+            if (!endminfOpeningStripExactRequirementReady)
+            {
+                missingObservations.Add(
+                    "exact Endminf opening-strip submission and synchronized validation" +
+                    (string.IsNullOrWhiteSpace(endminfOpeningStripExactFailure)
+                        ? string.Empty
+                        : " (" + endminfOpeningStripExactFailure + ")"));
+            }
             if (!exactEndminfUberRequirementReady)
             {
                 missingObservations.Add(
-                    "exact Endminf Uber native submission" +
+                    "exact Endminf Uber native submission and synchronized validation" +
                     (string.IsNullOrWhiteSpace(exactEndminfUberFailure)
                         ? string.Empty
                         : " (" + exactEndminfUberFailure + ")"));
+            }
+            bool endminfM31ExactRequested = Frames.Any(
+                value => value.endminfM31ExactRequested);
+            FrameRow[] expectedEndminfM31Frames = Frames.Where(value =>
+                value.endminfM31ExactRequested &&
+                value.endminfM31ExactExpected).ToArray();
+            bool observedEndminfM31ExactSubmitted =
+                expectedEndminfM31Frames.Length > 0 &&
+                expectedEndminfM31Frames.All(value =>
+                    value.endminfM31ExactActive &&
+                    value.endminfM31ExactSubmitted);
+            bool observedEndminfM31ExactValidated =
+                expectedEndminfM31Frames.Length > 0 &&
+                expectedEndminfM31Frames.All(value =>
+                    value.endminfM31ExactValidated);
+            string endminfM31ExactFailure = Frames
+                .Select(value => value.endminfM31ExactFailure)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
+                string.Empty;
+            bool endminfM31ExactRequirementReady =
+                !endminfM31ExactRequested ||
+                expectedEndminfM31Frames.Length == 0 ||
+                (observedEndminfM31ExactSubmitted &&
+                 observedEndminfM31ExactValidated);
+            if (!endminfM31ExactRequirementReady)
+            {
+                missingObservations.Add(
+                    "exact Endminf M31 split submission and synchronized validation" +
+                    (string.IsNullOrWhiteSpace(endminfM31ExactFailure)
+                        ? string.Empty
+                        : " (" + endminfM31ExactFailure + ")"));
+            }
+            bool unityPublicNgxProxyRequested = Frames.Any(
+                value => value.unityPublicNgxProxyRequested);
+            bool observedUnityPublicNgxProxySubmitted =
+                unityPublicNgxProxyRequested && Frames
+                    .Where(value => value.unityPublicNgxProxyRequested)
+                    .All(value => value.unityPublicNgxProxySubmitted);
+            bool observedUnityPublicNgxProxyValidated =
+                unityPublicNgxProxyRequested && Frames
+                    .Where(value => value.unityPublicNgxProxyRequested)
+                    .All(value => value.unityPublicNgxProxyValidated);
+            string unityPublicNgxProxyFailure = Frames
+                .Select(value => value.unityPublicNgxProxyFailure)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
+                string.Empty;
+            bool unityPublicNgxProxyRequirementReady =
+                !unityPublicNgxProxyRequested ||
+                (observedUnityPublicNgxProxySubmitted &&
+                 observedUnityPublicNgxProxyValidated);
+            if (!unityPublicNgxProxyRequirementReady)
+            {
+                missingObservations.Add(
+                    "UnityPublicNgxProxy submission and post-execution debug validation" +
+                    (string.IsNullOrWhiteSpace(unityPublicNgxProxyFailure)
+                        ? string.Empty
+                        : " (" + unityPublicNgxProxyFailure + ")"));
             }
             bool requiredCaptureContractReady =
                 charInfoBackgroundIncluded &&
                 backgroundPortraitIncluded &&
                 observedEndminfPostSourceRgba16 &&
                 observedEndminfBloomR11 &&
-                exactEndminfUberRequirementReady;
+                exactEndminfUberRequirementReady &&
+                endminfOpeningStripExactRequirementReady &&
+                endminfM31ExactRequirementReady &&
+                unityPublicNgxProxyRequirementReady;
             bool targetedTimes = !string.IsNullOrWhiteSpace(
                 Environment.GetEnvironmentVariable(RequestedTimesEnvironment));
             Report report = new Report {
@@ -1812,7 +2072,35 @@ namespace EndfieldGraphShaderLabEditor
                 exactEndminfUberRequested = exactEndminfUberRequested,
                 observedExactEndminfUberSubmitted =
                     observedExactEndminfUberSubmitted,
+                observedExactEndminfUberValidated =
+                    observedExactEndminfUberValidated,
                 exactEndminfUberFailure = exactEndminfUberFailure,
+                observedOpeningStripCompatibilityBeforeTemporal =
+                    observedOpeningStripCompatibilityBeforeTemporal,
+                observedOpeningStripSceneMVBeforeTemporal =
+                    observedOpeningStripSceneMVBeforeTemporal,
+                endminfOpeningStripExactRequested =
+                    endminfOpeningStripExactRequested,
+                observedEndminfOpeningStripExactActive =
+                    observedEndminfOpeningStripExactActive,
+                observedEndminfOpeningStripExactSubmitted =
+                    observedEndminfOpeningStripExactSubmitted,
+                observedEndminfOpeningStripExactValidated =
+                    observedEndminfOpeningStripExactValidated,
+                endminfOpeningStripExactFailure =
+                    endminfOpeningStripExactFailure,
+                endminfM31ExactRequested = endminfM31ExactRequested,
+                observedEndminfM31ExactSubmitted =
+                    observedEndminfM31ExactSubmitted,
+                observedEndminfM31ExactValidated =
+                    observedEndminfM31ExactValidated,
+                endminfM31ExactFailure = endminfM31ExactFailure,
+                unityPublicNgxProxyRequested = unityPublicNgxProxyRequested,
+                observedUnityPublicNgxProxySubmitted =
+                    observedUnityPublicNgxProxySubmitted,
+                observedUnityPublicNgxProxyValidated =
+                    observedUnityPublicNgxProxyValidated,
+                unityPublicNgxProxyFailure = unityPublicNgxProxyFailure,
                 observedPreGBufferDepthOwnerReady =
                     observedPreGBufferDepthOwnerReady,
                 observedCanonicalCharacterPreGBufferReady =
@@ -1830,6 +2118,8 @@ namespace EndfieldGraphShaderLabEditor
                     EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable),
                 cleanReferenceGyroscopeTrack =
                     replayCleanReferenceGyroscopeTrack,
+                cleanReferenceGyroscopeTrackOffsetFrames =
+                    cleanReferenceGyroscopeTrackOffsetFrames,
                 // The _02 owner is destroyed before the full sequence report
                 // is published, which deliberately clears the live clock.
                 // Preserve the observed first-frame phase difference instead.
@@ -1908,7 +2198,8 @@ namespace EndfieldGraphShaderLabEditor
             EditorApplication.ExitPlaymode();
         }
 
-        private static void ReplayCleanReferenceGyroscopeTrack(float elapsed)
+        private static void ReplayCleanReferenceGyroscopeTrack(
+            float requestedClockSeconds)
         {
             if (!replayCleanReferenceGyroscopeTrack || camera == null)
                 return;
@@ -1921,7 +2212,9 @@ namespace EndfieldGraphShaderLabEditor
             {
                 GyroscopeTrackSample sample =
                     CleanReferenceGyroscopeTrack[nextGyroscopeTrackSample];
-                if (elapsed + 0.0001f < sample.requestedSeconds)
+                float scheduledSeconds = sample.requestedSeconds +
+                    cleanReferenceGyroscopeTrackOffsetFrames / SimulationFps;
+                if (requestedClockSeconds + 0.0001f < scheduledSeconds)
                     break;
                 tween.RetargetNormalizedMouseInput(
                     sample.normalizedMouseX,
@@ -2419,6 +2712,26 @@ namespace EndfieldGraphShaderLabEditor
                     environment + " must be an integer from 64 through 8192.");
             }
             return dimension;
+        }
+
+        private static int ParseGyroscopeTrackOffsetFrames()
+        {
+            string value = Environment.GetEnvironmentVariable(
+                CleanReferenceGyroscopeTrackOffsetFramesEnvironment);
+            if (string.IsNullOrWhiteSpace(value))
+                return 0;
+            if (!int.TryParse(
+                    value.Trim(),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int frames) ||
+                frames < -2 || frames > 2)
+            {
+                throw new InvalidOperationException(
+                    CleanReferenceGyroscopeTrackOffsetFramesEnvironment +
+                    " must be an integer from -2 through 2.");
+            }
+            return frames;
         }
 
         private static float[] ParseRequestedTimes(string value)

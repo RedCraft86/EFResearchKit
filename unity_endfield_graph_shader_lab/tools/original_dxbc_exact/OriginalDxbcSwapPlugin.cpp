@@ -28,6 +28,7 @@
 #include "M29CapturePayload.generated.h"
 #include "M30CapturePayload.generated.h"
 #include "M31PeakCapturePayload.generated.h"
+#include "M31FixedStateContract.h"
 #include "OpeningStripCapturePayload.generated.h"
 #include "VFXBaseV2PeakCohortPayload.generated.h"
 #include "M27SubstitutionRegistry.h"
@@ -116,14 +117,20 @@ std::atomic<std::uint32_t> g_m14DrawCount{0};
 std::atomic<std::uint32_t> g_m14FailureCount{0};
 std::atomic<HRESULT> g_m14LastResult{S_OK};
 
-ID3D11Buffer* g_m31PeakVertexBuffers[g_EndfieldM31PeakPacketCount] = {};
-ID3D11Buffer* g_m31PeakSecondaryBuffers[g_EndfieldM31PeakPacketCount] = {};
-ID3D11Buffer* g_m31PeakIndexBuffers[g_EndfieldM31PeakPacketCount] = {};
-ID3D11Buffer* g_m31PeakVertexConstantBuffers[g_EndfieldM31PeakPacketCount][5] = {};
-ID3D11Buffer* g_m31PeakPixelConstantBuffers[g_EndfieldM31PeakPacketCount][4] = {};
+ID3D11Buffer* g_m31PeakVertexBuffers[g_EndfieldM31PeakDrawPayloadCount] = {};
+ID3D11Buffer* g_m31PeakSecondaryBuffers[g_EndfieldM31PeakDrawPayloadCount] = {};
+ID3D11Buffer* g_m31PeakIndexBuffers[g_EndfieldM31PeakDrawPayloadCount] = {};
+ID3D11Buffer* g_m31PeakVertexConstantBuffers[g_EndfieldM31PeakDrawPayloadCount][5] = {};
+ID3D11Buffer* g_m31PeakPixelConstantBuffers[g_EndfieldM31PeakDrawPayloadCount][4] = {};
 ID3D11Texture2D* g_m31PeakMainTexture = nullptr;
 ID3D11ShaderResourceView* g_m31PeakMainView = nullptr;
+ID3D11SamplerState* g_m31PeakSamplers[2] = {};
+ID3D11BlendState* g_m31PeakBlendState = nullptr;
+ID3D11DepthStencilState* g_m31PeakDepthState = nullptr;
+ID3D11RasterizerState* g_m31PeakRasterizerState = nullptr;
 std::atomic<std::uintptr_t> g_m31PeakDepthTexture{0};
+std::atomic<std::uint32_t> g_m31PeakTemporalPacketIndex{
+    (std::numeric_limits<std::uint32_t>::max)()};
 std::atomic<std::uint32_t> g_m31PeakDrawCount{0};
 std::atomic<std::uint32_t> g_m31PeakFailureCount{0};
 std::atomic<HRESULT> g_m31PeakLastResult{S_OK};
@@ -363,6 +370,9 @@ constexpr std::size_t kEndminfUberPsB1Bytes = 26u * 16u;
 static_assert(g_EndfieldUberVsB0Size == kEndminfUberVsB0Bytes);
 static_assert(g_EndfieldUberPsB0Size == kEndminfUberPsB0Bytes);
 static_assert(g_EndfieldUberPsB1Size == kEndminfUberPsB1Bytes);
+static_assert(g_EndfieldUberEarlyVsB0Size == kEndminfUberVsB0Bytes);
+static_assert(g_EndfieldUberEarlyPsB0Size == kEndminfUberPsB0Bytes);
+static_assert(g_EndfieldUberEarlyPsB1Size == kEndminfUberPsB1Bytes);
 static_assert(g_EndfieldM30PayloadPrepared);
 static_assert(g_EndfieldM21PeakPayloadPrepared);
 static_assert(g_EndfieldM21PeakVertexStride == 52u);
@@ -392,9 +402,19 @@ static_assert(g_EndfieldM29TextureT0Size == 65536u);
 static_assert(g_EndfieldM29TextureT1Size == 262144u);
 static_assert(g_EndfieldM31PeakPayloadPrepared);
 static_assert(g_EndfieldM31PeakDepthContractReady);
-static_assert(g_EndfieldM31PeakPacketCount == 2u);
-static_assert(g_EndfieldM31PeakSplitEventCount ==
-    g_EndfieldM31PeakPacketCount);
+static_assert(g_EndfieldM31PeakTemporalPacketCount == 9u);
+static_assert(g_EndfieldM31PeakDrawPayloadCount == 18u);
+static_assert(g_EndfieldM31PeakMaxEventCount == 3u);
+static_assert(g_EndfieldM31PeakTemporalPackets[0].scheduleProfile ==
+        g_EndfieldM31PeakScheduleQueue3000Interval2 &&
+    g_EndfieldM31PeakTemporalPackets[0].chronologyValidated);
+static_assert(g_EndfieldM31PeakTemporalPackets[6].scheduleProfile ==
+        g_EndfieldM31PeakScheduleQueue3000Interval2 &&
+    g_EndfieldM31PeakTemporalPackets[6].chronologyValidated);
+static_assert(g_EndfieldM31PeakTemporalPackets[7].drawCount == 3u &&
+    g_EndfieldM31PeakTemporalPackets[7].scheduleProfile ==
+        g_EndfieldM31PeakScheduleQueue3000ThenPostM18_3 &&
+    !g_EndfieldM31PeakTemporalPackets[7].chronologyValidated);
 static_assert(g_EndfieldM31PeakTextureT1Size == 65536u);
 static_assert(g_EndfieldVFXPeakPayloadPrepared);
 static_assert(g_EndfieldVFXPeakDrawCount == 15u);
@@ -407,10 +427,18 @@ enum class EndminfUberPacketState : std::uint32_t
     Consuming = 2,
 };
 
+enum class EndminfUberVariant : std::uint32_t
+{
+    Normal = 0,
+    Peak = 1,
+    Early = 2,
+};
+
 struct EndminfUberPacket
 {
     std::atomic<EndminfUberPacketState> state{EndminfUberPacketState::Empty};
     std::atomic<std::uint32_t> eventId{0};
+    EndminfUberVariant variant = EndminfUberVariant::Peak;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::uint8_t vsB0[kEndminfUberVsB0Bytes] = {};
@@ -424,6 +452,7 @@ std::mutex g_endminfUberMutex;
 ID3D11Texture2D* g_endminfUberConfiguredTextures[3] = {};
 std::uint32_t g_endminfUberNextEventId = 1;
 ID3D11VertexShader* g_endminfUberVertexShader = nullptr;
+ID3D11PixelShader* g_endminfUberNormalPixelShader = nullptr;
 ID3D11PixelShader* g_endminfUberPixelShader = nullptr;
 ID3D11SamplerState* g_endminfUberSampler = nullptr;
 ID3D11BlendState* g_endminfUberBlendState = nullptr;
@@ -904,10 +933,15 @@ void ReleaseM14RuntimeResources()
         ReleaseM14Object(g_m30SecondaryBuffers[packet]);
         ReleaseM14Object(g_m30VertexBuffers[packet]);
     }
+    ReleaseM14Object(g_m31PeakRasterizerState);
+    ReleaseM14Object(g_m31PeakDepthState);
+    ReleaseM14Object(g_m31PeakBlendState);
+    for (ID3D11SamplerState*& sampler : g_m31PeakSamplers)
+        ReleaseM14Object(sampler);
     ReleaseM14Object(g_m31PeakMainView);
     ReleaseM14Object(g_m31PeakMainTexture);
     for (std::uint32_t packet = 0;
-         packet < g_EndfieldM31PeakPacketCount; ++packet)
+         packet < g_EndfieldM31PeakDrawPayloadCount; ++packet)
     {
         for (ID3D11Buffer*& buffer : g_m31PeakPixelConstantBuffers[packet])
             ReleaseM14Object(buffer);
@@ -1436,11 +1470,11 @@ HRESULT CreateM14RuntimeResources(ID3D11Device* device)
     }
 
     for (std::uint32_t packetIndex = 0;
-         packetIndex < g_EndfieldM31PeakPacketCount;
+         packetIndex < g_EndfieldM31PeakDrawPayloadCount;
          ++packetIndex)
     {
         const EndfieldM31PeakPacketPayload& packet =
-            g_EndfieldM31PeakPackets[packetIndex];
+            g_EndfieldM31PeakDrawPayloads[packetIndex];
         result = CreateM14ImmutableBuffer(
             device, D3D11_BIND_VERTEX_BUFFER, packet.vertices,
             static_cast<UINT>(packet.vertexBytes),
@@ -1493,6 +1527,34 @@ HRESULT CreateM14RuntimeResources(ID3D11Device* device)
     if (FAILED(result)) return result;
     result = device->CreateShaderResourceView(
         g_m31PeakMainTexture, nullptr, &g_m31PeakMainView);
+    if (FAILED(result)) return result;
+
+    // Exact M_fx_endminm_gfx_31 fixed state. The VFXBaseV2 ForwardOnly
+    // serialized pass supplies independent MRT blend declarations, while the
+    // material supplies the property-backed blend/depth/stencil/cull values.
+    D3D11_SAMPLER_DESC m31Sampler = EndfieldM31FixedState::Sampler(0u);
+    result = device->CreateSamplerState(
+        &m31Sampler, &g_m31PeakSamplers[0]);
+    if (FAILED(result)) return result;
+    m31Sampler = EndfieldM31FixedState::Sampler(1u);
+    result = device->CreateSamplerState(
+        &m31Sampler, &g_m31PeakSamplers[1]);
+    if (FAILED(result)) return result;
+
+    D3D11_BLEND_DESC m31Blend = EndfieldM31FixedState::Blend();
+    result = device->CreateBlendState(&m31Blend, &g_m31PeakBlendState);
+    if (FAILED(result)) return result;
+
+    D3D11_DEPTH_STENCIL_DESC m31Depth =
+        EndfieldM31FixedState::DepthStencil();
+    result = device->CreateDepthStencilState(
+        &m31Depth, &g_m31PeakDepthState);
+    if (FAILED(result)) return result;
+
+    D3D11_RASTERIZER_DESC m31Rasterizer =
+        EndfieldM31FixedState::Rasterizer();
+    result = device->CreateRasterizerState(
+        &m31Rasterizer, &g_m31PeakRasterizerState);
     if (FAILED(result)) return result;
 
     result = device->CreateVertexShader(
@@ -2239,6 +2301,14 @@ HRESULT CreateM14RuntimeResources(ID3D11Device* device)
         blend.RenderTarget[target].RenderTargetWriteMask =
             D3D11_COLOR_WRITE_ENABLE_ALL;
     }
+    // The live M_UI_charChoose_12 draw uses independent Target1 motion-vector
+    // blending. Its pixel shader publishes (0,0,1,0), so SrcColor/InvSrcColor
+    // preserves motion XY and replaces the B validity marker with one; One/One
+    // preserves destination alpha because source alpha is zero.
+    blend.RenderTarget[1].SrcBlend = D3D11_BLEND_SRC_COLOR;
+    blend.RenderTarget[1].DestBlend = D3D11_BLEND_INV_SRC_COLOR;
+    blend.RenderTarget[1].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blend.RenderTarget[1].DestBlendAlpha = D3D11_BLEND_ONE;
     result = device->CreateBlendState(&blend, &g_m14BlendState);
     if (FAILED(result))
         return result;
@@ -3527,6 +3597,140 @@ HRESULT CreateDiagnosticShaderResourceView(
     return result;
 }
 
+HRESULT CreateM31ReadOnlyDepthStencilView(
+    ID3D11Device* device,
+    ID3D11Resource* resource,
+    ID3D11DepthStencilView** view)
+{
+    if (device == nullptr || resource == nullptr || view == nullptr)
+        return E_POINTER;
+    *view = nullptr;
+    ID3D11Texture2D* texture = nullptr;
+    HRESULT result = resource->QueryInterface(
+        __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&texture));
+    if (FAILED(result) || texture == nullptr)
+        return FAILED(result) ? result : E_NOINTERFACE;
+    D3D11_TEXTURE2D_DESC textureDescription = {};
+    texture->GetDesc(&textureDescription);
+    texture->Release();
+    if (textureDescription.Format != DXGI_FORMAT_R32G8X24_TYPELESS ||
+        textureDescription.ArraySize != 1u ||
+        textureDescription.SampleDesc.Count != 1u ||
+        (textureDescription.BindFlags & D3D11_BIND_DEPTH_STENCIL) == 0u)
+        return E_INVALIDARG;
+    D3D11_DEPTH_STENCIL_VIEW_DESC description =
+        EndfieldM31FixedState::ReadOnlyDepthView();
+    return device->CreateDepthStencilView(resource, &description, view);
+}
+
+bool ValidateM31OutputCompatibility(
+    ID3D11RenderTargetView* const renderTargets[2],
+    ID3D11Resource* depthResource)
+{
+    if (renderTargets == nullptr || renderTargets[0] == nullptr ||
+        renderTargets[1] == nullptr || depthResource == nullptr)
+        return false;
+
+    D3D11_TEXTURE2D_DESC descriptions[3] = {};
+    for (UINT target = 0u; target < 2u; ++target)
+    {
+        D3D11_RENDER_TARGET_VIEW_DESC viewDescription = {};
+        renderTargets[target]->GetDesc(&viewDescription);
+        if (viewDescription.ViewDimension != D3D11_RTV_DIMENSION_TEXTURE2D)
+            return false;
+        ID3D11Resource* resource = nullptr;
+        ID3D11Texture2D* texture = nullptr;
+        renderTargets[target]->GetResource(&resource);
+        const HRESULT result = resource == nullptr ? E_POINTER :
+            resource->QueryInterface(
+                __uuidof(ID3D11Texture2D),
+                reinterpret_cast<void**>(&texture));
+        ReleaseM14Object(resource);
+        if (FAILED(result) || texture == nullptr)
+        {
+            ReleaseM14Object(texture);
+            return false;
+        }
+        texture->GetDesc(&descriptions[target]);
+        ReleaseM14Object(texture);
+    }
+    ID3D11Texture2D* depthTexture = nullptr;
+    const HRESULT depthResult = depthResource->QueryInterface(
+        __uuidof(ID3D11Texture2D),
+        reinterpret_cast<void**>(&depthTexture));
+    if (FAILED(depthResult) || depthTexture == nullptr)
+    {
+        ReleaseM14Object(depthTexture);
+        return false;
+    }
+    depthTexture->GetDesc(&descriptions[2]);
+    ReleaseM14Object(depthTexture);
+
+    for (UINT index = 0u; index < 3u; ++index)
+    {
+        const D3D11_TEXTURE2D_DESC& row = descriptions[index];
+        if (row.Width == 0u || row.Height == 0u || row.ArraySize != 1u ||
+            row.SampleDesc.Count != 1u)
+            return false;
+        if (index > 0u &&
+            (row.Width != descriptions[0].Width ||
+             row.Height != descriptions[0].Height ||
+             row.SampleDesc.Count != descriptions[0].SampleDesc.Count ||
+             row.SampleDesc.Quality != descriptions[0].SampleDesc.Quality))
+            return false;
+    }
+    return true;
+}
+
+bool ValidateM31BoundState(
+    ID3D11DeviceContext* context,
+    ID3D11RenderTargetView* const expectedTargets[2],
+    ID3D11DepthStencilView* expectedDepth,
+    ID3D11ShaderResourceView* const expectedViews[2])
+{
+    if (context == nullptr || expectedTargets == nullptr ||
+        expectedDepth == nullptr || expectedViews == nullptr)
+        return false;
+
+    ID3D11RenderTargetView* targets[2] = {};
+    ID3D11DepthStencilView* depth = nullptr;
+    ID3D11ShaderResourceView* views[2] = {};
+    ID3D11SamplerState* samplers[2] = {};
+    ID3D11BlendState* blend = nullptr;
+    ID3D11DepthStencilState* depthState = nullptr;
+    ID3D11RasterizerState* rasterizer = nullptr;
+    FLOAT factor[4] = {};
+    UINT sampleMask = 0u;
+    UINT stencilReference = ~0u;
+    context->OMGetRenderTargets(2, targets, &depth);
+    context->PSGetShaderResources(0, 2, views);
+    context->PSGetSamplers(0, 2, samplers);
+    context->OMGetBlendState(&blend, factor, &sampleMask);
+    context->OMGetDepthStencilState(&depthState, &stencilReference);
+    context->RSGetState(&rasterizer);
+    bool valid = targets[0] == expectedTargets[0] &&
+        targets[1] == expectedTargets[1] && depth == expectedDepth &&
+        views[0] == expectedViews[0] && views[1] == expectedViews[1] &&
+        samplers[0] == g_m31PeakSamplers[0] &&
+        samplers[1] == g_m31PeakSamplers[1] &&
+        blend == g_m31PeakBlendState && depthState == g_m31PeakDepthState &&
+        rasterizer == g_m31PeakRasterizerState &&
+        factor[0] == 1.0f && factor[1] == 1.0f &&
+        factor[2] == 1.0f && factor[3] == 1.0f &&
+        sampleMask == 0xffffffffu && stencilReference == 0u;
+    ReleaseM14Object(rasterizer);
+    ReleaseM14Object(depthState);
+    ReleaseM14Object(blend);
+    for (ID3D11SamplerState*& value : samplers)
+        ReleaseM14Object(value);
+    for (ID3D11ShaderResourceView*& value : views)
+        ReleaseM14Object(value);
+    ReleaseM14Object(depth);
+    for (ID3D11RenderTargetView*& value : targets)
+        ReleaseM14Object(value);
+    return valid;
+}
+
 void DrawExactRuntimeShader()
 {
     if (!g_armed.load(std::memory_order_acquire) ||
@@ -4756,9 +4960,36 @@ void UNITY_INTERFACE_API DrawM31PeakExactRuntime(int eventId)
 {
     if (eventId < 0 ||
         static_cast<std::uint32_t>(eventId) >=
-            g_EndfieldM31PeakSplitEventCount)
+            g_EndfieldM31PeakMaxEventCount)
         return;
-    const std::uint32_t packetIndex = static_cast<std::uint32_t>(eventId);
+    const std::uint32_t temporalPacketIndex =
+        g_m31PeakTemporalPacketIndex.load(std::memory_order_acquire);
+    if (temporalPacketIndex >= g_EndfieldM31PeakTemporalPacketCount)
+    {
+        g_m31PeakFailureCount.fetch_add(1u, std::memory_order_relaxed);
+        g_m31PeakLastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+        return;
+    }
+    const EndfieldM31PeakTemporalPacket& temporalPacket =
+        g_EndfieldM31PeakTemporalPackets[temporalPacketIndex];
+    const bool supportedSchedule =
+        (temporalPacket.scheduleProfile ==
+                g_EndfieldM31PeakScheduleQueue3000Interval2 &&
+            temporalPacket.drawCount == 2u) ||
+        (temporalPacket.scheduleProfile ==
+                g_EndfieldM31PeakScheduleQueue3000ThenPostM18_3 &&
+            temporalPacket.drawCount == 3u);
+    if (!temporalPacket.chronologyValidated || !supportedSchedule ||
+        static_cast<std::uint32_t>(eventId) >= temporalPacket.drawCount ||
+        temporalPacket.firstDrawPayload + temporalPacket.drawCount >
+            g_EndfieldM31PeakDrawPayloadCount)
+    {
+        g_m31PeakFailureCount.fetch_add(1u, std::memory_order_relaxed);
+        g_m31PeakLastResult.store(E_INVALIDARG, std::memory_order_relaxed);
+        return;
+    }
+    const std::uint32_t drawPayloadIndex =
+        temporalPacket.firstDrawPayload + static_cast<std::uint32_t>(eventId);
     IUnityGraphicsD3D11* unityD3D11 = GetD3D11();
     ID3D11Device* device = unityD3D11 == nullptr ? nullptr : unityD3D11->GetDevice();
     if (device == nullptr)
@@ -4779,10 +5010,18 @@ void UNITY_INTERFACE_API DrawM31PeakExactRuntime(int eventId)
     ID3D11Resource* depthResource = reinterpret_cast<ID3D11Resource*>(
         g_m31PeakDepthTexture.load(std::memory_order_acquire));
     ID3D11ShaderResourceView* depthView = nullptr;
+    ID3D11DepthStencilView* m31DepthView = nullptr;
     result = CreateDiagnosticShaderResourceView(
         device, depthResource, &depthView);
-    if (FAILED(result) || depthView == nullptr || g_m31PeakMainView == nullptr)
+    if (SUCCEEDED(result))
+        result = CreateM31ReadOnlyDepthStencilView(
+            device, depthResource, &m31DepthView);
+    if (FAILED(result) || depthView == nullptr || m31DepthView == nullptr ||
+        g_m31PeakMainView == nullptr || g_m31PeakSamplers[0] == nullptr ||
+        g_m31PeakSamplers[1] == nullptr || g_m31PeakBlendState == nullptr ||
+        g_m31PeakDepthState == nullptr || g_m31PeakRasterizerState == nullptr)
     {
+        ReleaseM14Object(m31DepthView);
         ReleaseM14Object(depthView);
         g_m31PeakFailureCount.fetch_add(1, std::memory_order_relaxed);
         g_m31PeakLastResult.store(
@@ -4794,6 +5033,7 @@ void UNITY_INTERFACE_API DrawM31PeakExactRuntime(int eventId)
     device->GetImmediateContext(&context);
     if (context == nullptr)
     {
+        ReleaseM14Object(m31DepthView);
         ReleaseM14Object(depthView);
         g_m31PeakFailureCount.fetch_add(1, std::memory_order_relaxed);
         g_m31PeakLastResult.store(E_POINTER, std::memory_order_relaxed);
@@ -4803,11 +5043,13 @@ void UNITY_INTERFACE_API DrawM31PeakExactRuntime(int eventId)
     ID3D11RenderTargetView* renderTargets[2] = {};
     ID3D11DepthStencilView* renderDepth = nullptr;
     context->OMGetRenderTargets(2, renderTargets, &renderDepth);
-    if (renderTargets[0] == nullptr || renderTargets[1] == nullptr)
+    if (renderTargets[0] == nullptr || renderTargets[1] == nullptr ||
+        !ValidateM31OutputCompatibility(renderTargets, depthResource))
     {
         ReleaseM14Object(renderDepth);
         ReleaseM14Object(renderTargets[1]);
         ReleaseM14Object(renderTargets[0]);
+        ReleaseM14Object(m31DepthView);
         ReleaseM14Object(depthView);
         context->Release();
         g_m31PeakFailureCount.fetch_add(1, std::memory_order_relaxed);
@@ -4853,12 +5095,12 @@ void UNITY_INTERFACE_API DrawM31PeakExactRuntime(int eventId)
     context->OMGetDepthStencilState(&oldDepthState, &oldStencilReference);
     context->RSGetState(&oldRasterizerState);
 
-    const FLOAT blendFactor[4] = {};
+    const FLOAT blendFactor[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     const EndfieldM31PeakPacketPayload& packet =
-        g_EndfieldM31PeakPackets[packetIndex];
+        g_EndfieldM31PeakDrawPayloads[drawPayloadIndex];
     ID3D11Buffer* vertexBuffers[2] = {
-        g_m31PeakVertexBuffers[packetIndex],
-        g_m31PeakSecondaryBuffers[packetIndex],
+        g_m31PeakVertexBuffers[drawPayloadIndex],
+        g_m31PeakSecondaryBuffers[drawPayloadIndex],
     };
     const UINT strides[2] = {g_EndfieldM31PeakVertexStride, 0u};
     const UINT offsets[2] = {};
@@ -4868,26 +5110,31 @@ void UNITY_INTERFACE_API DrawM31PeakExactRuntime(int eventId)
     context->IASetInputLayout(g_m14InputLayout);
     context->IASetVertexBuffers(0, 2, vertexBuffers, strides, offsets);
     context->IASetIndexBuffer(
-        g_m31PeakIndexBuffers[packetIndex], DXGI_FORMAT_R16_UINT, 0);
+        g_m31PeakIndexBuffers[drawPayloadIndex], DXGI_FORMAT_R16_UINT, 0);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context->VSSetShader(g_m14RuntimeVertexShader, nullptr, 0);
     context->PSSetShader(g_m14RuntimePixelShader, nullptr, 0);
     context->VSSetConstantBuffers(
-        0, 5, g_m31PeakVertexConstantBuffers[packetIndex]);
+        0, 5, g_m31PeakVertexConstantBuffers[drawPayloadIndex]);
     context->PSSetConstantBuffers(
-        0, 4, g_m31PeakPixelConstantBuffers[packetIndex]);
+        0, 4, g_m31PeakPixelConstantBuffers[drawPayloadIndex]);
+    context->OMSetRenderTargets(2, renderTargets, m31DepthView);
     context->VSSetShaderResources(0, 1, &g_m14SkinView);
     context->PSSetShaderResources(0, 2, pixelViews);
-    context->PSSetSamplers(0, 2, g_m14Samplers);
-    context->OMSetBlendState(g_m14BlendState, blendFactor, 0xffffffffu);
-    context->OMSetDepthStencilState(g_m14DepthState, 0);
-    context->RSSetState(g_m14RasterizerState);
-    context->DrawIndexed(packet.indexCount, 0, 0);
+    context->PSSetSamplers(0, 2, g_m31PeakSamplers);
+    context->OMSetBlendState(g_m31PeakBlendState, blendFactor, 0xffffffffu);
+    context->OMSetDepthStencilState(g_m31PeakDepthState, 0);
+    context->RSSetState(g_m31PeakRasterizerState);
+    const bool boundStateValid = ValidateM31BoundState(
+        context, renderTargets, m31DepthView, pixelViews);
+    if (boundStateValid)
+        context->DrawIndexed(packet.indexCount, 0, 0);
 
     ID3D11ShaderResourceView* nullVertexView = nullptr;
     ID3D11ShaderResourceView* nullPixelViews[2] = {};
     context->VSSetShaderResources(0, 1, &nullVertexView);
     context->PSSetShaderResources(0, 2, nullPixelViews);
+    context->OMSetRenderTargets(2, renderTargets, renderDepth);
     context->IASetInputLayout(oldInputLayout);
     context->IASetVertexBuffers(
         0, 2, oldVertexBuffers, oldVertexStrides, oldVertexOffsets);
@@ -4925,11 +5172,20 @@ void UNITY_INTERFACE_API DrawM31PeakExactRuntime(int eventId)
     ReleaseM14Object(renderDepth);
     ReleaseM14Object(renderTargets[1]);
     ReleaseM14Object(renderTargets[0]);
+    ReleaseM14Object(m31DepthView);
     ReleaseM14Object(depthView);
     context->Release();
 
-    g_m31PeakDrawCount.fetch_add(1u, std::memory_order_relaxed);
-    g_m31PeakLastResult.store(S_OK, std::memory_order_relaxed);
+    if (boundStateValid)
+    {
+        g_m31PeakDrawCount.fetch_add(1u, std::memory_order_relaxed);
+        g_m31PeakLastResult.store(S_OK, std::memory_order_relaxed);
+    }
+    else
+    {
+        g_m31PeakFailureCount.fetch_add(1u, std::memory_order_relaxed);
+        g_m31PeakLastResult.store(E_FAIL, std::memory_order_relaxed);
+    }
 }
 
 void UNITY_INTERFACE_API DrawVFXBaseV2PeakCohortRuntime(int eventId)
@@ -5876,6 +6132,7 @@ void ReleaseEndminfUberRuntimeResources()
     ReleaseM14Object(g_endminfUberBlendState);
     ReleaseM14Object(g_endminfUberSampler);
     ReleaseM14Object(g_endminfUberPixelShader);
+    ReleaseM14Object(g_endminfUberNormalPixelShader);
     ReleaseM14Object(g_endminfUberVertexShader);
     std::lock_guard<std::mutex> lock(g_endminfUberMutex);
     for (ID3D11Texture2D*& texture : g_endminfUberConfiguredTextures)
@@ -5930,6 +6187,7 @@ HRESULT CreateEndminfUberRuntimeResources(ID3D11Device* device)
     if (device == nullptr)
         return E_POINTER;
     if (g_endminfUberVertexShader != nullptr &&
+        g_endminfUberNormalPixelShader != nullptr &&
         g_endminfUberPixelShader != nullptr &&
         g_endminfUberSampler != nullptr &&
         g_endminfUberBlendState != nullptr &&
@@ -5944,6 +6202,7 @@ HRESULT CreateEndminfUberRuntimeResources(ID3D11Device* device)
     ReleaseM14Object(g_endminfUberBlendState);
     ReleaseM14Object(g_endminfUberSampler);
     ReleaseM14Object(g_endminfUberPixelShader);
+    ReleaseM14Object(g_endminfUberNormalPixelShader);
     ReleaseM14Object(g_endminfUberVertexShader);
 
     g_endminfUberFailureStage.store(101u, std::memory_order_relaxed);
@@ -5955,6 +6214,14 @@ HRESULT CreateEndminfUberRuntimeResources(ID3D11Device* device)
     if (FAILED(result))
         return result;
     g_endminfUberFailureStage.store(102u, std::memory_order_relaxed);
+    result = device->CreatePixelShader(
+        g_EndfieldUberNormalPixelDxbc,
+        g_EndfieldUberNormalPixelDxbcSize,
+        nullptr,
+        &g_endminfUberNormalPixelShader);
+    if (FAILED(result))
+        return result;
+    g_endminfUberFailureStage.store(103u, std::memory_order_relaxed);
     result = device->CreatePixelShader(
         g_EndfieldUberPixelDxbc,
         g_EndfieldUberPixelDxbcSize,
@@ -5970,7 +6237,7 @@ HRESULT CreateEndminfUberRuntimeResources(ID3D11Device* device)
     sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     sampler.MinLOD = 0.0f;
     sampler.MaxLOD = D3D11_FLOAT32_MAX;
-    g_endminfUberFailureStage.store(103u, std::memory_order_relaxed);
+    g_endminfUberFailureStage.store(104u, std::memory_order_relaxed);
     result = device->CreateSamplerState(&sampler, &g_endminfUberSampler);
     if (FAILED(result))
         return result;
@@ -5978,7 +6245,7 @@ HRESULT CreateEndminfUberRuntimeResources(ID3D11Device* device)
     D3D11_BLEND_DESC blend = {};
     blend.RenderTarget[0].BlendEnable = FALSE;
     blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    g_endminfUberFailureStage.store(104u, std::memory_order_relaxed);
+    g_endminfUberFailureStage.store(105u, std::memory_order_relaxed);
     result = device->CreateBlendState(&blend, &g_endminfUberBlendState);
     if (FAILED(result))
         return result;
@@ -5988,7 +6255,7 @@ HRESULT CreateEndminfUberRuntimeResources(ID3D11Device* device)
     depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
     depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
     depth.StencilEnable = FALSE;
-    g_endminfUberFailureStage.store(105u, std::memory_order_relaxed);
+    g_endminfUberFailureStage.store(106u, std::memory_order_relaxed);
     result = device->CreateDepthStencilState(&depth, &g_endminfUberDepthState);
     if (FAILED(result))
         return result;
@@ -5998,7 +6265,7 @@ HRESULT CreateEndminfUberRuntimeResources(ID3D11Device* device)
     rasterizer.CullMode = D3D11_CULL_NONE;
     rasterizer.DepthClipEnable = TRUE;
     rasterizer.ScissorEnable = TRUE;
-    g_endminfUberFailureStage.store(106u, std::memory_order_relaxed);
+    g_endminfUberFailureStage.store(107u, std::memory_order_relaxed);
     result = device->CreateRasterizerState(
         &rasterizer, &g_endminfUberRasterizerState);
     if (SUCCEEDED(result))
@@ -6037,7 +6304,7 @@ HRESULT EnsureEndminfUberOutputDepth(
     texture.SampleDesc.Count = 1u;
     texture.Usage = D3D11_USAGE_DEFAULT;
     texture.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-    g_endminfUberFailureStage.store(107u, std::memory_order_relaxed);
+    g_endminfUberFailureStage.store(108u, std::memory_order_relaxed);
     HRESULT result = device->CreateTexture2D(
         &texture, nullptr, &g_endminfUberOutputDepthTexture);
     if (FAILED(result))
@@ -6047,7 +6314,7 @@ HRESULT EnsureEndminfUberOutputDepth(
     view.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
     view.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
     view.Texture2D.MipSlice = 0u;
-    g_endminfUberFailureStage.store(108u, std::memory_order_relaxed);
+    g_endminfUberFailureStage.store(109u, std::memory_order_relaxed);
     result = device->CreateDepthStencilView(
         g_endminfUberOutputDepthTexture,
         &view,
@@ -6391,7 +6658,11 @@ void UNITY_INTERFACE_API DrawEndminfUberExactRuntime(int eventId)
     context->IASetInputLayout(nullptr);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context->VSSetShader(g_endminfUberVertexShader, nullptr, 0);
-    context->PSSetShader(g_endminfUberPixelShader, nullptr, 0);
+    ID3D11PixelShader* selectedPixelShader =
+        packet->variant == EndminfUberVariant::Normal
+        ? g_endminfUberNormalPixelShader
+        : g_endminfUberPixelShader;
+    context->PSSetShader(selectedPixelShader, nullptr, 0);
     context->GSSetShader(nullptr, nullptr, 0);
     context->HSSetShader(nullptr, nullptr, 0);
     context->DSSetShader(nullptr, nullptr, 0);
@@ -6938,7 +7209,8 @@ EndfieldOriginalDxbcSetEndminfUberTextureResources(
 }
 
 extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
-EndfieldOriginalDxbcQueueEndminfUberPacket(
+EndfieldOriginalDxbcQueueEndminfUberPacketVariant(
+    std::uint32_t variant,
     float screenWidth,
     float screenHeight,
     float exposure,
@@ -6953,6 +7225,8 @@ EndfieldOriginalDxbcQueueEndminfUberPacket(
             HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), 401u);
         return 0u;
     }
+    const bool validVariant =
+        variant <= static_cast<std::uint32_t>(EndminfUberVariant::Early);
     const bool finite = std::isfinite(screenWidth) &&
         std::isfinite(screenHeight) && std::isfinite(exposure) &&
         std::isfinite(centerX) && std::isfinite(centerY) &&
@@ -6965,7 +7239,7 @@ EndfieldOriginalDxbcQueueEndminfUberPacket(
     const bool validParams = centerX >= 0.0f && centerX <= 1.0f &&
         centerY >= 0.0f && centerY <= 1.0f &&
         radialIntensity >= 0.0f && power > 0.0f;
-    if (!finite || !validDimensions || !validParams)
+    if (!validVariant || !finite || !validDimensions || !validParams)
     {
         RecordEndminfUberFailure(E_INVALIDARG, 402u);
         return 0u;
@@ -7003,9 +7277,20 @@ EndfieldOriginalDxbcQueueEndminfUberPacket(
         return 0u;
     }
 
-    std::memcpy(packet->vsB0, g_EndfieldUberVsB0, sizeof(packet->vsB0));
-    std::memcpy(packet->psB0, g_EndfieldUberPsB0, sizeof(packet->psB0));
-    std::memcpy(packet->psB1, g_EndfieldUberPsB1, sizeof(packet->psB1));
+    const bool early = variant ==
+        static_cast<std::uint32_t>(EndminfUberVariant::Early);
+    std::memcpy(
+        packet->vsB0,
+        early ? g_EndfieldUberEarlyVsB0 : g_EndfieldUberVsB0,
+        sizeof(packet->vsB0));
+    std::memcpy(
+        packet->psB0,
+        early ? g_EndfieldUberEarlyPsB0 : g_EndfieldUberPsB0,
+        sizeof(packet->psB0));
+    std::memcpy(
+        packet->psB1,
+        early ? g_EndfieldUberEarlyPsB1 : g_EndfieldUberPsB1,
+        sizeof(packet->psB1));
     // ShaderVariablesGlobal._ScreenSize = (width, height, rcpWidth, rcpHeight).
     PatchEndminfUberFloat(packet->psB0, sizeof(packet->psB0), 0u, screenWidth);
     PatchEndminfUberFloat(packet->psB0, sizeof(packet->psB0), 1u, screenHeight);
@@ -7014,6 +7299,11 @@ EndfieldOriginalDxbcQueueEndminfUberPacket(
     PatchEndminfUberFloat(
         packet->psB0, sizeof(packet->psB0), 3u, 1.0f / screenHeight);
     PatchEndminfUberFloat(packet->psB0, sizeof(packet->psB0), 27u * 4u, exposure);
+    // ShaderVariablesGlobal c27.z is the target aspect ratio. Both captured
+    // Uber variants read it, so it must follow the live output dimensions.
+    PatchEndminfUberFloat(
+        packet->psB0, sizeof(packet->psB0), 27u * 4u + 2u,
+        screenWidth / screenHeight);
     PatchEndminfUberFloat(packet->psB1, sizeof(packet->psB1), 0u, centerX);
     PatchEndminfUberFloat(packet->psB1, sizeof(packet->psB1), 1u, centerY);
     PatchEndminfUberFloat(
@@ -7028,11 +7318,61 @@ EndfieldOriginalDxbcQueueEndminfUberPacket(
     }
     packet->width = width;
     packet->height = height;
+    packet->variant = static_cast<EndminfUberVariant>(variant);
     packet->eventId.store(eventId, std::memory_order_relaxed);
     packet->state.store(EndminfUberPacketState::Ready, std::memory_order_release);
     g_endminfUberLastResult.store(S_OK, std::memory_order_relaxed);
     g_endminfUberFailureStage.store(0u, std::memory_order_relaxed);
     return eventId;
+}
+
+// ABI-compatible peak-only entry point retained for older managed clients.
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcQueueEndminfUberPacket(
+    float screenWidth,
+    float screenHeight,
+    float exposure,
+    float centerX,
+    float centerY,
+    float radialIntensity,
+    float power)
+{
+    return EndfieldOriginalDxbcQueueEndminfUberPacketVariant(
+        static_cast<std::uint32_t>(EndminfUberVariant::Peak),
+        screenWidth,
+        screenHeight,
+        exposure,
+        centerX,
+        centerY,
+        radialIntensity,
+        power);
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcInspectEndminfUberQueuedPacket(
+    std::uint32_t eventId,
+    std::uint32_t* variant,
+    float* aspect)
+{
+    if (eventId == 0u || variant == nullptr || aspect == nullptr)
+        return 0u;
+    std::lock_guard<std::mutex> lock(g_endminfUberMutex);
+    for (const EndminfUberPacket& packet : g_endminfUberPackets)
+    {
+        if (packet.state.load(std::memory_order_acquire) !=
+                EndminfUberPacketState::Ready ||
+            packet.eventId.load(std::memory_order_relaxed) != eventId)
+        {
+            continue;
+        }
+        *variant = static_cast<std::uint32_t>(packet.variant);
+        std::memcpy(
+            aspect,
+            packet.psB0 + (27u * 4u + 2u) * sizeof(float),
+            sizeof(float));
+        return 1u;
+    }
+    return 0u;
 }
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
@@ -7730,10 +8070,36 @@ EndfieldOriginalDxbcSetM31PeakDepthResource(void* sceneDepth)
     return sceneDepth != nullptr ? 1u : 0u;
 }
 
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcSetM31PeakTemporalPacketIndex(std::uint32_t packetIndex)
+{
+    g_m31PeakTemporalPacketIndex.store(
+        (std::numeric_limits<std::uint32_t>::max)(), std::memory_order_release);
+    if (packetIndex >= g_EndfieldM31PeakTemporalPacketCount)
+        return 0u;
+    const EndfieldM31PeakTemporalPacket& packet =
+        g_EndfieldM31PeakTemporalPackets[packetIndex];
+    const bool supportedSchedule =
+        (packet.scheduleProfile ==
+                g_EndfieldM31PeakScheduleQueue3000Interval2 &&
+            packet.drawCount == 2u) ||
+        (packet.scheduleProfile ==
+                g_EndfieldM31PeakScheduleQueue3000ThenPostM18_3 &&
+            packet.drawCount == 3u);
+    if (!packet.chronologyValidated || !supportedSchedule ||
+        packet.firstDrawPayload + packet.drawCount >
+            g_EndfieldM31PeakDrawPayloadCount)
+        return 0u;
+    g_m31PeakTemporalPacketIndex.store(packetIndex, std::memory_order_release);
+    return 1u;
+}
+
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
 EndfieldOriginalDxbcResetM31PeakRuntimeState()
 {
     g_m31PeakDepthTexture.store(0, std::memory_order_release);
+    g_m31PeakTemporalPacketIndex.store(
+        (std::numeric_limits<std::uint32_t>::max)(), std::memory_order_release);
     g_m31PeakDrawCount.store(0, std::memory_order_relaxed);
     g_m31PeakFailureCount.store(0, std::memory_order_relaxed);
     g_m31PeakLastResult.store(S_OK, std::memory_order_relaxed);

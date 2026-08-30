@@ -23,8 +23,12 @@ $registryValidatorObject = Join-Path $buildRoot "VerifyM27SubstitutionRegistry.o
 $registryValidatorExe = Join-Path $buildRoot "VerifyM27SubstitutionRegistry.exe"
 $uberValidatorObject = Join-Path $buildRoot "VerifyEndminfUberTransport.obj"
 $uberValidatorExe = Join-Path $buildRoot "VerifyEndminfUberTransport.exe"
+$uberShaderValidatorObject = Join-Path $buildRoot "ValidateEndminfUberShaders.obj"
+$uberShaderValidatorExe = Join-Path $buildRoot "ValidateEndminfUberShaders.exe"
 $m20ValidatorObject = Join-Path $buildRoot "VerifyM20PeakTransport.obj"
 $m20ValidatorExe = Join-Path $buildRoot "VerifyM20PeakTransport.exe"
+$m31StateValidatorObject = Join-Path $buildRoot "VerifyM31FixedState.obj"
+$m31StateValidatorExe = Join-Path $buildRoot "VerifyM31FixedState.exe"
 $generatedHeader = Join-Path $buildRoot "EmbeddedDxbc.generated.h"
 $vertex = Join-Path $toolRoot "bytecode\selected_deferred_resolver_vs.dxbc"
 $pixel = Join-Path $toolRoot "bytecode\selected_deferred_resolver_ps.dxbc"
@@ -35,7 +39,9 @@ $m14Pixel = Join-Path $toolRoot "bytecode\endminf_m14_vfxbasev2_ps.dxbc"
 $m13Vertex = Join-Path $toolRoot "bytecode\endminf_m13_vfxbasev2_vs.dxbc"
 $m13Pixel = Join-Path $toolRoot "bytecode\endminf_m13_vfxbasev2_ps.dxbc"
 $uberVertex = Join-Path $toolRoot "bytecode\endminf_uber_post_vs.dxbc"
+$uberNormalPixel = Join-Path $toolRoot "bytecode\endminf_uber_post_normal_ps.dxbc"
 $uberPixel = Join-Path $toolRoot "bytecode\endminf_uber_post_ps.dxbc"
+$uberLut = Join-Path $projectRoot "Assets\EndfieldGraphShaderLab\Resources\EndfieldCharInfo\EndminfCharInfoLut1024x32Rgba16f.bytes"
 $pluginApi = "D:\Program Files\2022.3.62f3\Editor\Data\PluginAPI"
 $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
 
@@ -61,6 +67,7 @@ python (Join-Path $toolRoot "generate_embedded_header.py") `
     --m13-vertex $m13Vertex `
     --m13-pixel $m13Pixel `
     --uber-vertex $uberVertex `
+    --uber-normal-pixel $uberNormalPixel `
     --uber-pixel $uberPixel `
     --output $generatedHeader
 if ($LASTEXITCODE -ne 0) {
@@ -146,6 +153,25 @@ if ($LASTEXITCODE -ne 0) {
     throw "Endminf Uber transport validation failed with exit $LASTEXITCODE."
 }
 
+$uberShaderValidatorSource = Join-Path $toolRoot "ValidateEndminfUberShaders.cpp"
+$uberShaderValidatorCompileCommand = @(
+    "cl.exe /nologo /std:c++17 /O2 /EHsc /Brepro",
+    "/I`"$buildRoot`" /I`"$toolRoot`"",
+    "/Fo`"$uberShaderValidatorObject`" `"$uberShaderValidatorSource`"",
+    "/link /NOLOGO /Brepro /OUT:`"$uberShaderValidatorExe`" d3d11.lib bcrypt.lib"
+) -join " "
+$uberShaderValidatorCompile =
+    "call `"$vsDevCmd`" -arch=x64 -host_arch=x64 && $uberShaderValidatorCompileCommand"
+cmd.exe /d /c $uberShaderValidatorCompile
+if ($LASTEXITCODE -ne 0) {
+    throw "Endminf Uber shader validator compilation failed with exit code $LASTEXITCODE."
+}
+
+& $uberShaderValidatorExe $uberLut
+if ($LASTEXITCODE -ne 0) {
+    throw "Endminf Uber shader draw validation failed with exit $LASTEXITCODE."
+}
+
 $m20ValidatorSource = Join-Path $toolRoot "VerifyM20PeakTransport.cpp"
 $m20ValidatorCompileCommand = @(
     "cl.exe /nologo /std:c++17 /O2 /EHsc /Brepro",
@@ -164,6 +190,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "M20 peak transport validation failed with exit $LASTEXITCODE."
 }
 
+$m31StateValidatorSource = Join-Path $toolRoot "VerifyM31FixedState.cpp"
+$m31StateValidatorCompileCommand = @(
+    "cl.exe /nologo /std:c++17 /O2 /EHsc /Brepro",
+    "/I`"$toolRoot`" /Fo`"$m31StateValidatorObject`" `"$m31StateValidatorSource`"",
+    "/link /NOLOGO /Brepro /OUT:`"$m31StateValidatorExe`" d3d11.lib"
+) -join " "
+$m31StateValidatorCompile =
+    "call `"$vsDevCmd`" -arch=x64 -host_arch=x64 && $m31StateValidatorCompileCommand"
+cmd.exe /d /c $m31StateValidatorCompile
+if ($LASTEXITCODE -ne 0) {
+    throw "M31 fixed-state validator compilation failed with exit code $LASTEXITCODE."
+}
+
+& $m31StateValidatorExe
+if ($LASTEXITCODE -ne 0) {
+    throw "M31 fixed-state validation failed with exit $LASTEXITCODE."
+}
+
 foreach ($intermediate in @(
     $outputImportLibrary,
     $outputExports,
@@ -171,7 +215,9 @@ foreach ($intermediate in @(
     $validatorObject,
     $registryValidatorObject,
     $uberValidatorObject,
-    $m20ValidatorObject
+    $uberShaderValidatorObject,
+    $m20ValidatorObject,
+    $m31StateValidatorObject
 )) {
     [System.IO.File]::Delete($intermediate)
 }
@@ -183,8 +229,12 @@ $registryValidatorHash =
     (Get-FileHash -LiteralPath $registryValidatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
 $uberValidatorHash =
     (Get-FileHash -LiteralPath $uberValidatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
+$uberShaderValidatorHash =
+    (Get-FileHash -LiteralPath $uberShaderValidatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
 $m20ValidatorHash =
     (Get-FileHash -LiteralPath $m20ValidatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
+$m31StateValidatorHash =
+    (Get-FileHash -LiteralPath $m31StateValidatorExe -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Output "plugin=$outputDll"
 Write-Output "plugin_sha256=$dllHash"
 Write-Output "validator=$validatorExe"
@@ -193,5 +243,9 @@ Write-Output "m27_registry_validator=$registryValidatorExe"
 Write-Output "m27_registry_validator_sha256=$registryValidatorHash"
 Write-Output "endminf_uber_validator=$uberValidatorExe"
 Write-Output "endminf_uber_validator_sha256=$uberValidatorHash"
+Write-Output "endminf_uber_shader_validator=$uberShaderValidatorExe"
+Write-Output "endminf_uber_shader_validator_sha256=$uberShaderValidatorHash"
 Write-Output "m20_peak_validator=$m20ValidatorExe"
 Write-Output "m20_peak_validator_sha256=$m20ValidatorHash"
+Write-Output "m31_fixed_state_validator=$m31StateValidatorExe"
+Write-Output "m31_fixed_state_validator_sha256=$m31StateValidatorHash"
