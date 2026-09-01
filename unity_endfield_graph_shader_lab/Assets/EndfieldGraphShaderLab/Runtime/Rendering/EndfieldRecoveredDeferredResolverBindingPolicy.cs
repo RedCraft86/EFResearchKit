@@ -28,8 +28,16 @@ namespace EndfieldGraphShaderLab
                 string m27PresentationValue = Environment.GetEnvironmentVariable(
                     EndfieldRecoveredEndminfM27DeferredPresentation
                         .EnvironmentVariable);
+                string liveLitEffectValue = Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredDeferredGBufferFrame
+                        .EndminfLitEffectEnvironmentVariable);
+                string generativeM27Value = Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredEndminfM27GenerativeExactRuntime
+                        .EnvironmentVariable);
                 return IsEnabled(value) || IsEnabled(resourceValue) ||
-                    IsEnabled(exactValue) || IsEnabled(m27PresentationValue);
+                    IsEnabled(exactValue) || IsEnabled(m27PresentationValue) ||
+                    IsEnabled(liveLitEffectValue) ||
+                    IsEnabled(generativeM27Value);
             }
         }
 
@@ -41,6 +49,12 @@ namespace EndfieldGraphShaderLab
                            ExactConsumerEnvironmentVariable)) ||
                     IsEnabled(Environment.GetEnvironmentVariable(
                         EndfieldRecoveredEndminfM27DeferredPresentation
+                            .EnvironmentVariable)) ||
+                    IsEnabled(Environment.GetEnvironmentVariable(
+                        EndfieldRecoveredDeferredGBufferFrame
+                            .EndminfLitEffectEnvironmentVariable)) ||
+                    IsEnabled(Environment.GetEnvironmentVariable(
+                        EndfieldRecoveredEndminfM27GenerativeExactRuntime
                             .EnvironmentVariable));
             }
         }

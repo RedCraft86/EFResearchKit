@@ -22,6 +22,7 @@ namespace EndfieldGraphShaderLab
             DistancePass2,
             End,
             ColliderSnapshotBoundary,
+            CalcDisplayPosition,
         }
 
         public interface IStageObserver
@@ -128,6 +129,7 @@ namespace EndfieldGraphShaderLab
         private readonly EndfieldSecondaryDynamicsData.Owner _owner;
         private readonly T.TimeManagerScalars _timeManager;
         private readonly Baseline[] _baselines;
+        private readonly short[] _displayTeamIds;
         private readonly IStageObserver _observer;
         private T.TeamState _team;
 
@@ -136,6 +138,11 @@ namespace EndfieldGraphShaderLab
         public K.Double3[] StepBasicPositions { get; private set; }
         public K.Float4[] StepBasicRotations { get; private set; }
         public K.Double3[] VelocityPositions { get; private set; }
+        public K.Double3[] SimulationPositions { get; private set; }
+        public K.Float4[] SimulationRotations { get; private set; }
+        public K.Double3[] DisplayPositions { get; private set; }
+        public K.Double3[] DisplayOldPositions { get; private set; }
+        public K.Float4[] DisplayOldRotations { get; private set; }
         public K.Double3[] PublicationPositions { get; private set; }
         public K.Float4[] PublicationRotations { get; private set; }
         public K.Float3[] Velocities { get; private set; }
@@ -158,6 +165,9 @@ namespace EndfieldGraphShaderLab
             ValidateOwner(_owner);
             ValidateBaseFrame(initialBaseTransforms, _owner.proxyVertexCount);
             _baselines = BuildBaselines(_owner);
+            _displayTeamIds = new short[_owner.proxyVertexCount];
+            for (int particle = 0; particle < _displayTeamIds.Length; particle++)
+                _displayTeamIds[particle] = 1;
             AllocateAndInitialize(initialBaseTransforms.CurrentPositions, initialBaseTransforms.CurrentRotations);
         }
 
@@ -187,6 +197,13 @@ namespace EndfieldGraphShaderLab
             K.Float4[] candidateOldColliderRotations = preparedCapsules == null
                 ? null : (K.Float4[])preparedCapsules.OldRotations.Clone();
 
+            // SimulationManager.PreSimulationUpdateJob consumes TeamData.Reset
+            // once per ClothUpdate, before any SimulationStepUpdate. It seeds
+            // persistent simulation/display history from the current VirtualMesh
+            // transform-read pose and clears all accumulated motion/contact state.
+            if ((candidateTeam.Flag & T.FlagReset) != 0UL)
+                SeedResetState(candidate, baseTransforms.CurrentPositions, baseTransforms.CurrentRotations);
+
             for (int step = 0; step < stepCount; step++)
             {
                 if (!T.ExecuteTeamStepClock(
@@ -214,6 +231,17 @@ namespace EndfieldGraphShaderLab
                 }
             }
 
+            PublishDisplayPosition(
+                candidate,
+                baseTransforms,
+                candidateTeam,
+                stepCount > 0);
+            Notify(Stage.CalcDisplayPosition, -1, -1);
+
+            // TeamManager.PostTeamUpdateJob consumes these transient flags only
+            // after display/post-proxy work for the frame has completed.
+            candidateTeam.Flag &= ~(T.FlagReset | T.FlagTimeReset);
+
             Commit(candidate);
             _team = candidateTeam;
             if (preparedCapsules != null)
@@ -236,7 +264,7 @@ namespace EndfieldGraphShaderLab
             float teamTime)
         {
             int count = _owner.proxyVertexCount;
-            var previousPositions = (K.Double3[])state.PublicationPositions.Clone();
+            var previousPositions = (K.Double3[])state.SimulationPositions.Clone();
             Notify(Stage.Start, substep, -1);
             for (int particle = 0; particle < count; particle++)
             {
@@ -247,8 +275,8 @@ namespace EndfieldGraphShaderLab
                     _owner.vertexDepths[particle],
                     transforms.CurrentPositions[particle],
                     transforms.CurrentRotations[particle],
-                    transforms.PreviousPositions[particle],
-                    transforms.PreviousRotations[particle],
+                    state.DisplayOldPositions[particle],
+                    state.DisplayOldRotations[particle],
                     previousPositions[particle],
                     state.Velocities[particle],
                     frameInterpolation,
@@ -278,8 +306,8 @@ namespace EndfieldGraphShaderLab
                     out state.StepBasicPositions[particle],
                     out state.StepBasicRotations[particle],
                     out state.VelocityPositions[particle],
-                    out state.PublicationPositions[particle]);
-                state.PublicationRotations[particle] = state.StepBasicRotations[particle];
+                    out state.SimulationPositions[particle]);
+                state.SimulationRotations[particle] = state.StepBasicRotations[particle];
                 state.Frictions[particle] = 0f;
                 state.CollisionNormals[particle] = new K.Float3(0f, 0f, 0f);
             }
@@ -305,7 +333,7 @@ namespace EndfieldGraphShaderLab
             for (int particle = 0; particle < count; particle++)
             {
                 state.StepBasicPositions[particle] = ToDouble3(basicFloat[particle]);
-                state.PublicationRotations[particle] = state.StepBasicRotations[particle];
+                state.SimulationRotations[particle] = state.StepBasicRotations[particle];
             }
 
             Notify(Stage.Tether, substep, -1);
@@ -315,8 +343,8 @@ namespace EndfieldGraphShaderLab
                 if ((_owner.attributes[particle] & 2) == 0 || root < 0)
                     continue;
                 K.ProjectTether(
-                    state.PublicationPositions[root],
-                    ref state.PublicationPositions[particle],
+                    state.SimulationPositions[root],
+                    ref state.SimulationPositions[particle],
                     state.StepBasicPositions[root],
                     state.StepBasicPositions[particle],
                     _owner.solverInputs.tetherDistanceCompression,
@@ -342,7 +370,7 @@ namespace EndfieldGraphShaderLab
                         ((attribute & 2) == 0 && (input.TeamFlag & 0x2000) == 0))
                         continue;
                     K.ProjectPointCapsules(
-                        ref state.PublicationPositions[particle],
+                        ref state.SimulationPositions[particle],
                         ref state.VelocityPositions[particle],
                         ref state.Frictions[particle],
                         out state.CollisionNormals[particle],
@@ -372,7 +400,7 @@ namespace EndfieldGraphShaderLab
                     input.CenterPosition,
                     input.CenterAngularVelocity,
                     input.CenterRotationAxis,
-                    ref state.PublicationPositions[particle],
+                    ref state.SimulationPositions[particle],
                     previousPositions[particle],
                     ref state.VelocityPositions[particle],
                     ref state.Velocities[particle],
@@ -405,7 +433,7 @@ namespace EndfieldGraphShaderLab
                 Array.Copy(_owner.distanceConstraintRestLengths, start, rest, 0, count);
                 K.ProjectDistance(
                     particle,
-                    state.PublicationPositions,
+                    state.SimulationPositions,
                     state.BasePositions,
                     state.VelocityPositions,
                     _owner.attributes,
@@ -446,9 +474,9 @@ namespace EndfieldGraphShaderLab
                 frictions[local] = state.Frictions[particle];
                 basicPositions[local] = state.StepBasicPositions[particle];
                 basicRotations[local] = state.StepBasicRotations[particle];
-                nextPositions[local] = state.PublicationPositions[particle];
+                nextPositions[local] = state.SimulationPositions[particle];
                 velocityPositions[local] = state.VelocityPositions[particle];
-                rotations[local] = state.PublicationRotations[particle];
+                rotations[local] = state.SimulationRotations[particle];
             }
             K.ProjectAngle(
                 attributes,
@@ -476,20 +504,71 @@ namespace EndfieldGraphShaderLab
             for (int local = 0; local < count; local++)
             {
                 int particle = baseline.Vertices[local];
-                state.PublicationPositions[particle] = nextPositions[local];
+                state.SimulationPositions[particle] = nextPositions[local];
                 state.VelocityPositions[particle] = velocityPositions[local];
-                state.PublicationRotations[particle] = rotations[local];
+                state.SimulationRotations[particle] = rotations[local];
             }
+        }
+
+        private void PublishDisplayPosition(
+            State state,
+            BaseTransformFrame transforms,
+            T.TeamState team,
+            bool simulatedThisFrame)
+        {
+            int count = _owner.proxyVertexCount;
+            K.Double3[] currentPositions = simulatedThisFrame
+                ? state.SimulationPositions
+                : transforms.CurrentPositions;
+            K.Float4[] currentRotations = simulatedThisFrame
+                ? state.SimulationRotations
+                : transforms.CurrentRotations;
+            Array.Copy(currentPositions, state.PublicationPositions, count);
+            Array.Copy(currentRotations, state.PublicationRotations, count);
+
+            EndfieldSecondaryDynamicsCalcDisplayPosition.ExecuteRange(
+                new EndfieldSecondaryDynamicsCalcDisplayPosition.Job
+                {
+                    DeltaTime = _timeManager.SimulationDeltaTime,
+                    Time = team.Time,
+                    OldTime = team.OldTime,
+                    NowUpdateTime = team.NowUpdateTime,
+                    BlendWeight = _owner.solverInputs.blendWeight,
+                    TeamFlag = team.Flag,
+                    ParticleChunkStart = 0,
+                    ProxyCommonChunkStart = 0,
+                    TeamIds = _displayTeamIds,
+                    Attributes = _owner.attributes,
+                    VertexRootIndices = _owner.vertexRootIndices,
+                    OldPos = state.SimulationPositions,
+                    DisplayPos = state.DisplayPositions,
+                    RealVelocity = state.RealVelocities,
+                    Positions = state.PublicationPositions,
+                    Rotations = state.PublicationRotations,
+                    OldPosition = state.DisplayOldPositions,
+                    OldRotation = state.DisplayOldRotations,
+                },
+                0,
+                count);
         }
 
         private void AllocateAndInitialize(K.Double3[] positions, K.Float4[] rotations)
         {
             int count = _owner.proxyVertexCount;
-            BasePositions = (K.Double3[])positions.Clone();
-            BaseRotations = (K.Float4[])rotations.Clone();
-            StepBasicPositions = (K.Double3[])positions.Clone();
-            StepBasicRotations = (K.Float4[])rotations.Clone();
-            VelocityPositions = (K.Double3[])positions.Clone();
+            // RegisterProxyMesh extends the simulation/display/history arrays
+            // with default(T); it does not seed authored poses or a reset
+            // trajectory. The VirtualMesh publication arrays are separate and
+            // already contain the current transform-read pose.
+            BasePositions = new K.Double3[count];
+            BaseRotations = new K.Float4[count];
+            StepBasicPositions = new K.Double3[count];
+            StepBasicRotations = new K.Float4[count];
+            VelocityPositions = new K.Double3[count];
+            SimulationPositions = new K.Double3[count];
+            SimulationRotations = new K.Float4[count];
+            DisplayPositions = new K.Double3[count];
+            DisplayOldPositions = new K.Double3[count];
+            DisplayOldRotations = new K.Float4[count];
             PublicationPositions = (K.Double3[])positions.Clone();
             PublicationRotations = (K.Float4[])rotations.Clone();
             Velocities = new K.Float3[count];
@@ -499,6 +578,36 @@ namespace EndfieldGraphShaderLab
             CollisionNormals = new K.Float3[count];
         }
 
+        private static void SeedResetState(
+            State state,
+            K.Double3[] positions,
+            K.Float4[] rotations)
+        {
+            int count = positions.Length;
+
+            // Exact PreSimulationUpdateJob position destinations:
+            // nextPos, oldPos, basePos, oldPosition, velocityPos, dispPos.
+            // The managed slice intentionally collapses native nextPos/oldPos
+            // into SimulationPositions because EndSimulation commits the
+            // corrected particle position in place.
+            Array.Copy(positions, state.SimulationPositions, count);
+            Array.Copy(positions, state.BasePositions, count);
+            Array.Copy(positions, state.DisplayOldPositions, count);
+            Array.Copy(positions, state.VelocityPositions, count);
+            Array.Copy(positions, state.DisplayPositions, count);
+
+            // Exact rotation destinations: oldRot, baseRot, oldRotation.
+            Array.Copy(rotations, state.SimulationRotations, count);
+            Array.Copy(rotations, state.BaseRotations, count);
+            Array.Copy(rotations, state.DisplayOldRotations, count);
+
+            Array.Clear(state.Velocities, 0, count);
+            Array.Clear(state.RealVelocities, 0, count);
+            Array.Clear(state.Frictions, 0, count);
+            Array.Clear(state.StaticFrictions, 0, count);
+            Array.Clear(state.CollisionNormals, 0, count);
+        }
+
         private sealed class State
         {
             public K.Double3[] BasePositions;
@@ -506,6 +615,11 @@ namespace EndfieldGraphShaderLab
             public K.Double3[] StepBasicPositions;
             public K.Float4[] StepBasicRotations;
             public K.Double3[] VelocityPositions;
+            public K.Double3[] SimulationPositions;
+            public K.Float4[] SimulationRotations;
+            public K.Double3[] DisplayPositions;
+            public K.Double3[] DisplayOldPositions;
+            public K.Float4[] DisplayOldRotations;
             public K.Double3[] PublicationPositions;
             public K.Float4[] PublicationRotations;
             public K.Float3[] Velocities;
@@ -522,6 +636,11 @@ namespace EndfieldGraphShaderLab
             StepBasicPositions = (K.Double3[])StepBasicPositions.Clone(),
             StepBasicRotations = (K.Float4[])StepBasicRotations.Clone(),
             VelocityPositions = (K.Double3[])VelocityPositions.Clone(),
+            SimulationPositions = (K.Double3[])SimulationPositions.Clone(),
+            SimulationRotations = (K.Float4[])SimulationRotations.Clone(),
+            DisplayPositions = (K.Double3[])DisplayPositions.Clone(),
+            DisplayOldPositions = (K.Double3[])DisplayOldPositions.Clone(),
+            DisplayOldRotations = (K.Float4[])DisplayOldRotations.Clone(),
             PublicationPositions = (K.Double3[])PublicationPositions.Clone(),
             PublicationRotations = (K.Float4[])PublicationRotations.Clone(),
             Velocities = (K.Float3[])Velocities.Clone(),
@@ -538,6 +657,11 @@ namespace EndfieldGraphShaderLab
             StepBasicPositions = state.StepBasicPositions;
             StepBasicRotations = state.StepBasicRotations;
             VelocityPositions = state.VelocityPositions;
+            SimulationPositions = state.SimulationPositions;
+            SimulationRotations = state.SimulationRotations;
+            DisplayPositions = state.DisplayPositions;
+            DisplayOldPositions = state.DisplayOldPositions;
+            DisplayOldRotations = state.DisplayOldRotations;
             PublicationPositions = state.PublicationPositions;
             PublicationRotations = state.PublicationRotations;
             Velocities = state.Velocities;

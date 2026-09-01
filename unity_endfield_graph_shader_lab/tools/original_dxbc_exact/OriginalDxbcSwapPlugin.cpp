@@ -7,11 +7,13 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <mutex>
 #include <new>
+#include <string>
 
 #include "IUnityInterface.h"
 #include "IUnityGraphicsD3D11.h"
@@ -25,6 +27,7 @@
 #include "M28PeakCapturePayload.generated.h"
 #include "M27CapturePayload.generated.h"
 #include "M27TemporalCapturePayload.generated.h"
+#include "M27FixedStateContract.h"
 #include "M29CapturePayload.generated.h"
 #include "M30CapturePayload.generated.h"
 #include "M31PeakCapturePayload.generated.h"
@@ -46,12 +49,15 @@ constexpr const char* kM27ReservedKeyword = "ENDFIELD_ORIGINAL_DXBC_M27_EXACT";
 constexpr std::uint32_t kContractVersion = 2;
 constexpr std::uint32_t kTextureSlotCount = 26;
 constexpr std::uint32_t kConstantBufferSlotCount = 9;
+constexpr std::uint32_t kDiagnosticRetainedResourceCapacity =
+    kTextureSlotCount + kConstantBufferSlotCount + 2;
 
 enum class SubstitutionRoute : std::uint32_t
 {
     None = 0,
     DeferredDiagnostic = 1,
     M27HashPinned = 2,
+    M27ObserveOnly = 3,
 };
 
 IUnityInterfaces* g_unityInterfaces = nullptr;
@@ -82,6 +88,13 @@ std::atomic<std::uint32_t> g_postDrawShaderResourceMask{0};
 std::atomic<std::uint32_t> g_samplerMask{0};
 std::uintptr_t g_texturePointers[kTextureSlotCount] = {};
 std::atomic<std::uint32_t> g_texturePointerCount{0};
+std::mutex g_diagnosticSubmissionMutex;
+IUnknown* g_diagnosticRetainedResources[kDiagnosticRetainedResourceCapacity] = {};
+std::uint32_t g_diagnosticRetainedResourceCount = 0;
+std::uint64_t g_nextDiagnosticSubmissionSerial = 0;
+std::atomic<std::uint64_t> g_configuredDiagnosticSubmissionSerial{0};
+std::atomic<std::uint64_t> g_activeDiagnosticSubmissionSerial{0};
+std::atomic<std::uint64_t> g_completedDiagnosticSubmissionSerial{0};
 std::atomic<std::uint32_t> g_m27MatchCount{0};
 std::atomic<std::uint32_t> g_m27MismatchCount{0};
 std::atomic<std::uint32_t> g_m27VariantHashConflictCount{0};
@@ -475,6 +488,148 @@ struct M27CallbackObservation
 M27CallbackObservation g_m27CallbackObservations[kM27CallbackObservationCapacity] = {};
 std::size_t g_m27CallbackObservationCount = 0;
 std::mutex g_m27CallbackObservationMutex;
+std::atomic<std::uint64_t> g_m27ObservationEpoch{1};
+
+bool StartsWith(
+    const char* begin,
+    const char* end,
+    const char* prefix)
+{
+    if (begin == nullptr || end == nullptr || prefix == nullptr || begin > end)
+        return false;
+    const std::size_t prefixLength = std::strlen(prefix);
+    return prefixLength <= static_cast<std::size_t>(end - begin) &&
+        std::memcmp(begin, prefix, prefixLength) == 0;
+}
+
+bool TryParseUnsigned(
+    const char*& cursor,
+    const char* end,
+    unsigned& value)
+{
+    if (cursor == nullptr || cursor >= end || *cursor < '0' || *cursor > '9')
+        return false;
+    unsigned parsed = 0;
+    do
+    {
+        const unsigned digit = static_cast<unsigned>(*cursor - '0');
+        if (parsed > ((std::numeric_limits<unsigned>::max)() - digit) / 10u)
+            return false;
+        parsed = parsed * 10u + digit;
+        ++cursor;
+    }
+    while (cursor < end && *cursor >= '0' && *cursor <= '9');
+    value = parsed;
+    return true;
+}
+
+bool TryParseRegisterSlot(
+    const char* begin,
+    const char* end,
+    char registerClass,
+    unsigned& slot)
+{
+    if (begin == nullptr || end == nullptr || begin >= end)
+        return false;
+    for (const char* cursor = begin; cursor < end; ++cursor)
+    {
+        if (*cursor != registerClass)
+            continue;
+        if (cursor != begin && cursor[-1] != ' ' && cursor[-1] != '\t' &&
+            cursor[-1] != ',')
+        {
+            continue;
+        }
+        const char* digits = cursor + 1;
+        if (TryParseUnsigned(digits, end, slot))
+            return true;
+    }
+    return false;
+}
+
+void ObserveD3D11Declarations(
+    const unsigned char* byteCode,
+    std::size_t byteCodeSize,
+    M27CallbackObservation& observation)
+{
+    ID3DBlob* disassembly = nullptr;
+    if (FAILED(D3DDisassemble(
+            byteCode,
+            byteCodeSize,
+            0,
+            nullptr,
+            &disassembly)) || disassembly == nullptr)
+    {
+        return;
+    }
+
+    bool cbuffers[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
+    bool shaderResources[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+    bool samplers[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
+    bool uavs[D3D11_PS_CS_UAV_REGISTER_COUNT] = {};
+    const char* cursor = static_cast<const char*>(
+        disassembly->GetBufferPointer());
+    const char* end = cursor + disassembly->GetBufferSize();
+    while (cursor < end && *cursor != '\0')
+    {
+        while (cursor < end && (*cursor == ' ' || *cursor == '\t'))
+            ++cursor;
+        const char* newline = static_cast<const char*>(
+            std::memchr(cursor, '\n', static_cast<std::size_t>(end - cursor)));
+        const char* lineEnd = newline == nullptr ? end : newline;
+        unsigned slot = 0;
+        unsigned registers = 0;
+        const std::string line(cursor, lineEnd);
+        if (sscanf_s(
+                line.c_str(),
+                "dcl_constantbuffer CB%u[%u]",
+                &slot,
+                &registers) == 2 &&
+            slot < D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT)
+        {
+            if (slot < 5u)
+                observation.metadata[5u + slot] = registers * 16u;
+            cbuffers[slot] = true;
+        }
+        else if (StartsWith(cursor, lineEnd, "dcl_resource") &&
+                 TryParseRegisterSlot(cursor, lineEnd, 't', slot) &&
+                 slot < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT)
+        {
+            if (slot < 32u)
+                observation.metadata[10] |= 1u << slot;
+            shaderResources[slot] = true;
+        }
+        else if (sscanf_s(line.c_str(), "dcl_sampler s%u", &slot) == 1 &&
+                 slot < D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT)
+        {
+            if (slot < 32u)
+                observation.metadata[11] |= 1u << slot;
+            samplers[slot] = true;
+        }
+        else if (StartsWith(cursor, lineEnd, "dcl_uav") &&
+                 TryParseRegisterSlot(cursor, lineEnd, 'u', slot) &&
+                 slot < D3D11_PS_CS_UAV_REGISTER_COUNT)
+        {
+            uavs[slot] = true;
+        }
+
+        if (newline == nullptr)
+            break;
+        cursor = newline + 1;
+    }
+
+    std::uint32_t resourceCount = 0;
+    for (bool present : cbuffers)
+        resourceCount += present ? 1u : 0u;
+    for (bool present : shaderResources)
+        resourceCount += present ? 1u : 0u;
+    for (bool present : samplers)
+        resourceCount += present ? 1u : 0u;
+    for (bool present : uavs)
+        resourceCount += present ? 1u : 0u;
+    observation.metadata[4] = resourceCount;
+    disassembly->Release();
+}
 
 bool Sha256(
     const unsigned char* data,
@@ -497,7 +652,9 @@ bool Sha256(
 void ObserveM27Callback(
     const unsigned char* byteCode,
     std::size_t byteCodeSize,
-    bool isVertex)
+    bool isVertex,
+    SubstitutionRoute expectedRoute,
+    std::uint64_t expectedEpoch)
 {
     unsigned char digest[32] = {};
     if (!Sha256(byteCode, byteCodeSize, digest))
@@ -539,7 +696,10 @@ void ObserveM27Callback(
                             description.Size;
                     }
                 }
-                else if (binding.Type == D3D_SIT_TEXTURE &&
+                else if ((binding.Type == D3D_SIT_TEXTURE ||
+                          binding.Type == D3D_SIT_TBUFFER ||
+                          binding.Type == D3D_SIT_STRUCTURED ||
+                          binding.Type == D3D_SIT_BYTEADDRESS) &&
                     binding.BindPoint < 32u)
                 {
                     observation.metadata[10] |= 1u << binding.BindPoint;
@@ -553,8 +713,16 @@ void ObserveM27Callback(
         }
         reflection->Release();
     }
+    if (observation.metadata[4] == 0u)
+        ObserveD3D11Declarations(byteCode, byteCodeSize, observation);
 
     std::lock_guard<std::mutex> lock(g_m27CallbackObservationMutex);
+    if (g_m27ObservationEpoch.load(std::memory_order_acquire) != expectedEpoch ||
+        !g_armed.load(std::memory_order_acquire) ||
+        g_substitutionRoute.load(std::memory_order_acquire) != expectedRoute)
+    {
+        return;
+    }
     for (std::size_t index = 0; index < g_m27CallbackObservationCount; ++index)
     {
         if (std::memcmp(
@@ -609,6 +777,71 @@ IUnityGraphicsD3D11* GetD3D11()
         : g_unityInterfaces->Get<IUnityGraphicsD3D11>();
 }
 
+void ReleaseRuntimeShaders();
+
+void ReleaseDiagnosticRetainedResourcesLocked()
+{
+    for (std::uint32_t index = 0;
+         index < g_diagnosticRetainedResourceCount;
+         ++index)
+    {
+        if (g_diagnosticRetainedResources[index] != nullptr)
+        {
+            g_diagnosticRetainedResources[index]->Release();
+            g_diagnosticRetainedResources[index] = nullptr;
+        }
+    }
+    g_diagnosticRetainedResourceCount = 0;
+}
+
+void ClearDiagnosticSubmissionLocked(std::uint64_t completedSerial)
+{
+    std::memset(g_texturePointers, 0, sizeof(g_texturePointers));
+    g_texturePointerCount.store(0, std::memory_order_release);
+    ReleaseDiagnosticRetainedResourcesLocked();
+    g_activeDiagnosticSubmissionSerial.store(0, std::memory_order_release);
+    g_configuredDiagnosticSubmissionSerial.store(0, std::memory_order_release);
+    if (completedSerial != 0)
+    {
+        g_completedDiagnosticSubmissionSerial.store(
+            completedSerial,
+            std::memory_order_release);
+    }
+}
+
+void CompleteDiagnosticSubmissionOnRenderThread()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+        std::uint64_t serial =
+            g_activeDiagnosticSubmissionSerial.load(std::memory_order_acquire);
+        if (serial == 0)
+        {
+            serial = g_configuredDiagnosticSubmissionSerial.load(
+                std::memory_order_acquire);
+        }
+        ClearDiagnosticSubmissionLocked(serial);
+    }
+    g_armed.store(false, std::memory_order_release);
+    g_substitutionRoute.store(
+        SubstitutionRoute::None,
+        std::memory_order_release);
+    ReleaseRuntimeShaders();
+}
+
+void AbandonDiagnosticSubmission()
+{
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    std::uint64_t serial =
+        g_activeDiagnosticSubmissionSerial.load(std::memory_order_acquire);
+    if (serial == 0)
+    {
+        serial = g_configuredDiagnosticSubmissionSerial.load(
+            std::memory_order_acquire);
+    }
+    ClearDiagnosticSubmissionLocked(serial);
+}
+
 void ResetDiagnosticState()
 {
     g_vertexClaimed.store(false, std::memory_order_relaxed);
@@ -646,9 +879,40 @@ void ResetDiagnosticState()
     }
     {
         std::lock_guard<std::mutex> lock(g_m27CallbackObservationMutex);
+        g_m27ObservationEpoch.fetch_add(1, std::memory_order_acq_rel);
         std::memset(g_m27CallbackObservations, 0, sizeof(g_m27CallbackObservations));
         g_m27CallbackObservationCount = 0;
     }
+}
+
+bool TryArmCompilerRouteLocked(SubstitutionRoute owner)
+{
+    const SubstitutionRoute current =
+        g_substitutionRoute.load(std::memory_order_acquire);
+    if (current != SubstitutionRoute::None && current != owner)
+        return false;
+
+    g_armed.store(false, std::memory_order_release);
+    g_substitutionRoute.store(owner, std::memory_order_release);
+    ReleaseRuntimeShaders();
+    ResetDiagnosticState();
+    g_armed.store(true, std::memory_order_release);
+    return true;
+}
+
+bool TryDisarmCompilerRouteLocked(
+    SubstitutionRoute owner,
+    bool resetDiagnosticState)
+{
+    if (g_substitutionRoute.load(std::memory_order_acquire) != owner)
+        return false;
+
+    g_armed.store(false, std::memory_order_release);
+    g_substitutionRoute.store(SubstitutionRoute::None, std::memory_order_release);
+    ReleaseRuntimeShaders();
+    if (resetDiagnosticState)
+        ResetDiagnosticState();
+    return true;
 }
 
 void ReplaceD3D11Shader(UnityShaderCompilerExtCustomBinaryVariantParams& params)
@@ -675,14 +939,30 @@ void ReplaceD3D11Shader(UnityShaderCompilerExtCustomBinaryVariantParams& params)
 
     const SubstitutionRoute route =
         g_substitutionRoute.load(std::memory_order_acquire);
+    const std::uint64_t observationEpoch =
+        g_m27ObservationEpoch.load(std::memory_order_acquire);
     const unsigned char* replacementDxbc = nullptr;
     std::size_t replacementDxbcSize = 0;
+    if (route == SubstitutionRoute::M27ObserveOnly)
+    {
+        ObserveM27Callback(
+            params.inputByteCode,
+            params.inputByteCodeSize,
+            isVertex,
+            route,
+            observationEpoch);
+        // Observation is deliberately terminal: retain Unity's shader object
+        // unchanged and never consult the substitution registry.
+        return;
+    }
     if (route == SubstitutionRoute::M27HashPinned)
     {
         ObserveM27Callback(
             params.inputByteCode,
             params.inputByteCodeSize,
-            isVertex);
+            isVertex,
+            route,
+            observationEpoch);
         unsigned char digest[32] = {};
         if (!Sha256(params.inputByteCode, params.inputByteCodeSize, digest))
         {
@@ -3140,27 +3420,13 @@ HRESULT CreateM27DrawResources(ID3D11Device* device)
     if (FAILED(result))
         return result;
 
-    D3D11_DEPTH_STENCIL_DESC depth = {};
-    depth.DepthEnable = TRUE;
-    depth.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    depth.DepthFunc = D3D11_COMPARISON_ALWAYS;
-    depth.StencilEnable = TRUE;
-    depth.StencilReadMask = D3D11_DEFAULT_STENCIL_READ_MASK;
-    depth.StencilWriteMask = D3D11_DEFAULT_STENCIL_WRITE_MASK;
-    depth.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-    depth.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
-    depth.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
-    depth.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-    depth.BackFace = depth.FrontFace;
+    D3D11_DEPTH_STENCIL_DESC depth = EndfieldM27FixedState::DepthStencil();
     g_m27DrawFailureStage.store(2023u, std::memory_order_relaxed);
     result = device->CreateDepthStencilState(&depth, &g_m27DrawDepthState);
     if (FAILED(result))
         return result;
 
-    D3D11_RASTERIZER_DESC rasterizer = {};
-    rasterizer.FillMode = D3D11_FILL_SOLID;
-    rasterizer.CullMode = D3D11_CULL_NONE;
-    rasterizer.DepthClipEnable = TRUE;
+    D3D11_RASTERIZER_DESC rasterizer = EndfieldM27FixedState::Rasterizer();
     g_m27DrawFailureStage.store(2024u, std::memory_order_relaxed);
     result = device->CreateRasterizerState(
         &rasterizer, &g_m27DrawRasterizerState);
@@ -3866,8 +4132,21 @@ void DrawExactRuntimeShader()
 
 void ArmDiagnosticOnRenderThread()
 {
-    if (g_armed.load(std::memory_order_acquire))
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    const std::uint64_t submissionSerial =
+        g_configuredDiagnosticSubmissionSerial.load(std::memory_order_acquire);
+    if (submissionSerial == 0 ||
+        g_activeDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0)
         return;
+    g_activeDiagnosticSubmissionSerial.store(
+        submissionSerial,
+        std::memory_order_release);
+    if (g_armed.load(std::memory_order_acquire))
+    {
+        g_failureCount.fetch_add(1, std::memory_order_relaxed);
+        g_lastResult.store(E_UNEXPECTED, std::memory_order_relaxed);
+        return;
+    }
     std::uintptr_t pointers[kTextureSlotCount] = {};
     const std::uint32_t pointerCount =
         g_texturePointerCount.load(std::memory_order_acquire);
@@ -3894,6 +4173,14 @@ void UNITY_INTERFACE_API InspectPostDrawBindings(int eventId)
         ArmDiagnosticOnRenderThread();
         return;
     }
+    if (eventId == 2)
+    {
+        // Event 2 is queued after the exact draw and both readback copies.
+        // It is the sole normal completion edge for the submission serial and
+        // the native AddRef ownership acquired before command submission.
+        CompleteDiagnosticSubmissionOnRenderThread();
+        return;
+    }
     if (!g_armed.load(std::memory_order_acquire))
         return;
 
@@ -3903,23 +4190,7 @@ void UNITY_INTERFACE_API InspectPostDrawBindings(int eventId)
         return;
     }
     if (eventId != 1)
-    {
-        if (eventId == 2)
-        {
-            // Event 2 is queued after the exact draw and its readback copy.
-            // Clear the native resource-pointer lifetime only on the render
-            // thread; clearing it from C# immediately after ExecuteCommandBuffer
-            // can race a deferred SRP submission.
-            std::memset(g_texturePointers, 0, sizeof(g_texturePointers));
-            g_texturePointerCount.store(0, std::memory_order_release);
-            g_armed.store(false, std::memory_order_release);
-            g_substitutionRoute.store(
-                SubstitutionRoute::None,
-                std::memory_order_release);
-            ReleaseRuntimeShaders();
-        }
         return;
-    }
 
     IUnityGraphicsD3D11* unityD3D11 = GetD3D11();
     ID3D11Device* device = unityD3D11 == nullptr ? nullptr : unityD3D11->GetDevice();
@@ -6934,6 +7205,7 @@ void UNITY_INTERFACE_API DrawM27ExactRuntime(int eventId)
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
 UnityPluginLoad(IUnityInterfaces* unityInterfaces)
 {
+    AbandonDiagnosticSubmission();
     ReleaseRuntimeShaders();
     ReleaseEndminfUberRuntimeResources();
     ReleaseM27DrawResources();
@@ -6950,6 +7222,7 @@ UnityPluginLoad(IUnityInterfaces* unityInterfaces)
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
 {
+    AbandonDiagnosticSubmission();
     g_armed.store(false, std::memory_order_release);
     g_substitutionRoute.store(SubstitutionRoute::None, std::memory_order_release);
     ReleaseRuntimeShaders();
@@ -7012,39 +7285,43 @@ EndfieldOriginalDxbcGetConfigureCount()
 extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
 EndfieldOriginalDxbcSetDiagnosticArmed(std::uint32_t armed)
 {
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    if (g_configuredDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0)
+        return 0;
     if (armed != 0)
-    {
-        g_armed.store(false, std::memory_order_release);
-        g_substitutionRoute.store(
-            SubstitutionRoute::DeferredDiagnostic,
-            std::memory_order_release);
-        ReleaseRuntimeShaders();
-        ResetDiagnosticState();
-        g_armed.store(true, std::memory_order_release);
-    }
-    else
-    {
-        g_armed.store(false, std::memory_order_release);
-        g_substitutionRoute.store(SubstitutionRoute::None, std::memory_order_release);
-        ReleaseRuntimeShaders();
-    }
-    return g_armed.load(std::memory_order_acquire) ? 1u : 0u;
+        return TryArmCompilerRouteLocked(
+            SubstitutionRoute::DeferredDiagnostic) ? 1u : 0u;
+
+    TryDisarmCompilerRouteLocked(SubstitutionRoute::DeferredDiagnostic, false);
+    return 0u;
 }
 
 extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
 EndfieldOriginalDxbcSetM27SubstitutionArmed(std::uint32_t armed)
 {
-    g_armed.store(false, std::memory_order_release);
-    g_substitutionRoute.store(
-        armed != 0
-            ? SubstitutionRoute::M27HashPinned
-            : SubstitutionRoute::None,
-        std::memory_order_release);
-    ReleaseRuntimeShaders();
-    ResetDiagnosticState();
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    if (g_configuredDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0)
+        return 0;
     if (armed != 0)
-        g_armed.store(true, std::memory_order_release);
-    return g_armed.load(std::memory_order_acquire) ? 1u : 0u;
+        return TryArmCompilerRouteLocked(
+            SubstitutionRoute::M27HashPinned) ? 1u : 0u;
+
+    TryDisarmCompilerRouteLocked(SubstitutionRoute::M27HashPinned, true);
+    return 0u;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcSetM27ObservationArmed(std::uint32_t armed)
+{
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    if (g_configuredDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0)
+        return 0;
+    if (armed != 0)
+        return TryArmCompilerRouteLocked(
+            SubstitutionRoute::M27ObserveOnly) ? 1u : 0u;
+
+    TryDisarmCompilerRouteLocked(SubstitutionRoute::M27ObserveOnly, true);
+    return 0u;
 }
 
 extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
@@ -8319,6 +8596,9 @@ EndfieldOriginalDxbcSetDiagnosticTexturePointers(
     const std::uint64_t* texturePointers,
     std::uint32_t count)
 {
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    if (g_configuredDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0)
+        return;
     std::memset(g_texturePointers, 0, sizeof(g_texturePointers));
     if (texturePointers != nullptr && count != 0)
     {
@@ -8333,6 +8613,93 @@ EndfieldOriginalDxbcSetDiagnosticTexturePointers(
     g_texturePointerCount.store(
         texturePointers == nullptr ? 0 : count,
         std::memory_order_release);
+}
+
+extern "C" std::uint64_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcBeginDiagnosticSubmission(
+    const std::uint64_t* texturePointers,
+    std::uint32_t texturePointerCount,
+    const std::uint64_t* retainedResourcePointers,
+    std::uint32_t retainedResourceCount)
+{
+    if (texturePointers == nullptr || texturePointerCount != kTextureSlotCount ||
+        retainedResourcePointers == nullptr ||
+        retainedResourceCount != kDiagnosticRetainedResourceCapacity)
+    {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    if (g_configuredDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0 ||
+        g_activeDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0 ||
+        g_armed.load(std::memory_order_acquire))
+    {
+        return 0;
+    }
+    if (g_nextDiagnosticSubmissionSerial ==
+        (std::numeric_limits<std::uint64_t>::max)())
+    {
+        // Submission serials are compared monotonically by the managed
+        // consumer. Exhaustion is terminal: never wrap and make a new pending
+        // submission appear older than the completed serial.
+        return 0;
+    }
+
+    for (std::uint32_t index = 0; index < texturePointerCount; ++index)
+    {
+        if (texturePointers[index] == 0)
+            return 0;
+    }
+    for (std::uint32_t index = 0; index < retainedResourceCount; ++index)
+    {
+        if (retainedResourcePointers[index] == 0)
+            return 0;
+    }
+
+    ReleaseDiagnosticRetainedResourcesLocked();
+    std::memcpy(
+        g_texturePointers,
+        texturePointers,
+        sizeof(g_texturePointers));
+    g_texturePointerCount.store(texturePointerCount, std::memory_order_release);
+    for (std::uint32_t index = 0; index < retainedResourceCount; ++index)
+    {
+        IUnknown* resource = reinterpret_cast<IUnknown*>(
+            static_cast<std::uintptr_t>(retainedResourcePointers[index]));
+        resource->AddRef();
+        g_diagnosticRetainedResources[index] = resource;
+    }
+    g_diagnosticRetainedResourceCount = retainedResourceCount;
+
+    ++g_nextDiagnosticSubmissionSerial;
+    g_activeDiagnosticSubmissionSerial.store(0, std::memory_order_release);
+    g_configuredDiagnosticSubmissionSerial.store(
+        g_nextDiagnosticSubmissionSerial,
+        std::memory_order_release);
+    return g_nextDiagnosticSubmissionSerial;
+}
+
+extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcCancelDiagnosticSubmission(std::uint64_t submissionSerial)
+{
+    if (submissionSerial == 0)
+        return 0;
+    std::lock_guard<std::mutex> lock(g_diagnosticSubmissionMutex);
+    if (g_configuredDiagnosticSubmissionSerial.load(std::memory_order_acquire) !=
+            submissionSerial ||
+        g_activeDiagnosticSubmissionSerial.load(std::memory_order_acquire) != 0 ||
+        g_armed.load(std::memory_order_acquire))
+    {
+        return 0;
+    }
+    ClearDiagnosticSubmissionLocked(submissionSerial);
+    return 1;
+}
+
+extern "C" std::uint64_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+EndfieldOriginalDxbcGetCompletedDiagnosticSubmissionSerial()
+{
+    return g_completedDiagnosticSubmissionSerial.load(std::memory_order_acquire);
 }
 
 extern "C" std::uint32_t UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API

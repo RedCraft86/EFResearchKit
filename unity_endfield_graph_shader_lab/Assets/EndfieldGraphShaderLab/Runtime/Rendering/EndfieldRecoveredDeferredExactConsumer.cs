@@ -69,7 +69,10 @@ namespace EndfieldGraphShaderLab
         private float[] exactReadbackFloats;
         private float[] recoveredHlslReadbackFloats;
         private bool comparisonLogged;
-        private bool nativeEventPending;
+        private bool exactContentValidationComplete;
+        private bool exactContentValid;
+        private int contentValidationGeneration = 1;
+        private ulong nativePendingSubmissionSerial;
         private bool disposed;
 
         internal EndfieldRecoveredDeferredExactConsumer()
@@ -82,7 +85,21 @@ namespace EndfieldGraphShaderLab
 
         internal bool Requested => requested;
 
-        internal RenderTexture RecoveredHlslOutput => recoveredHlslOutput;
+        internal RenderTexture ExactOutput => output;
+
+        internal bool PresentationReady =>
+            exactContentValidationComplete && exactContentValid &&
+            output != null && output.IsCreated();
+
+        internal void SuppressInactiveFrame()
+        {
+            // Presentation authority belongs to one continuous source-owner
+            // interval. Never carry an asynchronous positive content result
+            // across an inactive gap, where the private depth/output belong
+            // to an earlier effect frame.
+            InvalidateContentValidation();
+            Shader.SetGlobalFloat(ReadyId, 0.0f);
+        }
 
         internal bool Render(
             ScriptableRenderContext context,
@@ -96,7 +113,9 @@ namespace EndfieldGraphShaderLab
             EndfieldRecoveredReflectionProbeFallback reflectionProbeFallback,
             EndfieldRecoveredLightBinning lightBinning,
             EndfieldRecoveredVisibilitySHConstants visibilitySHConstants,
-            EndfieldRecoveredDeferredLightData lightData,
+            EndfieldRecoveredDeferredLightData selectedLightData,
+            EndfieldRecoveredEndminfFullDeferredLightData fullEndminfLightData,
+            bool useFullEndminfLightData,
             EndfieldRecoveredDeferredShadowData shadowData,
             bool transformsReady,
             bool shaderVariablesReady,
@@ -108,19 +127,23 @@ namespace EndfieldGraphShaderLab
             Shader.SetGlobalFloat(ReadyId, 0.0f);
             if (!requested)
                 return false;
-            if (nativeEventPending)
+            if (nativePendingSubmissionSerial != 0)
             {
                 try
                 {
-                    if (Native.GetDiagnosticArmed() != 0)
+                    ulong completedSerial =
+                        Native.GetCompletedDiagnosticSubmissionSerial();
+                    if (completedSerial < nativePendingSubmissionSerial)
                         return FailClosed(
-                            "previous exact consumer render event is still pending");
-                    nativeEventPending = false;
+                            "previous exact consumer render submission is still pending: " +
+                            $"submitted={nativePendingSubmissionSerial}," +
+                            $"completed={completedSerial}");
+                    nativePendingSubmissionSerial = 0;
                 }
                 catch (Exception exception)
                 {
                     return FailClosed(
-                        "previous exact consumer event state is unavailable: " +
+                        "previous exact consumer submission state is unavailable: " +
                         exception.Message);
                 }
             }
@@ -161,7 +184,10 @@ namespace EndfieldGraphShaderLab
                     reflectionProbeFallback,
                     lightBinning,
                     visibilitySHConstants,
-                    lightData,
+                    selectedLightData,
+                    fullEndminfLightData,
+                    useFullEndminfLightData,
+                    resources,
                     shadowData,
                     out ComputeBuffer[] constantBuffers,
                     out string constantBufferFailure))
@@ -206,11 +232,14 @@ namespace EndfieldGraphShaderLab
             }
 
             ulong[] pointers = new ulong[TextureSlotCount];
+            ulong[] retainedResourcePointers = new ulong[
+                TextureSlotCount + ConstantBufferSlotCount + 2];
             CommandBuffer command = new CommandBuffer
             {
                 name = "Recovered exact deferred resolver consumer"
             };
             bool eventQueued = false;
+            ulong submissionSerial = 0;
             try
             {
                 if (!TryPrepareNative(out string nativeFailure))
@@ -256,7 +285,43 @@ namespace EndfieldGraphShaderLab
                 if (pointers[0] == 0)
                     return FailClosed("exact consumer native t0 buffer pointer is unavailable");
 
-                Native.SetDiagnosticTexturePointers(pointers, TextureSlotCount);
+                Array.Copy(
+                    pointers,
+                    0,
+                    retainedResourcePointers,
+                    0,
+                    TextureSlotCount);
+                for (int slot = 0; slot < ConstantBufferSlotCount; slot++)
+                {
+                    retainedResourcePointers[TextureSlotCount + slot] =
+                        NativeBufferPointer(constantBuffers[slot]);
+                }
+                retainedResourcePointers[
+                    TextureSlotCount + ConstantBufferSlotCount] =
+                    NativeTexturePointer(output);
+                retainedResourcePointers[
+                    TextureSlotCount + ConstantBufferSlotCount + 1] =
+                    NativeTexturePointer(recoveredHlslOutput);
+                for (int index = 0; index < retainedResourcePointers.Length; index++)
+                {
+                    if (retainedResourcePointers[index] == 0)
+                    {
+                        return FailClosed(
+                            "exact consumer retained native resource pointer " +
+                            index + " is unavailable");
+                    }
+                }
+                submissionSerial = Native.BeginDiagnosticSubmission(
+                    pointers,
+                    TextureSlotCount,
+                    retainedResourcePointers,
+                    checked((uint)retainedResourcePointers.Length));
+                if (submissionSerial == 0)
+                {
+                    return FailClosed(
+                        "exact consumer native submission was rejected because " +
+                        "another submission owns the resource lifetime");
+                }
                 command.SetRenderTarget(recoveredHlslOutput);
                 command.ClearRenderTarget(false, true, Color.clear);
                 command.SetViewport(new Rect(0.0f, 0.0f, width, height));
@@ -288,7 +353,12 @@ namespace EndfieldGraphShaderLab
                 // native exact draw only after that shell draw completes.
                 command.IssuePluginEvent(renderEvent, 3);
                 command.IssuePluginEvent(renderEvent, 0);
-                RequestReadback(command, camera.name, width, height);
+                RequestReadback(
+                    command,
+                    camera.name,
+                    width,
+                    height,
+                    resources.t11ContentValid);
                 RequestRecoveredHlslReadback(
                     command, camera.name, width, height);
                 command.IssuePluginEvent(renderEvent, 1);
@@ -298,7 +368,7 @@ namespace EndfieldGraphShaderLab
                 // may still be submitting the command buffer.
                 command.IssuePluginEvent(renderEvent, 2);
                 eventQueued = true;
-                nativeEventPending = true;
+                nativePendingSubmissionSerial = submissionSerial;
                 command.SetRenderTarget(
                     canonicalColorTarget,
                     canonicalDepthTarget);
@@ -314,6 +384,7 @@ namespace EndfieldGraphShaderLab
                     "Recovered exact deferred resolver consumer submitted: " +
                     $"camera={camera.name}, size={width}x{height}, " +
                     $"publicationSerial={publicationSerial}, " +
+                    $"nativeSubmissionSerial={submissionSerial}, " +
                     $"exactBound={exactBound}, " +
                     $"resourceMask=0x{resourceMask:x}, " +
                     $"resourceFailureMask=0x{resourceFailureMask:x}, " +
@@ -328,7 +399,8 @@ namespace EndfieldGraphShaderLab
                     "t8=HDPLS:white-inactive-fallback," +
                     "t9=CSMRamp:black-null-fallback," +
                     $"t10=multiscattering:{(multiscatteringLut != null ? "ready" : "absent")}," +
-                    $"t11=screenShadow:{(resources.T11Ready ? "ready" : "absent")}," +
+                    $"t11=screenShadow:{(resources.T11Ready ? "ready" : "absent")}:" +
+                    $"contentValid={resources.t11ContentValid.ToString().ToLowerInvariant()}," +
                     "t12=LightCookie:black-zero-cookie," +
                     "t13=IntegratedFog:black-disabled-1x1-ASTC," +
                     $"t14=LogSH:{(resources.T14Ready ? "ready" : "absent")}," +
@@ -350,8 +422,23 @@ namespace EndfieldGraphShaderLab
             {
                 if (!eventQueued)
                 {
-                    Native.SetDiagnosticTexturePointers(null, 0);
-                    Native.SetDiagnosticArmed(0);
+                    try
+                    {
+                        if (submissionSerial != 0 &&
+                            Native.CancelDiagnosticSubmission(submissionSerial) == 0)
+                        {
+                            Debug.LogError(
+                                "Exact consumer could not cancel an unqueued native " +
+                                $"submission: serial={submissionSerial}.");
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        Debug.LogError(
+                            "Exact consumer unqueued-submission cancellation " +
+                            "failed; native unload remains the final ownership " +
+                            "boundary: " + exception.Message);
+                    }
                 }
                 command.Release();
             }
@@ -363,14 +450,39 @@ namespace EndfieldGraphShaderLab
                 return;
             disposed = true;
             Shader.SetGlobalFloat(ReadyId, 0.0f);
-            try
+            if (nativePendingSubmissionSerial != 0)
             {
-                Native.SetDiagnosticTexturePointers(null, 0);
-                Native.SetDiagnosticArmed(0);
-            }
-            catch
-            {
-                // Native plugin may already be unloaded during editor shutdown.
+                try
+                {
+                    ulong completedSerial =
+                        Native.GetCompletedDiagnosticSubmissionSerial();
+                    if (completedSerial < nativePendingSubmissionSerial)
+                    {
+                        // BeginDiagnosticSubmission AddRefs every D3D11 resource
+                        // used by the queued draw/readbacks. Event 2 releases
+                        // that ownership and publishes completion. Never clear
+                        // or cancel here: Dispose can run before event 3 starts.
+                        Debug.LogWarning(
+                            "Exact consumer disposed with a native submission " +
+                            "still queued; native event 2 retains its D3D11 " +
+                            $"resources safely: submitted={nativePendingSubmissionSerial}," +
+                            $"completed={completedSerial}.");
+                    }
+                    else
+                    {
+                        nativePendingSubmissionSerial = 0;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    // Do not mutate native pointer/armed state during shutdown.
+                    // The plugin owns retained COM references until event 2 or
+                    // UnityPluginUnload abandons the pending submission.
+                    Debug.LogWarning(
+                        "Exact consumer could not query native completion during " +
+                        "shutdown; retained resources remain native-owned: " +
+                        exception.Message);
+                }
             }
             ReleaseOutput();
             DisposeUnityObject(fallback2D);
@@ -408,7 +520,10 @@ namespace EndfieldGraphShaderLab
             EndfieldRecoveredReflectionProbeFallback reflectionProbeFallback,
             EndfieldRecoveredLightBinning lightBinning,
             EndfieldRecoveredVisibilitySHConstants visibilitySHConstants,
-            EndfieldRecoveredDeferredLightData lightData,
+            EndfieldRecoveredDeferredLightData selectedLightData,
+            EndfieldRecoveredEndminfFullDeferredLightData fullEndminfLightData,
+            bool useFullEndminfLightData,
+            EndfieldRecoveredDeferredResolverInputProbe.ResourceFrame resources,
             EndfieldRecoveredDeferredShadowData shadowData,
             out ComputeBuffer[] buffers,
             out string failure)
@@ -428,14 +543,56 @@ namespace EndfieldGraphShaderLab
                 buffers = null;
                 return false;
             }
+            ComputeBuffer publishedLightDataBuffer = null;
+            uint preparedSerial = 0;
+            bool lightPublicationReady = useFullEndminfLightData
+                ? fullEndminfLightData != null &&
+                  fullEndminfLightData.TryGetCurrentPublication(
+                      camera,
+                      out publishedLightDataBuffer,
+                      out preparedSerial,
+                      out failure)
+                : selectedLightData != null &&
+                  selectedLightData.TryGetCurrentPublication(
+                      camera,
+                      out publishedLightDataBuffer,
+                      out preparedSerial,
+                      out failure);
+            if (!lightPublicationReady)
+            {
+                if (string.IsNullOrEmpty(failure))
+                    failure = useFullEndminfLightData
+                        ? "exact consumer full Endminf LightData owner is unavailable"
+                        : "exact consumer selected LightData owner is unavailable";
+                buffers = null;
+                return false;
+            }
+            if (resources.t6PreparedSerial != preparedSerial)
+            {
+                failure = "exact consumer t6 does not match the b4 camera/frame publication";
+                buffers = null;
+                return false;
+            }
+            if (shadowData == null ||
+                !shadowData.TryGetCurrentPublication(
+                    camera,
+                    preparedSerial,
+                    out ComputeBuffer publishedShadowDataBuffer,
+                    out failure))
+            {
+                if (shadowData == null)
+                    failure = "exact consumer ShadowData owner is unavailable";
+                buffers = null;
+                return false;
+            }
             buffers = new[]
             {
                 transformVariables?.CurrentBuffer,
                 shaderVariablesGlobal?.CurrentBuffer,
                 reflectionProbeFallback?.CurrentGlobalDataBuffer,
                 lightBinningConstants,
-                lightData?.CurrentBuffer,
-                shadowData?.CurrentBuffer,
+                publishedLightDataBuffer,
+                publishedShadowDataBuffer,
                 zeroHdplsBuffer,
                 lightCookieData,
                 visibilitySHConstants?.CurrentBuffer,
@@ -707,20 +864,8 @@ namespace EndfieldGraphShaderLab
                 }
                 if (multiscatteringLut == null)
                 {
-                    multiscatteringLut = new Texture2D(
-                        1,
-                        1,
-                        TextureFormat.RGBAFloat,
-                        false,
-                        true)
-                    {
-                        name = "Recovered exact resolver neutral multiscattering LUT",
-                        filterMode = FilterMode.Point,
-                        wrapMode = TextureWrapMode.Clamp,
-                        hideFlags = HideFlags.HideAndDontSave,
-                    };
-                    multiscatteringLut.SetPixel(0, 0, Color.clear);
-                    multiscatteringLut.Apply(false, true);
+                    multiscatteringLut =
+                        EndfieldRecoveredMultiscatteringLut.Create();
                 }
                 return true;
             }
@@ -801,15 +946,22 @@ namespace EndfieldGraphShaderLab
             CommandBuffer command,
             string cameraName,
             int width,
-            int height)
+            int height,
+            bool t11ContentValid)
         {
             if (readbackRequested || !SystemInfo.supportsAsyncGPUReadback)
                 return;
             readbackRequested = true;
+            int generation = contentValidationGeneration;
             command.RequestAsyncReadback(output, 0, request =>
             {
+                if (disposed || generation != contentValidationGeneration)
+                    return;
                 if (request.hasError)
                 {
+                    readbackRequested = false;
+                    exactContentValidationComplete = false;
+                    exactContentValid = false;
                     Debug.LogWarning(
                         "Recovered exact deferred resolver consumer readback failed closed.");
                     return;
@@ -828,6 +980,7 @@ namespace EndfieldGraphShaderLab
                 exactReadbackFloats = floats.ToArray();
                 int finiteFloats = 0;
                 int nonFiniteFloats = 0;
+                int nonzeroRgbFloats = 0;
                 float minimum = float.PositiveInfinity;
                 float maximum = float.NegativeInfinity;
                 for (int index = 0; index < floats.Length; index++)
@@ -841,7 +994,18 @@ namespace EndfieldGraphShaderLab
                     finiteFloats++;
                     minimum = Mathf.Min(minimum, value);
                     maximum = Mathf.Max(maximum, value);
+                    if ((index & 3) != 3 && Mathf.Abs(value) > 1.0e-6f)
+                        nonzeroRgbFloats++;
                 }
+                exactContentValidationComplete = true;
+                bool numericContentValid =
+                    nonFiniteFloats == 0 && nonzeroRgbFloats > 0;
+                // A numerically nonzero resolver result is not presentation
+                // authority. The selected retail program consumes t11 with
+                // screen-space shadows enabled, so the exact output may be
+                // presented only when the same-frame t11 producer separately
+                // certifies its source content and provenance.
+                exactContentValid = t11ContentValid && numericContentValid;
                 Debug.Log(
                     "Recovered exact deferred resolver consumer readback: " +
                     $"camera={cameraName}, size={width}x{height}, " +
@@ -854,6 +1018,10 @@ namespace EndfieldGraphShaderLab
                     $"rgbaFloatSha256={sha256}, " +
                     $"finiteFloats={finiteFloats}, " +
                     $"nonFiniteFloats={nonFiniteFloats}, " +
+                    $"nonzeroRgbFloats={nonzeroRgbFloats}, " +
+                    $"numericContentValid={numericContentValid}, " +
+                    $"t11ContentValid={t11ContentValid}, " +
+                    $"screenContentValid={exactContentValid}, " +
                     $"min={minimum.ToString("R", CultureInfo.InvariantCulture)}, " +
                     $"max={maximum.ToString("R", CultureInfo.InvariantCulture)}, " +
                     $"failureCount={Native.GetFailureCount()}, " +
@@ -872,10 +1040,14 @@ namespace EndfieldGraphShaderLab
                 !SystemInfo.supportsAsyncGPUReadback)
                 return;
             recoveredHlslReadbackRequested = true;
+            int generation = contentValidationGeneration;
             command.RequestAsyncReadback(recoveredHlslOutput, 0, request =>
             {
+                if (disposed || generation != contentValidationGeneration)
+                    return;
                 if (request.hasError)
                 {
+                    recoveredHlslReadbackRequested = false;
                     Debug.LogWarning(
                         "Recovered deferred pass-0 HLSL sidecar readback failed closed.");
                     return;
@@ -1107,8 +1279,24 @@ namespace EndfieldGraphShaderLab
             }
             output = null;
             recoveredHlslOutput = null;
+            InvalidateContentValidation();
             allocatedWidth = 0;
             allocatedHeight = 0;
+        }
+
+        private void InvalidateContentValidation()
+        {
+            unchecked
+            {
+                contentValidationGeneration++;
+            }
+            readbackRequested = false;
+            recoveredHlslReadbackRequested = false;
+            exactReadbackFloats = null;
+            recoveredHlslReadbackFloats = null;
+            comparisonLogged = false;
+            exactContentValidationComplete = false;
+            exactContentValid = false;
         }
 
         private static void DisposeUnityObject(UnityEngine.Object value)
@@ -1136,14 +1324,21 @@ namespace EndfieldGraphShaderLab
             internal static extern uint GetConfigureCount();
 
             [DllImport(NativeLibrary, EntryPoint =
-                "EndfieldOriginalDxbcSetDiagnosticArmed")]
-            internal static extern uint SetDiagnosticArmed(uint armed);
+                "EndfieldOriginalDxbcBeginDiagnosticSubmission")]
+            internal static extern ulong BeginDiagnosticSubmission(
+                [In] ulong[] texturePointers,
+                uint texturePointerCount,
+                [In] ulong[] retainedResourcePointers,
+                uint retainedResourceCount);
 
             [DllImport(NativeLibrary, EntryPoint =
-                "EndfieldOriginalDxbcSetDiagnosticTexturePointers")]
-            internal static extern void SetDiagnosticTexturePointers(
-                [In] ulong[] texturePointers,
-                uint count);
+                "EndfieldOriginalDxbcCancelDiagnosticSubmission")]
+            internal static extern uint CancelDiagnosticSubmission(
+                ulong submissionSerial);
+
+            [DllImport(NativeLibrary, EntryPoint =
+                "EndfieldOriginalDxbcGetCompletedDiagnosticSubmissionSerial")]
+            internal static extern ulong GetCompletedDiagnosticSubmissionSerial();
 
             [DllImport(NativeLibrary, EntryPoint =
                 "EndfieldOriginalDxbcGetDiagnosticArmed")]

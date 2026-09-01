@@ -64,6 +64,29 @@ freezes after the bounded pair, while initialization lifetime remains separate;
 a guaranteed pre-`slInit` observation still requires an explicitly approved,
 exact-build-gated prelaunch lifecycle rather than synthesized evidence.
 
+Session `20260830T033415Z` is also rejected evidence because the observer
+crashed the client with WER exception `0xc00000fd` inside
+`EndfieldCapture.dll`. The cause was excessive fixed local storage in observer
+callbacks: the Streamline capture window alone reserved about 30.7 MiB per
+call. EndfieldCapture commit `fc37afc` moves those records to bounded heap
+storage and adds linked-image stack-frame gates for the runtime and D3D11
+proxy; the largest verified linked frame is now below 93 KiB and all 21 native
+tests pass. This repairs capture readiness only; it does not make the failed
+session usable or provide missing graphics/secondary-motion evidence.
+
+Streamline viewport values are opaque per-process lifetime handles, not stable
+Endminf identifiers. Session `20260831T004510Z` supplied two otherwise exact
+surface joins on viewport 5; the former viewport-3 constant rejected them
+before staging. EndfieldCapture now binds the first exact scheduled packet's
+viewport at runtime, requires the consecutive packet, exposure samples,
+deferred-route provenance, observer, sidecar, and published summaries to retain
+that identity, and rejects ambiguous or cross-viewport evidence. Full capture
+also exposes the sidecar's immutable trigger Present so repeated later
+body/Uber observations cannot move the graphics/Animator join. Release build,
+all 26 native tests, repeated evidence-shaped viewport-3/viewport-5 cases, and
+the nonlaunching installed-client preflight pass; a fresh retail collection is
+still required before the repaired path supplies usable visual evidence.
+
 The same session proved why the secondary observer recorded 32,097
 `crossFrame=true` cloth updates but no writes. That branch bypasses the former
 `WriteTransform`/`CompleteMasterJob` hooks and publishes through
@@ -223,6 +246,21 @@ the outer return; the false path remains intact and all 20 native tests pass.
   The maintained Endminf launcher now enables this proven compatibility path;
   it had incorrectly forced the flag off even though canonical batch captures
   enabled it, which made the ten M01/M38 stones disappear in interactive use.
+  Their shared four-texture family now imports the installed compressed mip
+  chains rather than PNG-derived pixels while preserving the existing texture
+  asset paths, GUIDs, local file IDs, and M01/M27/M38 material PPtrs. The
+  transport is gated by the installed AssetMap identities, serialized
+  Texture2D descriptors, full BC7-sRGB/BC5-linear mip-chain hashes, and exact
+  material property-to-PPtr mappings; it has no live-capture dependency. The
+  selected runtime sessions remain diagnostic only: `20260828T224210Z` has an
+  incomplete graphics-provider summary, while `20260826T231028Z` has complete
+  provider summaries but a truncated/failed full-frame resource selection.
+  They corroborate the four complete top mips but do not close the conflicting
+  logical LitEffect register names. Unity D3D11 validation confirms the full
+  payloads, mip counts, normal-map typing, stable identities, and all twelve
+  material-property bindings. This closes source texture transport only;
+  LitEffect lighting, deferred composition, and particle placement still
+  require their own source/runtime evidence.
   Runtime spawning now explicitly restarts recovered `playAutomatically`
   legacy effect clips after its inactive staging step. The composite
   `effect_nanguan` clip uses a capture-closed 2.7667-second (30-fps tick 83)
@@ -244,11 +282,20 @@ the outer return; the false path remains intact and all 20 native tests pass.
   recovers the selected HGBuffer fragment's 576-byte `UnityPerMaterial` table
   and exact offsets for all 17 parallax fields used through the 496-byte b3
   prefix (including `_ParallaxColor` at byte 464 and its dark color at 480).
-  This closes the selected physical b3 slice, not visual admission. Selected-
-  frame b1 VFX globals, b2 per-draw history/LOD state, the selected b4 value,
-  `ParserBindChannels`, and complete HGBuffer frame publication remain
-  fail-closed. The raw retail peak frame itself contains the large M13 orange
-  ring, so it is not evidence for shrinking or dimming that authored row.
+  The current actual-geometry M27 draw also closes the physical resource ABI:
+  PS t0-t3 are BaseColor/Normal/MRO/Parallax, PS t4/t5 are real sampled slots
+  backed by one shared null/default resource because both serialized material
+  properties are null, and VS t0 is the optional structured skin palette. The
+  selected stone mesh has no skin rows and the live b2 record clears the skin
+  branch, but the dependency remains declared and fail-closed. A source-driven
+  Unity shell now declares that full ABI and has repeatable independently
+  observed D3D11 compiler hashes plus successful stage+SHA substitution and
+  `SetPass`; it consumes no captured VB/IB/CB packet arrays and still cannot
+  submit a draw. Selected b0/b1 reads, authenticated PSR b2 range/resource
+  ownership, complete b3 word provenance, fresh b4 producer/value lifecycle,
+  s0-s5 descriptors, and synchronized MRT publication remain fail-closed. The
+  raw retail peak frame itself contains the large M13 orange ring, so it is not
+  evidence for shrinking or dimming that authored row.
 - A renderer-isolation audit distinguishes the earlier broad glow
   `overview_04/1/guangyun (3)` with `M_fx_endminm_gfx_30` from the actual
   ten-piece crystal burst,
@@ -719,18 +766,18 @@ fragments around the raised hand. Both `overview_02/all/suikuai` source rows are
   frames. The exact DXBC consumer remains D3D11-only and its private float
   readback is intentionally non-presented; those sidecars are evidence, not a
   hidden beauty path.
-- Endminf's exact 12-row Overview light fixture now passes the selected
-  SphereOutside b31 boundary for every saved frame: all rows are
-  CharacterOnly, no-OBB, no-cookie, no-flicker, and no-culling, while the two
-  serialized soft-shadow identities remain fixed at rows 3 and 11. A bounded
-  D3D12 capture observes `_LightDataBuffer` and the exact zero-cookie buffer
-  ready across all 41 frames while b34, the combined pass-0 gate, and beauty
-  presentation remain false. The exact-consumer bridge now also requires a
-  successful same-camera, same-size, same-frame constants/cookie publication;
-  an allocated zero fallback can no longer pass as provenance. A new 12-row
-  GPU word-readback is still open because the historical verifier's pinned
-  decompiled shader inputs were retired from scratch; do not extend its older
-  eight-row proof by implication.
+- Endminf's exact 12-row Overview light fixture now has a separate complete
+  native b31 contract rather than extending the selected SphereOutside subset.
+  It packs all six headers and eight float4 words for each source-backed live
+  row, uses the prepared rig's live transforms, and consumes the punctual
+  producer's same-camera generation token. Every serialized row carries a
+  deterministic source semantic hash, so inspector edits fail closed instead
+  of becoming hidden light tuning. The bounded clean capture
+  `20260828T121603Z`, frame 1758, owns only its 1,632-byte active prefix; its
+  inactive allocator tail is explicitly outside the oracle. The extended
+  invariant retains source-stable oct lanes and matches offline, while the new
+  named/CB4 GPU transport verifier remains to be executed when the shared Unity
+  project lock is released.
 - The interactive D3D11 Endminf B31 probe now reproduces that selected
   12-light/zero-cookie transport over the actual `ui_overview_start` to loop
   41-frame sequence. It still reports no presented deferred pass-0/shadow
@@ -764,14 +811,15 @@ fragments around the raised hand. Both `overview_02/all/suikuai` source rows are
   with the otherwise physical t0/t5/t7/t11 set. This is a bounded transport
   scheduling gap in the non-presented SphereOutside diagnostic, not evidence
   for routing CharacterNPR hair through that resolver.
-- Endminf's two punctual-shadow rows now populate the lab-owned diagnostic
-  atlas and selected b34 transport as two validated spot entries in contiguous
-  dynamic slots 40-41. Publication still requires exact source rows 11 and 3
-  by name/type, and the one-spot and six-face fixtures remain independently
-  validated. The retail settled-frame light-to-shadow slot mapping has not
-  been captured, so this closes the non-presented exact-consumer fixture only;
-  do not infer retail order from source row, packed light, registration, or lab
-  allocation order.
+- Endminf's two punctual-shadow rows populate the lab-owned diagnostic atlas
+  and selected b34 transport from the already prepared packed order rather
+  than a row-to-slot table. The admitted clean retail frame closes packed order
+  `[7,4,2,6,10,3,9,5,8,0,11,1]`: source row 3 / packed row 5 receives dynamic
+  slot 40, then source row 11 / packed row 10 receives slot 41. Runtime code
+  derives this by filtering the prepared order and allocating contiguous cache
+  faces; captured order and slots are verifier inputs only. b4, b5, and t6 now
+  require one matching camera/generation token before the exact consumer can
+  submit.
 - The recovered VisibilitySH/capsule term improves measured character deltas,
   but it still runs against the partial ready-subset floor rather than the real
   presentation scene. The softer result is not evidence of a missing constant
@@ -1019,6 +1067,16 @@ all-character pass:
   second Distance, End, and collider-snapshot order at the retail cadence. It
   exposes publication-ready arrays but still requires explicit certified
   center/team and prepared-capsule inputs and performs no runtime writes.
+  The startup/reset lifecycle is now source-closed without a captured motion
+  trajectory: `AddTeam` seeds `Valid|Reset|TimeReset`, enabling the process
+  adds the active flags and reasserts `Reset`, and the pre-simulation reset job
+  copies the current animation pose into the simulation/base/display/velocity
+  history arrays while zeroing velocity, friction, and collision state.
+  `PostTeam` consumes `Reset|TimeReset` after publication, including on a
+  zero-substep update. The managed owner solver implements this exact
+  transactional fan-out and has deterministic distinct-current/previous-pose
+  coverage. This closes initialization only; it is not permission to replay a
+  captured trajectory or invent the unresolved cross-frame transport.
   A four-owner inert frame coordinator now supplies those inputs by composing
   exact fixed-center aggregation, team-step state, ten-collider preparation,
   owner collider subsets, and the retail clock. It remains value-only and
@@ -1050,6 +1108,8 @@ all-character pass:
   channels serve restore/writeback. `UseAnimatorTransform` is source-statically
   false, selecting ordinary Transform reads and TransformAccess writes, while
   public `CopyDoubleBuffer` has no direct caller and is dormant in `ClothUpdate`.
+  Static recovery identifies it as a current-to-last value copy rather than a
+  pointer swap, but does not identify a live caller in the target pipeline.
   Live `TeamData.useRelativeTransform` and `UseCrossFrameJob` can still be
   changed by reset, timeline, and authored physics-quality paths; these are the
   two remaining target-session gaps. Minimum telemetry is one manager static
@@ -1395,6 +1455,20 @@ inside that captured packet envelope and can initialize the native owner from
 the retained inactive PathID binding before the approximate renderer spawns.
 Rise, peak, decay, and the later no-M27 tail therefore pass one continuous
 capture instead of requiring a peak-only probe.
+
+The replay's fixed-function state is now independently source-gated. Globally
+complete targeted session `20260827T225644Z` contains four draws of the exact
+LitEffect VS/PS pair at frame 2723 with five MRTs, writable reversed-Z
+`GREATER_EQUAL` depth, back-face culling, front-CCW winding, and scissor enabled.
+The focused report
+`reports/assets/character_recovery/endminf_m27_fixed_state_capture_latest.json`
+fails closed on session, frame, shader, IA, sampler, target, and state drift.
+The native replay control uses that captured state and a WARP validator instead
+of its former `ALWAYS`/no-cull substitute. This corrects diagnostic transport
+only: it remains immutable packet replay, is not canonical presentation, and
+does not close the source textures' full mip chains or the unrecorded s3-s5
+samplers. The generative target remains the exact compiler-substituted shader
+over live ParticleSystemRenderer geometry and source-authored state.
 
 The same `20260826T162514Z` packages close the selected-view exposure boundary.
 Across frames 2970-3027, the relevant PS b1 c27 global is consistently
@@ -2372,13 +2446,15 @@ for another gyroscope, RectTransform, or screenshot-fit offset. Keep the clean
 pointer default and require new same-session camera evidence before changing
 composition again.
 
-The CharInfo portrait's remaining inversion was a tight-sprite UV error, not
-another RectTransform or camera offset. Generated portrait quads now swap
-`vMin`/`vMax` inside the sprite's asymmetric `textureRect`; a full-texture
-`1-v` transform would select the wrong packed crop. A focused D3D11 render is
-upright and improves the portrait-left ROI MAE from about 29.7 to 27.5 against
-the clean reference despite a three-tick pose difference. Keep the recovered
-Lua/layout placement fixed.
+The CharInfo portrait's earlier inversion was a tight-sprite UV error, not
+another RectTransform or camera offset. The exported PNG is display-upright
+and TextureImporter already maps its rows to Unity's bottom-origin sampling,
+so generated portrait quads now map bottom vertices to `vMin` and top vertices
+to `vMax`; a second vertical flip or full-texture `1-v` transform is wrong.
+A focused D3D11 render is upright and improves the portrait-left ROI MAE from
+about 29.7 to 27.5 against the clean reference despite a three-tick pose
+difference. Every playable profile now has a fail-closed mesh/importer
+orientation verifier. Keep the recovered Lua/layout placement fixed.
 
 M01/M38 stone texture identity is closed: their Unity materials already bind
 the exact recovered base, RG normal, MRO, and parallax maps. The flat-yellow
@@ -2393,29 +2469,20 @@ energy regions, matching the retail surface class. This remains a non-exact
 ForwardOnly substitute for the retail HGBuffer/deferred path, so owner shape,
 lighting, and peak composition remain open.
 
-The opening fracture is no longer a random 34-pixel distortion diagnostic.
-Clean-reference frames 91-109 establish a partial, high-confidence table for
-effect-clock frames 4-20: 3-21-pixel horizontal bands, 77-253-pixel rightward
-copies, and 1-2.5-pixel RGB separation at explicit destination rectangles.
-The canonical pre-Bloom/Uber pass samples `destinationX-offset` only where the
-shifted CharacterPrePass owns the source, leaving GridFar and the portrait
-stationary. The broad compatibility camera pull now retains 45% of its former
-opening magnitude and ends at 0.1 seconds, matching the clean recording's
-three-tick loss of broad ghosting while slices persist. Focused D3D11 renders
-compile and complete `targeted_ok`. The table intentionally omits bands whose
-source coordinates are not yet identifiable; exact closure needs the new
-automatic sequence rather than invented random rows.
-
-The first full-sequence comparison after the portrait flip, measured strip
-table, and canonical stone update uses the established -1-frame source
-alignment and 558 comparable samples. It scores 21.1617 actor-ROI MAE,
-21.9621 effect-ROI MAE, and 12.0616 temporal-delta MAE. The opening 0.0-0.8 s
-window remains 22.1516 effect-ROI MAE (the prior gyro build was 22.1368), and
-side-by-side frames show retail carrying many simultaneous horizontal copies
-while the compatibility table emits only isolated fragments. The change is
-therefore not a proven net fidelity gain. Keep the measured rows, but close the
-remaining opening transport from the automatic exact-Uber sequence rather than
-expanding rectangles from temporal-video heuristics.
+The measured opening-fracture reconstruction is diagnostic-only. Clean-reference
+frames 91-109 establish a bounded table for effect-clock frames 4-20, but its
+explicit destination rectangles, pixel offsets, and RGB separations describe
+screenshots rather than the missing retail producer. The table did not produce
+a proven full-sequence gain and the retained fullscreen chronology places the
+strips in SceneColor before Uber. Canonical batch capture and the interactive
+launcher therefore leave
+`ENDFIELD_ENDMINF_MEASURED_OPENING_STRIP_DIAGNOSTIC` unset; the evaluator and
+pre-temporal pass both fail closed without that explicit diagnostic flag. A
+41-frame and a complete 770-frame D3D11 render apply the measured pass in zero
+frames while preserving the source-authored transition, loop, portrait, and
+VFX gates, with no crash or device-removal signal. Recover the pre-Uber
+geometry/material owner and its temporal consumer instead of expanding or
+tuning the rectangle table.
 
 Canonical batch video export currently defaults only to the validated exact
 M13, one-sample M21, and ordinary/peak Uber paths. M14, M20, M27 deferred
@@ -3137,13 +3204,24 @@ The native cross-frame callback order is now closed through publication: finish
 the retained previous master, read current transforms, publish the distinct
 `last` arrays through `WriteDoubleBufferTransform`, schedule current simulation
 through display/PostProxy, and retain its master for the next callback. The
-specific CURRENT-to-LAST copy/swap mechanism and reset/teleport lifecycle are
-still unproven, so the Unity cross-frame coordinator labels its one-callback
-handoff as behaviorally inferred. The diagnostic solver remains default-off:
-its settled error (`13.07 mm / 11.14 degrees`) is worse than solver-off replay
-(`1.99 mm / 0.985 degrees`) because the recovered pipeline still lacks the
-native `CalcDisplayPosition` result boundary. Do not publish raw Angle/nextPos
-scratch or invent smoothing curves as a substitute.
+exact positive-scale Endminf `CalcDisplayPosition` stage is also implemented:
+after final Simulation End it extrapolates `oldPos` by binary32 velocity and
+timestep, lerps persistent display state with the retained team clock, applies
+the source 1.3x root-distance clamp, stores display state, applies independent
+`blendWeight`, and captures running history before PostProxy/writeback. Exact
+golden vectors and integrated owner/coordinator order pass. The transform-read
+and duplicate-write dependency chain now follows the source-backed componentwise
+quaternion-value publication fix; maintained generation refreshes the Unity
+binding identities while leaving solver and replay defaults off. A current v18
+diagnostic compares all 74 rendered owner bones at the accepted 40 checkpoints.
+The first proven divergence is already post-publication at requested 0.05 s:
+36.45 mm/6.82 degrees mean and 78.00 mm/24.51 degrees maximum. At 0.35 s the
+mean reaches 141.64 mm/14.38 degrees. Overall the solver averages
+104.20 mm/10.89 degrees, versus 20.24 mm/7.19 degrees with the solver disabled.
+This capture does not retain internal stage snapshots, so it cannot attribute
+the first error to Start, Tether, Angle, CalcDisplayPosition, or another kernel.
+Keep the solver diagnostic-only and recover that internal stage boundary; do
+not publish scratch state or invent smoothing curves.
 
 The compatibility replay clock itself is continuous: all 770 presentation
 frames advance without repeated requested times. Its remaining visible jerk is
@@ -3238,10 +3316,12 @@ rejects partial origins and continues to require chronological output.
 The background portrait inversion was a Unity mesh bug, not missing capture
 evidence: both portrait builders vertically flipped UVs that TextureImporter
 had already mapped from the display-upright PNG. Their tight-rectangle UVs now
-use unflipped `vMin`/`vMax` order, and a targeted 0.65/4.4333/6.65-second render
-shows the silhouette upright. Endminf LitEffect compatibility textures now
-also enforce source semantics on import: BaseColor is sRGB, while MRO,
-parallax, and Normal are linear, with Normal imported as `NormalMap`. This
+use unflipped `vMin`/`vMax` order, a targeted 0.65/4.4333/6.65-second render
+shows the silhouette upright, and all 31 playable profile meshes pass the
+independent bottom=`vMin`/top=`vMax` verifier. Endminf LitEffect compatibility
+textures now also enforce source semantics on import: BaseColor and Parallax
+are sRGB, while MRO and Normal are linear, with Normal imported as
+`NormalMap`. This
 corrects the stone normal sampling contract but does not claim retail lighting
 parity. The compatibility LitEffect shader still contains an approximate
 directional-light model, while exact deferred light, shadow, and HGBuffer frame
@@ -3249,17 +3329,59 @@ ownership remain incomplete. Do not tune that heuristic or move effects to fit
 screenshots. Canonical and targeted renders now rebuild the four Overview VFX
 roots from the fingerprint-gated exact source stage and fail if it is missing
 or drifted, preventing stale prefab transforms from passing as current output.
+The exact deferred subset no longer substitutes a 1x1 zero texture at t10:
+`SetupMultiscatteringLut` is reproduced as a source-generated 32x32
+`R16_UNorm` Bilinear/Clamp LUT with exact 2,048-byte SHA-256
+`1a15afe25b25e7aa64dcf17d74f5375dd1b692b3805cd00aa4f531ad289f030e`.
+Its b4 direct-light scalar is likewise source-derived as
+`8.631674 / pi = 2.7475471`. Exact presentation remains default-off and now
+requires a current asynchronous readback with nonzero RGB content; alpha-only
+black output fails closed instead of replacing the ordinary source renderers.
 The isolated Endminf deferred gate confirms the recovered 12-light operator
-fixture, punctual ShadowData/atlas, HGBuffer frame, and exact resolver consumer
-can all publish in one frame. Its M27 probe had separately requested the
-presentation consumer without requesting the recovered M27 HGBuffer producer;
-the probe now connects both selectors. At the authored 4.50-second peak the
-isolated gate reports LightData, ShadowData, input subset, HGBuffer, resolver,
-M27, and SphereOutside all ready. This does not promote the chain to the
-maintained presentation: its screen-shadow R attachment remains explicitly
-content-invalid and produces the known vertically inverted body contamination
-behind the upright portrait. Recover that attachment's retail owner rather than
-approximating or flipping the diagnostic output.
+fixture, same-frame punctual ShadowData/atlas, HGBuffer frame, and exact
+resolver consumer can all publish together. The full-LightData verifier also
+GPU-compares all six published headers and twelve live-light records against
+the source-derived packing contract instead of accepting a truncated subset.
+Its M27 probe had separately requested the presentation consumer without
+requesting the recovered M27 HGBuffer producer; the probe now connects both
+selectors. The cached viewer rebuild now preserves the fingerprint-validated
+playable prefabs instead of overwriting Endminf from the incomplete generated
+manifest. A targeted exact capture fails closed unless the four Overview
+effect roots, primary rock binding, LightData, ShadowData, pass-0 subset,
+five-MRT GBuffer, and M27 HGBuffer are all observed. The repaired 4.60-second
+D3D11 probe restores four roots and 68 admitted renderers, publishes every
+deferred prerequisite, submits and reads back the native consumer, and exits
+without a Unity crash.
+
+The earlier combined diagnostic also enabled the generic SphereOutside
+producer in the same depth/GBuffer set, then used shared depth as M27
+ownership; that routed an inverted body-shaped resolve behind the upright
+portrait. The Endminf exact-consumer probe now excludes SphereOutside and the
+generic producer, and the identity-only A/B removes the contamination without
+an image flip. Physical resource validity and presentation validity are kept
+separate: the current full-resolution t11 attachment can be allocated and
+bound while `t11ContentValid` and `screenContentValid` remain false. The exact
+consumer may execute for transport validation, but M27 presentation stays
+withheld until the retail producer content is certified. This does not yet
+promote the chain to the maintained presentation. The retail attachment owner
+is now recovered:
+`ScreenSpaceShadowMaskPassConstructor` publishes a full-resolution bilinear,
+clamped `R8G8_UNorm` target through two ordinary fullscreen `Draw(3,0)` calls.
+The first writes scene-shadow R as
+`1 + strength * (min(sceneShadow, 1) - 1)` and the second preserves that R
+while adding character-shadow G; neutral R is 1. Capture `20260829T224523Z`
+retains the deferred consumer but missed those ordinary-draw producer payloads.
+EndfieldCapture now observes and descriptor-gates both fullscreen producer
+draws plus the current PS t11/s1 consumer, retains the shared RG8 payload, and
+requires their same-frame identity and chronology. A fresh bounded graphics
+capture is required before the RG attachment can be admitted to presentation.
+
+The captured Endminf Uber packet remains diagnostic-only. Its native draw and
+resources validate, but the current input chronology regresses the three
+aligned effect samples against the otherwise identical exact-off control
+(mean effect ROI MAE 36.2987 versus 35.0779). The maintained launcher and
+canonical capture defaults therefore no longer request it; recover its retail
+SceneColor/producer chronology before reconsidering presentation ownership.
 
 The current clean-video bridge does not prove the complete 770-frame animation
 schedule. Its source sidecar covers retail frames 88-645, anchors start-clip
@@ -3385,7 +3507,11 @@ Session `20260829T224523Z` retained and hash-validated both four-surface
 packets, proving the next-Present surface scheduler, but it is still rejected:
 the observer attached after `slInit`, its global Streamline chronology tables
 overflowed before the Endminf trigger, and the options-to-Present association
-is consequently one Present stale. These are observer lifetime/association
+is consequently one Present stale. The session has no crash artifact or D3D11
+device-removal evidence. Its 398,131,200-byte Streamline pair plus the
+664,355,624-byte deferred staging peak totals 1,062,486,824 bytes, however, so
+the old concurrent schedule was a credible near-ceiling memory risk, not a
+proven crash cause. These are observer lifetime/association and capture-budget
 gaps, not retail-render conclusions. Keep the raw pair quarantined until a new
 session passes the unchanged strict verifier. EndfieldCapture commit `18aed6a`
 now resets the per-call chronology at the exact trigger, retains only the
@@ -3399,14 +3525,227 @@ The same session is not secondary-motion evidence. It observed 32,097
 cross-frame cloth updates but zero scheduled, completed, or written Transform
 jobs and one registration-lifecycle failure. Binary recovery subsequently
 identified `WriteDoubleBufferTransform` as the active `last`-array publication
-route. EndfieldCapture commit `4cac2fc` records that route and array source per
-row and requires complete scheduled/completed/write counts, trajectory,
-publication, lifecycle, hierarchy, effective-pose, and four-owner coverage.
-Collect the next bounded run with
-`tools\EndfieldCapture\StartEndminfOverviewCapture.bat`: start with Endfield
-closed, wait for all four providers, open Endminf without manually triggering,
-keep it visible through the first settled loop wrap, then stop immediately.
-This is a capture-readiness gate, not recovered solver output.
+route. EndfieldCapture commit `fc37afc` retains the `4cac2fc` route and array
+source evidence while bounding every observer callback stack frame; it requires
+complete scheduled/completed/write counts, trajectory, publication, lifecycle,
+hierarchy, effective-pose, and four-owner coverage. Commit `4f23c03` corrects
+the deferred screen-shadow observer from the obsolete t13 assumption to the
+current two-producer/t11-consumer chain and reserves its shared RG8 payload
+without exceeding the bounded automatic resource budget. EndfieldCapture commit
+`d67f942` also retains pixel-sampler slots s0-s5 for the targeted LitEffect draw
+while preserving the existing payload/resource bounds; all 21 native tests
+pass. This is observer coverage only, not renderer admission.
+Session `20260830T154827Z` is rejected as a collected session: it has no
+collector inventory, the selected audio provider had no requested window, the
+graphics summary is incomplete with invalid cadence, and 36 of 72 regular
+frame packets report selected-resource truncation. The 128 MiB shared graphics
+lane spent about 91.5 MiB on automatic reservations and left only about
+42.7 MiB for ordinary resources; this cannot close the pinned Default
+resolver's t0-t27, MRT, and depth set. One exact M27 draw is locally complete
+and corrects an earlier conclusion: its inactive b2 skin bit is accompanied by
+a real bound VS t0 structured buffer, not an explicit null binding. That local
+draw does not override the failed session gates. The maintained converter
+authenticates a complete collector inventory, every artifact hash, one exact
+draw, IA, b2, t0, textures, and pipeline descriptors, emits no captured
+VB/IB/CB arrays, and leaves Unity-only owners unresolved. It now requires the
+fixed-width, pointer-free `bindings.v3.bin` timing proof, exact draw-local owner
+chronology, all five exact packet counters, and byte-for-byte JSON/wire parity;
+historical v1/v2 sidecars are rejected. It deterministically rejects this
+session before producing output.
+
+The same session closes only the generic secondary publication route. All
+2,299 scheduled writes completed and emitted 55,176 readable rows, but every
+row belongs to one unowned team-16 tuple and its motion is effectively static;
+the required 6/30/70 Endminf owner candidates are absent. The failed lifecycle
+join exposed an observer ABI bug: the single-Transform `AddTransform` overload
+returns one inserted index, whereas the observer decoded it as a packed
+`DataChunk`. The corrected decoder derives length one and distinguishes valid
+index zero from the manager-disabled zero return. None of these rows is
+admissible as hair/cloth replay, a fitted curve, or a hardcoded trajectory.
+
+EndfieldCapture commit `11ffb1a` added the missing bounded draw-local staging.
+The first overview entry discovers exact descriptors and alias topology; its
+Present allocates separate M21, M27, and Default-family plans. The second entry
+copies mutable inputs immediately before each exact owner and outputs
+immediately after it. Joined publication owns only the Default bytes and
+authenticates the separate same-epoch M27 packet, whose retail draw precedes
+M21 in the locally complete frame. Descriptor/range drift, owner/call/epoch
+drift, alias drift, zero or unsupported resources, context contention, map
+failure, event loss, and unacknowledged publication all fail closed. Lane paths
+include the lane identity; that initial implementation capped each physical
+plan at 384 MiB and their aggregate at 1 GiB. The fixed `bindings.v3.bin` ABI
+has explicit
+record sizes, counts, extent, layout hash, reserved-zero checks, and no native
+container pointers. An independent Release run passed all 22 native tests five
+times (110/110), including WARP readback and failed-session collector
+quarantine. A fresh retail capture is now required; enter Endminf Character
+Info twice in one bounded session so discovery and actual owner-draw capture
+cannot be conflated.
+
+Attempt `20260830T192522Z` failed before injection and contains no game
+evidence: `host.target-ready`, `host.attach-started`, and `runtime.error` were
+published in the same second, the one-shot Toolhelp module snapshot did not
+resolve `LoadLibraryW`, and the runtime DLL never loaded. EndfieldCapture
+commit `10484db` resolves the module that actually owns the local export
+(Kernel32 or KernelBase), retries only transient/absent startup-module state
+for at most five seconds, rechecks process identity on every probe, and does so
+before `VirtualAllocEx` or `CreateRemoteThread`. Exit, identity drift, fatal
+snapshot error, missing owner timeout, and out-of-range RVA now have distinct
+fail-closed diagnostics. One hundred consecutive synthetic attachment
+lifecycles and five complete 22-test passes succeed; this remains capture
+readiness, not recovered renderer evidence.
+
+Session `20260830T194329Z` proves that loader repair but is still rejected
+evidence. The runtime attached and installed its hooks without a client crash,
+then the Streamline surface lane failed before the deferred sequence. The exact
+chronology is now closed: trigger Present 4967 contained one readable viewport-3
+evaluation whose evaluate token did not join its tag/constants token; Present
+4968 proved that interval had no complete packet; the first complete packet was
+prior-Present 4968 and the second was the consecutive prior-Present 4969. This
+is a bounded one-Present-deferred route, not permission to shift captured
+resources or author replacement timing. EndfieldCapture commit `e2df98a`
+admits only trigger offset 0 or that proven offset 1, stages type-13 exposure
+only after a complete packet is admitted, requires exactly one bounded
+unjoinable trigger evaluation on the offset-1 route, and revalidates the pair
+before publication. Exposure Copy/Map/Unmap is confined to the first accepted
+evaluation thread, rejects reentry and cross-device resources before copying,
+and never holds the observer mutex across D3D11 calls. The automatic collector
+uses one production/test gate for the surface pair, four two-entry exact-owner
+packets, and all 72 regular packages. Late attachment is reported honestly as
+`post-init-feature0-runtime-proof`: it leaves `initObserved=false`,
+`initCalls=0`, and strict `sequenceComplete=false`; only the no-init surface
+consumer accepts the exact later runtime proof. Initialization-argument
+consumers still require a genuinely observed `slInit`. The settled patch passes
+all 24 native tests five times, the three failure-sensitive tests 100 times
+each, the 43-case strict M27 converter suite, and the 16-case independent
+surface verifier. No usable surface, deferred-owner, or secondary-motion payload
+has yet passed a fresh retail collection gate.
+
+EndfieldCapture commit `4536910` hardens the maintained recapture launcher
+without changing that evidence boundary. Its dedicated `endminf`/Full profile
+selects only graphics plus secondary dynamics: audio's manual window and
+gameplay-semantics completeness are unrelated to this visual gate and made
+otherwise valid sessions uncollectable. Non-launching `--preflight-only` now
+gates the exact installed executable, GameAssembly, metadata, provider set,
+and runtime flavor; the latter is classified from a bounded offline PE export
+table rather than a filename. Synthetic tests reject missing or changed native
+inputs, missing manifest keys, renamed/swapped/unsupported runtimes, and prove
+that absent audio and semantic artifacts remain valid for mask 5. The final
+Release suite passed all 25 tests five times, and the installed-client preflight
+validated Full mask 5 without starting the host or game.
+
+Session `20260831T184411Z` is rejected evidence, but it is not a recorded game
+crash. The exact-build observer shut down quiescently with 31 collector records,
+zero dropped or invalid records, no writer error, and no crash artifact. Its
+two-packet Streamline surface lane completed before deferred graphics, and the
+51 accepted regular samples preserved the exact dense/eight-Present cadence.
+Regular sample 52 failed closed at Present 2280 because the nominally
+metadata-only tail still inherited a 33,243,136-byte 3840x2160 backbuffer
+charge. The recorded deferred peak was 1,049,073,096 bytes, leaving only
+24,668,728 bytes under the unchanged 1-GiB staging gate. Secondary dynamics
+retained 4,824 rows, but every row was rejected at
+`joinMissingTransformGeneration`: this build registers those transforms through
+the bulk `AddTransform(VirtualMeshContainer, teamId)` overload, while the old
+observer hooked only the single-Transform overload.
+
+EndfieldCapture commit `dac972a` fixed the regular-tail staging defect, but its
+new process-wide bulk Transform registration detour was not retail-safe.
+Session `20260831T225915Z` reached login and ordinary resource loading, then
+ended as Windows Application Hang event 1002 rather than a native crash. It
+never wrote final provider summaries or a usable recovery payload. The only new
+path exercised was one bulk registration callback with a valid 13-entry result;
+the detour then performed per-entry engine identity calls, hierarchy walks,
+hashing, and a registry transaction inline on the game's resource-loading
+thread. The prior `20260831T184411Z` session had not patched that entry and did
+not hang. Treat this as sufficient evidence to remove the risky observation,
+not as permission to retry it.
+
+EndfieldCapture commit `a67832a` keeps the exact bulk function/body identity
+for offline analysis but never creates or enables its hook. Secondary
+registration evidence therefore remains explicitly incomplete in every session: live status
+separates partial observers from evidence readiness, the overlay never labels
+the provider ready or accepts `Numpad 5`, the final aggregate hook claim stays
+false, and the combined Endminf wrapper refuses a retail launch before starting
+the host or game. The Full Release suite, focused Debug secondary test, overlay
+readiness self-test, withheld-launch test, all 24 trajectory-verifier tests, and
+installed-client nonlaunching preflight pass. The graphics-only Full profile
+remains available for independent graphics evidence, but it cannot claim the
+missing secondary lifecycle join.
+
+The current 770-frame canonical source-authored Unity run keeps captured
+secondary replay, the unverified source solver, measured opening rectangles,
+and content-invalid deferred presentation disabled. It completes the ACL-backed
+start-to-loop sequence with an upright portrait, all four VFX roots, 68 admitted
+entrance renderers, and no crash or device-removal signal. Across 554 bounded
+clean-reference rows its best -1-frame alignment is 22.8096 actor ROI,
+24.6097 effect ROI, and 15.4914 effect temporal-delta MAE. These spatial scores
+remain in the prior baseline's broad regime while temporal error is slightly
+worse; the run does not establish a causal fidelity gain. The earlier
+measured-strip A/B already showed no material improvement and remains explicit
+diagnostic evidence.
+The opening temporal composition and stone/light peak remain the largest gaps;
+the settled post-cleanup motion is temporally stable while hair/coat silhouettes
+remain spatially different. Treat this as the stable non-crashing baseline, not
+retail parity or secondary-motion certification.
+
+The source-backed secondary-dynamics dependency chain is current, but the
+recovered solver remains disabled. Its 40-checkpoint comparison diverges at the
+first post-publication sample (36.45 mm/6.82 degrees mean) and reaches
+104.20 mm/10.89 degrees overall versus 20.24 mm/7.19 degrees with the solver
+off. The generated PostProxy contract now closes the hidden JobHandle ABI,
+four-stage dependency order, job payload layouts, exact scheduling identities
+and batch sizes, the create-list gates plus four atomic contiguous-index queue
+appends, and the pinned unpatched CalcLine managed worker. That worker's exact
+17-parameter ABI, packed child traversal, Move-bit branches, signed local
+rotation, parent/child quaternion equations, helper spans, and
+`FromToRotation` parallel/antiparallel degeneracy branches are code-closed.
+Method `384854` is now also closed as a thin 296-byte argument forwarder into
+the generated BurstDirectCall `Invoke`; it contains no line/vector math.
+`Invoke` uses `BurstCompiler.get_IsEnabled` plus a nonzero
+`GetILPPMethodFunctionPointer2` result for its indirect call, otherwise it
+enters a separately emitted managed fallback. That fallback and method
+`384856` have the same 396-instruction mnemonic sequence, operand structures,
+18-branch control-flow topology, 22 direct-call targets, and numeric
+immediates; only stack/local layout differs. Despite the job name, these
+bodies write rotations and have no separate normal/tangent output buffer.
+Overall runtime selection remains fail-closed: the nonzero Burst function
+pointer is a runtime value, and `FromToRotation` can be replaced through IFix
+patch `0x219`, whose runtime state is unknown. The contract uses no captured
+positions, timing, curves, fitted constants, or replay data.
+A pure C# CalcLine value model now transcribes the managed/direct-call-fallback
+equations with explicit binary32 operation grouping and bit-exact verifier
+vectors. It decodes packed child ranges, preserves ordered Move/non-Move
+accumulation, and computes child/parent quaternion writes, but it is not
+referenced by the solver, frame coordinator, generated prefabs, scenes, or
+assets. Zero/non-finite and the finite negative-X antiparallel zero-axis case
+fail closed. This is executable code recovery, not evidence that retail chose
+the unresolved Burst pointer or that IFix `0x219` was inactive.
+
+The M27 live exact-ABI admission verifier validates the source subprogram-113
+shader pair, actual ParticleSystemRenderer/mesh/material identities, 60/68-byte
+IA layouts, five MRT/depth descriptors, and full t0-t3 texture mip payloads.
+Its b0 producer is now source-closed from the live camera plus per-camera
+contiguous history: all 22 published vectors pass the D3D11 GPU verifier, reset
+and discontinuity reuse the current frame, and captured constant-buffer bytes
+remain validation-only. All 50 selected b3 words are tied bit-exactly to 37
+original material fields, explicit packoffsets, the generated Unity material,
+and the compatibility shader's effective defaults. The b1 source contract has
+distinct readiness for target dimensions, perspective, TAA jitter,
+physical-camera material mip bias, exposure, VFX player/time, and the HGVFX
+anchor. Its partial live publisher admits c27 only from the source-closed
+Manual-exposure path with the exact selected camera/environment gate,
+automatic exposure disabled, a persistent non-null state, and finite positive
+exposure. It publishes c103 from the unique actor root plus `Time.time` only as
+an explicit lab carrier, not as proof of the retail selected-frame HGVFX
+identity. c19, c26, and c105 remain zero/unready, so exact b1 admission remains
+closed. The selected physical camera publishes c26.xy=(-1,0.5), while
+serialized virtual-camera defaults only prove (0,1); do not substitute either
+without the missing physical-camera assignment path. Admission also still
+requires a synchronized runtime join for engine-produced b2, its inactive skin
+bit plus the authenticated draw-local VS t0 outcome, b4, ordered MRTs, s0-s5, the observation
+writer, and the actual generative ParticleSystemRenderer path. Captured packet constants and fitted
+placement, transforms, curves, texture sampling, or lighting are never an
+admissible substitute.
 After that gate passes,
 `unity_endfield_graph_shader_lab/tools/analyze_endminf_streamline_surface_pair.py`
 decodes the captured R11G11B10 input and RGBA16F output without third-party
@@ -3450,30 +3789,32 @@ or shaders rather than hand-editing generated prefabs.
 
 ## Recovery queue
 
-1. Add a provably pre-`slInit` load path that can coexist with the Full
-   multi-provider runtime; do not infer initialization preferences from later
-   state or weaken the existing gate. Then run observer commit `18aed6a`
-   (including the earlier
-   automatic-trigger, exposure, options/init-join, next-Present scheduling,
-   and serialized-staging commits) on the next
-   game session; stop cleanly shortly after the first settled overview-loop
-   wrap so the bounded trajectory buffer includes the required interval. Use
-   `tools\EndfieldCapture\StartEndminfOverviewCapture.bat`; the plain wrapper
-   omits secondary dynamics and Full graphics. First
-   validate the lifecycle-joined effective trajectories with
-   `python unity_endfield_graph_shader_lab/tools/verify_endminf_secondary_dynamics_trajectory_capture.py SESSION`.
-   Close the
-   retail temporal boundary with consecutive pre/post Streamline surfaces,
-   depth, velocity, jitter/reset, frame token, formats, extents, and resource
-   tags. Validate it with
+1. Do not run the combined Endminf graphics-plus-dynamics wrapper while the
+   bulk Transform observer is withheld; it now rejects a real launch. Method
+   `384854` and its DirectCall managed fallback are statically closed; the
+   remaining CalcLine route boundary is the runtime-selected nonzero Burst
+   function pointer plus the IFix selection state for `FromToRotation` patch
+   `0x219`. Do not implement the managed/fallback equations as retail-active
+   until those runtime states close.
+   Keep the older trajectory capture validation-only. A new capture is useful
+   only if it is narrowly instrumented for the selected CalcLine route or IFix
+   patch state. If new graphics evidence is independently required, use
+   `StartCapture.bat graphics full` with Endfield closed and do not interpret
+   it as secondary-motion evidence.
+   Accept strict `observed-slInit` only when it is genuinely retained;
+   otherwise the no-init Streamline surface consumer may use only the exact
+   `post-init-feature0-runtime-proof`, while all initialization-argument
+   consumers remain incomplete. Validate any graphics-only Streamline result
+   with
    `python unity_endfield_graph_shader_lab/tools/verify_endminf_streamline_surface_capture.py SESSION`
-   before generating any Unity diagnostic assets, then run
+   before generating Unity diagnostic assets, then run
    `python unity_endfield_graph_shader_lab/tools/analyze_endminf_streamline_surface_pair.py SESSION`
    to compare the exact input/output pair offline.
-   The compatibility opening strip is now ordered correctly before temporal,
-   but v9 proves that ordering alone does not reproduce retail's broad
-   multi-exposure strips. Keep the rejected public NGX proxy and M31 replay
-   diagnostic-only until the live consumer chronology is complete.
+   The screenshot-measured opening strip is now default-off in canonical and
+   interactive presentation; its correctly ordered pre-temporal diagnostic did
+   not reproduce retail's broad multi-exposure history. Recover the live
+   pre-Uber owner and consumer chronology instead. Keep the rejected public NGX
+   proxy and M31 replay diagnostic-only until that chronology is complete.
 2. Close the palm/crystal owner order from same-session evidence. Retain M13
    exact and the certified one-sample M21 stone packet; their controlled A/Bs
    reject compensatory resizing, retiming, or removal. Use the corrected M20
@@ -3481,7 +3822,15 @@ or shaders rather than hand-editing generated prefabs.
    M30, and M14 one at a time before changing defaults or suppressing their
    compatibility renderers. Preserve the captured hierarchy transforms and
    equal-queue ordering unless a same-session packet-to-palm registration proves
-   a specific delta.
+   a specific delta. For M27, keep the independently pinned source shell at
+   t0-t5 and the source-closed b0/b3 producers; leave b1 closed until each live
+   owner is recovered. Retain engine-produced b2 and use the next admissible
+   observer run to join its inactive skin bit to the already observed bound,
+   complete VS t0 palette payload, s0-s5 descriptors, b4 producer/value
+   lifecycle, and synchronized target evidence. Require the live
+   exact-ABI verifier to admit the generative ParticleSystemRenderer draw before
+   presentation; never restore captured packet constants or tune placement,
+   transforms, curves, texture sampling, or lighting to compensate.
 3. Generalize the finished Endminf path and rebuild every playable character
    without actor-specific renderer forks.
 4. Keep changing inventories and exhaustive validation output under
