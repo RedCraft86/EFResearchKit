@@ -20,6 +20,37 @@ namespace EndfieldGraphShaderLabEditor
             "Assets/EndfieldGraphShaderLab/Generated/Characters/Scenes/CharacterRecoveryViewer.unity";
         private const string OverviewAudio =
             "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf/Audio/925835917.flac";
+        private static readonly string[] MaintainedPresentationForcedOffSelectors =
+        {
+            // These are bounded packet, captured-frame, incomplete deferred,
+            // or measured-reference diagnostics. The maintained interactive
+            // reproduction must not inherit any of them from a parent shell.
+            "ENDFIELD_ENDMINF_MEASURED_OPENING_STRIP_DIAGNOSTIC",
+            "ENDFIELD_ENDMINF_M28_VISUAL_COMPAT",
+            "ENDFIELD_ENDMINF_OPENING_STRIP_SCENEMV",
+            "ENDFIELD_RECOVERED_ENDMINF_OPENING_STRIP_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M13_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M14_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M18_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M20_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M21_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M28_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M29_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M30_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M31_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_VFXBASEV2_PEAK_COHORT_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_UBER_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_UBER_EARLY_DIAGNOSTIC",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_EXACT_DXBC",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_GENERATIVE_EXACT_DXBC",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_PRESENTATION",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER",
+            "ENDFIELD_RECOVERED_ENDMINF_LITEFFECT_HGBUFFER",
+            "ENDFIELD_RECOVERED_DEFERRED_EXACT_CONSUMER",
+            "ENDFIELD_RECOVERED_SCREEN_SHADOW_R_ATTACHMENT_DIAGNOSTIC",
+            "ENDFIELD_RECOVERED_SPHERE_OUTSIDE_PRESENTATION",
+            "ENDFIELD_DIAGNOSTIC_SYNC_POST_UBER_PORTRAIT_DEPTH",
+        };
 
         public static void OpenVisualReproductionInPlayMode()
         {
@@ -130,11 +161,22 @@ namespace EndfieldGraphShaderLabEditor
                 HGCompatRenderPipeline.LinearUnormFinalTargetEnvironmentVariable,
                 "1");
             Environment.SetEnvironmentVariable(
+                EndfieldRecoveredCharInfoPresentation.EndminfSourceBackgroundEnvironmentVariable,
+                "0");
+            Environment.SetEnvironmentVariable(
+                EndfieldRecoveredCharInfoPresentation.EndminfSourceForwardOverlayEnvironmentVariable,
+                "0");
+            Environment.SetEnvironmentVariable(
                 EndfieldRecoveredCharInfoPresentation.EndminfBackdropVisualCompatibilityEnvironmentVariable,
-                "1");
+                "0");
+            Environment.SetEnvironmentVariable(
+                EndfieldRecoveredCharInfoPresentation.ReadySubsetEnvironmentVariable,
+                "0");
             Environment.SetEnvironmentVariable(
                 EndfieldRecoveredCharInfoBackgroundPortrait.EnvironmentVariable,
                 "1");
+            foreach (string selector in MaintainedPresentationForcedOffSelectors)
+                Environment.SetEnvironmentVariable(selector, "0");
             // A comparison render must never inherit possibly stale generated
             // prefabs. Rebuild all four roots from the validated source stage,
             // or fail before serializing the visual-reproduction scene.
@@ -167,10 +209,17 @@ namespace EndfieldGraphShaderLabEditor
                     .FirstOrDefault(value => value != null && value.gameObject.name == "ReferenceBackdrop");
                 if (referenceBackdrop != null)
                 {
-                    referenceBackdrop.enabled = true;
+                    // Keep the fitted actor-bounds plate as a disabled
+                    // diagnostic dependency. The source-closed Floor/Far
+                    // overlay uses the neutral camera clear, while the full
+                    // SphereOutside composite remains fail-closed until its
+                    // content-valid retail t11 producer is recovered.
+                    referenceBackdrop.enabled = false;
                     presentation.presentationBackdropRenderer = referenceBackdrop;
                 }
                 presentation.enableRecoveredReadyPresentationSubset = false;
+                presentation.enableRecoveredEndminfSourceBackground = false;
+                presentation.enableRecoveredEndminfSourceForwardOverlay = false;
                 presentation.enableSourceBackedClusteredNprLights = true;
                 presentation.enableSourceBackedLightBinning = true;
                 presentation.enableIsolatedPunctualSoftShadows = true;
@@ -182,6 +231,8 @@ namespace EndfieldGraphShaderLabEditor
                 {
                     presentation.physicalPresentation.enableRecoveredPresentation = false;
                     presentation.physicalPresentation.enableReadySubsetDiagnostic = false;
+                    presentation.physicalPresentation.enableEndminfSourceBackground = false;
+                    presentation.physicalPresentation.enableEndminfSourceForwardOverlay = false;
                     presentation.physicalPresentation.RefreshSelection();
                 }
                 EditorUtility.SetDirty(presentation);
@@ -191,15 +242,51 @@ namespace EndfieldGraphShaderLabEditor
                 if (camera.GetComponent<AudioListener>() == null)
                     camera.gameObject.AddComponent<AudioListener>();
                 camera.clearFlags = CameraClearFlags.SolidColor;
-                camera.backgroundColor = new Color(0.735f, 0.755f, 0.765f, 1f);
+                // The neutral preview clear remains the only background
+                // carrier claim. Exact Floor/Far forward pixels may overlay it;
+                // SphereOutside remains excluded until its exact-consumer and
+                // presented-pixel gate passes. This is not the fitted plate.
+                camera.backgroundColor = new Color(0.70f, 0.71f, 0.70f, 1.0f);
                 // The reference and all comparison renders are 1920x1080.
-                // Override Free Aspect so wide crystal flashes and rock arcs
-                // use the same horizontal frustum in the interactive Game view.
-                camera.aspect = 16f / 9f;
+                // Consume the serialized Endminf sensor aspect rather than a
+                // duplicate framing constant when overriding Free Aspect.
+                camera.aspect = ResolveEndminfSourceAspect();
                 EditorUtility.SetDirty(camera);
             }
             EditorSceneManager.SaveScene(
                 UnityEngine.SceneManagement.SceneManager.GetActiveScene(), ViewerScene);
+            // Keep the serialized scene default-off. The next Play-mode entry
+            // may select the exact Floor/Far overlay through the process
+            // environment without persisting an active diagnostic hierarchy.
+            Environment.SetEnvironmentVariable(
+                EndfieldRecoveredCharInfoPresentation
+                    .EndminfSourceForwardOverlayEnvironmentVariable,
+                "1");
+        }
+
+        private static float ResolveEndminfSourceAspect()
+        {
+            CharacterRecoveryPresentationProfile profile =
+                EndfieldPlayableCharInfoProfileBuilder.LoadProfile("Endminf");
+            if (profile == null || !profile.sourceRecovered ||
+                !string.Equals(
+                    profile.characterId,
+                    "chr_0003_endminf",
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    profile.rootName,
+                    "Endminf",
+                    StringComparison.Ordinal) ||
+                profile.sourceManifest == null ||
+                float.IsNaN(profile.referenceAspect) ||
+                float.IsInfinity(profile.referenceAspect) ||
+                profile.referenceAspect <= 0.0f)
+            {
+                throw new InvalidOperationException(
+                    "The source-recovered Endminf presentation profile is " +
+                    "missing or has an invalid serialized sensor aspect.");
+            }
+            return profile.referenceAspect;
         }
 
         [MenuItem("Endfield/Character Recovery Lab/Bind Endminf Overview Effects")]

@@ -4,9 +4,11 @@
 The contract closes the managed/native ABI, ordered job construction, job
 payload layouts, exact generic scheduling identities, the unpatched
 CalcLineNormalTangent managed-worker traversal/equations, and the generated
-BurstDirectCall wrapper plus its managed-fallback equivalence.  The selected
-runtime Burst pointer and IFix patch state remain open; no capture samples,
-fitted curves, or replay data are inputs.
+BurstDirectCall wrapper plus its managed-fallback equivalence and exact Burst
+target.  The installed local IFix payload is joined and parsed to bound its
+absence of BeyondDynamicBone targets.  The selected runtime branch and live
+IFix patch state remain open; no capture samples, fitted curves, or replay data
+are inputs.
 """
 
 from __future__ import annotations
@@ -28,13 +30,22 @@ EVIDENCE_ROOT = LAB_ROOT / "scratch/character_recovery/secondary_dynamics_owner"
 DEFAULT_OUTPUT = DATA_ROOT / "secondary_dynamics_post_proxy_contract.json"
 DEFAULT_METADATA_EVIDENCE = EVIDENCE_ROOT / "post_proxy_metadata.json"
 DEFAULT_NATIVE_EVIDENCE = EVIDENCE_ROOT / "post_proxy_native.json"
+DEFAULT_BURST_CONTRACT = DATA_ROOT / "secondary_dynamics_burst_export_contract.json"
+DEFAULT_CALC_LINE_BURST_NUMERICS = (
+    DATA_ROOT / "secondary_dynamics_calc_line_burst_golden_vectors.json"
+)
+DEFAULT_IFIX_REPORT = DATA_ROOT / "installed_ifix_patch_state.json"
 DEFAULT_GAME_ASSEMBLY: Path | None = None
 DEFAULT_METADATA: Path | None = None
 
 EXPECTED_GAME_ASSEMBLY_SHA256 = "0c5573679bc6dec2d068a14335466db7ccf20af9bae2b983fb9d45677d80ffce"
 EXPECTED_METADATA_SHA256 = "90c58e26e87c7227a85dda3fedf6ce5ed0b06dc1f76e0abbe75ab20750adf97e"
+EXPECTED_LIB_BURST_SHA256 = "ee8702dd63dec2db7dc29d5bc23b8acd032f0e19a0daad5f69e6c45f9d3ceb99"
 EXPECTED_METADATA_EVIDENCE_SHA256 = "d1533b659e33a2e561c444cb4aec9a929dfac355a8d3409748c009e9c277a295"
 EXPECTED_NATIVE_EVIDENCE_SHA256 = "3bad91ae59e34b7abc50b5f88aafb77ea9e2c1395fba1346cc503deafb982b5d"
+EXPECTED_CALC_LINE_BURST_NUMERICS_SHA256 = (
+    "7e674976994a11a5c0e6acd3e86b8b96e2f25221c5c6cfb8e2dc4f562496105b"
+)
 EXPECTED_CODE_REGISTRATION = 0x18B9217D0
 EXPECTED_METADATA_REGISTRATION = 0x18B921C30
 
@@ -235,6 +246,100 @@ CALC_LINE_DIRECT_CALL = {
     "fallbackThroughRetSha256": "b1424aff822792c251bd1176f13d30a274612c86c11a0c5f19c471b363f8feeb",
 }
 
+CREATE_LIST_DIRECT_CALL = {
+    "kernelMethodIndex": 384830,
+    "kernelStartVa": 0x18674E9C4,
+    "kernelSpanBytes": 0xC4,
+    "kernelBodySha256": "aa4787dc1a16922c3df8ee11c9bd0af329558bb294115e7fe08576a7a131348b",
+    "invokeMethodIndex": 384843,
+    "invokeStartVa": 0x18674F118,
+    "invokeSpanBytes": 0x148,
+    "invokeBodySha256": "d2ddb8ea79313aad24069c05bb1226291aa68da0764874292d0fef30a5c1305d",
+    "getFunctionPointerMethodIndex": 384839,
+    "getFunctionPointerStartVa": 0x18674F0C4,
+    "getFunctionPointerSpanBytes": 0x54,
+    "getFunctionPointerBodySha256": "2da1808fbf5b4a8c322c0bdecdc727e2d755932e36010ba21a36a7defcddf897",
+    "managedFallbackMethodIndex": 384832,
+    "managedFallbackStartVa": 0x186743868,
+    "managedFallbackSpanBytes": 0xCE4,
+    "managedFallbackBodySha256": "02a0d53fed888f05f966dbe2250f59e4f2722d0cfac3928e7a2b268d39bb4bde",
+}
+
+BURST_RUNTIME_SELECTION = {
+    "burstCompilerCctorMethodIndex": 489290,
+    "burstCompilerCctorStartVa": 0x18495EE80,
+    "burstCompilerCctorSpanBytes": 0x120,
+    "burstCompilerCctorBodySha256": "efc41f828e4d160cfb3991fdcaa944cfa50e7ea7e6d8d45c944baed1cebcb41d",
+    "optionsCtorMethodIndex": 489303,
+    "optionsCtorStartVa": 0x18495EFA0,
+    "optionsCtorSpanBytes": 0x40,
+    "optionsCtorBodySha256": "b531f3a726f3a1da861a706522bc611a2a3e9894034278e693d050d2d057a64d",
+    "optionsSetEnabledMethodIndex": 489306,
+    "optionsSetEnabledStartVa": 0x18495EFE0,
+    "optionsSetEnabledSpanBytes": 0xF0,
+    "optionsSetEnabledBodySha256": "963b0bbb979e44b8caf98e75c9f618d261327f5752446fa4a9165e5b0cb68ac7",
+    "optionsCctorMethodIndex": 489314,
+    "optionsCctorStartVa": 0x1841A6310,
+    "optionsCctorSpanBytes": 0xF0,
+    "optionsCctorBodySha256": "a5b06c77510b5b7001e2d5ab9b6152899960ba2a10ffb1d63a3b9ccdc58f8532",
+    "optionsCctorColdStartVa": 0x1852725C6,
+    "optionsCctorColdSpanBytes": 0x58,
+    "optionsCctorColdSha256": "9fed79435b6cdada18438bf51f32864c7aa7a912782d93c14f203ca533a30951",
+    "checkSecondaryMethodIndex": 489315,
+    "checkSecondaryStartVa": 0x1812081B0,
+    "checkSecondaryThroughRetBytes": 3,
+    "checkSecondaryThroughRetSha256": "01cb47d078b4841b8408ec4fe278efa83115c6f6e101972987507d2b2b57dcf0",
+    "helperIsBurstEnabledMethodIndex": 489292,
+    "helperIsBurstEnabledStartVa": 0x18B15C238,
+    "helperIsBurstEnabledSpanBytes": 0x3C,
+    "helperIsBurstEnabledBodySha256": "a6bdfecd92d02577f8f9b00f92d0a4466df234dce32751e79ed051f9aa955017",
+    "helperCctorMethodIndex": 489295,
+    "helperCctorStartVa": 0x183FAEB30,
+    "helperCctorThroughRetBytes": 0xBB,
+    "helperCctorThroughRetSha256": "e60792092fab6f83a9c61aea1d93f6cfed7d71119046ce92a749cc070da235ff",
+    "helperIsCompiledMethodIndex": 489294,
+    "helperIsCompiledStartVa": 0x183FB0A20,
+    "helperIsCompiledThroughRetBytes": 0x58,
+    "helperIsCompiledThroughRetSha256": "9e770066dac653966dcdafd1afefe2dfbcd7225903069fe10cee0aced70b18e4",
+    "compileAsyncMethodIndex": 402096,
+    "compileAsyncStartVa": 0x183FB1010,
+    "compileAsyncSpanBytes": 0x30,
+    "compileAsyncBodySha256": "b1fb4b136d839734f68531bd41b891044bccfb1dee7dd7acd505180af9626b98",
+    "getAsyncMethodIndex": 402097,
+    "getAsyncStartVa": 0x183FB0FD0,
+    "getAsyncSpanBytes": 0x40,
+    "getAsyncBodySha256": "baa29c1b316ca0b19e357d5c2706ee037fc5869dbdd673818ffea2b0a16f7254",
+    "directCallCctorMethodIndex": 384866,
+    "directCallCctorStartVa": 0x184D1D370,
+    "directCallCctorSpanBytes": 0x10,
+    "directCallCctorBodySha256": "63dd03799ed9bf5e7b69310d767e063a455475311552dfd822d46c24f2760a66",
+    "directCallCtorMethodIndex": 384864,
+    "directCallCtorStartVa": 0x184D1D380,
+    "directCallCtorSpanBytes": 0x90,
+    "directCallCtorBodySha256": "f58d1d860f35dd2a4f36061ff389e56cedde85f4a81317ca1c1ad6f2c362e0e6",
+    "getIlppSpanBytes": 0x30,
+    "getIlppBodySha256": "9bee5e8ec8df54600135338af3dcfb9bd658c504be3b76c5dd27f1093c44cc24",
+}
+
+IFIX_WRAPPER_BOOTSTRAP = {
+    "dynamicWrapperTypeDefinitionIndex": 48629,
+    "wrapperArrayFieldIndex": 231395,
+    "wrapperArrayFieldName": "wrapperArray",
+    "wrapperArrayCctorMethodIndex": 387376,
+    "wrapperArrayCctorStartVa": 0x184D37BF0,
+    "wrapperArrayCctorThroughRetBytes": 0x60,
+    "wrapperArrayCctorThroughRetSha256": "5cb6d4ce87529c8c6f1fa7eac874f3ead4739a13fcb266e47994d36a9009ede4",
+    "getPatchMethodIndex": 387383,
+    "getPatchStartVa": 0x185396738,
+    "getPatchSpanBytes": 0x64,
+    "getPatchBodySha256": "db307c30bca973a0267cca2f59294c3fc59aa0bf6959b4d74eb3e7aa760f10c0",
+    "isPatchedMethodIndex": 387384,
+    "isPatchedStartVa": 0x182F95A30,
+    "isPatchedSpanBytes": 0x90,
+    "isPatchedBodySha256": "313d367c6b4d2777c831c0ef2280273536e55dbec46540925b997fc1b46f805c",
+    "initWrapperArrayMethodIndex": 387387,
+}
+
 # The parameter declaration and pointee identities come from global metadata
 # plus MetadataRegistration.types.  Strides/access are then independently
 # demonstrated by the pinned worker body's address arithmetic.
@@ -361,6 +466,232 @@ def _source(path: Path, expected_hash: str) -> dict[str, Any]:
     if actual != expected_hash:
         raise ContractError(f"source drift: {_repo_path(path)} {actual} != {expected_hash}")
     return {"repoPath": _repo_path(path), "size": path.stat().st_size, "sha256": actual}
+
+
+def _metadata_usage_source(pe: Any, va: int, expected_kind: int) -> int:
+    encoded = pe.u64_at_va(va)
+    kind = encoded >> 29
+    source_index = (encoded >> 1) & 0x0FFFFFFF
+    if kind != expected_kind:
+        raise ContractError(
+            f"metadata usage kind drift at 0x{va:x}: {kind} != {expected_kind}"
+        )
+    return source_index
+
+
+def _metadata_usage_type(md: Any, pe: Any, registration: dict[str, Any],
+                         va: int, expected_name: str) -> dict[str, Any]:
+    metadata_type_index = _metadata_usage_source(pe, va, 1)
+    types_table = int(registration["types"], 16)
+    type_pointer = pe.u64_at_va(types_table + metadata_type_index * 8)
+    type_definition_index, type_bits = struct.unpack(
+        "<QI", pe.bytes_at_va(type_pointer, 12)
+    )
+    if type_definition_index >= len(md.types):
+        raise ContractError(f"metadata usage type is not a TypeDef at 0x{va:x}")
+    actual_name = md.type_full_name(md.types[type_definition_index])
+    if actual_name != expected_name:
+        raise ContractError(
+            f"metadata usage type drift at 0x{va:x}: {actual_name} != {expected_name}"
+        )
+    return {
+        "slotVa": f"0x{va:x}",
+        "metadataTypeIndex": metadata_type_index,
+        "typeDefinitionIndex": type_definition_index,
+        "typeBits": f"0x{type_bits:x}",
+        "type": actual_name,
+    }
+
+
+def _metadata_usage_string(md: Any, pe: Any, va: int,
+                           expected_value: str) -> dict[str, Any]:
+    literal_index = _metadata_usage_source(pe, va, 5)
+    literals = md.sections["stringLiteral"]
+    data = md.sections["stringLiteralData"]
+    record = literals.offset + literal_index * 8
+    if record < literals.offset or record + 8 > literals.offset + literals.size:
+        raise ContractError(f"metadata string literal index out of bounds at 0x{va:x}")
+    length, data_index = struct.unpack_from("<II", md.buf, record)
+    start = data.offset + data_index
+    end = start + length
+    if start < data.offset or end > data.offset + data.size:
+        raise ContractError(f"metadata string literal data out of bounds at 0x{va:x}")
+    value = md.buf[start:end].decode("utf-8", errors="strict")
+    if value != expected_value:
+        raise ContractError(
+            f"metadata string literal drift at 0x{va:x}: {value!r} != {expected_value!r}"
+        )
+    return {"slotVa": f"0x{va:x}", "literalIndex": literal_index, "value": value}
+
+
+def _validate_installed_ifix_payload(
+        payload: dict[str, Any], gate: dict[str, Any],
+        parsed_targets: list[dict[str, Any]]) -> dict[str, Any]:
+    """Join the local installed payload without promoting it to live state.
+
+    IFix's numeric wrapper id is not an on-disk target-table key.  Therefore
+    the sound static negative proof is absence of every BeyondDynamicBone
+    target from the exact parsed installed table, not a search for ``0x219``.
+    """
+    if payload.get("schema") != "endfield.charinfo.installed-ifix-patch-state.v1":
+        raise ContractError("installed IFix report schema drift")
+    source_build = payload.get("source_build") or {}
+    expected_build = {
+        "game_assembly": gate["gameAssembly"]["sha256"],
+        "global_metadata": gate["globalMetadata"]["sha256"],
+    }
+    for key, expected_sha in expected_build.items():
+        actual_sha = str((source_build.get(key) or {}).get("sha256") or "").lower()
+        if actual_sha != expected_sha.lower():
+            raise ContractError(f"installed IFix report native build drift: {key}")
+
+    targets = payload.get("targets")
+    if not isinstance(targets, list) or targets != parsed_targets:
+        raise ContractError("installed IFix parsed target table differs from report")
+    patch_format = payload.get("patch_format") or {}
+    if patch_format.get("target_count") != len(targets):
+        raise ContractError("installed IFix target count differs from parsed table")
+    persistent = ((payload.get("vfs_state") or {}).get("persistent_overlay") or {})
+    patch_record = persistent.get("file") or {}
+    refresh = payload.get("refresh") or {}
+    if (not patch_record.get("sha256") or
+            refresh.get("source_patch_sha256") != patch_record.get("sha256")):
+        raise ContractError("installed IFix refresh/source patch identity drift")
+    if persistent.get("file_count") != 1 or persistent.get("chunk_count") != 1:
+        raise ContractError("installed Persistent IFix VFS census drift")
+    base = ((payload.get("vfs_state") or {}).get("base_streaming_assets") or {})
+    if base.get("file_count") != 0 or base.get("chunk_count") != 0:
+        raise ContractError("installed base IFix VFS census drift")
+
+    beyond_targets = [
+        row for row in targets
+        if str(row.get("type") or "").startswith("BeyondDynamicBone.")
+    ]
+    from_to_targets = [
+        row for row in beyond_targets
+        if row.get("type") == "BeyondDynamicBone.MathUtility" and
+        row.get("method") == "FromToRotation"
+    ]
+    if beyond_targets:
+        raise ContractError(
+            "installed IFix unexpectedly targets BeyondDynamicBone: " +
+            json.dumps(beyond_targets, ensure_ascii=False, sort_keys=True)
+        )
+    return {
+        "status": "hash_pinned_installed_local_payload_excludes_beyond_dynamic_bone",
+        "installedLocalPayloadFileCount": 1,
+        "parsedTargetCount": len(targets),
+        "beyondDynamicBoneTargetCount": len(beyond_targets),
+        "fromToRotationTargetCount": len(from_to_targets),
+        "sourcePatchSha256": patch_record["sha256"],
+        "sourceBuild": expected_build,
+        "proof": (
+            "The exact parsed target table of the only installed local IFixPatchOut "
+            "payload contains no BeyondDynamicBone target. Patch id 0x219 is a "
+            "wrapper gate constant, not an on-disk target-table key."
+        ),
+        "runtimeBoundary": (
+            "This disk snapshot does not prove live slot ownership or exclude a "
+            "later, remote, or memory-only patch."
+        ),
+    }
+
+
+def _installed_ifix_snapshot(path: Path, gate: dict[str, Any]) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ContractError(f"cannot read installed IFix report: {exc}") from exc
+
+    verifier = _load(
+        "post_proxy_installed_ifix_verifier",
+        LAB_ROOT / "tools" / "verify_installed_ifix_patch_state.py",
+    )
+    try:
+        persistent = payload["vfs_state"]["persistent_overlay"]
+        verifier.check_installed_file(persistent["chunk"], "IFix VFS chunk")
+        verifier.check_installed_file(
+            persistent["block_catalog"], "IFix block catalog"
+        )
+        patch_path = verifier.check_file(
+            persistent["file"], "decrypted Gameplay patch"
+        )
+        loader = payload["loader_recovery"]
+        metadata_catalog_path = verifier.check_file(
+            loader["metadata_catalog"], "IFix loader metadata catalog"
+        )
+        native_map_path = verifier.check_file(
+            loader["native_map"], "IFix loader native map"
+        )
+        metadata_catalog = json.loads(metadata_catalog_path.read_text(encoding="utf-8"))
+        native_map = json.loads(native_map_path.read_text(encoding="utf-8"))
+        verifier.check_loader_build_provenance(payload, metadata_catalog, native_map)
+        parsed_targets, observed = verifier.parse_patch(
+            patch_path.read_bytes(), payload["patch_format"]
+        )
+    except (KeyError, OSError, ValueError, SystemExit) as exc:
+        raise ContractError(f"installed IFix source validation failed: {exc}") from exc
+    expected = payload["patch_format"]
+    for key in ("bridge", "type_count", "target_count"):
+        if observed[key] != expected[key]:
+            raise ContractError(f"installed IFix parsed {key} drift")
+    for key in ("type_table_end", "target_table_end", "file_end"):
+        if observed[key] != int(expected[key], 16):
+            raise ContractError(f"installed IFix parsed {key} drift")
+    if observed["terminal"] != expected["terminal_int32"]:
+        raise ContractError("installed IFix parsed terminal drift")
+
+    result = _validate_installed_ifix_payload(payload, gate, parsed_targets)
+    result["report"] = {
+        "repoPath": _repo_path(path),
+        "size": path.stat().st_size,
+        "sha256": _sha(path),
+    }
+    result["parsedPatch"] = {
+        "repoPath": _repo_path(patch_path),
+        "size": patch_path.stat().st_size,
+        "sha256": _sha(patch_path),
+    }
+    edge_set = {
+        (edge["caller"]["methodIndex"], callee["methodIndex"])
+        for edge in native_map["directCallEdges"]
+        for callee in edge["callees"]
+    }
+    required_loader_edges = {
+        (482175, 482190),
+        (482190, 485545),
+        (482190, 485546),
+        (485545, 485543),
+        (485545, 485544),
+    }
+    if not required_loader_edges <= edge_set:
+        raise ContractError(
+            "installed IFix local loader edges drift: " +
+            repr(sorted(required_loader_edges - edge_set))
+        )
+    result["loaderEvidence"] = {
+        "metadataCatalog": {
+            "repoPath": _repo_path(metadata_catalog_path),
+            "size": metadata_catalog_path.stat().st_size,
+            "sha256": _sha(metadata_catalog_path),
+        },
+        "nativeMap": {
+            "repoPath": _repo_path(native_map_path),
+            "size": native_map_path.stat().st_size,
+            "sha256": _sha(native_map_path),
+        },
+        "requiredDirectCallEdges": [
+            {"callerMethodIndex": caller, "calleeMethodIndex": callee}
+            for caller, callee in sorted(required_loader_edges)
+        ],
+        "payloadBridge": observed["bridge"],
+        "classification": (
+            "The hash-pinned local loader gets the VFS stream, unloads the prior "
+            "manager, and calls IFix.Core.PatchManager.Load/readSlotInfo/getMapId. "
+            "The installed bridge belongs to Gameplay.Beyond, not BeyondDynamicBone."
+        ),
+    }
+    return result
 
 
 def _gate(game_assembly: Path | None, metadata: Path | None) -> tuple[dict[str, Any], Path, Path]:
@@ -594,6 +925,127 @@ def _dependency(path: Path, expected_hash: str, schema: str) -> dict[str, Any]:
     return {**source, "schema": schema, "status": payload.get("status")}
 
 
+def _calc_line_burst_dependency(path: Path) -> dict[str, Any]:
+    """Validate the sibling contract's exact CalcLine target, not its file hash."""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if (payload.get("schema") != "endfield.charinfo.secondary-dynamics-burst-export.v1" or
+            payload.get("status") != "secondary_dynamics_static_export_core_identities_partial_managed_routes_unresolved"):
+        raise ContractError("CalcLine Burst dependency schema/status drift")
+    gate = payload.get("native_gate", {})
+    expected_gate = {
+        "gameAssembly": EXPECTED_GAME_ASSEMBLY_SHA256,
+        "globalMetadata": EXPECTED_METADATA_SHA256,
+        "libBurstGenerated": EXPECTED_LIB_BURST_SHA256,
+    }
+    for key, expected in expected_gate.items():
+        if gate.get(key, {}).get("sha256") != expected:
+            raise ContractError(f"CalcLine Burst dependency {key} gate drift")
+    target = payload.get("targets", {}).get("calcLineNormalTangent", {})
+    expected = {
+        "status": "static_semantic_export_and_dual_cpu_core_identity_closed_runtime_route_unobserved",
+        "candidateHash": "7342567c29c434b5b924be51bd8e34b7",
+        "functionPointerSlotRva": "0x3c57b0",
+    }
+    for key, value in expected.items():
+        if target.get(key) != value:
+            raise ContractError(f"CalcLine Burst dependency target {key} drift")
+    if (target.get("export", {}).get("bodySha256") !=
+            "17244d44dcff7f94b21b887f24ca42d662db90b81a1a1fcc2220a41e15c90328"):
+        raise ContractError("CalcLine Burst dependency export body drift")
+    variants = {row.get("cpuVariant"): row for row in target.get("variants", [])}
+    expected_cores = {
+        "x64_sse2": ("0xf4100", "d2981125e4685061134d4e7c1048efc84c33ecc9053f09d3dc9d104756282824"),
+        "avx2": ("0x284c50", "fd0fd8d14052cccdcf137f7e90391faadd0bae6c88c5e199fc908f0b8fe5b07c"),
+    }
+    for cpu_variant, (rva, sha256) in expected_cores.items():
+        core = variants.get(cpu_variant, {}).get("solverCore", {})
+        if (core.get("rva"), core.get("sha256")) != (rva, sha256):
+            raise ContractError(f"CalcLine Burst dependency {cpu_variant} core drift")
+    create_target = payload.get("targets", {}).get("createPostProxyMeshUpdateList", {})
+    if (create_target.get("status") !=
+            "static_semantic_export_dual_cpu_equations_and_buffers_closed_runtime_route_unobserved" or
+            create_target.get("candidateHash") !=
+            "ef715c6829f8df5c4396ed6a395d3bb0" or
+            create_target.get("functionPointerSlotRva") != "0x3c6a30"):
+        raise ContractError("CreatePostProxy Burst dependency target drift")
+    create_variants = {
+        row.get("cpuVariant"): row for row in create_target.get("variants", [])
+    }
+    expected_create_cores = {
+        "x64_sse2": ("0xf3ad0",
+                      "1a032caef0f1f620f05665ab236c15e89483a43d10e6463e40adf0826b21bbda"),
+        "avx2": ("0x2845d0",
+                 "ac1747a45021702a7b88789dbdfdef99ac44e9df2d3d61aef30b0b04d105e734"),
+    }
+    for cpu_variant, (rva, sha256) in expected_create_cores.items():
+        core = create_variants.get(cpu_variant, {}).get("solverCore", {})
+        if (core.get("rva"), core.get("sha256")) != (rva, sha256):
+            raise ContractError(
+                f"CreatePostProxy Burst dependency {cpu_variant} core drift"
+            )
+    return {
+        "repoPath": _repo_path(path),
+        "size": path.stat().st_size,
+        "sha256": _sha(path),
+        "schema": payload["schema"],
+        "status": payload["status"],
+        "target": target,
+        "createListTarget": create_target,
+    }
+
+
+def _calc_line_burst_numerics_dependency(path: Path) -> dict[str, Any]:
+    source = _source(path, EXPECTED_CALC_LINE_BURST_NUMERICS_SHA256)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if (payload.get("schema") !=
+            "endfield.charinfo.secondary-dynamics-calc-line-burst-golden-vectors.v2" or
+            payload.get("status") !=
+            "dual_cpu_core_source_and_endminf_topology_exact"):
+        raise ContractError("CalcLine Burst numeric dependency schema/status drift")
+    gate = payload.get("nativeGate", {})
+    if (gate.get("gameAssembly", {}).get("sha256") != EXPECTED_GAME_ASSEMBLY_SHA256 or
+            gate.get("globalMetadata", {}).get("sha256") != EXPECTED_METADATA_SHA256 or
+            gate.get("libBurstGenerated", {}).get("sha256") != EXPECTED_LIB_BURST_SHA256):
+        raise ContractError("CalcLine Burst numeric dependency native gate drift")
+    boundary = payload.get("boundary", {})
+    if (boundary.get("nativeCpuVariantsExecuted") != ["x64_sse2", "avx2"] or
+            boundary.get("sourceOnlyTranscriptionMatchedBitForBit") is not True or
+            boundary.get("endminfOwnerCount") != 4 or
+            boundary.get("endminfStateCountPerOwner") != 3 or
+            boundary.get("endminfTopologyCaseCount") != 12 or
+            boundary.get("fullBaselinePackedChildTraversalExecuted") is not True or
+            boundary.get("rotationOnlyMutationProven") is not True or
+            boundary.get("captureUsed") is not False or
+            boundary.get("runtimeRouteSelected") is not False or
+            boundary.get("writebackConnected") is not False or
+            boundary.get("managedIfixPatchStateClosed") is not False or
+            boundary.get("solverImplemented") is not False or
+            boundary.get("retailEquivalent") is not False):
+        raise ContractError("CalcLine Burst numeric dependency boundary drift")
+    if [row.get("name") for row in payload.get("vectors", [])] != [
+        "parallel_move", "quarter_turn_move", "antiparallel_positive_x",
+        "non_move_assignment", "two_child_parent_direction_sum",
+        "empty_child_no_write", "negative_x_antiparallel_zero_axis",
+    ]:
+        raise ContractError("CalcLine Burst numeric dependency vector set drift")
+    topology_cases = payload.get("endminfTopologyCases", [])
+    if ([row.get("ownerPath") for row in topology_cases] !=
+            ["MC_Ribbon2", "MC_Hair", "MC_Ribbon", "MC_Coat"] or
+            any([state.get("name") for state in row.get("states", [])] != [
+                "bind_rest", "seeded_perturbation_a", "seeded_perturbation_b"
+            ] for row in topology_cases)):
+        raise ContractError("CalcLine Burst numeric dependency topology fixture drift")
+    equations = payload.get("equations", {})
+    if ("mulBurstBinary32(fromTo" not in equations.get("childRotation", "") or
+            "Flag_Move" not in equations.get("childWriteGate", "") or
+            "packed float4 grouping" not in equations.get("quaternionGrouping", "")):
+        raise ContractError("CalcLine Burst numeric dependency equation drift")
+    return {**source, "schema": payload["schema"], "status": payload["status"],
+            "boundary": boundary, "equations": payload["equations"],
+            "degeneracy": payload["degeneracy"]}
+
+
 def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                    metadata: Path | None = DEFAULT_METADATA,
                    metadata_evidence: Path = DEFAULT_METADATA_EVIDENCE,
@@ -704,6 +1156,8 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
         row["bodySha256"] = hashlib.sha256(data).hexdigest()
         workers.append(row)
     expected_worker_bodies = {
+        384830: (CREATE_LIST_DIRECT_CALL["kernelSpanBytes"],
+                 CREATE_LIST_DIRECT_CALL["kernelBodySha256"]),
         384832: (3300, "02a0d53fed888f05f966dbe2250f59e4f2722d0cfac3928e7a2b268d39bb4bde"),
         384854: (CALC_LINE_DIRECT_CALL["kernelSpanBytes"],
                  CALC_LINE_DIRECT_CALL["kernelBodySha256"]),
@@ -717,6 +1171,44 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
     create_hot_hash = hashlib.sha256(pe.bytes_at_va(0x186743868, 0x223)).hexdigest()
     if create_hot_hash != "05248d617681f7cbce052c79fffc748936523f7230da3812c6c8bab0f3230213":
         raise ContractError(f"CreatePostProxyMeshUpdateList hot-path drift: {create_hot_hash}")
+    create_invoke = _method_record(
+        md, bone, unique, method_start,
+        CREATE_LIST_DIRECT_CALL["invokeMethodIndex"], "Invoke",
+        CREATE_LIST_DIRECT_CALL["invokeStartVa"],
+    )
+    create_invoke_body = pe.bytes_at_va(
+        CREATE_LIST_DIRECT_CALL["invokeStartVa"], create_invoke["spanBytes"]
+    )
+    if (create_invoke["spanBytes"], hashlib.sha256(create_invoke_body).hexdigest()) != (
+            CREATE_LIST_DIRECT_CALL["invokeSpanBytes"],
+            CREATE_LIST_DIRECT_CALL["invokeBodySha256"]):
+        raise ContractError("CreatePostProxy DirectCall Invoke body drift")
+    create_get_pointer = _method_record(
+        md, bone, unique, method_start,
+        CREATE_LIST_DIRECT_CALL["getFunctionPointerMethodIndex"],
+        "GetFunctionPointer", CREATE_LIST_DIRECT_CALL["getFunctionPointerStartVa"],
+    )
+    create_get_pointer_body = pe.bytes_at_va(
+        CREATE_LIST_DIRECT_CALL["getFunctionPointerStartVa"],
+        create_get_pointer["spanBytes"],
+    )
+    if (create_get_pointer["spanBytes"],
+            hashlib.sha256(create_get_pointer_body).hexdigest()) != (
+            CREATE_LIST_DIRECT_CALL["getFunctionPointerSpanBytes"],
+            CREATE_LIST_DIRECT_CALL["getFunctionPointerBodySha256"]):
+        raise ContractError("CreatePostProxy DirectCall pointer body drift")
+    for call_va, target_va in (
+        (CREATE_LIST_DIRECT_CALL["kernelStartVa"] + 0xA6,
+         CREATE_LIST_DIRECT_CALL["invokeStartVa"]),
+        (CREATE_LIST_DIRECT_CALL["invokeStartVa"] + 0x56, 0x18307B8D0),
+        (CREATE_LIST_DIRECT_CALL["invokeStartVa"] + 0x6D,
+         CREATE_LIST_DIRECT_CALL["getFunctionPointerStartVa"]),
+        (CREATE_LIST_DIRECT_CALL["invokeStartVa"] + 0x12B,
+         CREATE_LIST_DIRECT_CALL["managedFallbackStartVa"]),
+    ):
+        _validate_call(pe, call_va, target_va)
+    if pe.bytes_at_va(CREATE_LIST_DIRECT_CALL["invokeStartVa"] + 0xCF, 2) != b"\xff\xd0":
+        raise ContractError("CreatePostProxy DirectCall indirect pointer call drift")
 
     calc_line_body = pe.bytes_at_va(CALC_LINE["startVa"], CALC_LINE["spanBytes"])
     calc_line_through_ret = calc_line_body[:CALC_LINE["throughRetBytes"]]
@@ -799,6 +1291,23 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
             raise ContractError(f"global method declaration drift for {type_name}.{method_name}")
         return row
 
+    def exact_body(pointer: int, method_index: int, type_name: str,
+                   method_name: str, token: str, span_bytes: int,
+                   expected_hash: str) -> dict[str, Any]:
+        row = exact_global_method(pointer, method_index, type_name, method_name, token)
+        body = pe.bytes_at_va(pointer, span_bytes)
+        actual_hash = hashlib.sha256(body).hexdigest()
+        if len(body) != span_bytes or actual_hash != expected_hash:
+            raise ContractError(
+                f"body drift for {type_name}.{method_name}: {actual_hash}"
+            )
+        return {
+            **row,
+            "startVa": f"0x{pointer:x}",
+            "spanBytes": span_bytes,
+            "bodySha256": actual_hash,
+        }
+
     burst_is_enabled = exact_global_method(
         0x18307B8D0, 489283, "Unity.Burst.BurstCompiler", "get_IsEnabled", "0x0600000b"
     )
@@ -810,6 +1319,200 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
         0x18474F6F0, 489285, "Unity.Burst.BurstCompiler",
         "GetILPPMethodFunctionPointer2", "0x0600000d"
     )
+    burst_get_ilpp_body = pe.bytes_at_va(
+        0x18474F6F0, BURST_RUNTIME_SELECTION["getIlppSpanBytes"]
+    )
+    if (hashlib.sha256(burst_get_ilpp_body).hexdigest() !=
+            BURST_RUNTIME_SELECTION["getIlppBodySha256"] or
+            burst_get_ilpp_body[6:33] != bytes.fromhex(
+                "48 85 c9 0f 84 e1 4e 7e 00 48 85 d2 0f 84 86 4e 7e 00 "
+                "4d 85 c0 0f 84 2b 4e 7e 00"
+            ) or
+            burst_get_ilpp_body[33:42] != bytes.fromhex(
+                "48 8b c1 48 83 c4 20 5b c3"
+            )):
+        raise ContractError("GetILPPMethodFunctionPointer2 identity/nullability drift")
+
+    burst_compiler_cctor = exact_body(
+        BURST_RUNTIME_SELECTION["burstCompilerCctorStartVa"],
+        BURST_RUNTIME_SELECTION["burstCompilerCctorMethodIndex"],
+        "Unity.Burst.BurstCompiler", ".cctor", "0x06000012",
+        BURST_RUNTIME_SELECTION["burstCompilerCctorSpanBytes"],
+        BURST_RUNTIME_SELECTION["burstCompilerCctorBodySha256"],
+    )
+    options_ctor = exact_body(
+        BURST_RUNTIME_SELECTION["optionsCtorStartVa"],
+        BURST_RUNTIME_SELECTION["optionsCtorMethodIndex"],
+        "Unity.Burst.BurstCompilerOptions", ".ctor", "0x0600001f",
+        BURST_RUNTIME_SELECTION["optionsCtorSpanBytes"],
+        BURST_RUNTIME_SELECTION["optionsCtorBodySha256"],
+    )
+    options_set_enabled = exact_body(
+        BURST_RUNTIME_SELECTION["optionsSetEnabledStartVa"],
+        BURST_RUNTIME_SELECTION["optionsSetEnabledMethodIndex"],
+        "Unity.Burst.BurstCompilerOptions", "set_EnableBurstCompilation",
+        "0x06000022", BURST_RUNTIME_SELECTION["optionsSetEnabledSpanBytes"],
+        BURST_RUNTIME_SELECTION["optionsSetEnabledBodySha256"],
+    )
+    options_cctor = exact_body(
+        BURST_RUNTIME_SELECTION["optionsCctorStartVa"],
+        BURST_RUNTIME_SELECTION["optionsCctorMethodIndex"],
+        "Unity.Burst.BurstCompilerOptions", ".cctor", "0x0600002a",
+        BURST_RUNTIME_SELECTION["optionsCctorSpanBytes"],
+        BURST_RUNTIME_SELECTION["optionsCctorBodySha256"],
+    )
+    check_secondary = exact_global_method(
+        BURST_RUNTIME_SELECTION["checkSecondaryStartVa"],
+        BURST_RUNTIME_SELECTION["checkSecondaryMethodIndex"],
+        "Unity.Burst.BurstCompilerOptions", "CheckIsSecondaryUnityProcess",
+        "0x0600002b",
+    )
+    check_secondary_body = pe.bytes_at_va(
+        BURST_RUNTIME_SELECTION["checkSecondaryStartVa"],
+        BURST_RUNTIME_SELECTION["checkSecondaryThroughRetBytes"],
+    )
+    if (check_secondary_body != b"\x32\xc0\xc3" or
+            hashlib.sha256(check_secondary_body).hexdigest() !=
+            BURST_RUNTIME_SELECTION["checkSecondaryThroughRetSha256"]):
+        raise ContractError("Burst secondary-process predicate drift")
+
+    helper_is_burst_enabled = exact_body(
+        BURST_RUNTIME_SELECTION["helperIsBurstEnabledStartVa"],
+        BURST_RUNTIME_SELECTION["helperIsBurstEnabledMethodIndex"],
+        "Unity.Burst.BurstCompiler+BurstCompilerHelper", "IsBurstEnabled",
+        "0x06000014", BURST_RUNTIME_SELECTION["helperIsBurstEnabledSpanBytes"],
+        BURST_RUNTIME_SELECTION["helperIsBurstEnabledBodySha256"],
+    )
+    helper_cctor = exact_body(
+        BURST_RUNTIME_SELECTION["helperCctorStartVa"],
+        BURST_RUNTIME_SELECTION["helperCctorMethodIndex"],
+        "Unity.Burst.BurstCompiler+BurstCompilerHelper", ".cctor",
+        "0x06000017", BURST_RUNTIME_SELECTION["helperCctorThroughRetBytes"],
+        BURST_RUNTIME_SELECTION["helperCctorThroughRetSha256"],
+    )
+    helper_is_compiled = exact_body(
+        BURST_RUNTIME_SELECTION["helperIsCompiledStartVa"],
+        BURST_RUNTIME_SELECTION["helperIsCompiledMethodIndex"],
+        "Unity.Burst.BurstCompiler+BurstCompilerHelper", "IsCompiledByBurst",
+        "0x06000016", BURST_RUNTIME_SELECTION["helperIsCompiledThroughRetBytes"],
+        BURST_RUNTIME_SELECTION["helperIsCompiledThroughRetSha256"],
+    )
+    compile_async = exact_body(
+        BURST_RUNTIME_SELECTION["compileAsyncStartVa"],
+        BURST_RUNTIME_SELECTION["compileAsyncMethodIndex"],
+        "Unity.Burst.LowLevel.BurstCompilerService", "CompileAsyncDelegateMethod",
+        "0x06000137", BURST_RUNTIME_SELECTION["compileAsyncSpanBytes"],
+        BURST_RUNTIME_SELECTION["compileAsyncBodySha256"],
+    )
+    get_async = exact_body(
+        BURST_RUNTIME_SELECTION["getAsyncStartVa"],
+        BURST_RUNTIME_SELECTION["getAsyncMethodIndex"],
+        "Unity.Burst.LowLevel.BurstCompilerService",
+        "GetAsyncCompiledAsyncDelegateMethod", "0x06000138",
+        BURST_RUNTIME_SELECTION["getAsyncSpanBytes"],
+        BURST_RUNTIME_SELECTION["getAsyncBodySha256"],
+    )
+    helper_is_burst_enabled_body = pe.bytes_at_va(
+        BURST_RUNTIME_SELECTION["helperIsBurstEnabledStartVa"],
+        BURST_RUNTIME_SELECTION["helperIsBurstEnabledSpanBytes"],
+    )
+    if (helper_is_burst_enabled_body[0x35:0x3C] !=
+            bytes.fromhex("32 c0 48 83 c4 28 c3")):
+        raise ContractError("Burst helper managed IsBurstEnabled return drift")
+    if _metadata_usage_source(pe, 0x18E3906A8, 3) != 489292:
+        raise ContractError("Burst helper IsBurstEnabled delegate target drift")
+    for call_va, target_va in (
+        (BURST_RUNTIME_SELECTION["helperCctorStartVa"] + 0x63, 0x183FAEAA0),
+        (BURST_RUNTIME_SELECTION["helperCctorStartVa"] + 0x9F,
+         BURST_RUNTIME_SELECTION["helperIsCompiledStartVa"]),
+        (BURST_RUNTIME_SELECTION["helperIsCompiledStartVa"] + 0x3C,
+         BURST_RUNTIME_SELECTION["compileAsyncStartVa"]),
+        (BURST_RUNTIME_SELECTION["helperIsCompiledStartVa"] + 0x45,
+         BURST_RUNTIME_SELECTION["getAsyncStartVa"]),
+    ):
+        _validate_call(pe, call_va, target_va)
+    if pe.bytes_at_va(
+            BURST_RUNTIME_SELECTION["helperCctorStartVa"] + 0xB2, 3
+    ) != bytes.fromhex("88 42 08"):
+        raise ContractError("BurstCompilerHelper.IsBurstGenerated store drift")
+    options_cold = pe.bytes_at_va(
+        BURST_RUNTIME_SELECTION["optionsCctorColdStartVa"],
+        BURST_RUNTIME_SELECTION["optionsCctorColdSpanBytes"],
+    )
+    if hashlib.sha256(options_cold).hexdigest() != BURST_RUNTIME_SELECTION[
+            "optionsCctorColdSha256"]:
+        raise ContractError("Burst options command/environment cold branches drift")
+    _validate_call(pe, BURST_RUNTIME_SELECTION["burstCompilerCctorStartVa"] + 0x6E,
+                   BURST_RUNTIME_SELECTION["optionsCtorStartVa"])
+    _validate_call(pe, BURST_RUNTIME_SELECTION["optionsCtorStartVa"] + 0x11,
+                   BURST_RUNTIME_SELECTION["optionsSetEnabledStartVa"])
+    if pe.bytes_at_va(
+            BURST_RUNTIME_SELECTION["optionsSetEnabledStartVa"] + 0xB7, 2
+    ) != b"\x88\x18":
+        raise ContractError("BurstCompiler._IsEnabled global write drift")
+    if pe.bytes_at_va(
+            BURST_RUNTIME_SELECTION["optionsSetEnabledStartVa"] + 0x69, 3
+    ) != b"\x80\x39\x00":
+        raise ContractError("ForceDisableBurstCompilation gate drift")
+
+    burst_usage_types = {
+        "BurstCompiler": _metadata_usage_type(
+            md, pe, registration, 0x18E366608, "Unity.Burst.BurstCompiler"
+        ),
+        "BurstCompilerHelper": _metadata_usage_type(
+            md, pe, registration, 0x18E390770,
+            "Unity.Burst.BurstCompiler+BurstCompilerHelper"
+        ),
+        "BurstCompilerOptions": _metadata_usage_type(
+            md, pe, registration, 0x18E390710,
+            "Unity.Burst.BurstCompilerOptions"
+        ),
+        "CalcLineDirectCall": _metadata_usage_type(
+            md, pe, registration, 0x18E2FD760,
+            "BeyondDynamicBone.VirtualMeshManager+CalcLineNormalTangentJobKernels+"
+            "CalcLineNormalTangentKernel_000002EA$BurstDirectCall"
+        ),
+    }
+    burst_disable_inputs = {
+        "commandLine": _metadata_usage_string(
+            md, pe, 0x18E390620, "--burst-disable-compilation"
+        ),
+        "forceSyncCommandLine": _metadata_usage_string(
+            md, pe, 0x18E390610, "--burst-force-sync-compilation"
+        ),
+        "environment": _metadata_usage_string(
+            md, pe, 0x18E390600, "UNITY_BURST_DISABLE_COMPILATION"
+        ),
+        "environmentFalseValue": _metadata_usage_string(md, pe, 0x18E33B918, "0"),
+    }
+
+    direct_call_cctor = exact_body(
+        BURST_RUNTIME_SELECTION["directCallCctorStartVa"],
+        BURST_RUNTIME_SELECTION["directCallCctorMethodIndex"],
+        "BeyondDynamicBone.VirtualMeshManager+CalcLineNormalTangentJobKernels+"
+        "CalcLineNormalTangentKernel_000002EA$BurstDirectCall",
+        ".cctor", "0x0600052b",
+        BURST_RUNTIME_SELECTION["directCallCctorSpanBytes"],
+        BURST_RUNTIME_SELECTION["directCallCctorBodySha256"],
+    )
+    direct_call_ctor = exact_body(
+        BURST_RUNTIME_SELECTION["directCallCtorStartVa"],
+        BURST_RUNTIME_SELECTION["directCallCtorMethodIndex"],
+        "BeyondDynamicBone.VirtualMeshManager+CalcLineNormalTangentJobKernels+"
+        "CalcLineNormalTangentKernel_000002EA$BurstDirectCall",
+        "Constructor", "0x06000529",
+        BURST_RUNTIME_SELECTION["directCallCtorSpanBytes"],
+        BURST_RUNTIME_SELECTION["directCallCtorBodySha256"],
+    )
+    _validate_call(pe, BURST_RUNTIME_SELECTION["directCallCtorStartVa"] + 0x5B,
+                   0x183FB0BC0)
+    if (pe.bytes_at_va(BURST_RUNTIME_SELECTION["directCallCctorStartVa"], 7) !=
+            bytes.fromhex("33 c9 e9 09 00 00 00") or
+            pe.bytes_at_va(BURST_RUNTIME_SELECTION["directCallCtorStartVa"] + 0x86, 4) !=
+            bytes.fromhex("48 89 58 08") or
+            pe.bytes_at_va(CALC_LINE_DIRECT_CALL["getFunctionPointerDiscardStartVa"] + 0xC8, 3) !=
+            bytes.fromhex("48 89 02")):
+        raise ContractError("CalcLine DirectCall pointer initialization/store drift")
     helper_spans = _verified_helper_spans(pe)
     parameter_layout = _calc_line_parameter_layout(md, pe, registration)
     relevant_layouts = _calc_line_relevant_layouts(md, pe, registration)
@@ -851,23 +1554,74 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
             raise ContractError(f"MathUtility.FromToRotation constant drift for {name}")
         constant_rows.append({"name": name, "va": f"0x{va:x}", "bytes": actual.hex()})
 
+    ifix_type = md.types[IFIX_WRAPPER_BOOTSTRAP["dynamicWrapperTypeDefinitionIndex"]]
+    if (md.type_full_name(ifix_type), md.image_name_by_type_index.get(ifix_type.index)) != (
+            "IFix.ILFixDynamicMethodWrapper", "BeyondDynamicBone.dll"):
+        raise ContractError("BeyondDynamicBone IFix dynamic-wrapper type identity drift")
+    wrapper_field = md.fields[IFIX_WRAPPER_BOOTSTRAP["wrapperArrayFieldIndex"]]
+    if (wrapper_field.index - ifix_type.field_start < 0 or
+            wrapper_field.index - ifix_type.field_start >= ifix_type.field_count or
+            md.string(wrapper_field.name_index) !=
+            IFIX_WRAPPER_BOOTSTRAP["wrapperArrayFieldName"]):
+        raise ContractError("BeyondDynamicBone IFix wrapperArray field identity drift")
+    ifix_usage_type = _metadata_usage_type(
+        md, pe, registration, 0x18E2EA7D0, "IFix.ILFixDynamicMethodWrapper"
+    )
+    if ifix_usage_type["typeDefinitionIndex"] != ifix_type.index:
+        raise ContractError("BeyondDynamicBone IFix wrapper metadata usage drift")
+    ifix_cctor = exact_body(
+        IFIX_WRAPPER_BOOTSTRAP["wrapperArrayCctorStartVa"],
+        IFIX_WRAPPER_BOOTSTRAP["wrapperArrayCctorMethodIndex"],
+        "IFix.ILFixDynamicMethodWrapper", ".cctor", "0x06000ef9",
+        IFIX_WRAPPER_BOOTSTRAP["wrapperArrayCctorThroughRetBytes"],
+        IFIX_WRAPPER_BOOTSTRAP["wrapperArrayCctorThroughRetSha256"],
+    )
+    ifix_get_patch = exact_body(
+        IFIX_WRAPPER_BOOTSTRAP["getPatchStartVa"],
+        IFIX_WRAPPER_BOOTSTRAP["getPatchMethodIndex"],
+        "IFix.WrappersManagerImpl", "GetPatch", "0x06000f00",
+        IFIX_WRAPPER_BOOTSTRAP["getPatchSpanBytes"],
+        IFIX_WRAPPER_BOOTSTRAP["getPatchBodySha256"],
+    )
+    ifix_is_patched = exact_body(
+        IFIX_WRAPPER_BOOTSTRAP["isPatchedStartVa"],
+        IFIX_WRAPPER_BOOTSTRAP["isPatchedMethodIndex"],
+        "IFix.WrappersManagerImpl", "IsPatched", "0x06000f01",
+        IFIX_WRAPPER_BOOTSTRAP["isPatchedSpanBytes"],
+        IFIX_WRAPPER_BOOTSTRAP["isPatchedBodySha256"],
+    )
+    if (pe.bytes_at_va(IFIX_WRAPPER_BOOTSTRAP["wrapperArrayCctorStartVa"] + 0x33, 2) !=
+            b"\x33\xd2" or
+            pe.bytes_at_va(IFIX_WRAPPER_BOOTSTRAP["wrapperArrayCctorStartVa"] + 0x48, 3) !=
+            b"\x48\x89\x02" or
+            pe.bytes_at_va(IFIX_WRAPPER_BOOTSTRAP["isPatchedStartVa"] + 0x66, 6) !=
+            bytes.fromhex("48 83 7c d9 20 00")):
+        raise ContractError("BeyondDynamicBone IFix empty-array/slot-test semantics drift")
+
     dependencies = {
         "callback": _dependency(DATA_ROOT / "secondary_dynamics_callback_contract.json",
-                                "a6143a667a6df88f088201fe314522589f9faf5149ed2f20a1dc581cf3f27f65",
+                                "f10af3ffc84f3283af1773e62b1214198bb042712882fb90ad7b5946662f0ac0",
                                 "endfield.charinfo.secondary-dynamics-callback-writeback.v1"),
         "transformWriteback": _dependency(DATA_ROOT / "secondary_dynamics_transform_writeback_contract.json",
-                                          "f3e44da89e706cf5a43e625f774196091790b5d548ab720d35b0d8ce77c520c8",
+                                          "e5f9b12aeecd89e92e82484111f9492459782e04bd1c99353a28085e556d249e",
                                           "endfield.charinfo.secondary-dynamics-transform-writeback.v1"),
+        "calcLineBurstExport": _calc_line_burst_dependency(DEFAULT_BURST_CONTRACT),
+        "calcLineBurstNumerics": _calc_line_burst_numerics_dependency(
+            DEFAULT_CALC_LINE_BURST_NUMERICS
+        ),
     }
+    installed_ifix = _installed_ifix_snapshot(DEFAULT_IFIX_REPORT, gate)
     sources["dependencies"] = dependencies
+    sources["installedLocalIfix"] = installed_ifix
     return {
         "schema": "endfield.charinfo.secondary-dynamics-post-proxy.v1",
-        "status": "post_proxy_calc_line_directcall_fallback_equivalence_closed_runtime_selection_open",
+        "status": "post_proxy_create_list_and_calc_line_burst_numerics_closed_runtime_selection_open",
         "manager_schedule_closed": True,
         "managed_job_payload_layout_closed": True,
         "generic_methodspec_identities_closed": True,
         "world_local_publication_equations_closed": True,
         "create_list_worker_control_flow_recovered": True,
+        "create_list_directcall_route_recovered": True,
         "calc_line_entry_control_flow_recovered": True,
         "calc_line_child_traversal_recovered": True,
         "calc_line_managed_worker_equations_recovered": True,
@@ -875,9 +1629,16 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
         "calc_line_data_layout_closed": True,
         "calc_line_kernel_wrapper_route_recovered": True,
         "calc_line_directcall_managed_fallback_equivalence_closed": True,
-        "calc_line_burst_function_pointer_target_closed": False,
-        "create_list_kernel_numerics_recovered": False,
+        "calc_line_burst_function_pointer_target_closed": True,
+        "calc_line_get_ilpp_normal_return_nonnull_closed": True,
+        "calc_line_get_ilpp_return_identity_closed": True,
+        "burst_initial_default_conditions_closed": True,
+        "from_to_rotation_installed_local_ifix_target_absent": True,
+        "from_to_rotation_installed_local_ifix_bootstrap_absent": True,
+        "create_list_kernel_numerics_recovered": True,
+        "selected_create_list_execution_route_closed": False,
         "calc_line_normal_tangent_numerics_recovered": False,
+        "calc_line_burst_numerics_recovered": True,
         "selected_calc_line_execution_route_closed": False,
         "from_to_rotation_ifix_patch_state_closed": False,
         "selected_cross_frame_route_closed": False,
@@ -939,6 +1700,81 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
             ],
             "operation": "Each accepted chunk atomically reserves count slots, then appends the contiguous indices start + i. No captured indices are stored.",
         },
+        "burstRuntimeSelectionEvidence": {
+            "helperManagedBody": {
+                **helper_is_burst_enabled,
+                "delegateMetadataUsageSlotVa": "0x18e3906a8",
+                "registeredManagedReturn": False,
+                "classification": (
+                    "The registered IL2CPP fallback body returns false, but "
+                    "BurstCompiler.get_IsEnabled does not call this body."
+                ),
+            },
+            "helperInitialization": {
+                "typeInitializer": helper_cctor,
+                "isCompiledByBurst": helper_is_compiled,
+                "delegateTargetMethodIndex": 489292,
+                "compileAsyncCallOffset": "0x3c",
+                "getAsyncCompiledCallOffset": "0x45",
+                "isBurstGeneratedStoreOffset": "0xb2",
+                "operation": (
+                    "The helper type initializer constructs a delegate for method "
+                    "489292, submits it to BurstCompilerService, and stores whether "
+                    "GetAsyncCompiledAsyncDelegateMethod returned non-null in the "
+                    "IsBurstGenerated byte."
+                ),
+            },
+            "compilerService": {
+                "compileAsyncDelegateMethod": compile_async,
+                "getAsyncCompiledAsyncDelegateMethod": get_async,
+                "runtimeBoundary": (
+                    "Both methods dispatch through runtime-populated native service "
+                    "pointers. The pinned files do not serialize their returned handle "
+                    "or compiled delegate pointer."
+                ),
+            },
+            "classification": (
+                "The former generic service-backed boundary is now an exact, "
+                "hash-pinned delegate/service/non-nullness chain. The constant-false "
+                "managed helper body is not the value stored in IsBurstGenerated and "
+                "therefore cannot select the managed DirectCall branch by itself."
+            ),
+            "selectedIsBurstGeneratedValue": "unresolved",
+        },
+        "createListDirectCallRoute": {
+            "kernelWrapper": {
+                "methodIndex": CREATE_LIST_DIRECT_CALL["kernelMethodIndex"],
+                "startVa": f"0x{CREATE_LIST_DIRECT_CALL['kernelStartVa']:x}",
+                "spanBytes": CREATE_LIST_DIRECT_CALL["kernelSpanBytes"],
+                "bodySha256": CREATE_LIST_DIRECT_CALL["kernelBodySha256"],
+                "invokeCallOffset": "0xa6",
+                "invokeMethodIndex": CREATE_LIST_DIRECT_CALL["invokeMethodIndex"],
+            },
+            "invoke": {
+                **create_invoke,
+                "bodySha256": CREATE_LIST_DIRECT_CALL["invokeBodySha256"],
+                "burstEnabledCallOffset": "0x56",
+                "getFunctionPointerCallOffset": "0x6d",
+                "indirectCallOffset": "0xcf",
+                "managedFallbackCallOffset": "0x12b",
+            },
+            "managedFallback": {
+                "methodIndex": CREATE_LIST_DIRECT_CALL["managedFallbackMethodIndex"],
+                "startVa": f"0x{CREATE_LIST_DIRECT_CALL['managedFallbackStartVa']:x}",
+                "spanBytes": CREATE_LIST_DIRECT_CALL["managedFallbackSpanBytes"],
+                "bodySha256": CREATE_LIST_DIRECT_CALL["managedFallbackBodySha256"],
+                "equations": "createListHotControlFlow",
+            },
+            "burstFunctionPointerTarget": dependencies["calcLineBurstExport"][
+                "createListTarget"
+            ],
+            "numericEquivalence": (
+                "Both exact Burst cores and the managed fallback perform the same "
+                "four signed atomic reservations and contiguous sourceStart+i writes. "
+                "SSE2/AVX2 vector blocks only batch that integer sequence."
+            ),
+            "selectedRuntimeRoute": "unresolved",
+        },
         "calcLineEntryControlFlow": {
             "managedWorkerMethodIndex": 384856,
             "startVa": "0x186744fb0",
@@ -979,11 +1815,17 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                 "loopOffsets": ["0x2f0", "0x61d"],
                 "restVector": "double3(math.mul(parentRotation, vertexLocalPositions[childVertex] * team.negativeScaleDirection))",
                 "restSum": "restSum + restVector for every child; restSum starts at double3.zero for each parentVertex",
-                "directionAccumulatorInitial": "double3.zero for each parentVertex",
-                "directionAccumulatorMoveBranch": "if attributes[childVertex].Value & VertexAttribute.Flag_Move (0x02) != 0: directionAccumulator += positions[childVertex] - parentPosition",
+                "parentDirectionSumInitial": "double3.zero for each parentVertex",
+                "childDirectionMoveBranch": "if attributes[childVertex].Value & VertexAttribute.Flag_Move (0x02) != 0: childDirection = positions[childVertex] - parentPosition",
                 "moveBitSemanticEvidence": is_move,
-                "directionAccumulatorNonMoveBranch": "otherwise: directionAccumulator = restVector",
-                "childFromTo": "MathUtility.FromToRotation(restVector, directionAccumulator, 1.0)",
+                "childDirectionNonMoveBranch": "otherwise: childDirection = restVector",
+                "parentDirectionSum": "parentDirectionSum += childDirection after selecting the per-child value",
+                "parentDirectionSumCallOffsets": {
+                    "nonMoveBranch": "0x460",
+                    "moveBranch": "0x4e4",
+                },
+                "childFromTo": "MathUtility.FromToRotation(restVector, childDirection, 1.0)",
+                "childFromToCallOffset": "0x548",
                 "signedLocalRotation": "quaternion(vertexLocalRotations[childVertex].value * team.negativeScaleQuaternionValue)",
                 "childRotationWrite": "rotations[childVertex] = math.mul(math.mul(parentRotation, signedLocalRotation), childFromTo)",
                 "writeOffsets": ["0x5f1", "0x5fe"],
@@ -991,7 +1833,7 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
             "parentRotationWrite": {
                 "condition": "at least one child was traversed for parentVertex",
                 "interpolation": "attributes[parentVertex].Value & VertexAttribute.Flag_Move (0x02) != 0 ? parameter.rotationalInterpolation : parameter.rootRotation",
-                "parentFromTo": "MathUtility.FromToRotation(restSum, directionAccumulator, interpolation)",
+                "parentFromTo": "MathUtility.FromToRotation(restSum, parentDirectionSum, interpolation)",
                 "write": "rotations[parentVertex] = math.mul(parentFromTo, parentRotation)",
                 "writeOffsets": ["0x62c", "0x6b8"],
             },
@@ -1020,6 +1862,29 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                     "getPatchMethodIndex": 387383,
                     "dynamicWrapperMethodIndex": 386959,
                     "dynamicWrapper": "IFix.ILFixDynamicMethodWrapper.__Gen_Wrap_178",
+                    "installedLocalSnapshot": "sources.installedLocalIfix",
+                    "localBootstrap": {
+                        "wrapperType": ifix_usage_type,
+                        "wrapperArrayFieldIndex": IFIX_WRAPPER_BOOTSTRAP[
+                            "wrapperArrayFieldIndex"
+                        ],
+                        "wrapperArrayCctor": ifix_cctor,
+                        "initialArrayLength": 0,
+                        "getPatch": ifix_get_patch,
+                        "isPatched": ifix_is_patched,
+                        "slotPredicate": (
+                            "id is in range and wrapperArray[id] is non-null"
+                        ),
+                        "installedLocalOutcome": (
+                            "The BeyondDynamicBone wrapper array starts empty, and the "
+                            "only hash-pinned installed local payload uses the "
+                            "Gameplay.Beyond bridge with no BeyondDynamicBone target."
+                        ),
+                        "runtimeBoundary": (
+                            "InitWrapperArray or another later, remote, or memory-only "
+                            "load can still replace/populate the live array."
+                        ),
+                    },
                     "selectedAtRuntime": "unresolved",
                 },
             },
@@ -1033,7 +1898,26 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                 "baseLineData", "index",
             ],
             "unusedParameters": ["parentIndices"],
-            "numericBoundary": "The pinned unpatched managed-worker traversal/equations and the generated DirectCall managed fallback are closed. Overall runtime numerics remain fail-closed until the selected Burst function pointer, cross-frame/managed route, and FromToRotation IFix patch state are proven.",
+            "numericBoundary": "The pinned unpatched managed-worker traversal/equations, generated DirectCall managed fallback, and exact dual-CPU Burst target are closed. Overall runtime numerics remain fail-closed until the selected Burst/managed branch, cross-frame/managed route, and managed-route FromToRotation IFix patch state are proven.",
+        },
+        "calcLineBurstNumerics": {
+            "source": "sources.dependencies.calcLineBurstNumerics",
+            "equations": dependencies["calcLineBurstNumerics"]["equations"],
+            "degeneracy": dependencies["calcLineBurstNumerics"]["degeneracy"],
+            "classification": (
+                "Both pinned CPU cores match the source-only transcription bit for "
+                "bit across parallel, quarter-turn, antiparallel, non-move, "
+                "multi-child, empty-child, and zero-axis branch cases, plus all four "
+                "Endminf owners across bind/rest and two deterministic perturbed states. "
+                "The topology fixture covers full baseline/packed-child traversal, the "
+                "Burst packed-float4 quaternion grouping and left-applied child FromTo, "
+                "and the fixed-child no-write gate."
+            ),
+            "runtimeBoundary": (
+                "This closes Burst-core numerics, not the branch selected by retail. "
+                "The fixture remains disconnected from scene writeback. A selected managed "
+                "route can still enter live IFix patch 0x219."
+            ),
         },
         "calcLineDirectCallRoute": {
             "classification": "Method 384854 is a thin generated argument-forwarding wrapper. It contains no line traversal or vector/quaternion math and calls BurstDirectCall.Invoke method 384867.",
@@ -1044,6 +1928,21 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                 "invokeMethodIndex": 384867,
             },
             "generatedMethods": direct_call_methods,
+            "staticInitialization": {
+                "typeInitializer": direct_call_cctor,
+                "constructor": direct_call_ctor,
+                "operation": (
+                    "The type initializer enters Constructor; Constructor calls "
+                    "BurstCompiler.CompileILPPMethod2 and stores its return in the "
+                    "DirectCall DeferredCompilation field. The first pointer lookup "
+                    "passes that value to GetILPPMethodFunctionPointer2 and stores "
+                    "the normal return in DirectCall.Pointer."
+                ),
+                "runtimeBoundary": (
+                    "The exact value produced by CompileILPPMethod2 and whether "
+                    "initialization completes normally remain runtime state."
+                ),
+            },
             "invokeSelection": {
                 "burstEnabledGate": {
                     **burst_is_enabled,
@@ -1052,7 +1951,46 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                     "bodySha256": "7ede93cde144cea0e1a57122cafa2c367eda826992de1cc6e93eb55386d2db67",
                     "invokeCallOffset": "0x59",
                     "falseBranch": "directCallManagedFallback",
+                    "semantics": (
+                        "returns BurstCompiler._IsEnabled && "
+                        "BurstCompilerHelper.IsBurstGenerated"
+                    ),
+                    "initialization": {
+                        "burstCompilerTypeInitializer": burst_compiler_cctor,
+                        "optionsConstructor": options_ctor,
+                        "enableSetter": options_set_enabled,
+                        "optionsTypeInitializer": options_cctor,
+                        "secondaryProcessPredicate": {
+                            **check_secondary,
+                            "startVa": f"0x{BURST_RUNTIME_SELECTION['checkSecondaryStartVa']:x}",
+                            "throughRetBytes": BURST_RUNTIME_SELECTION[
+                                "checkSecondaryThroughRetBytes"
+                            ],
+                            "throughRetSha256": BURST_RUNTIME_SELECTION[
+                                "checkSecondaryThroughRetSha256"
+                            ],
+                            "pinnedReturn": False,
+                        },
+                        "metadataUsageTypes": burst_usage_types,
+                        "recognizedInputs": burst_disable_inputs,
+                        "conditionalDefault": (
+                            "BurstCompiler constructs global Options(true). The setter "
+                            "publishes true unless ForceDisableBurstCompilation is set; "
+                            "the pinned secondary-process predicate returns false."
+                        ),
+                        "forceDisableSources": (
+                            "the exact --burst-disable-compilation command-line token "
+                            "or a non-empty, non-'0' UNITY_BURST_DISABLE_COMPILATION "
+                            "environment value"
+                        ),
+                    },
                     "runtimeValue": "unresolved",
+                    "runtimeBoundary": (
+                        "The process command line/environment, the exact async "
+                        "BurstCompilerService result recorded in "
+                        "burstRuntimeSelectionEvidence, and any later public Options "
+                        "mutation are not serialized in the pinned inputs."
+                    ),
                 },
                 "getFunctionPointer": {
                     "methodIndex": 384863,
@@ -1060,14 +1998,34 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                     "resolver": {
                         **burst_get_ilpp,
                         "startVa": "0x18474f6f0",
+                        "spanBytes": BURST_RUNTIME_SELECTION["getIlppSpanBytes"],
+                        "bodySha256": BURST_RUNTIME_SELECTION["getIlppBodySha256"],
                         "getFunctionPointerDiscardCallOffset": "0xb5",
+                        "semantics": (
+                            "null-checks all three arguments, then returns the first "
+                            "argument unchanged"
+                        ),
                     },
                     "nullBranch": "directCallManagedFallback",
                     "nonNullBranch": "indirect call through r10 at Invoke offset 0x13b",
-                    "returnedPointer": "unresolved runtime value",
+                    "normalReturnNonNull": True,
+                    "normalReturnIdentity": (
+                        "the DirectCall DeferredCompilation/Pointer value passed as "
+                        "the resolver's first argument"
+                    ),
+                    "nullBranchBoundary": (
+                        "The emitted null branch exists, but it is unreachable after "
+                        "a normal resolver return: a null first argument throws before "
+                        "returning rather than selecting the managed fallback."
+                    ),
                 },
                 "managedFallbackCallOffset": "0x202",
-                "operation": "BurstCompiler.get_IsEnabled must be true and GetFunctionPointer must return nonzero to take the indirect Burst call; either failed gate calls the separate managed fallback body.",
+                "operation": (
+                    "BurstCompiler.get_IsEnabled false selects the managed fallback. "
+                    "When it is true, a normal GetFunctionPointer resolver return is "
+                    "provably non-null and reaches the indirect call; a null resolver "
+                    "input throws instead of returning null."
+                ),
             },
             "directCallManagedFallback": {
                 "startVa": f"0x{CALC_LINE_DIRECT_CALL['fallbackStartVa']:x}",
@@ -1095,25 +2053,28 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
                     "directCallFallbackFrameBytes": "0x7b0",
                     "numericConstantDifferenceObserved": False,
                 },
-                "boundary": "Stack/local displacement changes do not alter the recovered traversal, branch topology, helper targets, or numeric constants. This comparison does not identify or prove the body behind a non-null Burst function pointer.",
+                "boundary": "Stack/local displacement changes do not alter the recovered traversal, branch topology, helper targets, or numeric constants. The sibling Burst contract separately identifies the non-null target; this comparison does not prove which route was selected at runtime.",
             },
             "selectedRuntimeRoute": "unresolved",
-            "burstFunctionPointerTarget": "unresolved",
+            "burstFunctionPointerTarget": dependencies["calcLineBurstExport"]["target"],
         },
-        "routeEvidence": {"coldSpans": cold,
-                          "classification": "Both parallel/cross-frame scheduling helpers and managed-worker fallback paths are present. The CalcLine DirectCall branch conditions are statically closed, but their runtime values and the returned Burst target are not."},
+        "routeEvidence": {
+            "coldSpans": cold,
+            "installedLocalIfix": "sources.installedLocalIfix",
+            "classification": "Both parallel/cross-frame scheduling helpers and managed-worker fallback paths are present. The CalcLine managed fallback, exact Burst target, GetILPP normal-return identity/non-nullability, conditional Burst default, exact helper delegate/service chain, empty BeyondDynamicBone IFix bootstrap, and installed-local payload absence are statically closed. The process inputs, async compiler-service result, later Options mutation, and live IFix slot ownership remain runtime values.",
+        },
         "workerTargets": workers,
         "nextDisassemblyTargets": [],
         "remainingRuntimeEvidence": [
-            {"boundary": "CalcLine BurstDirectCall selected target",
-             "reason": "method 384854 and the managed fallback are closed, but a non-null GetILPPMethodFunctionPointer2 result is an unresolved runtime pointer"},
+            {"boundary": "CalcLine BurstDirectCall selected route",
+             "reason": "GetILPPMethodFunctionPointer2 normal-return identity/non-nullability, the conditional Burst default, and the helper's exact delegate/service/non-null chain are closed, but the actual process inputs, async compiler-service return, later Options mutation, and CompileILPPMethod2 completion/value remain runtime state"},
             {"boundary": "MathUtility.FromToRotation IFix patch 0x219 selection",
-             "reason": "the unpatched body is closed; runtime IFix selection remains external state"},
+             "reason": "the BeyondDynamicBone wrapper array starts empty and the exact installed local Gameplay.Beyond payload has no BeyondDynamicBone target; InitWrapperArray and later, remote, or memory-only loaders leave live slot ownership external runtime state"},
         ],
         "nonClaims": [
             "The older 80-bone capture is not an implementation input and supplies no positions, timing, curves, or fitted constants.",
-            "The DirectCall managed fallback equivalence does not establish that retail selected it instead of the unresolved non-null Burst function pointer.",
-            "The unpatched FromToRotation equation does not establish that IFix patch id 0x219 was absent at runtime.",
+            "The exact DirectCall managed fallback and non-null Burst target identities do not establish which branch retail selected on a particular frame.",
+            "The empty BeyondDynamicBone bootstrap and parsed installed local IFix absence do not establish that patch id 0x219 was absent after later runtime loading.",
             "parentIndices is present in the job ABI but is not read by method 384856. baseLineFlags is read only for the entry bit-0 gate; no stronger bit semantic is inferred.",
             "The presence of multiple schedule/fallback helpers does not establish which runtime branch is selected.",
             "This static contract is not a Unity execution or retail-equivalence result.",

@@ -42,34 +42,16 @@ namespace EndfieldGraphShaderLabEditor
         // Match the complete no-frame-generation retail segment through the
         // sustained loop tail, rather than stopping at the former 10 s export.
         private const int VideoFrameCount = 770;
-        // The canonical clean reference videos/2026-08-26_21-25-50.mkv keeps
-        // the pointer at source pixel (1036,75) after its short initial move.
-        // Convert that 3840x2160 top-left image coordinate to the source
-        // normalized mouse domain: x=2*1036/3840-1, y=1-2*75/2160. Full
-        // capture 20260828T004942Z proves a different session endpoint
-        // (-0.000508373,-0.0000217753); substituting it moved the clean-video
-        // settled character and portrait left, so it is not this reference's
-        // camera state. Environment overrides preserve per-session evidence.
-        private const string RecordingGyroscopeInputX = "-0.4604167";
-        private const string RecordingGyroscopeInputY = "0.9305556";
-        private const string CleanReferenceGyroscopeTrackEnvironment =
-            "ENDFIELD_ENDMINF_CAPTURE_CLEAN_REFERENCE_GYROSCOPE_TRACK";
-        private const string CleanReferenceGyroscopeTrackOffsetFramesEnvironment =
-            "ENDFIELD_ENDMINF_CAPTURE_GYROSCOPE_TRACK_OFFSET_FRAMES";
-        // Cursor observations from the UI-free 1920x1080 clean-reference
-        // decode. Source frame 90 is requested animation time zero. The
-        // retail UIGyroscopeEffect sees these changes at PreLate and replaces
-        // its active two-second OutQuad on every significant input change.
-        private static readonly GyroscopeTrackSample[] CleanReferenceGyroscopeTrack =
+        private const int BackgroundProofEdgePixels = 128;
+        private const float MinimumBackgroundProofMeanLuma = 100.0f;
+        private const int MinimumBackgroundProofPixelLuma = 80;
+        private static readonly Color CanonicalSolidBackgroundColor =
+            new Color(0.70f, 0.71f, 0.70f, 1.0f);
+        private static readonly float[] CanonicalBackgroundProofTimes =
         {
-            new GyroscopeTrackSample(7.2333333f, -0.4593750f, 0.9277778f),
-            new GyroscopeTrackSample(7.2666667f, -0.4489583f, 0.9388889f),
-            new GyroscopeTrackSample(7.3000000f, -0.4093750f, 0.9703704f),
-            new GyroscopeTrackSample(7.3333333f, -0.2697917f, 0.9962963f),
-            new GyroscopeTrackSample(7.3666667f,  0.0177083f, 0.9962963f),
-            new GyroscopeTrackSample(7.4000000f,  0.4156250f, 0.9962963f),
-            new GyroscopeTrackSample(7.4333333f,  0.7760417f, 0.9962963f),
-            new GyroscopeTrackSample(7.4666667f,  1.0000000f, 0.9962963f),
+            0.65f,
+            4.4333334f,
+            6.65f,
         };
         // Direct UI-free registration of the retained retail Uber output places
         // the August 24 no-frame-generation pulse on the authored body clock.
@@ -114,16 +96,14 @@ namespace EndfieldGraphShaderLabEditor
             "ENDFIELD_RECOVERED_ENDMINF_M21_PEAK_EXACT";
         private const string SphereOutsidePresentationEnvironment =
             "ENDFIELD_RECOVERED_SPHERE_OUTSIDE_PRESENTATION";
-        // A canonical video export must exercise the same source-backed exact
-        // presentation as the maintained interactive launcher. Keep explicit
-        // environment values (including "0") for controlled A/B runs, but do
-        // not let an ordinary batch render silently omit recovered owners.
+        // Source-backed owners are promoted here only after their exact path is
+        // presentation-ready. Keep this list empty while SphereOutside still
+        // lacks a content-valid retail t11 producer; explicit diagnostics use
+        // dedicated entry points outside canonical-video policy.
         private static readonly string[] CanonicalVideoDefaultFlags =
         {
-            // The deferred/SphereOutside chain still depends on the explicitly
-            // content-invalid screen-shadow attachment diagnostic. Enabling it
-            // produces an upside-down body mask over the portrait and regresses
-            // the aligned peak substantially, so it is not presentation policy.
+            // SphereOutside remains an explicit fail-closed probe until the
+            // retail t11 screen-shadow producer/content boundary is recovered.
             // Captured opening-strip, M13, and M21 draw packets remain useful
             // ABI diagnostics, but they freeze one or a few observed particle
             // states. The maintained reproduction must keep the authored
@@ -134,6 +114,45 @@ namespace EndfieldGraphShaderLabEditor
             // current SceneColor/input chronology is not source-closed and it
             // regresses every aligned effect sample versus the exact-off
             // control. Keep it available as an explicit diagnostic only.
+        };
+        private static readonly string[] CanonicalVideoForcedOffFlags =
+        {
+            // Canonical export must not inherit bounded packet replays,
+            // measured-reference effects, or incomplete deferred consumers
+            // from a parent shell. Dedicated diagnostic entry points remain
+            // available and do not use the canonical-video policy.
+            "ENDFIELD_ENDMINF_MEASURED_OPENING_STRIP_DIAGNOSTIC",
+            "ENDFIELD_ENDMINF_M28_VISUAL_COMPAT",
+            "ENDFIELD_ENDMINF_OPENING_STRIP_SCENEMV",
+            "ENDFIELD_RECOVERED_ENDMINF_OPENING_STRIP_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M13_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M14_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M18_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M20_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M21_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M28_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M29_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M30_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_M31_PEAK_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_VFXBASEV2_PEAK_COHORT_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_UBER_EXACT",
+            "ENDFIELD_RECOVERED_ENDMINF_UBER_EARLY_DIAGNOSTIC",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_EXACT_DXBC",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_GENERATIVE_EXACT_DXBC",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_PRESENTATION",
+            "ENDFIELD_RECOVERED_ENDMINF_M27_HGBUFFER",
+            "ENDFIELD_RECOVERED_ENDMINF_LITEFFECT_HGBUFFER",
+            "ENDFIELD_RECOVERED_DEFERRED_EXACT_CONSUMER",
+            EndfieldRecoveredCharInfoPresentation
+                .EndminfSourceBackgroundEnvironmentVariable,
+            // These selectors cover the known content-invalid paths that
+            // produced body-shaped resolves over the portrait.
+            "ENDFIELD_RECOVERED_SCREEN_SHADOW_R_ATTACHMENT_DIAGNOSTIC",
+            SphereOutsidePresentationEnvironment,
+            // This causality probe replaces the source primary depth with a
+            // compatibility-Uber footprint and can create another body-shaped
+            // portrait cutout. It is never canonical presentation policy.
+            "ENDFIELD_DIAGNOSTIC_SYNC_POST_UBER_PORTRAIT_DEPTH",
         };
         private const string Suikuai1Material =
             "Assets/EndfieldGraphShaderLab/Generated/Characters/Playable/Endminf/Effects/Overview/Materials/M_fx_common_teleport_03_p19E6A2A7AE736DA5.mat";
@@ -149,26 +168,12 @@ namespace EndfieldGraphShaderLabEditor
         private static string output;
         private static float[] requestedTimes;
         private static float[] targetTimes;
-        private static bool replayCleanReferenceGyroscopeTrack;
-        private static int cleanReferenceGyroscopeTrackOffsetFrames;
-        private static int nextGyroscopeTrackSample;
-
-        private readonly struct GyroscopeTrackSample
-        {
-            public readonly float requestedSeconds;
-            public readonly float normalizedMouseX;
-            public readonly float normalizedMouseY;
-
-            public GyroscopeTrackSample(
-                float requestedSeconds,
-                float normalizedMouseX,
-                float normalizedMouseY)
-            {
-                this.requestedSeconds = requestedSeconds;
-                this.normalizedMouseX = normalizedMouseX;
-                this.normalizedMouseY = normalizedMouseY;
-            }
-        }
+        private static string captureGyroscopeMode;
+        private static string captureGyroscopeInputProvider;
+        private static string captureGyroscopeInputX;
+        private static string captureGyroscopeInputY;
+        private static string captureGyroscopeEntryOffsetX;
+        private static string captureGyroscopeEntryOffsetY;
         private static float captureFps = Fps;
         private static int captureWidth = DefaultWidth;
         private static int captureHeight = DefaultHeight;
@@ -177,6 +182,7 @@ namespace EndfieldGraphShaderLabEditor
         private static bool capturePostStages;
         private static bool captureSecondaryDynamics;
         private static bool captureRetainedSkinningDiagnostic;
+        private static bool captureCanonicalSolidColorBackground;
         private static bool enableSecondaryDynamicsSolver;
         private static bool enableCapturedSecondaryDynamicsReplay;
         private static string prePostHdrCohort;
@@ -188,7 +194,7 @@ namespace EndfieldGraphShaderLabEditor
         [Serializable]
         private sealed class Report
         {
-            public string schema = "endfield.endminf-viewer-playmode-sequence.v18";
+            public string schema = "endfield.endminf-viewer-playmode-sequence.v26";
             public string status = "ok";
             public int width = captureWidth;
             public int height = captureHeight;
@@ -199,11 +205,26 @@ namespace EndfieldGraphShaderLabEditor
             public bool actorOnlyCapture =
                 !IncludeCharInfoBackground && !IncludeBackgroundPortrait;
             public bool charInfoBackgroundRequested = IncludeCharInfoBackground;
+            public bool endminfSourceBackgroundRequested;
+            public bool endminfSourceForwardOverlayRequested;
+            public bool canonicalSolidColorBackgroundRequested;
             public bool backgroundPortraitRequested = IncludeBackgroundPortrait;
             public bool charInfoBackgroundIncluded;
+            public bool endminfSourceBackgroundIncluded;
+            public bool sourceFloorGridOverlayIncluded;
+            public bool canonicalSourceSphereFloorGridBackgroundIncluded;
+            public bool canonicalSolidColorBackgroundIncluded;
+            public bool fittedCompatibilityPlateActive;
             public bool backgroundPortraitIncluded;
+            public float[] canonicalSolidColorBackgroundProofTimes;
+            public int[] canonicalSolidColorBackgroundProofFrameIndices;
+            public float minimumCanonicalBackgroundProofLumaMean;
+            public int minimumCanonicalBackgroundProofLuma;
             public bool foregroundUiOverlayIncluded = false;
             public bool postProcessingExplicitlyDisabled = false;
+            public bool canonicalVideoExportRequested;
+            public bool observedCanonicalPresentationDiagnosticsForcedOff;
+            public string[] canonicalPresentationDiagnosticFlagsNotForcedOff;
             public bool prePostHdrDiagnostic;
             public bool postStageDiagnostic;
             public string excludedMaterial;
@@ -217,8 +238,15 @@ namespace EndfieldGraphShaderLabEditor
             public bool observedTransition;
             public bool observedSettledLoop;
             public bool observedAnimatorContract;
+            public bool observedRecoveredAclPosePublication;
+            public int recoveredAclPoseBoundTransformCount;
+            public string recoveredAclPoseFailure;
             public bool observedEntranceVfx;
             public bool observedEntranceVfxCleanup;
+            public bool observedOverview01AuthenticatedSourceSeed;
+            public int overview01SourceSeededAnimationCount;
+            public float overview01SourceSeedSeconds;
+            public string overview01SourceSeedFailure;
             public bool observedRotationOnlyRootMotion;
             public bool observedPrimaryRockCompatibilityBinding;
             public bool observedDeferredLightDataReady;
@@ -235,6 +263,11 @@ namespace EndfieldGraphShaderLabEditor
             public bool observedExactEndminfUberSubmitted;
             public bool observedExactEndminfUberValidated;
             public string exactEndminfUberFailure;
+            public bool observedExactEndminfLutProfileMatched;
+            public bool observedExactEndminfLutGpuValidated;
+            public bool observedCompatibilityExactEndminfLutBound;
+            public string exactEndminfLutSha256;
+            public string exactEndminfLutFailure;
             public bool observedOpeningStripCompatibilityBeforeTemporal;
             public bool observedOpeningStripSceneMVBeforeTemporal;
             public bool endminfOpeningStripExactRequested;
@@ -256,10 +289,11 @@ namespace EndfieldGraphShaderLabEditor
             public bool observedDeferredExactConsumerReady;
             public bool observedLightCookieDataReady;
             public string gyroscopeMode;
+            public string gyroscopeInputProvider;
             public string gyroscopeInputX;
             public string gyroscopeInputY;
-            public bool cleanReferenceGyroscopeTrack;
-            public int cleanReferenceGyroscopeTrackOffsetFrames;
+            public string gyroscopeEntryOffsetX;
+            public string gyroscopeEntryOffsetY;
             public float visualPostPreRollSeconds;
             public bool retainedSkinningDiagnostic;
             public FrameRow[] frames;
@@ -273,6 +307,7 @@ namespace EndfieldGraphShaderLabEditor
             public float requestedSeconds;
             public float actualSeconds;
             public float phaseErrorSeconds;
+            public bool endminfPostEvaluated;
             public float endminfPostSeconds;
             public float endminfPostChromaticIntensity;
             public float endminfPostRadialIntensity;
@@ -288,6 +323,12 @@ namespace EndfieldGraphShaderLabEditor
             public bool exactEndminfUberValidated;
             public string exactEndminfUberVariant;
             public string exactEndminfUberFailure;
+            public bool exactEndminfLutProfileMatched;
+            public bool exactEndminfLutGpuValidationPending;
+            public bool exactEndminfLutGpuValidated;
+            public bool compatibilityExactEndminfLutBound;
+            public string exactEndminfLutSha256;
+            public string exactEndminfLutFailure;
             public bool openingStripCompatibilityBeforeTemporal;
             public bool openingStripSceneMVBeforeTemporal;
             public bool unityPublicNgxProxyRequested;
@@ -338,6 +379,10 @@ namespace EndfieldGraphShaderLabEditor
             public int admittedRenderers;
             public int activeAdmittedRenderers;
             public int admittedAliveParticles;
+            public bool overview01SourceClockAuthenticated;
+            public int overview01SourceSeededAnimationCount;
+            public float overview01SourceSeedSeconds;
+            public string overview01SourceSeedFailure;
             public bool sharedCharEffectActive;
             public int sharedCharEffectAliveParticles;
             public int sharedCharEffectTrailAliveParticles;
@@ -359,6 +404,16 @@ namespace EndfieldGraphShaderLabEditor
             public int currentAnimatorStateHash;
             public int nextAnimatorStateHash;
             public float animatorTransitionNormalizedTime;
+            public int evaluatedAnimatorCurrentStateHash;
+            public int evaluatedAnimatorNextStateHash;
+            public float evaluatedAnimatorTransitionWeight;
+            public bool recoveredAclPoseBindingValid;
+            public string recoveredAclPoseBindingFailure;
+            public int recoveredAclPoseAppliedFrameCount;
+            public int recoveredAclPoseAppliedTransformCount;
+            public int recoveredAclPoseCurrentStateHash;
+            public int recoveredAclPoseNextStateHash;
+            public float recoveredAclPoseTransitionWeight;
             public int rootMotionCallbackCount;
             public float appliedRootDeltaRotationDegrees;
             public Vector3 rootMotionPositionDelta;
@@ -367,6 +422,11 @@ namespace EndfieldGraphShaderLabEditor
             public bool shadowPlaneInCameraFrustum;
             public Vector3 shadowPlaneBoundsCenter;
             public Vector3 shadowPlaneBoundsExtents;
+            public bool sphereOutsideEnabled;
+            public bool floorEnabled;
+            public bool floorActive;
+            public int floorRenderQueue;
+            public bool wallEnabled;
             public bool farGridEnabled;
             public bool farGridActive;
             public bool farGridInCameraFrustum;
@@ -407,6 +467,8 @@ namespace EndfieldGraphShaderLabEditor
             public EndfieldEndminfRetainedSkinningDiagnostic.RendererRow[]
                 retainedSkinningRenderers;
             public string[] blockedRendererIdentities;
+            public float topLeftBackgroundLumaMean;
+            public int topLeftBackgroundLumaMin;
             public int changedPixelsFromPrevious;
             public long absoluteRgbDifferenceFromPrevious;
         }
@@ -577,14 +639,54 @@ namespace EndfieldGraphShaderLabEditor
             // merely because its parent shell lacks these process variables.
             bool videoExportRequested = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT") == "1";
+            string sourceBackgroundSelection =
+                Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceBackgroundEnvironmentVariable);
             if (videoExportRequested)
             {
-                foreach (string flag in CanonicalVideoDefaultFlags)
+                sourceBackgroundSelection = "0";
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceBackgroundEnvironmentVariable,
+                    sourceBackgroundSelection);
+            }
+            string sourceForwardOverlaySelection =
+                Environment.GetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceForwardOverlayEnvironmentVariable);
+            if (videoExportRequested ||
+                string.IsNullOrWhiteSpace(sourceForwardOverlaySelection))
+            {
+                sourceForwardOverlaySelection = "1";
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceForwardOverlayEnvironmentVariable,
+                    sourceForwardOverlaySelection);
+            }
+            bool sourceBackgroundExplicitlyDisabled = string.Equals(
+                sourceBackgroundSelection,
+                "0",
+                StringComparison.Ordinal);
+            // Canonical video retains the neutral preview clear until the
+            // source SphereOutside -> floor -> Far composite passes the v22
+            // exact-consumer and presented-pixel gate. Explicit source=1 is a
+            // controlled fail-closed diagnostic.
+            captureCanonicalSolidColorBackground =
+                sourceBackgroundExplicitlyDisabled;
+            if (videoExportRequested)
+            {
+                if (!sourceBackgroundExplicitlyDisabled)
                 {
-                    if (string.IsNullOrWhiteSpace(
-                            Environment.GetEnvironmentVariable(flag)))
-                        Environment.SetEnvironmentVariable(flag, "1");
+                    foreach (string flag in CanonicalVideoDefaultFlags)
+                    {
+                        if (string.IsNullOrWhiteSpace(
+                                Environment.GetEnvironmentVariable(flag)))
+                            Environment.SetEnvironmentVariable(flag, "1");
+                    }
                 }
+                foreach (string flag in CanonicalVideoForcedOffFlags)
+                    Environment.SetEnvironmentVariable(flag, "0");
             }
             bool isolatedEndminfLitEffect =
                 Environment.GetEnvironmentVariable(
@@ -601,16 +703,58 @@ namespace EndfieldGraphShaderLabEditor
                 Environment.SetEnvironmentVariable(
                     flag,
                     "1");
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                    EndfieldEndminfVisualCompatibilityClock.SourcePostEnvironmentVariable)))
+            {
+                Environment.SetEnvironmentVariable(
+                    EndfieldEndminfVisualCompatibilityClock.SourcePostEnvironmentVariable,
+                    "1");
+            }
             // Exact HGBuffer publication replaces only the identity-gated M27
             // hand-crystal row. The ten source-identified M01/M38 primary-rock
             // renderers remain separate ForwardOnly owners; disabling the
             // whole compatibility binding removed those stones from the shot.
+            if (captureCanonicalSolidColorBackground)
+            {
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceBackgroundEnvironmentVariable,
+                    "0");
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceForwardOverlayEnvironmentVariable,
+                    "1");
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoSky
+                        .MaterialOnlyDiagnosticEnvironmentVariable,
+                    "1");
+            }
+            else if (string.IsNullOrWhiteSpace(sourceBackgroundSelection))
+            {
+                sourceBackgroundSelection = "1";
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceBackgroundEnvironmentVariable,
+                    "1");
+            }
+            // Hold the unrelated physical sky off in both modes. Canonical
+            // video owns only the neutral clear plus the source Floor/Far
+            // forward overlay; a diagnostic source-background request owns
+            // the isolated SphereOutside route and must remain visibly
+            // fail-closed instead of being replaced by another background.
             Environment.SetEnvironmentVariable(
-                "ENDFIELD_ENDMINF_BACKDROP_VISUAL_COMPATIBILITY",
-                IncludeCharInfoBackground ? "1" : "0");
+                EndfieldRecoveredCharInfoSky
+                    .MaterialOnlyDiagnosticEnvironmentVariable,
+                "1");
+            // Neither fitted compatibility path may become a hidden fallback.
             Environment.SetEnvironmentVariable(
-                "ENDFIELD_RECOVERED_CHARINFO_READY_SUBSET_DIAGNOSTIC",
-                IncludeCharInfoBackground ? "1" : "0");
+                EndfieldRecoveredCharInfoPresentation
+                    .EndminfBackdropVisualCompatibilityEnvironmentVariable,
+                "0");
+            Environment.SetEnvironmentVariable(
+                EndfieldRecoveredCharInfoPresentation
+                    .ReadySubsetEnvironmentVariable,
+                "0");
             Environment.SetEnvironmentVariable(
                 "ENDFIELD_RECOVERED_CHARINFO_BACKGROUND_PORTRAIT",
                 IncludeBackgroundPortrait ? "1" : "0");
@@ -621,6 +765,23 @@ namespace EndfieldGraphShaderLabEditor
             // stale generated prefab when that source is missing or drifted.
             EndfieldEndminfOverviewEffectImporter.BuildAndValidate();
             EndfieldEndminfOverviewEffectBindingBuilder.BuildAndValidate();
+            // The rebuild may refresh serialized presentation state. Restore
+            // the canonical/explicitly-disabled process selector after that
+            // mutation, then invalidate the already-running editor cache
+            // before opening the Play-mode scene.
+            if (captureCanonicalSolidColorBackground)
+            {
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceBackgroundEnvironmentVariable,
+                    "0");
+                Environment.SetEnvironmentVariable(
+                    EndfieldRecoveredCharInfoPresentation
+                        .EndminfSourceForwardOverlayEnvironmentVariable,
+                    "1");
+                EndfieldRecoveredCharInfoPresentation
+                    .RefreshStandaloneSelection();
+            }
             // The overview rebuild refreshes transient source prefabs. Restore
             // the direct LitEffect rows afterward so both compatibility and
             // exact M27 owners receive the same hash-validated references.
@@ -638,22 +799,9 @@ namespace EndfieldGraphShaderLabEditor
             {
                 Environment.SetEnvironmentVariable(
                     EndfieldRecoveredCharInfoGyroscopeCameraState.ModeEnvironmentVariable,
-                    "recorded-input");
+                    "serialized-entry");
             }
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
-                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputXEnvironmentVariable)))
-            {
-                Environment.SetEnvironmentVariable(
-                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputXEnvironmentVariable,
-                    RecordingGyroscopeInputX);
-            }
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
-                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable)))
-            {
-                Environment.SetEnvironmentVariable(
-                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable,
-                    RecordingGyroscopeInputY);
-            }
+            ConfigureDeterministicGyroscopeCapture();
             EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
             if (isolatedEndminfLitEffect)
             {
@@ -667,12 +815,6 @@ namespace EndfieldGraphShaderLabEditor
             next = 0;
             selected = false;
             selectionSettleFrames = 0;
-            replayCleanReferenceGyroscopeTrack =
-                Environment.GetEnvironmentVariable(
-                    CleanReferenceGyroscopeTrackEnvironment) == "1";
-            cleanReferenceGyroscopeTrackOffsetFrames =
-                ParseGyroscopeTrackOffsetFrames();
-            nextGyroscopeTrackSample = 0;
             bool fineWindow = Environment.GetEnvironmentVariable(
                 "ENDFIELD_ENDMINF_CAPTURE_FINE_WINDOW") == "1";
             bool videoExport = videoExportRequested;
@@ -1007,6 +1149,14 @@ namespace EndfieldGraphShaderLabEditor
             if (selectionSettleFrames > 0)
             {
                 selectionSettleFrames--;
+                if (selectionSettleFrames == 1 && camera != null)
+                {
+                    // Queue and synchronize the exact-LUT GPU sentinel readback
+                    // before capture time zero. The following settle edge
+                    // restarts Overview again, so this validation render cannot
+                    // advance the published animation or particle timeline.
+                    Render(camera);
+                }
                 if (selectionSettleFrames == 0 &&
                     CharacterRecoveryViewerUI.TryGetSelectedActorRoot(
                         out Transform selectedActor))
@@ -1024,11 +1174,6 @@ namespace EndfieldGraphShaderLabEditor
             float requested = requestedTimes[next];
             float target = targetTimes[next];
             float elapsed = Time.time - started;
-            // The retained cursor samples are keyed to the clean reference's
-            // requested animation clock (source frame 90 = requested zero),
-            // not to editor wall/play elapsed time. The latter leads requested
-            // time by three samples in canonical video capture.
-            ReplayCleanReferenceGyroscopeTrack(requested);
             if (elapsed + 0.0001f < requested) return;
             CharacterRecoveryViewerUI.TryGetSelectedActorRoot(out Transform actor);
             if (actor == null || camera == null) return;
@@ -1156,6 +1301,10 @@ namespace EndfieldGraphShaderLabEditor
                     requested);
             }
             Color32[] pixels = Render(camera);
+            MeasureTopLeftBackground(
+                pixels,
+                out float topLeftBackgroundLumaMean,
+                out int topLeftBackgroundLumaMin);
             // ReadPixels in Render synchronizes this focused D3D11 capture, so
             // the render-thread plugin callback must be observable here. Do
             // not accept a submitted event as proof that an exact packet drew.
@@ -1261,16 +1410,6 @@ namespace EndfieldGraphShaderLabEditor
                     "Exact Endminf M14 callback validation failed: " +
                     m14ValidationFailure);
             }
-            if (EndfieldRecoveredEndminfM30ExactRuntime.Requested &&
-                EndfieldRecoveredEndminfM30ExactRuntime.HasPendingValidation &&
-                !EndfieldRecoveredEndminfM30ExactRuntime
-                    .ValidatePendingAfterSynchronizedRender(
-                        out string m30ValidationFailure))
-            {
-                throw new InvalidOperationException(
-                    "Exact Endminf M30 callback validation failed: " +
-                    m30ValidationFailure);
-            }
             if (EndfieldRecoveredEndminfM29ExactRuntime.Requested &&
                 EndfieldRecoveredEndminfM29ExactRuntime.HasPendingValidation &&
                 !EndfieldRecoveredEndminfM29ExactRuntime
@@ -1331,14 +1470,25 @@ namespace EndfieldGraphShaderLabEditor
             }
             string file = "frame_" + next.ToString("D6") + ".png";
             Write(Path.Combine(output, file), pixels);
-            EndfieldEndminfVisualCompatibilityClock.TryGetElapsed(
-                out float endminfPostSeconds);
-            EndfieldEndminfVisualCompatibilityClock.TryEvaluateRecoveredPost(
-                camera,
-                out EndfieldEndminfVisualCompatibilityClock.RecoveredPostState
-                    endminfPostState);
+            bool endminfPostEvaluated =
+                EndfieldEndminfVisualCompatibilityClock.TryEvaluateRecoveredPost(
+                    camera,
+                    out EndfieldEndminfVisualCompatibilityClock.RecoveredPostState
+                        endminfPostState);
+            float endminfPostSeconds = endminfPostEvaluated
+                ? endminfPostState.elapsed
+                : 0.0f;
             EndfieldRecoveredCharInfoPresentation charInfoPresentation =
                 UnityEngine.Object.FindObjectOfType<EndfieldRecoveredCharInfoPresentation>(true);
+            Renderer sphereOutside = charInfoPresentation == null
+                ? null
+                : charInfoPresentation.sphereOutsideRenderer;
+            Renderer floor = charInfoPresentation == null
+                ? null
+                : charInfoPresentation.floorRenderer;
+            Renderer wall = charInfoPresentation == null
+                ? null
+                : charInfoPresentation.wallRenderer;
             Renderer shadowPlane = charInfoPresentation == null
                 ? null
                 : charInfoPresentation.shadowPlaneRenderer;
@@ -1357,6 +1507,27 @@ namespace EndfieldGraphShaderLabEditor
                 .GetComponent<EndfieldSecondaryDynamicsRuntime>();
             EndfieldCapturedSecondaryDynamicsReplay capturedReplay = actor
                 .GetComponent<EndfieldCapturedSecondaryDynamicsReplay>();
+            RecoveredAclAnimatorPoseDriver aclPoseDriver = actor
+                .GetComponent<RecoveredAclAnimatorPoseDriver>();
+            Animator evaluatedAnimator = overview != null
+                ? overview.animatorSource
+                : null;
+            bool evaluatedAnimatorReady = evaluatedAnimator != null &&
+                evaluatedAnimator.enabled &&
+                evaluatedAnimator.runtimeAnimatorController != null;
+            bool evaluatedAnimatorTransitioning = evaluatedAnimatorReady &&
+                evaluatedAnimator.IsInTransition(0);
+            int evaluatedAnimatorCurrentStateHash = evaluatedAnimatorReady
+                ? evaluatedAnimator.GetCurrentAnimatorStateInfo(0).fullPathHash
+                : 0;
+            int evaluatedAnimatorNextStateHash = evaluatedAnimatorTransitioning
+                ? evaluatedAnimator.GetNextAnimatorStateInfo(0).fullPathHash
+                : 0;
+            float evaluatedAnimatorTransitionWeight =
+                evaluatedAnimatorTransitioning
+                    ? Mathf.Clamp01(evaluatedAnimator
+                        .GetAnimatorTransitionInfo(0).normalizedTime)
+                    : 0f;
             GameObject sharedCharEffect = UnityEngine.Object
                 .FindObjectsOfType<GameObject>(true)
                 .FirstOrDefault(value =>
@@ -1380,6 +1551,18 @@ namespace EndfieldGraphShaderLabEditor
             if (sharedCharEffectTrail != null && sharedTrailCount != 0)
                 sharedTrailCount = sharedCharEffectTrail.GetParticles(
                     sharedTrailParticles);
+            EndfieldRecoveredCharEffectSpawner effectSpawner = actor
+                .GetComponentInChildren<EndfieldRecoveredCharEffectSpawner>(true);
+            bool overview01SourceClockAuthenticated = false;
+            int overview01SourceSeededAnimationCount = 0;
+            float overview01SourceSeedSeconds = 0f;
+            string overview01SourceSeedFailure = string.Empty;
+            effectSpawner?.TryGetSourceSeedTelemetry(
+                "P_fxui_endminm003_overview_01",
+                out overview01SourceClockAuthenticated,
+                out overview01SourceSeededAnimationCount,
+                out overview01SourceSeedSeconds,
+                out overview01SourceSeedFailure);
             Vector3 sharedTrailPositionMin = Vector3.zero;
             Vector3 sharedTrailPositionMax = Vector3.zero;
             if (sharedTrailCount != 0)
@@ -1403,6 +1586,7 @@ namespace EndfieldGraphShaderLabEditor
                 actualSeconds = elapsed,
                 phaseErrorSeconds = elapsed - target,
                 file = file,
+                endminfPostEvaluated = endminfPostEvaluated,
                 endminfPostSeconds = endminfPostSeconds,
                 endminfPostChromaticIntensity =
                     endminfPostState.chromaticIntensity,
@@ -1430,6 +1614,18 @@ namespace EndfieldGraphShaderLabEditor
                     .LastRecoveredEndminfExactUberVariant,
                 exactEndminfUberFailure = HGCompatRenderPipeline
                     .LastRecoveredEndminfExactUberFailure,
+                exactEndminfLutProfileMatched = HGCompatRenderPipeline
+                    .LastRecoveredEndminfExactLutProfileMatched,
+                exactEndminfLutGpuValidationPending = HGCompatRenderPipeline
+                    .LastRecoveredEndminfExactLutGpuValidationPending,
+                exactEndminfLutGpuValidated = HGCompatRenderPipeline
+                    .LastRecoveredEndminfExactLutGpuValidated,
+                compatibilityExactEndminfLutBound = HGCompatRenderPipeline
+                    .LastRecoveredEndminfCompatibilityExactLutBound,
+                exactEndminfLutSha256 = HGCompatRenderPipeline
+                    .LastRecoveredEndminfExactLutSha256,
+                exactEndminfLutFailure = HGCompatRenderPipeline
+                    .LastRecoveredEndminfExactLutFailure,
                 openingStripCompatibilityBeforeTemporal = HGCompatRenderPipeline
                     .LastRecoveredEndminfOpeningStripCompatibilityApplied,
                 openingStripSceneMVBeforeTemporal = HGCompatRenderPipeline
@@ -1529,6 +1725,12 @@ namespace EndfieldGraphShaderLabEditor
                 activeAdmittedRenderers = renderers.Count(value => value.enabled && value.gameObject.activeInHierarchy),
                 admittedAliveParticles = renderers.Where(value => value.enabled && value.gameObject.activeInHierarchy)
                     .Sum(value => value.GetComponent<ParticleSystem>().particleCount),
+                overview01SourceClockAuthenticated =
+                    overview01SourceClockAuthenticated,
+                overview01SourceSeededAnimationCount =
+                    overview01SourceSeededAnimationCount,
+                overview01SourceSeedSeconds = overview01SourceSeedSeconds,
+                overview01SourceSeedFailure = overview01SourceSeedFailure,
                 sharedCharEffectActive = sharedCharEffect != null &&
                     sharedCharEffect.activeInHierarchy,
                 sharedCharEffectAliveParticles = sharedCharEffectSystems
@@ -1579,6 +1781,32 @@ namespace EndfieldGraphShaderLabEditor
                 animatorTransitionNormalizedTime = overview != null
                     ? overview.AnimatorTransitionNormalizedTime
                     : 0f,
+                evaluatedAnimatorCurrentStateHash =
+                    evaluatedAnimatorCurrentStateHash,
+                evaluatedAnimatorNextStateHash =
+                    evaluatedAnimatorNextStateHash,
+                evaluatedAnimatorTransitionWeight =
+                    evaluatedAnimatorTransitionWeight,
+                recoveredAclPoseBindingValid = aclPoseDriver != null &&
+                    aclPoseDriver.BindingValid,
+                recoveredAclPoseBindingFailure = aclPoseDriver == null
+                    ? "runtime missing"
+                    : aclPoseDriver.BindingFailure,
+                recoveredAclPoseAppliedFrameCount = aclPoseDriver != null
+                    ? aclPoseDriver.AppliedFrameCount
+                    : 0,
+                recoveredAclPoseAppliedTransformCount = aclPoseDriver != null
+                    ? aclPoseDriver.AppliedTransformCount
+                    : 0,
+                recoveredAclPoseCurrentStateHash = aclPoseDriver != null
+                    ? aclPoseDriver.CurrentStateHash
+                    : 0,
+                recoveredAclPoseNextStateHash = aclPoseDriver != null
+                    ? aclPoseDriver.NextStateHash
+                    : 0,
+                recoveredAclPoseTransitionWeight = aclPoseDriver != null
+                    ? aclPoseDriver.TransitionWeight
+                    : 0f,
                 rootMotionCallbackCount = overview != null
                     ? overview.RootMotionCallbackCount
                     : 0,
@@ -1593,6 +1821,13 @@ namespace EndfieldGraphShaderLabEditor
                 shadowPlaneInCameraFrustum = shadowPlaneInFrustum,
                 shadowPlaneBoundsCenter = shadowPlane == null ? Vector3.zero : shadowPlane.bounds.center,
                 shadowPlaneBoundsExtents = shadowPlane == null ? Vector3.zero : shadowPlane.bounds.extents,
+                sphereOutsideEnabled = sphereOutside != null && sphereOutside.enabled,
+                floorEnabled = floor != null && floor.enabled,
+                floorActive = floor != null && floor.gameObject.activeInHierarchy,
+                floorRenderQueue = floor == null || floor.sharedMaterial == null
+                    ? -1
+                    : floor.sharedMaterial.renderQueue,
+                wallEnabled = wall != null && wall.enabled,
                 farGridEnabled = farGrid != null && farGrid.enabled,
                 farGridActive = farGrid != null && farGrid.gameObject.activeInHierarchy,
                 farGridInCameraFrustum = farGridInFrustum,
@@ -1695,6 +1930,8 @@ namespace EndfieldGraphShaderLabEditor
                             material == null ? "<null>" : material.name + " -> " +
                                 (material.shader == null ? "<null shader>" : material.shader.name))))
                     .OrderBy(value => value, StringComparer.Ordinal).ToArray(),
+                topLeftBackgroundLumaMean = topLeftBackgroundLumaMean,
+                topLeftBackgroundLumaMin = topLeftBackgroundLumaMin,
                 changedPixelsFromPrevious = changed, absoluteRgbDifferenceFromPrevious = difference
             });
             next++;
@@ -1705,12 +1942,39 @@ namespace EndfieldGraphShaderLabEditor
                 value.activeBodyClip.IndexOf("overview_loop", StringComparison.OrdinalIgnoreCase) >= 0 &&
                 !value.overviewTransitioning);
             bool observedAnimatorContract = Frames.Any(value => value.animatorContractActive);
+            bool observedRecoveredAclPosePublication = Frames.Count > 0 &&
+                Frames.All(value =>
+                    value.animatorContractActive &&
+                    value.recoveredAclPoseBindingValid &&
+                    value.recoveredAclPoseAppliedFrameCount > 0 &&
+                    value.recoveredAclPoseAppliedTransformCount > 0 &&
+                    value.recoveredAclPoseCurrentStateHash ==
+                        value.evaluatedAnimatorCurrentStateHash &&
+                    value.recoveredAclPoseNextStateHash ==
+                        value.evaluatedAnimatorNextStateHash &&
+                    Mathf.Abs(value.recoveredAclPoseTransitionWeight -
+                        value.evaluatedAnimatorTransitionWeight) <= 1.0e-6f);
+            int recoveredAclPoseBoundTransformCount = Frames.Count == 0
+                ? 0
+                : Frames.Min(value => value.recoveredAclPoseAppliedTransformCount);
+            string recoveredAclPoseFailure = Frames
+                .Select(value => value.recoveredAclPoseBindingFailure)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value) &&
+                    !string.Equals(value, "ok", StringComparison.Ordinal)) ??
+                string.Empty;
             bool observedEntranceVfx = Frames.Any(value =>
                 value.activeBodyClip.IndexOf("overview_start", StringComparison.OrdinalIgnoreCase) >= 0 &&
                 value.effectRootCount == 4 && value.admittedRenderers > 0 &&
                 value.activeAdmittedRenderers > 0 && value.admittedAliveParticles > 0);
             bool observedEntranceVfxCleanup = Frames.Any(value =>
                 value.overviewLooping && !value.overviewTransitioning && value.effectRootCount == 0);
+            FrameRow overview01SourceSeedFrame = Frames.FirstOrDefault(value =>
+                value.overview01SourceClockAuthenticated &&
+                value.overview01SourceSeededAnimationCount == 2 &&
+                value.overview01SourceSeedSeconds > 0f &&
+                string.IsNullOrEmpty(value.overview01SourceSeedFailure));
+            bool observedOverview01AuthenticatedSourceSeed =
+                overview01SourceSeedFrame != null;
             bool observedRotationOnlyRootMotion =
                 Frames.Any(value => value.rootMotionCallbackCount > 0) &&
                 Frames.All(value => value.rootMotionPositionDelta.sqrMagnitude <= 1.0e-10f);
@@ -1790,8 +2054,8 @@ namespace EndfieldGraphShaderLabEditor
                 value.endminfM27HGBufferReady);
             bool observedEndminfM27PresentationReady = Frames.Any(value =>
                 value.endminfM27PresentationReady);
-            bool observedSphereOutsidePresentationReady = Frames.Any(value =>
-                value.sphereOutsidePresentationReady);
+            bool observedSphereOutsidePresentationReady = Frames.Count > 0 &&
+                Frames.All(value => value.sphereOutsidePresentationReady);
             bool observedPreGBufferDepthOwnerReady = Frames.All(value =>
                 value.preGBufferDepthOwnerReady);
             bool observedCanonicalCharacterPreGBufferReady = Frames.All(value =>
@@ -1820,10 +2084,21 @@ namespace EndfieldGraphShaderLabEditor
                     !value.capturedSecondaryReplayPoseAppliedThisFrame));
             var missingObservations = new List<string>();
             if (!observedAnimatorContract) missingObservations.Add("Animator contract");
+            if (!observedRecoveredAclPosePublication)
+            {
+                missingObservations.Add(
+                    "source-decoded ACL pose publication synchronized to Animator state" +
+                    (string.IsNullOrEmpty(recoveredAclPoseFailure)
+                        ? string.Empty
+                        : " (" + recoveredAclPoseFailure + ")"));
+            }
             if (!observedTransition) missingObservations.Add("start-to-loop transition");
             if (!observedSettledLoop) missingObservations.Add("settled loop");
             if (!observedEntranceVfx) missingObservations.Add("entrance VFX");
             if (!observedEntranceVfxCleanup) missingObservations.Add("entrance VFX cleanup");
+            if (!observedOverview01AuthenticatedSourceSeed)
+                missingObservations.Add(
+                    "overview_01 authenticated one-shot source seed on two automatic Legacy Animation children");
             if (!observedRotationOnlyRootMotion)
                 missingObservations.Add("rotation-only root motion with invariant position");
             if (!observedPrimaryRockCompatibilityBinding)
@@ -1896,14 +2171,132 @@ namespace EndfieldGraphShaderLabEditor
                 if (!observedLightCookieDataReady)
                     missingObservations.Add("exact-consumer LightCookieData readiness");
             }
+            bool endminfSourceBackgroundIncluded =
+                !IncludeCharInfoBackground || IsEndminfSourceBackgroundActive();
+            bool sourceFloorGridOverlayIncluded =
+                !IncludeCharInfoBackground ||
+                (IsEndminfSourceForwardOverlayActive() &&
+                 Frames.Count > 0 &&
+                 Frames.All(value =>
+                    !value.sphereOutsideEnabled &&
+                    value.floorEnabled &&
+                    value.floorActive &&
+                    value.floorRenderQueue == 2000 &&
+                    !value.wallEnabled &&
+                    !value.shadowPlaneEnabled &&
+                    value.farGridEnabled &&
+                    value.farGridActive &&
+                    value.farGridRenderQueue == 2950 &&
+                    !value.sphereOutsidePresentationReady &&
+                    !value.deferredExactConsumerReady) &&
+                 string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        EndfieldRecoveredCharInfoPresentation
+                            .EndminfSourceBackgroundEnvironmentVariable),
+                    "0",
+                    StringComparison.Ordinal) &&
+                 string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        SphereOutsidePresentationEnvironment),
+                    "0",
+                    StringComparison.Ordinal));
+            bool fittedCompatibilityPlateActive =
+                IsFittedCompatibilityPlateActive();
+            FrameRow[] canonicalBackgroundProofFrames =
+                SelectCanonicalBackgroundProofFrames();
+            float minimumCanonicalBackgroundProofLumaMean =
+                canonicalBackgroundProofFrames.Length == 0
+                ? 0.0f
+                : canonicalBackgroundProofFrames.Min(
+                    value => value.topLeftBackgroundLumaMean);
+            int minimumCanonicalBackgroundProofLuma =
+                canonicalBackgroundProofFrames.Length == 0
+                ? 0
+                : canonicalBackgroundProofFrames.Min(
+                    value => value.topLeftBackgroundLumaMin);
+            bool canonicalSolidColorBackgroundIncluded =
+                !IncludeCharInfoBackground ||
+                (captureCanonicalSolidColorBackground &&
+                 !endminfSourceBackgroundIncluded &&
+                 !fittedCompatibilityPlateActive &&
+                 IsCanonicalSolidColorBackgroundCamera(camera) &&
+                 canonicalBackgroundProofFrames.Length ==
+                    CanonicalBackgroundProofTimes.Length &&
+                 minimumCanonicalBackgroundProofLumaMean >=
+                    MinimumBackgroundProofMeanLuma &&
+                  minimumCanonicalBackgroundProofLuma >=
+                     MinimumBackgroundProofPixelLuma);
+            bool canonicalSourceSphereFloorGridBackgroundIncluded =
+                !IncludeCharInfoBackground ||
+                (!captureCanonicalSolidColorBackground &&
+                 endminfSourceBackgroundIncluded &&
+                 observedSphereOutsidePresentationReady &&
+                 Frames.Count > 0 &&
+                 Frames.All(value => value.deferredExactConsumerReady) &&
+                 !fittedCompatibilityPlateActive &&
+                 IsCanonicalSolidColorBackgroundCamera(camera) &&
+                 canonicalBackgroundProofFrames.Length ==
+                    CanonicalBackgroundProofTimes.Length &&
+                 minimumCanonicalBackgroundProofLumaMean >=
+                    MinimumBackgroundProofMeanLuma &&
+                 minimumCanonicalBackgroundProofLuma >=
+                    MinimumBackgroundProofPixelLuma);
             bool charInfoBackgroundIncluded =
-                !IncludeCharInfoBackground || IsCharInfoBackgroundActive();
+                canonicalSourceSphereFloorGridBackgroundIncluded ||
+                canonicalSolidColorBackgroundIncluded;
             bool backgroundPortraitIncluded =
                 !IncludeBackgroundPortrait || IsBackgroundPortraitActive();
+            if (string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT"),
+                    "1",
+                    StringComparison.Ordinal) &&
+                !sourceFloorGridOverlayIncluded)
+            {
+                missingObservations.Add(
+                    "source-only Endminf Floor/Far forward overlay over the " +
+                    "neutral clear, with q2000/q2950 renderers enabled and " +
+                    "SphereOutside/wall/ShadowPlane/t11 presentation disabled");
+            }
             if (!charInfoBackgroundIncluded)
-                missingObservations.Add("active recovered CharInfo grey background");
+                missingObservations.Add(
+                    "canonical Endminf background: expected the source " +
+                    "SphereOutside deferred resolve plus CharFloorEffect/Far " +
+                    "allow-list (or an explicitly requested neutral-clear A/B), " +
+                    "camera RGBA(0.70,0.71,0.70,1), fitted route off, and " +
+                    "0.65/4.4333334/6.65 s top-left 128x128 luma " +
+                    "mean/min >= " +
+                    MinimumBackgroundProofMeanLuma.ToString(
+                        "0.0", CultureInfo.InvariantCulture) + "/" +
+                    MinimumBackgroundProofPixelLuma + "; actual source=" +
+                    endminfSourceBackgroundIncluded + ", sphereAll=" +
+                    observedSphereOutsidePresentationReady + ", exactAll=" +
+                    (Frames.Count > 0 && Frames.All(value =>
+                        value.deferredExactConsumerReady)) + ", fitted=" +
+                    fittedCompatibilityPlateActive + ", camera=" +
+                    camera.clearFlags + " " +
+                    camera.backgroundColor.ToString("F5") + ", mean/min=" +
+                    minimumCanonicalBackgroundProofLumaMean.ToString(
+                        "0.00", CultureInfo.InvariantCulture) + "/" +
+                    minimumCanonicalBackgroundProofLuma + ", proofFrames=" +
+                    string.Join(
+                        ",",
+                        canonicalBackgroundProofFrames.Select(
+                            value => value.index.ToString(
+                                CultureInfo.InvariantCulture)).ToArray()));
+            if (fittedCompatibilityPlateActive)
+                missingObservations.Add(
+                    "fitted Endminf compatibility plate remained active");
             if (!backgroundPortraitIncluded)
                 missingObservations.Add("active Endminf background portrait");
+            bool observedEndminfSourcePostClock =
+                Frames.Any(value => value.endminfPostEvaluated);
+            if (EndfieldEndminfVisualCompatibilityClock.SourcePostRequested &&
+                !observedEndminfSourcePostClock)
+            {
+                missingObservations.Add(
+                    "authenticated Endminf overview_01 source-post clock");
+            }
             bool observedEndminfPostSourceRgba16 =
                 Frames.Count > 0 && Frames.All(value => string.Equals(
                     value.endminfPostSourceGraphicsFormat,
@@ -1945,12 +2338,13 @@ namespace EndfieldGraphShaderLabEditor
                 Frames.Count > 0 && Frames.Any(
                     value => value.exactEndminfUberValidated);
             // Capture 20260827T183054Z frame 1818 is the sole certified Uber
-            // packet, at overview phase 4.350000 s. The runtime assembly keeps
-            // its transport internal, so mirror only this evidence constant in
-            // the editor-side report gate.
-            const float capturedUberPhaseSeconds = 4.35f;
+            // packet. Its body/reference frame maps to 4.350000 s, but retained
+            // c0.z/c25.y solve the authenticated source-effect curves to
+            // 4.4333334 s. The runtime assembly keeps its transport internal,
+            // so mirror only the source-effect evidence constant here.
+            const float capturedUberPhaseSeconds = 4.4333334f;
             bool capturedUberPhaseIncluded = Frames.Any(value =>
-                Mathf.Abs(
+                value.endminfPostEvaluated && Mathf.Abs(
                     value.endminfPostSeconds -
                     capturedUberPhaseSeconds) <= 1.0f / 120.0f);
             bool exactEndminfUberRequirementReady =
@@ -1962,6 +2356,40 @@ namespace EndfieldGraphShaderLabEditor
                 .Select(value => value.exactEndminfUberFailure)
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
                 string.Empty;
+            bool observedExactEndminfLutProfileMatched =
+                Frames.Count > 0 && Frames.All(value =>
+                    value.exactEndminfLutProfileMatched);
+            bool observedExactEndminfLutGpuValidated =
+                Frames.Count > 0 && Frames.All(value =>
+                    value.exactEndminfLutGpuValidated &&
+                    !value.exactEndminfLutGpuValidationPending);
+            bool observedCompatibilityExactEndminfLutBound =
+                Frames.Count > 0 && Frames.All(value =>
+                    value.compatibilityExactEndminfLutBound);
+            string exactEndminfLutSha256 = Frames
+                .Select(value => value.exactEndminfLutSha256)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
+                string.Empty;
+            string exactEndminfLutFailure = Frames
+                .Select(value => value.exactEndminfLutFailure)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
+                string.Empty;
+            bool exactEndminfLutRequirementReady =
+                observedExactEndminfLutProfileMatched &&
+                observedExactEndminfLutGpuValidated &&
+                observedCompatibilityExactEndminfLutBound &&
+                string.Equals(
+                    exactEndminfLutSha256,
+                    "717c1d483662c00abe55e1c56a9d024f45e5c84c430ed9dd2854cb386f372482",
+                    StringComparison.Ordinal);
+            if (!exactEndminfLutRequirementReady)
+            {
+                missingObservations.Add(
+                    "D3D11-validated exact Endminf CharInfo LUT compatibility binding" +
+                    (string.IsNullOrWhiteSpace(exactEndminfLutFailure)
+                        ? string.Empty
+                        : " (" + exactEndminfLutFailure + ")"));
+            }
             bool observedOpeningStripCompatibilityBeforeTemporal = Frames.Any(
                 value => value.openingStripCompatibilityBeforeTemporal);
             bool observedOpeningStripSceneMVBeforeTemporal = Frames.Any(
@@ -2071,15 +2499,43 @@ namespace EndfieldGraphShaderLabEditor
                         ? string.Empty
                         : " (" + unityPublicNgxProxyFailure + ")"));
             }
+            bool canonicalVideoExportRequested = string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "ENDFIELD_ENDMINF_CAPTURE_VIDEO_EXPORT"),
+                "1",
+                StringComparison.Ordinal);
+            string[] canonicalPresentationDiagnosticFlagsNotForcedOff =
+                canonicalVideoExportRequested
+                    ? CanonicalVideoForcedOffFlags.Where(flag => !string.Equals(
+                        Environment.GetEnvironmentVariable(flag),
+                        "0",
+                        StringComparison.Ordinal)).ToArray()
+                    : Array.Empty<string>();
+            bool observedCanonicalPresentationDiagnosticsForcedOff =
+                canonicalVideoExportRequested &&
+                canonicalPresentationDiagnosticFlagsNotForcedOff.Length == 0;
+            bool canonicalPresentationDiagnosticPolicyReady =
+                !canonicalVideoExportRequested ||
+                observedCanonicalPresentationDiagnosticsForcedOff;
+            if (!canonicalPresentationDiagnosticPolicyReady)
+            {
+                missingObservations.Add(
+                    "canonical presentation diagnostics forced off (" +
+                    string.Join(", ",
+                        canonicalPresentationDiagnosticFlagsNotForcedOff) + ")");
+            }
             bool requiredCaptureContractReady =
                 charInfoBackgroundIncluded &&
                 backgroundPortraitIncluded &&
+                observedRecoveredAclPosePublication &&
                 observedEndminfPostSourceRgba16 &&
                 observedEndminfBloomR11 &&
+                exactEndminfLutRequirementReady &&
                 exactEndminfUberRequirementReady &&
                 endminfOpeningStripExactRequirementReady &&
                 endminfM31ExactRequirementReady &&
-                unityPublicNgxProxyRequirementReady;
+                unityPublicNgxProxyRequirementReady &&
+                canonicalPresentationDiagnosticPolicyReady;
             bool targetedTimes = !string.IsNullOrWhiteSpace(
                 Environment.GetEnvironmentVariable(RequestedTimesEnvironment));
             // Targeted exact probes deliberately permit a content-invalid t11
@@ -2119,6 +2575,11 @@ namespace EndfieldGraphShaderLabEditor
                     : "failed: missing " + string.Join(", ", missingObservations.ToArray()),
                 prePostHdrDiagnostic = capturePrePostHdr,
                 postStageDiagnostic = capturePostStages,
+                canonicalVideoExportRequested = canonicalVideoExportRequested,
+                observedCanonicalPresentationDiagnosticsForcedOff =
+                    observedCanonicalPresentationDiagnosticsForcedOff,
+                canonicalPresentationDiagnosticFlagsNotForcedOff =
+                    canonicalPresentationDiagnosticFlagsNotForcedOff,
                 excludedMaterial = Environment.GetEnvironmentVariable(
                     "ENDFIELD_ENDMINF_CAPTURE_EXCLUDE_MATERIAL") ?? string.Empty,
                 diagnosticAdmittedRenderer = Environment.GetEnvironmentVariable(
@@ -2128,7 +2589,40 @@ namespace EndfieldGraphShaderLabEditor
                 fps = captureFps,
                 graphicsDeviceType = SystemInfo.graphicsDeviceType.ToString(),
                 charInfoBackgroundIncluded = charInfoBackgroundIncluded,
+                endminfSourceBackgroundRequested = string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        EndfieldRecoveredCharInfoPresentation
+                            .EndminfSourceBackgroundEnvironmentVariable),
+                    "1",
+                    StringComparison.Ordinal),
+                endminfSourceForwardOverlayRequested = string.Equals(
+                    Environment.GetEnvironmentVariable(
+                        EndfieldRecoveredCharInfoPresentation
+                            .EndminfSourceForwardOverlayEnvironmentVariable),
+                    "1",
+                    StringComparison.Ordinal),
+                canonicalSolidColorBackgroundRequested =
+                    captureCanonicalSolidColorBackground,
+                endminfSourceBackgroundIncluded =
+                    endminfSourceBackgroundIncluded,
+                sourceFloorGridOverlayIncluded =
+                    sourceFloorGridOverlayIncluded,
+                canonicalSourceSphereFloorGridBackgroundIncluded =
+                    canonicalSourceSphereFloorGridBackgroundIncluded,
+                canonicalSolidColorBackgroundIncluded =
+                    canonicalSolidColorBackgroundIncluded,
+                fittedCompatibilityPlateActive =
+                    fittedCompatibilityPlateActive,
                 backgroundPortraitIncluded = backgroundPortraitIncluded,
+                canonicalSolidColorBackgroundProofTimes =
+                    CanonicalBackgroundProofTimes.ToArray(),
+                canonicalSolidColorBackgroundProofFrameIndices =
+                    canonicalBackgroundProofFrames.Select(
+                        value => value.index).ToArray(),
+                minimumCanonicalBackgroundProofLumaMean =
+                    minimumCanonicalBackgroundProofLumaMean,
+                minimumCanonicalBackgroundProofLuma =
+                    minimumCanonicalBackgroundProofLuma,
                 recoveredLinearUnormFinalTargetRequested =
                     HDRenderPipeline.IsRecoveredLinearUnormFinalTargetRequested(),
                 renderPipeline = GraphicsSettings.currentRenderPipeline == null ? "BuiltIn" : GraphicsSettings.currentRenderPipeline.GetType().FullName,
@@ -2139,8 +2633,23 @@ namespace EndfieldGraphShaderLabEditor
                 observedTransition = observedTransition,
                 observedSettledLoop = observedSettledLoop,
                 observedAnimatorContract = observedAnimatorContract,
+                observedRecoveredAclPosePublication =
+                    observedRecoveredAclPosePublication,
+                recoveredAclPoseBoundTransformCount =
+                    recoveredAclPoseBoundTransformCount,
+                recoveredAclPoseFailure = recoveredAclPoseFailure,
                 observedEntranceVfx = observedEntranceVfx,
                 observedEntranceVfxCleanup = observedEntranceVfxCleanup,
+                observedOverview01AuthenticatedSourceSeed =
+                    observedOverview01AuthenticatedSourceSeed,
+                overview01SourceSeededAnimationCount =
+                    overview01SourceSeedFrame?.overview01SourceSeededAnimationCount ?? 0,
+                overview01SourceSeedSeconds =
+                    overview01SourceSeedFrame?.overview01SourceSeedSeconds ?? 0f,
+                overview01SourceSeedFailure = Frames
+                    .Select(value => value.overview01SourceSeedFailure)
+                    .FirstOrDefault(value => !string.IsNullOrEmpty(value)) ??
+                    string.Empty,
                 observedRotationOnlyRootMotion = observedRotationOnlyRootMotion,
                 observedPrimaryRockCompatibilityBinding =
                     observedPrimaryRockCompatibilityBinding,
@@ -2167,6 +2676,14 @@ namespace EndfieldGraphShaderLabEditor
                 observedExactEndminfUberValidated =
                     observedExactEndminfUberValidated,
                 exactEndminfUberFailure = exactEndminfUberFailure,
+                observedExactEndminfLutProfileMatched =
+                    observedExactEndminfLutProfileMatched,
+                observedExactEndminfLutGpuValidated =
+                    observedExactEndminfLutGpuValidated,
+                observedCompatibilityExactEndminfLutBound =
+                    observedCompatibilityExactEndminfLutBound,
+                exactEndminfLutSha256 = exactEndminfLutSha256,
+                exactEndminfLutFailure = exactEndminfLutFailure,
                 observedOpeningStripCompatibilityBeforeTemporal =
                     observedOpeningStripCompatibilityBeforeTemporal,
                 observedOpeningStripSceneMVBeforeTemporal =
@@ -2202,20 +2719,17 @@ namespace EndfieldGraphShaderLabEditor
                 observedDeferredExactConsumerReady =
                     observedDeferredExactConsumerReady,
                 observedLightCookieDataReady = observedLightCookieDataReady,
-                gyroscopeMode = Environment.GetEnvironmentVariable(
-                    EndfieldRecoveredCharInfoGyroscopeCameraState.ModeEnvironmentVariable),
-                gyroscopeInputX = Environment.GetEnvironmentVariable(
-                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputXEnvironmentVariable),
-                gyroscopeInputY = Environment.GetEnvironmentVariable(
-                    EndfieldRecoveredCharInfoGyroscopeCameraState.InputYEnvironmentVariable),
-                cleanReferenceGyroscopeTrack =
-                    replayCleanReferenceGyroscopeTrack,
-                cleanReferenceGyroscopeTrackOffsetFrames =
-                    cleanReferenceGyroscopeTrackOffsetFrames,
-                // The _02 owner is destroyed before the full sequence report
+                gyroscopeMode = captureGyroscopeMode,
+                gyroscopeInputProvider = captureGyroscopeInputProvider,
+                gyroscopeInputX = captureGyroscopeInputX,
+                gyroscopeInputY = captureGyroscopeInputY,
+                gyroscopeEntryOffsetX = captureGyroscopeEntryOffsetX,
+                gyroscopeEntryOffsetY = captureGyroscopeEntryOffsetY,
+                // The _01 source-post owner is destroyed before the full sequence report
                 // is published, which deliberately clears the live clock.
                 // Preserve the observed first-frame phase difference instead.
-                visualPostPreRollSeconds = Frames.Count > 0
+                visualPostPreRollSeconds = Frames.Count > 0 &&
+                    Frames[0].endminfPostEvaluated
                     ? Mathf.Max(
                         0.0f,
                         Frames[0].endminfPostSeconds - Frames[0].actualSeconds)
@@ -2290,32 +2804,64 @@ namespace EndfieldGraphShaderLabEditor
             EditorApplication.ExitPlaymode();
         }
 
-        private static void ReplayCleanReferenceGyroscopeTrack(
-            float requestedClockSeconds)
+        private static bool IsEndminfSourceBackgroundActive()
         {
-            if (!replayCleanReferenceGyroscopeTrack || camera == null)
-                return;
-            EndfieldRecoveredCharInfoGyroscopeTween tween =
-                camera.GetComponent<EndfieldRecoveredCharInfoGyroscopeTween>();
-            if (tween == null)
-                return;
-            while (nextGyroscopeTrackSample <
-                   CleanReferenceGyroscopeTrack.Length)
-            {
-                GyroscopeTrackSample sample =
-                    CleanReferenceGyroscopeTrack[nextGyroscopeTrackSample];
-                float scheduledSeconds = sample.requestedSeconds +
-                    cleanReferenceGyroscopeTrackOffsetFrames / SimulationFps;
-                if (requestedClockSeconds + 0.0001f < scheduledSeconds)
-                    break;
-                tween.RetargetNormalizedMouseInput(
-                    sample.normalizedMouseX,
-                    sample.normalizedMouseY);
-                nextGyroscopeTrackSample++;
-            }
+            return UnityEngine.Object
+                .FindObjectsOfType<EndfieldRecoveredCharInfoPresentation>(true)
+                .Any(value =>
+                    value != null &&
+                    value.enabled &&
+                    value.gameObject.activeInHierarchy &&
+                    value.EndminfSourceBackgroundActive &&
+                    value.sourceContent != null &&
+                    value.sourceContent.activeInHierarchy &&
+                    value.farGridRenderer != null &&
+                    value.farGridRenderer.enabled &&
+                    value.farGridRenderer.gameObject.activeInHierarchy &&
+                    value.sphereOutsideRenderer != null &&
+                    !value.sphereOutsideRenderer.enabled &&
+                    value.floorRenderer != null &&
+                    value.floorRenderer.enabled &&
+                    value.wallRenderer != null &&
+                    !value.wallRenderer.enabled &&
+                    value.shadowPlaneRenderer != null &&
+                    !value.shadowPlaneRenderer.enabled &&
+                    (value.compatibilityBackdropRenderer == null ||
+                     !value.compatibilityBackdropRenderer.enabled));
         }
 
-        private static bool IsCharInfoBackgroundActive()
+        private static bool IsEndminfSourceForwardOverlayActive()
+        {
+            return UnityEngine.Object
+                .FindObjectsOfType<EndfieldRecoveredCharInfoPresentation>(true)
+                .Any(value =>
+                    value != null &&
+                    value.enabled &&
+                    value.gameObject.activeInHierarchy &&
+                    value.EndminfSourceForwardOverlayActive &&
+                    value.sourceContent != null &&
+                    value.sourceContent.activeInHierarchy &&
+                    value.sphereOutsideRenderer != null &&
+                    !value.sphereOutsideRenderer.enabled &&
+                    value.floorRenderer != null &&
+                    value.floorRenderer.enabled &&
+                    value.floorRenderer.gameObject.activeInHierarchy &&
+                    value.floorRenderer.sharedMaterial != null &&
+                    value.floorRenderer.sharedMaterial.renderQueue == 2000 &&
+                    value.wallRenderer != null &&
+                    !value.wallRenderer.enabled &&
+                    value.shadowPlaneRenderer != null &&
+                    !value.shadowPlaneRenderer.enabled &&
+                    value.farGridRenderer != null &&
+                    value.farGridRenderer.enabled &&
+                    value.farGridRenderer.gameObject.activeInHierarchy &&
+                    value.farGridRenderer.sharedMaterial != null &&
+                    value.farGridRenderer.sharedMaterial.renderQueue == 2950 &&
+                    (value.compatibilityBackdropRenderer == null ||
+                     !value.compatibilityBackdropRenderer.enabled));
+        }
+
+        private static bool IsFittedCompatibilityPlateActive()
         {
             return UnityEngine.Object
                 .FindObjectsOfType<EndfieldRecoveredCharInfoPresentation>(true)
@@ -2326,6 +2872,39 @@ namespace EndfieldGraphShaderLabEditor
                     value.compatibilityBackdropRenderer != null &&
                     value.compatibilityBackdropRenderer.enabled &&
                     value.compatibilityBackdropRenderer.gameObject.activeInHierarchy);
+        }
+
+        private static bool IsCanonicalSolidColorBackgroundCamera(Camera value)
+        {
+            if (value == null || value.clearFlags != CameraClearFlags.SolidColor)
+                return false;
+            Color actual = value.backgroundColor;
+            return Mathf.Abs(actual.r - CanonicalSolidBackgroundColor.r) <= 1.0e-4f &&
+                Mathf.Abs(actual.g - CanonicalSolidBackgroundColor.g) <= 1.0e-4f &&
+                Mathf.Abs(actual.b - CanonicalSolidBackgroundColor.b) <= 1.0e-4f &&
+                Mathf.Abs(actual.a - CanonicalSolidBackgroundColor.a) <= 1.0e-4f;
+        }
+
+        private static FrameRow[] SelectCanonicalBackgroundProofFrames()
+        {
+            if (Frames.Count == 0)
+                return Array.Empty<FrameRow>();
+            var selected = new List<FrameRow>(
+                CanonicalBackgroundProofTimes.Length);
+            float maximumPhaseError = 1.0f / (2.0f * SimulationFps) + 1.0e-5f;
+            foreach (float target in CanonicalBackgroundProofTimes)
+            {
+                FrameRow nearest = Frames
+                    .OrderBy(value => Mathf.Abs(value.requestedSeconds - target))
+                    .FirstOrDefault();
+                if (nearest == null || Mathf.Abs(
+                        nearest.requestedSeconds - target) > maximumPhaseError)
+                {
+                    return Array.Empty<FrameRow>();
+                }
+                selected.Add(nearest);
+            }
+            return selected.ToArray();
         }
 
         private static bool IsBackgroundPortraitActive()
@@ -2779,6 +3358,40 @@ namespace EndfieldGraphShaderLabEditor
             return pixels;
         }
 
+        private static void MeasureTopLeftBackground(
+            Color32[] pixels,
+            out float meanLuma,
+            out int minimumLuma)
+        {
+            if (pixels == null || pixels.Length != captureWidth * captureHeight)
+            {
+                throw new InvalidDataException(
+                    "Endminf background proof requires one complete presented " +
+                    "frame; expected " + (captureWidth * captureHeight) +
+                    " pixels, actual " + (pixels == null ? 0 : pixels.Length) + ".");
+            }
+            int width = Math.Min(BackgroundProofEdgePixels, captureWidth);
+            int height = Math.Min(BackgroundProofEdgePixels, captureHeight);
+            long lumaSum = 0;
+            minimumLuma = 255;
+            // Texture2D.GetPixels32 uses bottom-left ordering. Start at the
+            // highest rows to prove the unobscured top-left carrier after the
+            // complete render pipeline, not merely the camera configuration.
+            for (int y = captureHeight - height; y < captureHeight; y++)
+            {
+                int row = y * captureWidth;
+                for (int x = 0; x < width; x++)
+                {
+                    Color32 pixel = pixels[row + x];
+                    int luma = (54 * pixel.r + 183 * pixel.g +
+                        19 * pixel.b + 128) >> 8;
+                    lumaSum += luma;
+                    minimumLuma = Math.Min(minimumLuma, luma);
+                }
+            }
+            meanLuma = lumaSum / (float)(width * height);
+        }
+
         private static Color32[] Read(string path)
         {
             var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, false);
@@ -2786,6 +3399,83 @@ namespace EndfieldGraphShaderLabEditor
             Color32[] pixels = texture.GetPixels32();
             UnityEngine.Object.Destroy(texture);
             return pixels;
+        }
+
+        private static void ConfigureDeterministicGyroscopeCapture()
+        {
+            CharacterRecoveryPresentationProfile profile =
+                EndfieldPlayableCharInfoProfileBuilder.LoadProfile("Endminf");
+            if (profile == null || !profile.sourceRecovered)
+            {
+                throw new InvalidOperationException(
+                    "Canonical/batch gyroscope capture requires the " +
+                    "source-recovered Endminf presentation profile.");
+            }
+            captureGyroscopeEntryOffsetX =
+                profile.gyroscopeEntryOffsets.x.ToString(
+                    "R",
+                    CultureInfo.InvariantCulture);
+            captureGyroscopeEntryOffsetY =
+                profile.gyroscopeEntryOffsets.y.ToString(
+                    "R",
+                    CultureInfo.InvariantCulture);
+            EndfieldRecoveredCharInfoGyroscopeCameraState.RecoveryMode mode =
+                EndfieldRecoveredCharInfoGyroscopeCameraState.ResolveMode();
+            if (mode == EndfieldRecoveredCharInfoGyroscopeCameraState
+                    .RecoveryMode.LiveInput)
+            {
+                throw new InvalidOperationException(
+                    "Canonical/batch Endminf capture rejects live-input gyroscope " +
+                    "mode because UnityEngine.Input.mousePosition is external, " +
+                    "non-deterministic state. Use the interactive launcher for live " +
+                    "input, or select a source-auditable deterministic mode.");
+            }
+
+            captureGyroscopeMode =
+                EndfieldRecoveredCharInfoGyroscopeCameraState.ModeName(mode);
+            captureGyroscopeInputX = string.Empty;
+            captureGyroscopeInputY = string.Empty;
+            switch (mode)
+            {
+                case EndfieldRecoveredCharInfoGyroscopeCameraState
+                        .RecoveryMode.SerializedEntry:
+                    captureGyroscopeInputProvider =
+                        "presentation-profile.gyroscopeEntryOffsets";
+                    break;
+                case EndfieldRecoveredCharInfoGyroscopeCameraState
+                        .RecoveryMode.NeutralCenteredInput:
+                    captureGyroscopeInputProvider =
+                        "source-curves.normalized-zero";
+                    captureGyroscopeInputX = "0";
+                    captureGyroscopeInputY = "0";
+                    break;
+                case EndfieldRecoveredCharInfoGyroscopeCameraState
+                        .RecoveryMode.RecordedInputEndpoint:
+                    if (!EndfieldRecoveredCharInfoGyroscopeCameraState
+                            .TryGetRecordedNormalizedInput(
+                                out Vector2 recordedInput))
+                    {
+                        throw new InvalidOperationException(
+                            "recorded-input-endpoint capture requires explicit " +
+                            "normalized X/Y selectors in [-1,1].");
+                    }
+                    captureGyroscopeInputProvider =
+                        "explicit-normalized-input-selector";
+                    captureGyroscopeInputX = recordedInput.x.ToString(
+                        "R",
+                        CultureInfo.InvariantCulture);
+                    captureGyroscopeInputY = recordedInput.y.ToString(
+                        "R",
+                        CultureInfo.InvariantCulture);
+                    break;
+                case EndfieldRecoveredCharInfoGyroscopeCameraState
+                        .RecoveryMode.Off:
+                    captureGyroscopeInputProvider = "disabled";
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"Unsupported batch gyroscope mode: {mode}.");
+            }
         }
 
         private static int ParseCaptureDimension(string environment, int fallback)
@@ -2804,26 +3494,6 @@ namespace EndfieldGraphShaderLabEditor
                     environment + " must be an integer from 64 through 8192.");
             }
             return dimension;
-        }
-
-        private static int ParseGyroscopeTrackOffsetFrames()
-        {
-            string value = Environment.GetEnvironmentVariable(
-                CleanReferenceGyroscopeTrackOffsetFramesEnvironment);
-            if (string.IsNullOrWhiteSpace(value))
-                return 0;
-            if (!int.TryParse(
-                    value.Trim(),
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out int frames) ||
-                frames < -2 || frames > 2)
-            {
-                throw new InvalidOperationException(
-                    CleanReferenceGyroscopeTrackOffsetFramesEnvironment +
-                    " must be an integer from -2 through 2.");
-            }
-            return frames;
         }
 
         private static float[] ParseRequestedTimes(string value)

@@ -92,6 +92,351 @@
     }
   },
   "targets": {
+    "createPostProxyMeshUpdateList": {
+      "status": "static_semantic_export_dual_cpu_equations_and_buffers_closed_runtime_route_unobserved",
+      "managedWorkerMethodIndex": 384832,
+      "kernelWrapperMethodIndex": 384830,
+      "directCallInvokeMethodIndex": 384843,
+      "candidateHash": "ef715c6829f8df5c4396ed6a395d3bb0",
+      "abiShapeCandidates": [
+        "3e6b9ccd6fd50a2a4ba0cc0521fc2dba",
+        "463402ec49aaa2fc35216cbb91a6b624",
+        "a351a48b53dbea9102fe6e7a42e7fbc3",
+        "e359f302619847aeca832710b725db85",
+        "ef715c6829f8df5c4396ed6a395d3bb0"
+      ],
+      "export": {
+        "ordinal": 3091,
+        "rva": "0x362af0",
+        "spanBytes": 96,
+        "bodyBytes": 81,
+        "bodySha256": "c42a67de3829ab624ffbdeb153fe8f880bda6bb634a17a82eedb39fce48cf2eb",
+        "stackWriteOffsets": [
+          "0x20",
+          "0x28",
+          "0x30",
+          "0x38",
+          "0x40",
+          "0x48"
+        ],
+        "stackWriteWidths": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          4
+        ],
+        "functionPointerSlotRva": "0x3c6a30",
+        "functionPointerSlotDiskState": "zero_fill_bss_no_on_disk_pointer",
+        "exactBodyBytes": 81
+      },
+      "parameterContract": {
+        "parameterCount": 10,
+        "parameterNames": [
+          "teamDataArray",
+          "processingCounter0",
+          "processingList0",
+          "processingCounter1",
+          "processingList1",
+          "processingCounter2",
+          "processingList2",
+          "processingCounter3",
+          "processingList3",
+          "teamId"
+        ],
+        "lastParameter": "teamId System.Int32"
+      },
+      "functionPointerSlotRva": "0x3c6a30",
+      "variants": [
+        {
+          "cpuVariant": "x64_sse2",
+          "burstInitializeAssignment": {
+            "rva": "0x35fefe",
+            "bytes": 14,
+            "sha256": "b13a84969287bba4c7f4a5d2960080a297ffe4df37926dbe6acd038a591a380d",
+            "functionPointerSlotRva": "0x3c6a30"
+          },
+          "entry": {
+            "rva": "0xf3a80",
+            "bytes": 80,
+            "sha256": "7732caae7ea8a6432588ddd36c00fcdfb0c63060ba90a0e74eb30083df04dbf7"
+          },
+          "solverCore": {
+            "rva": "0xf3ad0",
+            "bytes": 951,
+            "sha256": "1a032caef0f1f620f05665ab236c15e89483a43d10e6463e40adf0826b21bbda",
+            "directCallTargets": []
+          },
+          "contiguousSequenceVectorization": {
+            "minimumCount": 8,
+            "elementsPerVectorLoop": 8,
+            "constants": [
+              {
+                "rva": "0x364a10",
+                "bytes": "000000000100000002000000030000000400000004000000040000000400000008000000080000000800000008000000"
+              }
+            ]
+          }
+        },
+        {
+          "cpuVariant": "avx2",
+          "burstInitializeAssignment": {
+            "rva": "0x35bcc7",
+            "bytes": 14,
+            "sha256": "6f077cd12d57c6c368de50e85e65bcdcc6f3c1bcb2695782bef3bb137dfa71f9",
+            "functionPointerSlotRva": "0x3c6a30"
+          },
+          "entry": {
+            "rva": "0x284590",
+            "bytes": 54,
+            "sha256": "c06d5391bd179913ba721f25a7bba96a80ccb52b4e6cb2ae5776f3b14e2d2dfa"
+          },
+          "solverCore": {
+            "rva": "0x2845d0",
+            "bytes": 1145,
+            "sha256": "ac1747a45021702a7b88789dbdfdef99ac44e9df2d3d61aef30b0b04d105e734",
+            "directCallTargets": []
+          },
+          "contiguousSequenceVectorization": {
+            "minimumCount": 32,
+            "elementsPerVectorLoop": 32,
+            "constants": [
+              {
+                "rva": "0x3668a0",
+                "bytes": "0000000001000000020000000300000004000000050000000600000007000000"
+              },
+              {
+                "rva": "0x3644f4",
+                "bytes": "08000000"
+              },
+              {
+                "rva": "0x3668c0",
+                "bytes": "100000001800000020000000"
+              }
+            ]
+          }
+        }
+      ],
+      "teamSelection": {
+        "strideBytes": 464,
+        "zeroTeamIdReturns": true,
+        "enableAndCullingMask": "(teamQword0 & 0x2000000000080802) == 2",
+        "boundsCheck": null
+      },
+      "queues": [
+        {
+          "queue": 0,
+          "sourceStartOffset": "0x124",
+          "sourceCountOffset": "0x128",
+          "conditions": [
+            "field+0x138 > 0",
+            "field+0x128 > 0"
+          ]
+        },
+        {
+          "queue": 1,
+          "sourceStartOffset": "0x124",
+          "sourceCountOffset": "0x128",
+          "conditions": [
+            "field+0x118 == 3"
+          ],
+          "nonPositiveCount": "atomic counter still adds the signed count; no elements are written"
+        },
+        {
+          "queue": 2,
+          "sourceStartOffset": "0x15c",
+          "sourceCountOffset": "0x160",
+          "conditions": [
+            "field+0x160 > 0"
+          ]
+        },
+        {
+          "queue": 3,
+          "sourceStartOffset": "0x134",
+          "sourceCountOffset": "0x138",
+          "conditions": [
+            "field+0x138 > 0"
+          ]
+        }
+      ],
+      "queueEquation": "old = atomic_fetch_add(counter, signedCount); for i in [0,count): list[old+i] = sourceStart+i",
+      "bufferBoundary": "No capacity or team-index bounds check exists in either core. Signed 32-bit reservation/index arithmetic is preserved; SIMD is only an integer contiguous-sequence optimization and falls back to scalar writes when its signed-overflow guard rejects the vector path.",
+      "numericBoundary": "Both exact CPU cores contain no helper calls and close the same four integer queue equations as the managed fallback. Runtime selection remains unobserved but does not change the recovered queue result."
+    },
+    "calcLineNormalTangent": {
+      "status": "static_semantic_export_and_dual_cpu_core_identity_closed_runtime_route_unobserved",
+      "managedWorkerMethodIndex": 384856,
+      "kernelWrapperMethodIndex": 384854,
+      "directCallInvokeMethodIndex": 384867,
+      "candidateHash": "7342567c29c434b5b924be51bd8e34b7",
+      "export": {
+        "ordinal": 282,
+        "rva": "0x3571e0",
+        "spanBytes": 208,
+        "bodyBytes": 205,
+        "bodySha256": "17244d44dcff7f94b21b887f24ca42d662db90b81a1a1fcc2220a41e15c90328",
+        "stackWriteOffsets": [
+          "0x20",
+          "0x28",
+          "0x30",
+          "0x38",
+          "0x40",
+          "0x48",
+          "0x50",
+          "0x58",
+          "0x60",
+          "0x68",
+          "0x70",
+          "0x78",
+          "0x80"
+        ],
+        "stackWriteWidths": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          4
+        ],
+        "functionPointerSlotRva": "0x3c57b0",
+        "functionPointerSlotDiskState": "zero_fill_bss_no_on_disk_pointer",
+        "exactBodyBytes": 205
+      },
+      "parameterContract": {
+        "parameterCount": 17,
+        "parameterNames": [
+          "jobBaseLineList",
+          "teamDataArray",
+          "parameterArray",
+          "attributes",
+          "positions",
+          "rotations",
+          "vertexLocalPositions",
+          "vertexLocalRotations",
+          "parentIndices",
+          "childIndexArray",
+          "childDataArray",
+          "baseLineFlags",
+          "baseLineTeamIds",
+          "baseLineStartIndices",
+          "baseLineDataCounts",
+          "baseLineData",
+          "index"
+        ],
+        "lastParameter": "index System.Int32"
+      },
+      "semanticDiscriminator": {
+        "entry": "jobBaseLineList[index], baseline bit-0 gate, Int16 team id",
+        "teamData": {
+          "strideBytes": 464,
+          "fieldOffsets": [
+            "0x68",
+            "0x88",
+            "0x124",
+            "0x12c",
+            "0x164"
+          ]
+        },
+        "clothParameters": {
+          "strideBytes": 808,
+          "fieldOffsets": [
+            "0xa0",
+            "0xa4"
+          ]
+        },
+        "packedChildIndex": {
+          "childCount": "value >> 20",
+          "localStart": "value & 0x000fffff"
+        },
+        "writes": [
+          "rotations[childVertex]",
+          "rotations[parentVertex]"
+        ],
+        "reason": "this complete ordered field/stride/packed-child signature occurs behind 7342567c... and distinguishes it from the other two 17-argument wrapper-ABI candidates"
+      },
+      "functionPointerSlotRva": "0x3c57b0",
+      "variants": [
+        {
+          "cpuVariant": "x64_sse2",
+          "burstInitializeAssignment": {
+            "rva": "0x3605c6",
+            "bytes": 14,
+            "sha256": "1c731ab8d00561daf856a9674880f5921b87cce0b216dc46a40d272c6b8f75ae",
+            "functionPointerSlotRva": "0x3c57b0"
+          },
+          "entry": {
+            "rva": "0x10ef20",
+            "bytes": 204,
+            "sha256": "ef31d3c92ce1d2d1004560a75f2dc47b849f6f330dadd5bb267c5e9427be8b18"
+          },
+          "tailStub": {
+            "rva": "0x10f190",
+            "bytes": 10,
+            "sha256": "1477b201c50de25305761971f44bae5a8060b844f72a5a5770e462f8b32d61ac",
+            "tailTargetRva": "0xf4100"
+          },
+          "solverCore": {
+            "rva": "0xf4100",
+            "bytes": 3742,
+            "sha256": "d2981125e4685061134d4e7c1048efc84c33ecc9053f09d3dc9d104756282824",
+            "directCallTargets": [
+              "0x6e860",
+              "0x6e860"
+            ]
+          },
+          "scalarSinCos": {
+            "rva": "0x6e860",
+            "throughFirstRetBytes": 496,
+            "throughFirstRetSha256": "542a4e9e9c3d9631a1f5dfff36628d62603938361adfd468b6abb283002fb047"
+          }
+        },
+        {
+          "cpuVariant": "avx2",
+          "burstInitializeAssignment": {
+            "rva": "0x35c38f",
+            "bytes": 14,
+            "sha256": "673d9cdf093a02d4282dcd4cff2ef048e9599cc1db3922c1beebb988c41387e7",
+            "functionPointerSlotRva": "0x3c57b0"
+          },
+          "entry": {
+            "rva": "0x29a3c0",
+            "bytes": 83,
+            "sha256": "ef3d905ce27209c4f97ea2f88610907fbfd572a01f7db6c1ca5a610ddca9859a"
+          },
+          "tailStub": {
+            "rva": "0x29a5c0",
+            "bytes": 10,
+            "sha256": "109cb38188b82eb4b73761ce7b46c535f1cf9402ab6255afd36a4031409476f8",
+            "tailTargetRva": "0x284c50"
+          },
+          "solverCore": {
+            "rva": "0x284c50",
+            "bytes": 2901,
+            "sha256": "fd0fd8d14052cccdcf137f7e90391faadd0bae6c88c5e199fc908f0b8fe5b07c",
+            "directCallTargets": [
+              "0x1e5d30",
+              "0x1e5d30"
+            ]
+          },
+          "scalarSinCos": {
+            "rva": "0x1e5d30",
+            "throughFirstRetBytes": 521,
+            "throughFirstRetSha256": "3021151e64547f2cc7e4266b846da35bbb8eef05f00d864a357f9757e730f0a6"
+          }
+        }
+      ],
+      "ifixBoundary": "Both Burst cores have exactly two direct calls, both to their local scalar sin/cos helper; neither core calls GameAssembly or the IFix FromToRotation gate.",
+      "runtimeSelection": "unobserved: BurstCompiler.get_IsEnabled and the managed GetFunctionPointer return value still decide Burst versus managed fallback",
+      "numericBoundary": "The original executable export/slot/dual-CPU core graph is exact and source-pinned. A complete source-level transcription and integration remain open; no capture-derived transforms, timing, positions, or curves are inputs."
+    },
     "simulationStartRange": {
       "managedMethodIndex": 385542,
       "directInvokeMethodIndex": 385570,
@@ -24269,8 +24614,8 @@
     }
   },
   "unresolved": [
-    "No exact 32-hex hash bytes or 16-byte hash values were found in GameAssembly.dll; static export-table analysis cannot join a managed BurstDirectCall to a hash.",
-    "Runtime GetProcAddress plus a call-site/returned-pointer trace remains required to prove managed BurstDirectCall wrapper-to-hash selection; it is no longer required to identify the statically closed Simulation Start, Simulation Update Basic Posture, Simulation End, or Collider End export cores.",
+    "No exact 32-hex hash bytes or 16-byte hash values were found in GameAssembly.dll. CalcLine is nevertheless joined to 7342567c... by its unique exact 17-argument ABI plus dual-CPU baseline/team/chunk/packed-child core signature; other managed BurstDirectCall wrappers still require equivalent semantic closure or runtime resolution.",
+    "Runtime GetProcAddress plus a call-site/returned-pointer trace remains required to prove whether a managed BurstDirectCall selected its statically identified Burst target instead of the managed fallback; it is no longer required to identify the CalcLine, Simulation Start, Simulation Update Basic Posture, Simulation End, or Collider End export cores.",
     "Hash-pinned solver bodies are evidence of original numerics, not a Unity solver implementation or secondary-dynamics equivalence claim; complete equation decoding and runtime integration remain open."
   ]
 }

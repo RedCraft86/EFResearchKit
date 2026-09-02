@@ -6,10 +6,13 @@ const CONFIG = __BURST_RESOLVER_TRACE_CONFIG__;
 const capture = CONFIG.capture;
 const hookStates = {};
 const callTargetStates = {};
+const routeProbeStates = {};
 const observedCallTargets = new Set();
+const observedRouteGates = new Set();
 const targetModuleName = String(CONFIG.resolverModuleName).toLowerCase();
 const gameAssemblyName = String(CONFIG.moduleName).toLowerCase();
 const targetWindows = Array.isArray(CONFIG.targets) ? CONFIG.targets : [];
+const routeProbes = CONFIG.routeProbes || {};
 const expectedResolverPath = CONFIG.resolverExpectedPath
   ? String(CONFIG.resolverExpectedPath).replace(/\//g, "\\").toLowerCase()
   : null;
@@ -411,6 +414,77 @@ function resolvedPointer(retval) {
   };
 }
 
+function calcLineCpuSelection(target) {
+  const probe = CONFIG.calcLineCpuSelection || null;
+  const empty = {
+    probe: null,
+    status: "not_configured",
+    slotAddress: null,
+    selectedPointer: null,
+    resolvedAddress: null,
+    resolvedModuleName: null,
+    resolvedModulePath: null,
+    resolvedModuleBase: null,
+    resolvedModuleSize: null,
+    resolvedModuleOffset: null,
+    selectedCpuVariant: null,
+    error: null,
+  };
+  if (!probe || !target || target.id !== probe.targetId) return empty;
+  const configured = { ...empty, probe };
+  if (!burstHandle || !burstIdentity || !burstIdentity.moduleBase) {
+    return { ...configured, status: "resolver_unavailable" };
+  }
+  let slotAddress;
+  try {
+    slotAddress = ptr(burstHandle).add(ptr(probe.functionPointerSlotRva));
+    const selected = slotAddress.readPointer();
+    const selectedPointer = pointerText(selected);
+    if (selected.isNull()) {
+      return {
+        ...configured,
+        status: "slot_null",
+        slotAddress: pointerText(slotAddress),
+        selectedPointer,
+      };
+    }
+    const resolved = resolvedPointer(selected);
+    let selectedCpuVariant = null;
+    if (
+      resolved.resolvedModuleBase &&
+      sameOffset(resolved.resolvedModuleBase, burstHandle)
+    ) {
+      for (const variant of probe.variants || []) {
+        if (sameOffset(resolved.resolvedModuleOffset, variant.entryRva)) {
+          selectedCpuVariant = variant.cpuVariant;
+          break;
+        }
+      }
+    }
+    return {
+      probe,
+      status: selectedCpuVariant ? "matched" : "unknown_entry",
+      slotAddress: pointerText(slotAddress),
+      selectedPointer,
+      resolvedAddress: resolved.resolvedAddress,
+      resolvedModuleName: resolved.resolvedModuleName,
+      resolvedModulePath: resolved.resolvedModulePath,
+      resolvedModuleBase: resolved.resolvedModuleBase,
+      resolvedModuleSize: resolved.resolvedModuleSize,
+      resolvedModuleOffset: resolved.resolvedModuleOffset,
+      selectedCpuVariant,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      ...configured,
+      status: "slot_unreadable",
+      slotAddress: slotAddress ? pointerText(slotAddress) : null,
+      error: String(error),
+    };
+  }
+}
+
 function attachHook(name, spec) {
   let address;
   try {
@@ -524,7 +598,9 @@ function attachCallTargetHook(target) {
       onLeave(retval) {
         if (!captureEnabled || capped || terminalState) return;
         const returnPointer = pointerText(retval);
-        const observationKey = `${target.id}:${String(returnPointer).toLowerCase()}`;
+        const cpuSelection = calcLineCpuSelection(target);
+        const observationKey = `${target.id}:${String(returnPointer).toLowerCase()}:` +
+          `${String(cpuSelection.selectedPointer).toLowerCase()}:${cpuSelection.status}`;
         if (observedCallTargets.has(observationKey)) return;
         observedCallTargets.add(observationKey);
         record("burst_function_pointer", {
@@ -535,6 +611,7 @@ function attachCallTargetHook(target) {
           callTargetProbe: probe,
           returnPointer,
           ...resolvedPointer(retval),
+          cpuSelection,
           threadId: Process.getCurrentThreadId(),
         });
       },
@@ -543,6 +620,115 @@ function attachCallTargetHook(target) {
   } catch (error) {
     callTargetStates[target.id] = "attach_failed";
     fatal("call_target_probe_attach_failed", { targetId: target.id, error: String(error) });
+  }
+}
+
+function sameOffset(left, right) {
+  try { return ptr(left).equals(ptr(right)); } catch (_) { return false; }
+}
+
+function attachCalcLineBurstGate(probe) {
+  const name = "calcLineBurstEnabled";
+  if (!gameAssembly || !probe) {
+    routeProbeStates[name] = "probe_missing";
+    fatal("route_probe_missing", { probe: name });
+    return;
+  }
+  try {
+    Interceptor.attach(gameAssembly.base.add(ptr(probe.startOffset)), {
+      onEnter() {
+        const returnOffset = this.returnAddress.sub(gameAssembly.base);
+        const methodInfo = pointerText(this.context.rcx);
+        this.admitted = sameOffset(returnOffset, probe.invokeReturnOffset) &&
+          methodInfo === String(probe.expectedMethodInfo);
+        this.returnOffset = pointerText(returnOffset);
+        this.methodInfo = methodInfo;
+      },
+      onLeave(retval) {
+        if (!this.admitted || !captureEnabled || capped || terminalState) return;
+        const result = retval.toUInt32() & 0xff;
+        const key = `${name}:${result}`;
+        if (observedRouteGates.has(key)) return;
+        observedRouteGates.add(key);
+        record("calc_line_burst_gate", {
+          probe: name,
+          methodIndex: probe.methodIndex,
+          methodName: probe.methodName,
+          result: result !== 0,
+          returnRegister: probe.returnRegister,
+          callerReturnOffset: this.returnOffset,
+          methodInfo: this.methodInfo,
+          threadId: Process.getCurrentThreadId(),
+        });
+      },
+    });
+    routeProbeStates[name] = "attached";
+  } catch (error) {
+    routeProbeStates[name] = "attach_failed";
+    fatal("route_probe_attach_failed", { probe: name, error: String(error) });
+  }
+}
+
+function attachCalcLineIfixGate(probe) {
+  const name = "fromToRotationIfix";
+  if (!gameAssembly || !probe) {
+    routeProbeStates[name] = "probe_missing";
+    fatal("route_probe_missing", { probe: name });
+    return;
+  }
+  try {
+    Interceptor.attach(gameAssembly.base.add(ptr(probe.startOffset)), {
+      onEnter() {
+        const returnOffset = this.returnAddress.sub(gameAssembly.base);
+        const patchId = this.context.rcx.toUInt32();
+        const methodInfo = pointerText(this.context.rdx);
+        const traces = callerBacktraces(this.context);
+        let matchedRoute = null;
+        let matchedReturnOffset = null;
+        for (const caller of probe.calcLineCallerReturns || []) {
+          const matched = traces.gameAssembly.find((frame) =>
+            frame && frame.offset && sameOffset(frame.offset, caller.returnOffset));
+          if (matched) {
+            matchedRoute = caller.route;
+            matchedReturnOffset = caller.returnOffset;
+            break;
+          }
+        }
+        this.admitted = sameOffset(returnOffset, probe.callReturnOffset) &&
+          patchId === Number(probe.patchId) &&
+          methodInfo === String(probe.expectedMethodInfo) &&
+          matchedRoute !== null;
+        this.returnOffset = pointerText(returnOffset);
+        this.patchId = patchId;
+        this.methodInfo = methodInfo;
+        this.matchedRoute = matchedRoute;
+        this.matchedReturnOffset = matchedReturnOffset;
+      },
+      onLeave(retval) {
+        if (!this.admitted || !captureEnabled || capped || terminalState) return;
+        const result = retval.toUInt32() & 0xff;
+        const key = `${name}:${this.matchedRoute}:${result}`;
+        if (observedRouteGates.has(key)) return;
+        observedRouteGates.add(key);
+        record("calc_line_ifix_gate", {
+          probe: name,
+          methodIndex: probe.methodIndex,
+          methodName: probe.methodName,
+          result: result !== 0,
+          patchId: this.patchId,
+          returnRegister: probe.returnRegister,
+          fromToReturnOffset: this.returnOffset,
+          calcLineRoute: this.matchedRoute,
+          calcLineCallerReturnOffset: this.matchedReturnOffset,
+          methodInfo: this.methodInfo,
+          threadId: Process.getCurrentThreadId(),
+        });
+      },
+    });
+    routeProbeStates[name] = "attached";
+  } catch (error) {
+    routeProbeStates[name] = "attach_failed";
+    fatal("route_probe_attach_failed", { probe: name, error: String(error) });
   }
 }
 
@@ -558,9 +744,12 @@ try {
 discoverResolverIdentity();
 for (const [name, spec] of Object.entries(CONFIG.hooks)) attachHook(name, spec);
 for (const target of targetWindows) attachCallTargetHook(target);
+attachCalcLineBurstGate(routeProbes.calcLineBurstEnabled);
+attachCalcLineIfixGate(routeProbes.fromToRotationIfix);
 const failed = [
   ...Object.entries(hookStates).map(([name, state]) => ({ kind: "resolver_hook", name, state })),
   ...Object.entries(callTargetStates).map(([name, state]) => ({ kind: "call_target_hook", name, state })),
+  ...Object.entries(routeProbeStates).map(([name, state]) => ({ kind: "route_probe_hook", name, state })),
 ].filter((entry) => entry.state !== "attached");
 
 setInterval(flush, capture.flushIntervalMs);
@@ -616,6 +805,7 @@ transmit("ready", {
     })),
     hooks: hookStates,
     callTargetHooks: callTargetStates,
+    routeProbeHooks: routeProbeStates,
     failed,
     maxEvents: capture.maxEvents,
     maxBacktraceFrames: capture.maxBacktraceFrames,

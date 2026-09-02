@@ -308,6 +308,8 @@ namespace EndfieldGraphShaderLabEditor
             controller.enableRecoveredPresentation = false;
             controller.enableReadySubsetDiagnostic =
                 enableReadySubsetDiagnostic;
+            controller.enableEndminfSourceBackground = false;
+            controller.enableEndminfSourceForwardOverlay = false;
             controller.RefreshSelection();
             EditorUtility.SetDirty(controller);
             return controller;
@@ -371,6 +373,8 @@ namespace EndfieldGraphShaderLabEditor
                 throw new InvalidDataException("Presentation prefab has no strict selector.");
             if (controller.enableRecoveredPresentation ||
                 controller.enableReadySubsetDiagnostic ||
+                controller.enableEndminfSourceBackground ||
+                controller.enableEndminfSourceForwardOverlay ||
                 controller.exactSourceAssetsReady ||
                 controller.sourceContent == null ||
                 controller.sourceContent.activeSelf)
@@ -393,6 +397,14 @@ namespace EndfieldGraphShaderLabEditor
                 throw new InvalidDataException(
                     "Ready-subset diagnostic source contract failed: " +
                     readySubsetFailure);
+            }
+            string endminfSourceBackgroundFailure;
+            if (!controller.ValidateEndminfSourceBackgroundReadiness(
+                    out endminfSourceBackgroundFailure))
+            {
+                throw new InvalidDataException(
+                    "Endminf source-background contract failed: " +
+                    endminfSourceBackgroundFailure);
             }
             if (controller.sphereOutsideRenderer == null ||
                 controller.floorRenderer == null ||
@@ -655,6 +667,8 @@ namespace EndfieldGraphShaderLabEditor
                     if (count != 1 || found == null ||
                         found.enableRecoveredPresentation ||
                         found.enableReadySubsetDiagnostic ||
+                        found.enableEndminfSourceBackground ||
+                        found.enableEndminfSourceForwardOverlay ||
                         found.exactSourceAssetsReady || found.sourceContent == null ||
                         sourceContentActive ||
                         settledOpenStatePath != ReadySubsetOpenStatePath ||
@@ -667,6 +681,8 @@ namespace EndfieldGraphShaderLabEditor
                             $"found={(found != null)}, " +
                             $"exact={found?.enableRecoveredPresentation}, " +
                             $"readySubset={found?.enableReadySubsetDiagnostic}, " +
+                            $"sourceBackground={found?.enableEndminfSourceBackground}, " +
+                            $"sourceForwardOverlay={found?.enableEndminfSourceForwardOverlay}, " +
                             $"sourceReady={found?.exactSourceAssetsReady}, " +
                             $"sourceContent={(found?.sourceContent != null)}, " +
                             $"sourceContentActive={sourceContentActive}, " +
@@ -1347,6 +1363,8 @@ namespace EndfieldGraphShaderLabEditor
 
                 controller.enableRecoveredPresentation = false;
                 controller.enableReadySubsetDiagnostic = false;
+                controller.enableEndminfSourceBackground = false;
+                controller.enableEndminfSourceForwardOverlay = false;
                 controller.sourceContent = content;
                 controller.sphereOutsideRenderer = sphereRenderer;
                 controller.floorRenderer = floorRenderer;
@@ -1510,6 +1528,8 @@ namespace EndfieldGraphShaderLabEditor
                     controller.compatibilityBackdropRenderer = compatibilityBackdrop;
                     controller.enableRecoveredPresentation = false;
                     controller.enableReadySubsetDiagnostic = false;
+                    controller.enableEndminfSourceBackground = false;
+                    controller.enableEndminfSourceForwardOverlay = false;
                     if (controller.sourceContent != null)
                         controller.sourceContent.SetActive(false);
                     EditorUtility.SetDirty(controller);

@@ -1212,6 +1212,464 @@ def _secondary_range_exact_core_identity(
     }
 
 
+def _create_post_proxy_list_exact_export_identity(
+    pe: dict[str, Any], rows: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Close the single-team post-proxy list kernel and its exact queue math.
+
+    Five hashed exports share the ten-argument wrapper ABI.  The two exports
+    with the four atomic queue reservations are the single-team and range
+    forms of this worker.  The single-team form is distinguished by one
+    TeamData lookup and no outer team loop; its SSE2/AVX2 cores otherwise
+    implement the same four queue recipes as the managed fallback.
+    """
+
+    candidate_hash = "ef715c6829f8df5c4396ed6a395d3bb0"
+    candidate = next((row for row in rows if row["hash"] == candidate_hash), None)
+    if candidate is None:
+        raise ContractError("CreatePostProxy list hashed export is missing")
+    expected_candidate = {
+        "ordinal": 3091,
+        "rva": "0x362af0",
+        "spanBytes": 96,
+        "bodyBytes": 81,
+        "bodySha256": "c42a67de3829ab624ffbdeb153fe8f880bda6bb634a17a82eedb39fce48cf2eb",
+        "stackWriteOffsets": ["0x20", "0x28", "0x30", "0x38", "0x40", "0x48"],
+        "stackWriteWidths": [8, 8, 8, 8, 8, 4],
+        "incomingGprClobbers": [],
+    }
+    for key, expected in expected_candidate.items():
+        if candidate.get(key) != expected:
+            raise ContractError(f"CreatePostProxy list hashed export {key} drift")
+
+    export_body, export_instructions = _exact_rva_span(
+        pe, 0x362AF0, 81, expected_candidate["bodySha256"]
+    )
+    slot_rva = 0x3C6A30
+    export_calls = [ins for ins in export_instructions if ins.mnemonic == "call"]
+    if (len(export_calls) != 1 or
+            _rip_memory_target(pe, export_calls[0]) != pe["imageBase"] + slot_rva):
+        raise ContractError("CreatePostProxy list function-pointer slot edge drift")
+    slot = _section_record(pe, slot_rva, 8)
+    if slot is None or slot["name"] != ".data" or slot["fileBacked"]:
+        raise ContractError("CreatePostProxy list pointer slot is not pinned zero-fill data")
+
+    specifications = (
+        {
+            "cpuVariant": "x64_sse2",
+            "initializerRva": 0x35FEFE,
+            "initializerSha256": "b13a84969287bba4c7f4a5d2960080a297ffe4df37926dbe6acd038a591a380d",
+            "entryRva": 0xF3A80,
+            "entryBytes": 80,
+            "entrySha256": "7732caae7ea8a6432588ddd36c00fcdfb0c63060ba90a0e74eb30083df04dbf7",
+            "coreRva": 0xF3AD0,
+            "coreBytes": 0x3B7,
+            "coreSha256": "1a032caef0f1f620f05665ab236c15e89483a43d10e6463e40adf0826b21bbda",
+            "vectorThreshold": 8,
+            "vectorWidth": 8,
+            "sequenceConstants": (
+                (0x364A10, bytes.fromhex(
+                    "00000000010000000200000003000000"
+                    "04000000040000000400000004000000"
+                    "08000000080000000800000008000000"
+                )),
+            ),
+        },
+        {
+            "cpuVariant": "avx2",
+            "initializerRva": 0x35BCC7,
+            "initializerSha256": "6f077cd12d57c6c368de50e85e65bcdcc6f3c1bcb2695782bef3bb137dfa71f9",
+            "entryRva": 0x284590,
+            "entryBytes": 54,
+            "entrySha256": "c06d5391bd179913ba721f25a7bba96a80ccb52b4e6cb2ae5776f3b14e2d2dfa",
+            "coreRva": 0x2845D0,
+            "coreBytes": 0x479,
+            "coreSha256": "ac1747a45021702a7b88789dbdfdef99ac44e9df2d3d61aef30b0b04d105e734",
+            "vectorThreshold": 32,
+            "vectorWidth": 32,
+            "sequenceConstants": (
+                (0x3668A0, bytes.fromhex(
+                    "00000000010000000200000003000000"
+                    "04000000050000000600000007000000"
+                )),
+                (0x3644F4, bytes.fromhex("08000000")),
+                (0x3668C0, bytes.fromhex("100000001800000020000000")),
+            ),
+        },
+    )
+    variants: list[dict[str, Any]] = []
+    for spec in specifications:
+        init_body, init_instructions = _exact_rva_span(
+            pe, spec["initializerRva"], 14, spec["initializerSha256"]
+        )
+        if ([ins.mnemonic for ins in init_instructions] != ["lea", "mov"] or
+                [_rip_memory_target(pe, ins) for ins in init_instructions] != [
+                    pe["imageBase"] + spec["entryRva"],
+                    pe["imageBase"] + slot_rva,
+                ]):
+            raise ContractError(
+                f"CreatePostProxy list {spec['cpuVariant']} initializer edge drift"
+            )
+        _entry_body, entry_instructions = _exact_rva_span(
+            pe, spec["entryRva"], spec["entryBytes"], spec["entrySha256"]
+        )
+        entry_calls = [
+            _direct_target(ins, pe["imageBase"])
+            for ins in entry_instructions if ins.mnemonic == "call"
+        ]
+        if entry_calls != [spec["coreRva"]]:
+            raise ContractError(
+                f"CreatePostProxy list {spec['cpuVariant']} entry edge drift"
+            )
+        _core_body, core_instructions = _exact_rva_span(
+            pe, spec["coreRva"], spec["coreBytes"], spec["coreSha256"]
+        )
+        core_text = [f"{ins.mnemonic} {ins.op_str}" for ins in core_instructions]
+        if (sum(row.startswith("lock xadd ") for row in core_text) != 4 or
+                any(ins.mnemonic == "call" for ins in core_instructions) or
+                not any("0x1d0" in row for row in core_text) or
+                not any("0x2000000000080802" in row for row in core_text) or
+                not all(any(f"+ 0x{offset:x}]" in row for row in core_text)
+                        for offset in (0x118, 0x124, 0x128, 0x134, 0x138, 0x15C, 0x160))):
+            raise ContractError(
+                f"CreatePostProxy list {spec['cpuVariant']} queue semantics drift"
+            )
+        sequence_rows = []
+        for sequence_rva, expected_sequence in spec["sequenceConstants"]:
+            sequence_offset = _rva_file_offset(
+                pe, sequence_rva, len(expected_sequence)
+            )
+            sequence = pe["data"][
+                sequence_offset:sequence_offset + len(expected_sequence)
+            ]
+            if sequence != expected_sequence:
+                raise ContractError(
+                    f"CreatePostProxy list {spec['cpuVariant']} vector sequence drift"
+                )
+            sequence_rows.append({
+                "rva": f"0x{sequence_rva:x}",
+                "bytes": expected_sequence.hex(),
+            })
+        variants.append({
+            "cpuVariant": spec["cpuVariant"],
+            "burstInitializeAssignment": {
+                "rva": f"0x{spec['initializerRva']:x}",
+                "bytes": len(init_body),
+                "sha256": spec["initializerSha256"],
+                "functionPointerSlotRva": f"0x{slot_rva:x}",
+            },
+            "entry": {
+                "rva": f"0x{spec['entryRva']:x}",
+                "bytes": spec["entryBytes"],
+                "sha256": spec["entrySha256"],
+            },
+            "solverCore": {
+                "rva": f"0x{spec['coreRva']:x}",
+                "bytes": spec["coreBytes"],
+                "sha256": spec["coreSha256"],
+                "directCallTargets": [],
+            },
+            "contiguousSequenceVectorization": {
+                "minimumCount": spec["vectorThreshold"],
+                "elementsPerVectorLoop": spec["vectorWidth"],
+                "constants": sequence_rows,
+            },
+        })
+
+    shape = [
+        row["hash"] for row in rows
+        if list(zip(row["stackWriteOffsets"], row["stackWriteWidths"])) == [
+            ("0x20", 8), ("0x28", 8), ("0x30", 8),
+            ("0x38", 8), ("0x40", 8), ("0x48", 4),
+        ] and not row["incomingGprClobbers"]
+    ]
+    if shape != [
+        "3e6b9ccd6fd50a2a4ba0cc0521fc2dba",
+        "463402ec49aaa2fc35216cbb91a6b624",
+        "a351a48b53dbea9102fe6e7a42e7fbc3",
+        "e359f302619847aeca832710b725db85",
+        candidate_hash,
+    ]:
+        raise ContractError("CreatePostProxy list wrapper-shape candidate set drift")
+
+    return {
+        "status": "static_semantic_export_dual_cpu_equations_and_buffers_closed_runtime_route_unobserved",
+        "managedWorkerMethodIndex": 384832,
+        "kernelWrapperMethodIndex": 384830,
+        "directCallInvokeMethodIndex": 384843,
+        "candidateHash": candidate_hash,
+        "abiShapeCandidates": shape,
+        "export": {
+            **{key: candidate[key] for key in (
+                "ordinal", "rva", "spanBytes", "bodyBytes", "bodySha256",
+                "stackWriteOffsets", "stackWriteWidths",
+            )},
+            "functionPointerSlotRva": f"0x{slot_rva:x}",
+            "functionPointerSlotDiskState": "zero_fill_bss_no_on_disk_pointer",
+            "exactBodyBytes": len(export_body),
+        },
+        "parameterContract": {
+            "parameterCount": 10,
+            "parameterNames": [
+                "teamDataArray", "processingCounter0", "processingList0",
+                "processingCounter1", "processingList1", "processingCounter2",
+                "processingList2", "processingCounter3", "processingList3",
+                "teamId",
+            ],
+            "lastParameter": "teamId System.Int32",
+        },
+        "functionPointerSlotRva": f"0x{slot_rva:x}",
+        "variants": variants,
+        "teamSelection": {
+            "strideBytes": 0x1D0,
+            "zeroTeamIdReturns": True,
+            "enableAndCullingMask": "(teamQword0 & 0x2000000000080802) == 2",
+            "boundsCheck": None,
+        },
+        "queues": [
+            {"queue": 0, "sourceStartOffset": "0x124", "sourceCountOffset": "0x128",
+             "conditions": ["field+0x138 > 0", "field+0x128 > 0"]},
+            {"queue": 1, "sourceStartOffset": "0x124", "sourceCountOffset": "0x128",
+             "conditions": ["field+0x118 == 3"],
+             "nonPositiveCount": "atomic counter still adds the signed count; no elements are written"},
+            {"queue": 2, "sourceStartOffset": "0x15c", "sourceCountOffset": "0x160",
+             "conditions": ["field+0x160 > 0"]},
+            {"queue": 3, "sourceStartOffset": "0x134", "sourceCountOffset": "0x138",
+             "conditions": ["field+0x138 > 0"]},
+        ],
+        "queueEquation": (
+            "old = atomic_fetch_add(counter, signedCount); for i in [0,count): "
+            "list[old+i] = sourceStart+i"
+        ),
+        "bufferBoundary": (
+            "No capacity or team-index bounds check exists in either core. Signed "
+            "32-bit reservation/index arithmetic is preserved; SIMD is only an "
+            "integer contiguous-sequence optimization and falls back to scalar "
+            "writes when its signed-overflow guard rejects the vector path."
+        ),
+        "numericBoundary": (
+            "Both exact CPU cores contain no helper calls and close the same four "
+            "integer queue equations as the managed fallback. Runtime selection "
+            "remains unobserved but does not change the recovered queue result."
+        ),
+    }
+
+
+def _calc_line_exact_export_identity(
+    pe: dict[str, Any], rows: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Close the CalcLine hashed export from its exact job/core semantics.
+
+    Three exports share the 17-argument/dword-index wrapper ABI.  The pinned
+    dual-CPU cores behind 7342567c... are the only ones with CalcLine's exact
+    baseline/team/chunk/packed-child traversal.  This closes the resolvable
+    Burst target identity without claiming that BurstCompiler selected the
+    non-null route at runtime.
+    """
+
+    candidate_hash = "7342567c29c434b5b924be51bd8e34b7"
+    candidate = next((row for row in rows if row["hash"] == candidate_hash), None)
+    if candidate is None:
+        raise ContractError("CalcLine hashed export is missing")
+    expected_candidate = {
+        "ordinal": 282,
+        "rva": "0x3571e0",
+        "spanBytes": 208,
+        "bodyBytes": 205,
+        "bodySha256": "17244d44dcff7f94b21b887f24ca42d662db90b81a1a1fcc2220a41e15c90328",
+        "stackWriteOffsets": [
+            "0x20", "0x28", "0x30", "0x38", "0x40", "0x48", "0x50",
+            "0x58", "0x60", "0x68", "0x70", "0x78", "0x80",
+        ],
+        "stackWriteWidths": [8] * 12 + [4],
+        "incomingGprClobbers": [],
+    }
+    for key, expected in expected_candidate.items():
+        if candidate.get(key) != expected:
+            raise ContractError(f"CalcLine hashed export {key} drift")
+
+    export_body, export_instructions = _exact_rva_span(
+        pe, 0x3571E0, 205, expected_candidate["bodySha256"]
+    )
+    slot_rva = 0x3C57B0
+    export_calls = [ins for ins in export_instructions if ins.mnemonic == "call"]
+    if (len(export_calls) != 1 or
+            _rip_memory_target(pe, export_calls[0]) != pe["imageBase"] + slot_rva):
+        raise ContractError("CalcLine export function-pointer slot edge drift")
+    slot = _section_record(pe, slot_rva, 8)
+    if slot is None or slot["name"] != ".data" or slot["fileBacked"]:
+        raise ContractError("CalcLine function-pointer slot is not pinned zero-fill data")
+
+    specifications = (
+        {
+            "cpuVariant": "x64_sse2",
+            "initializerRva": 0x3605C6,
+            "initializerSha256": "1c731ab8d00561daf856a9674880f5921b87cce0b216dc46a40d272c6b8f75ae",
+            "entryRva": 0x10EF20, "entryBytes": 204,
+            "entrySha256": "ef31d3c92ce1d2d1004560a75f2dc47b849f6f330dadd5bb267c5e9427be8b18",
+            "tailStubRva": 0x10F190, "tailStubBytes": 10,
+            "tailStubSha256": "1477b201c50de25305761971f44bae5a8060b844f72a5a5770e462f8b32d61ac",
+            "coreRva": 0xF4100, "coreBytes": 3742,
+            "coreSha256": "d2981125e4685061134d4e7c1048efc84c33ecc9053f09d3dc9d104756282824",
+            "sinCosRva": 0x6E860, "sinCosBytes": 496,
+            "sinCosSha256": "542a4e9e9c3d9631a1f5dfff36628d62603938361adfd468b6abb283002fb047",
+        },
+        {
+            "cpuVariant": "avx2",
+            "initializerRva": 0x35C38F,
+            "initializerSha256": "673d9cdf093a02d4282dcd4cff2ef048e9599cc1db3922c1beebb988c41387e7",
+            "entryRva": 0x29A3C0, "entryBytes": 83,
+            "entrySha256": "ef3d905ce27209c4f97ea2f88610907fbfd572a01f7db6c1ca5a610ddca9859a",
+            "tailStubRva": 0x29A5C0, "tailStubBytes": 10,
+            "tailStubSha256": "109cb38188b82eb4b73761ce7b46c535f1cf9402ab6255afd36a4031409476f8",
+            "coreRva": 0x284C50, "coreBytes": 2901,
+            "coreSha256": "fd0fd8d14052cccdcf137f7e90391faadd0bae6c88c5e199fc908f0b8fe5b07c",
+            "sinCosRva": 0x1E5D30, "sinCosBytes": 521,
+            "sinCosSha256": "3021151e64547f2cc7e4266b846da35bbb8eef05f00d864a357f9757e730f0a6",
+        },
+    )
+    required_markers = (
+        "0x1d0", "0x328", "+ 0x68]", "+ 0x88]", "+ 0xa0]",
+        "+ 0xa4]", "+ 0x124]", "+ 0x12c]", "+ 0x164]",
+        "0x100000", "0x14", "0xfffff",
+    )
+    variants: list[dict[str, Any]] = []
+    for spec in specifications:
+        init_body, init_instructions = _exact_rva_span(
+            pe, spec["initializerRva"], 14, spec["initializerSha256"]
+        )
+        if ([ins.mnemonic for ins in init_instructions] != ["lea", "mov"] or
+                [_rip_memory_target(pe, ins) for ins in init_instructions] != [
+                    pe["imageBase"] + spec["entryRva"],
+                    pe["imageBase"] + slot_rva,
+                ]):
+            raise ContractError(
+                f"CalcLine {spec['cpuVariant']} burst.initialize edge drift"
+            )
+
+        _entry_body, entry_instructions = _exact_rva_span(
+            pe, spec["entryRva"], spec["entryBytes"], spec["entrySha256"]
+        )
+        entry_calls = [
+            _direct_target(ins, pe["imageBase"])
+            for ins in entry_instructions if ins.mnemonic == "call"
+        ]
+        if entry_calls != [spec["tailStubRva"]]:
+            raise ContractError(f"CalcLine {spec['cpuVariant']} entry edge drift")
+
+        _stub_body, stub_instructions = _exact_rva_span(
+            pe, spec["tailStubRva"], spec["tailStubBytes"],
+            spec["tailStubSha256"],
+        )
+        stub_jumps = [
+            _direct_target(ins, pe["imageBase"])
+            for ins in stub_instructions if ins.mnemonic == "jmp"
+        ]
+        if stub_jumps != [spec["coreRva"]]:
+            raise ContractError(f"CalcLine {spec['cpuVariant']} tail edge drift")
+
+        _core_body, core_instructions = _exact_rva_span(
+            pe, spec["coreRva"], spec["coreBytes"], spec["coreSha256"]
+        )
+        core_text = [f"{ins.mnemonic} {ins.op_str}" for ins in core_instructions]
+        for marker in required_markers:
+            if not any(marker in row for row in core_text):
+                raise ContractError(
+                    f"CalcLine {spec['cpuVariant']} core marker missing: {marker}"
+                )
+        core_calls = [
+            _direct_target(ins, pe["imageBase"])
+            for ins in core_instructions if ins.mnemonic == "call"
+        ]
+        if core_calls != [spec["sinCosRva"], spec["sinCosRva"]]:
+            raise ContractError(f"CalcLine {spec['cpuVariant']} core call graph drift")
+        _exact_rva_span(
+            pe, spec["sinCosRva"], spec["sinCosBytes"], spec["sinCosSha256"]
+        )
+        variants.append({
+            "cpuVariant": spec["cpuVariant"],
+            "burstInitializeAssignment": {
+                "rva": f"0x{spec['initializerRva']:x}",
+                "bytes": len(init_body),
+                "sha256": spec["initializerSha256"],
+                "functionPointerSlotRva": f"0x{slot_rva:x}",
+            },
+            "entry": {
+                "rva": f"0x{spec['entryRva']:x}",
+                "bytes": spec["entryBytes"],
+                "sha256": spec["entrySha256"],
+            },
+            "tailStub": {
+                "rva": f"0x{spec['tailStubRva']:x}",
+                "bytes": spec["tailStubBytes"],
+                "sha256": spec["tailStubSha256"],
+                "tailTargetRva": f"0x{spec['coreRva']:x}",
+            },
+            "solverCore": {
+                "rva": f"0x{spec['coreRva']:x}",
+                "bytes": spec["coreBytes"],
+                "sha256": spec["coreSha256"],
+                "directCallTargets": [f"0x{value:x}" for value in core_calls],
+            },
+            "scalarSinCos": {
+                "rva": f"0x{spec['sinCosRva']:x}",
+                "throughFirstRetBytes": spec["sinCosBytes"],
+                "throughFirstRetSha256": spec["sinCosSha256"],
+            },
+        })
+
+    return {
+        "status": "static_semantic_export_and_dual_cpu_core_identity_closed_runtime_route_unobserved",
+        "managedWorkerMethodIndex": 384856,
+        "kernelWrapperMethodIndex": 384854,
+        "directCallInvokeMethodIndex": 384867,
+        "candidateHash": candidate_hash,
+        "export": {
+            **{key: candidate[key] for key in (
+                "ordinal", "rva", "spanBytes", "bodyBytes", "bodySha256",
+                "stackWriteOffsets", "stackWriteWidths",
+            )},
+            "functionPointerSlotRva": f"0x{slot_rva:x}",
+            "functionPointerSlotDiskState": "zero_fill_bss_no_on_disk_pointer",
+            "exactBodyBytes": len(export_body),
+        },
+        "parameterContract": {
+            "parameterCount": 17,
+            "parameterNames": [
+                "jobBaseLineList", "teamDataArray", "parameterArray",
+                "attributes", "positions", "rotations", "vertexLocalPositions",
+                "vertexLocalRotations", "parentIndices", "childIndexArray",
+                "childDataArray", "baseLineFlags", "baseLineTeamIds",
+                "baseLineStartIndices", "baseLineDataCounts", "baseLineData",
+                "index",
+            ],
+            "lastParameter": "index System.Int32",
+        },
+        "semanticDiscriminator": {
+            "entry": "jobBaseLineList[index], baseline bit-0 gate, Int16 team id",
+            "teamData": {
+                "strideBytes": 464,
+                "fieldOffsets": ["0x68", "0x88", "0x124", "0x12c", "0x164"],
+            },
+            "clothParameters": {
+                "strideBytes": 808,
+                "fieldOffsets": ["0xa0", "0xa4"],
+            },
+            "packedChildIndex": {
+                "childCount": "value >> 20",
+                "localStart": "value & 0x000fffff",
+            },
+            "writes": ["rotations[childVertex]", "rotations[parentVertex]"],
+            "reason": "this complete ordered field/stride/packed-child signature occurs behind 7342567c... and distinguishes it from the other two 17-argument wrapper-ABI candidates",
+        },
+        "functionPointerSlotRva": f"0x{slot_rva:x}",
+        "variants": variants,
+        "ifixBoundary": "Both Burst cores have exactly two direct calls, both to their local scalar sin/cos helper; neither core calls GameAssembly or the IFix FromToRotation gate.",
+        "runtimeSelection": "unobserved: BurstCompiler.get_IsEnabled and the managed GetFunctionPointer return value still decide Burst versus managed fallback",
+        "numericBoundary": "The original executable export/slot/dual-CPU core graph is exact and source-pinned. A complete source-level transcription and integration remain open; no capture-derived transforms, timing, positions, or curves are inputs.",
+    }
+
+
 def _target_candidates(pe: dict[str, Any], rows: list[dict[str, Any]], gate: dict[str, Any]) -> dict[str, Any]:
     by_hash = {row["hash"]: row for row in rows}
     stores = lambda row: [(int(offset, 16), width) for offset, width in zip(row["stackWriteOffsets"], row["stackWriteWidths"])]
@@ -1238,6 +1696,10 @@ def _target_candidates(pe: dict[str, Any], rows: list[dict[str, Any]], gate: dic
         if stores(row) == [(offset, 8) for offset in range(0x20, 0x88, 8)]
     ]
     return {
+        "createPostProxyMeshUpdateList": _create_post_proxy_list_exact_export_identity(
+            pe, rows
+        ),
+        "calcLineNormalTangent": _calc_line_exact_export_identity(pe, rows),
         "simulationStartRange": {
             "managedMethodIndex": 385542,
             "directInvokeMethodIndex": 385570,
@@ -2023,8 +2485,8 @@ def build_contract(*, game_assembly: Path | None = DEFAULT_GAME_ASSEMBLY,
             "burstWrapperProvenance": wrapper_provenance,
         },
         "unresolved": [
-            "No exact 32-hex hash bytes or 16-byte hash values were found in GameAssembly.dll; static export-table analysis cannot join a managed BurstDirectCall to a hash.",
-            "Runtime GetProcAddress plus a call-site/returned-pointer trace remains required to prove managed BurstDirectCall wrapper-to-hash selection; it is no longer required to identify the statically closed Simulation Start, Simulation Update Basic Posture, Simulation End, or Collider End export cores.",
+            "No exact 32-hex hash bytes or 16-byte hash values were found in GameAssembly.dll. CalcLine is nevertheless joined to 7342567c... by its unique exact 17-argument ABI plus dual-CPU baseline/team/chunk/packed-child core signature; other managed BurstDirectCall wrappers still require equivalent semantic closure or runtime resolution.",
+            "Runtime GetProcAddress plus a call-site/returned-pointer trace remains required to prove whether a managed BurstDirectCall selected its statically identified Burst target instead of the managed fallback; it is no longer required to identify the CalcLine, Simulation Start, Simulation Update Basic Posture, Simulation End, or Collider End export cores.",
             "Hash-pinned solver bodies are evidence of original numerics, not a Unity solver implementation or secondary-dynamics equivalence claim; complete equation decoding and runtime integration remain open.",
         ],
     }

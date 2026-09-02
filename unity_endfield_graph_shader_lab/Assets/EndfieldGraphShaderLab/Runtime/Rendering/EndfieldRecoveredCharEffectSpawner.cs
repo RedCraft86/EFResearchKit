@@ -21,13 +21,7 @@ namespace EndfieldGraphShaderLab
         public const string CharInfoContractSchema =
             "endfield.charinfo-char-effect-particle.v1";
         public const string EndminfOverviewContractSchema =
-            "endfield.endminf-overview-particle-stage.v1";
-        private const string EndminfCompositeRockClipName =
-            "A_fx_endminf_ui_overview_03_04";
-        private const float EndminfCompositeRockClipDelaySeconds = 2.7666667f;
-        private const float EndminfSmoke20PresentationAdvanceSeconds = 2f / 60f;
-        private const string EndminfSmoke20MaterialName = "M_fx_endminm_gfx_20";
-
+            "endfield.endminf-overview-particle-stage.v2";
         public enum BindingKind
         {
             Particle = 0,
@@ -39,6 +33,48 @@ namespace EndfieldGraphShaderLab
             return string.Equals(schema, ExpectedContractSchema, StringComparison.Ordinal) ||
                 string.Equals(schema, CharInfoContractSchema, StringComparison.Ordinal) ||
                 string.Equals(schema, EndminfOverviewContractSchema, StringComparison.Ordinal);
+        }
+
+        public static bool TryGetEndminfOverviewRootContract(
+            string effectRoot,
+            out long gameObjectPathId,
+            out long transformPathId,
+            out int hierarchyCount,
+            out int particleCount)
+        {
+            gameObjectPathId = 0;
+            transformPathId = 0;
+            hierarchyCount = 0;
+            particleCount = 0;
+            switch (effectRoot)
+            {
+                case "P_fxui_endminm003_overview_01":
+                    gameObjectPathId = 644358100928130169L;
+                    transformPathId = 8425642429156191353L;
+                    hierarchyCount = 58;
+                    particleCount = 33;
+                    return true;
+                case "P_fxui_endminm003_overview_02":
+                    gameObjectPathId = 7701914037140635122L;
+                    transformPathId = 8369328719590309362L;
+                    hierarchyCount = 20;
+                    particleCount = 18;
+                    return true;
+                case "P_fxui_endminm003_overview_03":
+                    gameObjectPathId = 6277198576094749248L;
+                    transformPathId = -7537240925946174912L;
+                    hierarchyCount = 8;
+                    particleCount = 6;
+                    return true;
+                case "P_fxui_endminm003_overview_04":
+                    gameObjectPathId = -3166230417407544182L;
+                    transformPathId = 2872757505452405898L;
+                    hierarchyCount = 15;
+                    particleCount = 13;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         [Serializable]
@@ -96,6 +132,18 @@ namespace EndfieldGraphShaderLab
             new Dictionary<string, Coroutine>(StringComparer.Ordinal);
         private readonly Dictionary<string, Coroutine> lifetimeEffects =
             new Dictionary<string, Coroutine>(StringComparer.Ordinal);
+        private readonly HashSet<string> reportedFailureKeys =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, SourceSeedTelemetry> sourceSeedTelemetry =
+            new Dictionary<string, SourceSeedTelemetry>(StringComparer.Ordinal);
+
+        private struct SourceSeedTelemetry
+        {
+            public bool authenticated;
+            public int animationCount;
+            public float seconds;
+            public string failure;
+        }
 
         public Binding[] Bindings => bindings;
 
@@ -110,12 +158,42 @@ namespace EndfieldGraphShaderLab
             set => rejectUnboundRequests = value;
         }
 
+        public bool TryGetSourceSeedTelemetry(
+            string prefabName,
+            out bool authenticated,
+            out int animationCount,
+            out float seconds,
+            out string failure)
+        {
+            authenticated = false;
+            animationCount = 0;
+            seconds = 0f;
+            failure = string.Empty;
+            if (string.IsNullOrEmpty(prefabName) ||
+                !sourceSeedTelemetry.TryGetValue(
+                    prefabName,
+                    out SourceSeedTelemetry telemetry))
+                return false;
+
+            authenticated = telemetry.authenticated;
+            animationCount = telemetry.animationCount;
+            seconds = telemetry.seconds;
+            failure = telemetry.failure ?? string.Empty;
+            return true;
+        }
+
         public void SpawnOverviewEffect(
             EndfieldOverviewEffectRequest request,
-            Transform actorRoot)
+            Transform actorRoot,
+            EndfieldOverviewEffectSourceClock sourceClock)
         {
             if (string.IsNullOrEmpty(request.prefabName))
                 return;
+
+            // Revoke any prior generation's proof before validating or
+            // scheduling this request. A failed replacement must never leave
+            // a stale successful seed visible to the capture contract.
+            sourceSeedTelemetry.Remove(request.prefabName);
 
             Binding binding = FindBinding(request.prefabName);
             if (binding == null)
@@ -168,29 +246,31 @@ namespace EndfieldGraphShaderLab
             if (binding.expectedDelay > 0f)
             {
                 pendingEffects[request.prefabName] = StartCoroutine(
-                    SpawnAfterDelay(binding, request, mount));
+                    SpawnAfterDelay(binding, request, mount, sourceClock));
                 return;
             }
 
-            CreateEffect(binding, request, mount);
+            CreateEffect(binding, request, mount, sourceClock);
         }
 
         private IEnumerator SpawnAfterDelay(
             Binding binding,
             EndfieldOverviewEffectRequest request,
-            Transform mount)
+            Transform mount,
+            EndfieldOverviewEffectSourceClock sourceClock)
         {
             yield return new WaitForSeconds(binding.expectedDelay);
             pendingEffects.Remove(request.prefabName);
             if (mount == null || !isActiveAndEnabled)
                 yield break;
-            CreateEffect(binding, request, mount);
+            CreateEffect(binding, request, mount, sourceClock);
         }
 
         private void CreateEffect(
             Binding binding,
             EndfieldOverviewEffectRequest request,
-            Transform mount)
+            Transform mount,
+            EndfieldOverviewEffectSourceClock sourceClock)
         {
 
             GameObject instance;
@@ -208,12 +288,6 @@ namespace EndfieldGraphShaderLab
                 instance = Instantiate(binding.prefab, mount, false);
             }
             instance.name = binding.prefab.name + "__OverviewRuntime";
-            ApplyEndminfBillboardClampCompatibility(instance);
-            if (string.Equals(binding.prefab.name,
-                    "P_fxui_endminm003_overview_02",
-                    StringComparison.Ordinal))
-                EndfieldEndminfVisualCompatibilityClock.MarkOverview02Start(
-                    instance.transform);
             instance.SetActive(false);
 
             ParticleSystem[] systems = binding.bindingKind == BindingKind.Particle
@@ -224,8 +298,75 @@ namespace EndfieldGraphShaderLab
 
             activeEffects[request.prefabName] = instance;
             instance.SetActive(true);
-            StartRecoveredLegacyAnimations(instance);
-            PlayRecoveredParticleSystems(instance, systems);
+            bool legacyAnimationsStarted =
+                StartRecoveredLegacyAnimations(
+                    instance,
+                    sourceClock,
+                    out string legacyAnimationFailure,
+                    out bool sourceClockAuthenticated,
+                    out int sourceSeededAnimationCount,
+                    out float sourceSeedSeconds);
+            sourceSeedTelemetry[request.prefabName] = new SourceSeedTelemetry {
+                authenticated = sourceClockAuthenticated,
+                animationCount = sourceSeededAnimationCount,
+                seconds = sourceSeedSeconds,
+                failure = legacyAnimationFailure,
+            };
+            PlayRecoveredParticleSystems(systems);
+            if (string.Equals(binding.prefab.name,
+                    "P_fxui_endminm003_overview_02",
+                    StringComparison.Ordinal))
+            {
+                // The measured opening-strip diagnostic is deliberately
+                // separate from the authenticated overview_01 source-post
+                // transaction. Manual clip browsing may anchor this bounded
+                // compatibility clock, but can never authorize source curves.
+                EndfieldEndminfVisualCompatibilityClock
+                    .MarkOverview02CompatibilityStart(instance.transform);
+            }
+            if (string.Equals(binding.prefab.name,
+                    "P_fxui_endminm003_overview_01",
+                    StringComparison.Ordinal))
+            {
+                // A_fx_endminf_ui_overview_02 and its post (1) owner are
+                // children of prefab overview_01. Native OnStateEnter first
+                // completes EffectInstance.Start, then _SyncEffectTime samples
+                // the source AnimatorStateInfo once on that started instance.
+                bool sourcePostRequested =
+                    EndfieldEndminfVisualCompatibilityClock.SourcePostRequested;
+                bool sourcePostBound = false;
+                string sourcePostFailure = string.Empty;
+                if (legacyAnimationsStarted)
+                {
+                    sourcePostBound = EndfieldEndminfVisualCompatibilityClock
+                        .BindOverview02SourceClock(
+                            instance.transform,
+                            request.prefabName,
+                            binding.expectedDelay,
+                            sourceClock,
+                            out sourcePostFailure);
+                }
+                if (!legacyAnimationsStarted)
+                {
+                    EndfieldEndminfVisualCompatibilityClock.ClearOverview02(
+                        instance.transform);
+                    if (sourcePostRequested)
+                    {
+                        FailClosed(
+                            "source_post_effect_startup_failed",
+                            request.prefabName,
+                            legacyAnimationFailure +
+                            " The source-post clock was not admitted.");
+                    }
+                }
+                else if (sourcePostRequested && !sourcePostBound)
+                {
+                    FailClosed(
+                        "source_post_clock_bind_rejected",
+                        request.prefabName,
+                        sourcePostFailure);
+                }
+            }
 
             if (binding.expectedDuration > 0f)
             {
@@ -237,63 +378,231 @@ namespace EndfieldGraphShaderLab
             }
         }
 
-        private void StartRecoveredLegacyAnimations(GameObject instance)
+        private bool StartRecoveredLegacyAnimations(
+            GameObject instance,
+            EndfieldOverviewEffectSourceClock sourceClock,
+            out string failure,
+            out bool sourceClockAuthenticated,
+            out int sourceSeededAnimationCount,
+            out float sourceSeedSeconds)
         {
             // Instantiate activates an enabled prefab before this spawner can
             // clear and stage its ParticleSystems. Deactivating that instance
             // again stops playAutomatically legacy Animation components, and
             // the following activation does not reliably restart them. Replay
             // only clips explicitly marked automatic in the recovered prefab.
-            foreach (Animation animation in
-                instance.GetComponentsInChildren<Animation>(true))
+            bool allStarted = true;
+            failure = string.Empty;
+            sourceClockAuthenticated = false;
+            sourceSeededAnimationCount = 0;
+            sourceSeedSeconds = 0f;
+            Animation[] recoveredAnimations =
+                instance.GetComponentsInChildren<Animation>(true);
+            if (!TrySelectRecoveredAutomaticAnimations(
+                    instance,
+                    recoveredAnimations,
+                    out Animation[] automaticAnimations,
+                    out failure))
             {
-                if (!animation.playAutomatically || animation.clip == null)
-                    continue;
+                return false;
+            }
+            sourceClockAuthenticated =
+                sourceClock.TryGetAuthenticatedElapsed(out float sourceElapsed);
+            if (sourceClock.valid && !sourceClockAuthenticated)
+            {
+                failure =
+                    "Authenticated source-state clock became invalid or stale.";
+                return false;
+            }
+            bool seedFromSourceState =
+                sourceClockAuthenticated && sourceElapsed > 0f;
+            foreach (Animation animation in automaticAnimations)
+            {
                 animation.Stop();
                 animation.Rewind(animation.clip.name);
-                if (string.Equals(
-                        animation.clip.name,
-                        EndminfCompositeRockClipName,
-                        StringComparison.Ordinal))
+                if (!PlayRecoveredLegacyAnimation(animation))
                 {
-                    // Retail's last nonzero/first-zero sampled packets are at
-                    // 4.1667/4.30 s. The exact 1.50 s source active curve and
-                    // its 30-fps ticks fix the trigger at tick 83 (2.7667 s).
-                    StartCoroutine(PlayRecoveredLegacyAnimationAfterDelay(
-                        instance,
-                        animation,
-                        EndminfCompositeRockClipDelaySeconds));
+                    allStarted = false;
+                    if (failure.Length == 0)
+                    {
+                        failure = "Recovered automatic Legacy Animation '" +
+                            animation.clip.name + "' failed to start.";
+                    }
                     continue;
                 }
-                PlayRecoveredLegacyAnimation(animation);
+                if (seedFromSourceState &&
+                    !TryApplyOneShotSourceAnimationSeed(
+                        animation,
+                        sourceElapsed,
+                        out string seedFailure))
+                {
+                    animation.Stop();
+                    allStarted = false;
+                    if (failure.Length == 0)
+                    {
+                        failure = "Recovered automatic Legacy Animation '" +
+                            animation.clip.name +
+                            "' rejected its authenticated source-state seed: " +
+                            seedFailure;
+                    }
+                }
+                else if (seedFromSourceState)
+                {
+                    sourceSeededAnimationCount++;
+                    sourceSeedSeconds = sourceElapsed;
+                }
             }
+            return allStarted;
         }
 
-        private static void PlayRecoveredLegacyAnimation(Animation animation)
-        {
-            if (!animation.Play(animation.clip.name))
-            {
-                Debug.LogError(
-                    "Recovered CharEffect legacy animation failed closed: " +
-                    animation.clip.name,
-                    animation);
-            }
-        }
-
-        private static IEnumerator PlayRecoveredLegacyAnimationAfterDelay(
+        private static bool TrySelectRecoveredAutomaticAnimations(
             GameObject instance,
-            Animation animation,
-            float delaySeconds)
+            Animation[] recoveredAnimations,
+            out Animation[] selected,
+            out string failure)
         {
-            yield return new WaitForSeconds(delaySeconds);
-            if (instance == null || animation == null ||
-                !instance.activeInHierarchy)
-                yield break;
-            PlayRecoveredLegacyAnimation(animation);
+            var automatic = new List<Animation>();
+            foreach (Animation animation in recoveredAnimations)
+            {
+                if (animation != null && animation.playAutomatically)
+                    automatic.Add(animation);
+            }
+            selected = automatic.ToArray();
+            failure = string.Empty;
+
+            if (!string.Equals(
+                    instance.name,
+                    "P_fxui_endminm003_overview_01__OverviewRuntime",
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            // Source evidence closes overview_01 to two automatic Legacy
+            // owners. Admit the source-post clock only after the entire set is
+            // present; a partial or augmented prefab must never seed arbitrary
+            // clips and then masquerade as the authenticated retail stage.
+            if (automatic.Count != 2)
+            {
+                failure =
+                    "Endminf overview_01 requires exactly two automatic Legacy " +
+                    "Animations; observed " + automatic.Count + ".";
+                selected = Array.Empty<Animation>();
+                return false;
+            }
+
+            Transform actorHost = instance.transform.Find("effect_01");
+            Transform nanguanHost = instance.transform.Find("effect_nanguan");
+            if (actorHost == null || nanguanHost == null || actorHost == nanguanHost)
+            {
+                failure =
+                    "Endminf overview_01 is missing its unique effect_01 and " +
+                    "effect_nanguan automatic-animation hosts.";
+                selected = Array.Empty<Animation>();
+                return false;
+            }
+
+            Animation actorAnimation = null;
+            Animation nanguanAnimation = null;
+            foreach (Animation animation in automatic)
+            {
+                if (animation.transform == actorHost && actorAnimation == null)
+                    actorAnimation = animation;
+                else if (animation.transform == nanguanHost && nanguanAnimation == null)
+                    nanguanAnimation = animation;
+                else
+                {
+                    failure =
+                        "Endminf overview_01 contains a duplicate or unexpected " +
+                        "automatic Animation host: " + animation.transform.name + ".";
+                    selected = Array.Empty<Animation>();
+                    return false;
+                }
+            }
+
+            if (!TryValidateRecoveredAutomaticAnimation(
+                    actorAnimation,
+                    "effect_01",
+                    "A_actor_endminf_ui_overview_02",
+                    out failure) ||
+                !TryValidateRecoveredAutomaticAnimation(
+                    nanguanAnimation,
+                    "effect_nanguan",
+                    "A_fx_endminf_ui_overview_04",
+                    out failure))
+            {
+                selected = Array.Empty<Animation>();
+                return false;
+            }
+
+            selected = new[] { actorAnimation, nanguanAnimation };
+            return true;
+        }
+
+        private static bool TryValidateRecoveredAutomaticAnimation(
+            Animation animation,
+            string host,
+            string expectedClip,
+            out string failure)
+        {
+            if (animation == null || !animation.enabled ||
+                !animation.playAutomatically || animation.clip == null ||
+                !animation.clip.legacy || !string.Equals(
+                    animation.clip.name,
+                    expectedClip,
+                    StringComparison.Ordinal))
+            {
+                string actualClip = animation != null && animation.clip != null
+                    ? animation.clip.name
+                    : "<missing>";
+                failure =
+                    "Endminf overview_01 automatic Animation contract failed at " +
+                    host + ": expected enabled Legacy clip " + expectedClip +
+                    ", actual " + actualClip + ".";
+                return false;
+            }
+            failure = string.Empty;
+            return true;
+        }
+
+        private static bool PlayRecoveredLegacyAnimation(Animation animation)
+        {
+            return animation.Play(animation.clip.name);
+        }
+
+        private static bool TryApplyOneShotSourceAnimationSeed(
+            Animation animation,
+            float sourceElapsed,
+            out string failure)
+        {
+            failure = string.Empty;
+            if (animation == null || animation.clip == null ||
+                float.IsNaN(sourceElapsed) ||
+                float.IsInfinity(sourceElapsed) || sourceElapsed <= 0f)
+            {
+                failure = "animation or positive source elapsed time is invalid";
+                return false;
+            }
+
+            AnimationState state = animation[animation.clip.name];
+            if (state == null)
+            {
+                failure = "automatic clip state is missing";
+                return false;
+            }
+
+            // AnimatorBehaviourPlayEffect._SyncEffectTime seeds active child
+            // Animators once with length * normalizedTime after
+            // EffectInstance.Start. Preserve that raw elapsed value here,
+            // sample once, and let the effect-owned Animation advance on
+            // Unity's scaled clock. Do not clamp, wrap, or continuously poll
+            // the body Animator.
+            state.time = sourceElapsed;
+            animation.Sample();
+            return true;
         }
 
         private static void PlayRecoveredParticleSystems(
-            GameObject instance,
             ParticleSystem[] systems)
         {
             // The overview_02 post owner predates the first visible body by
@@ -304,82 +613,7 @@ namespace EndfieldGraphShaderLab
             // Keep particle delays on the selection/body timeline; only the
             // separately recovered compatibility post clock carries pre-roll.
             foreach (ParticleSystem system in systems)
-            {
                 system.Play(true);
-                if (IsEndminfSmoke20(instance, system))
-                {
-                    // The retained 4.46 s source delay is correct, but Unity's
-                    // public ParticleSystem publishes this six-particle plume
-                    // two render ticks after the matched retail frame. Advance
-                    // only the source-identified smoke owner; global particle
-                    // pre-roll shifts crystals, stones, rays and their seeds.
-                    system.Simulate(
-                        EndminfSmoke20PresentationAdvanceSeconds,
-                        false,
-                        false,
-                        true);
-                    // Simulate leaves a public-Unity ParticleSystem paused;
-                    // resume this owner without recursively restarting peers.
-                    system.Play(false);
-                }
-            }
-        }
-
-        private static bool IsEndminfSmoke20(
-            GameObject instance,
-            ParticleSystem system)
-        {
-            if (!EndfieldEndminfVisualCompatibilityClock.Requested ||
-                instance == null || system == null ||
-                instance.name.IndexOf(
-                    "P_fxui_endminm003_overview_02",
-                    StringComparison.Ordinal) < 0 ||
-                !string.Equals(system.name, "smoke (2)", StringComparison.Ordinal) ||
-                system.transform.parent == null ||
-                !string.Equals(system.transform.parent.name, "all", StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            ParticleSystemRenderer renderer = system.GetComponent<ParticleSystemRenderer>();
-            if (renderer == null)
-                return false;
-            foreach (Material material in renderer.sharedMaterials)
-            {
-                if (material != null && string.Equals(
-                        material.name,
-                        EndminfSmoke20MaterialName,
-                        StringComparison.Ordinal))
-                    return true;
-            }
-            return false;
-        }
-
-        private static void ApplyEndminfBillboardClampCompatibility(GameObject instance)
-        {
-            if (!EndfieldEndminfVisualCompatibilityClock.Requested || instance == null ||
-                instance.name.IndexOf("P_fxui_endminm003_overview_",
-                    StringComparison.Ordinal) < 0)
-                return;
-
-            // The source ParticleSystemRenderer payload frequently carries
-            // maxParticleSize=0.5. Unity's built-in particle path interprets
-            // that as a hard half-screen billboard clamp, visibly slicing the
-            // authored flare. Retail HGRP owns a different VFX draw path. Keep
-            // the serialized prefab untouched and remove only that runtime
-            // compatibility clamp for billboard/stretch billboards.
-            foreach (ParticleSystemRenderer renderer in
-                instance.GetComponentsInChildren<ParticleSystemRenderer>(true))
-            {
-                // Do not broaden this to Stretch. Endminf's M22 jianshe ray
-                // producer is an authored stretch renderer whose 0.5 cap is
-                // visible in the retail frame. Removing that cap turned its
-                // short radial rays into screen-spanning shard streaks.
-                if (renderer.renderMode != ParticleSystemRenderMode.Billboard)
-                    continue;
-                if (renderer.maxParticleSize <= 0.5001f)
-                    renderer.maxParticleSize = 10f;
-            }
         }
 
         private IEnumerator FinishAfterDuration(
@@ -401,6 +635,8 @@ namespace EndfieldGraphShaderLab
         {
             if (string.IsNullOrEmpty(prefabName))
                 return;
+
+            sourceSeedTelemetry.Remove(prefabName);
 
             if (pendingEffects.TryGetValue(prefabName, out Coroutine pending))
             {
@@ -454,6 +690,7 @@ namespace EndfieldGraphShaderLab
             activeEffects.Keys.CopyTo(names, 0);
             foreach (string name in names)
                 FinishOverviewEffect(name);
+            sourceSeedTelemetry.Clear();
         }
 
         private Binding FindBinding(string requestPrefabName)
@@ -607,6 +844,18 @@ namespace EndfieldGraphShaderLab
                 return false;
             }
 
+            bool isEndminfV2 = string.Equals(
+                marker.contractSchema,
+                EndminfOverviewContractSchema,
+                StringComparison.Ordinal);
+            if (isEndminfV2)
+                return TryValidateEndminfV2Marker(
+                    binding.prefab,
+                    marker,
+                    systems,
+                    renderers,
+                    out reason);
+
             foreach (EndfieldRecoveredParticleNodeSource node in marker.particleNodes)
             {
                 if (node == null ||
@@ -677,12 +926,348 @@ namespace EndfieldGraphShaderLab
             return true;
         }
 
+        private static bool TryValidateEndminfV2Marker(
+            GameObject prefab,
+            EndfieldRecoveredParticleEffectSource marker,
+            ParticleSystem[] systems,
+            ParticleSystemRenderer[] renderers,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (!TryGetEndminfOverviewRootContract(
+                    marker.effectRoot,
+                    out long rootGameObjectPathId,
+                    out long rootTransformPathId,
+                    out int hierarchyCount,
+                    out int particleCount) ||
+                marker.sourceHierarchy != marker.effectRoot ||
+                marker.sourceGameObjectPathId != rootGameObjectPathId ||
+                marker.sourceTransformPathId != rootTransformPathId ||
+                marker.hierarchyNodes == null ||
+                marker.hierarchyNodes.Length != hierarchyCount ||
+                marker.particleNodes == null ||
+                marker.particleNodes.Length != particleCount ||
+                prefab.GetComponentsInChildren<Transform>(true).Length !=
+                    hierarchyCount)
+            {
+                reason = "Endminf v2 root identity or exact census drifted.";
+                return false;
+            }
+
+            var hierarchyByTransformPathId =
+                new Dictionary<long, EndfieldRecoveredParticleHierarchyNodeSource>();
+            var hierarchyGameObjectPathIds = new HashSet<long>();
+            var generatedTransforms = new HashSet<Transform>();
+            int hierarchyIndex = 0;
+            foreach (EndfieldRecoveredParticleHierarchyNodeSource row in
+                     marker.hierarchyNodes)
+            {
+                string actualHierarchy = row == null
+                    ? "<null-row>"
+                    : HierarchyIncludingSourceRoot(
+                        row.generatedTransform,
+                        prefab.transform,
+                        marker.effectRoot);
+                if (row == null || row.gameObjectPathId == 0 ||
+                    row.transformPathId == 0 || row.generatedTransform == null ||
+                    !hierarchyByTransformPathId.TryAdd(row.transformPathId, row) ||
+                    !hierarchyGameObjectPathIds.Add(row.gameObjectPathId) ||
+                    !generatedTransforms.Add(row.generatedTransform) ||
+                    !string.Equals(
+                        row.hierarchy,
+                        actualHierarchy,
+                        StringComparison.Ordinal))
+                {
+                    reason =
+                        "Endminf v2 hierarchy identity/reference drifted at row " +
+                        hierarchyIndex + ": expected=" +
+                        (row == null ? "<null-row>" : row.hierarchy) +
+                        ", actual=" + actualHierarchy +
+                        ", runtimeRoot=" + prefab.transform.name +
+                        ", sourceRoot=" + marker.effectRoot + ".";
+                    return false;
+                }
+                hierarchyIndex++;
+            }
+            if (!hierarchyByTransformPathId.TryGetValue(
+                    rootTransformPathId,
+                    out EndfieldRecoveredParticleHierarchyNodeSource rootRow) ||
+                rootRow.gameObjectPathId != rootGameObjectPathId ||
+                rootRow.generatedTransform != prefab.transform)
+            {
+                reason = "Endminf v2 root hierarchy reference drifted.";
+                return false;
+            }
+
+            var gameObjectPathIds = new HashSet<long>();
+            var particleSystemPathIds = new HashSet<long>();
+            var particleRendererPathIds = new HashSet<long>();
+            var boundSystems = new HashSet<ParticleSystem>();
+            var boundRenderers = new HashSet<ParticleSystemRenderer>();
+            int shapeTextureOwnerCount = 0;
+            foreach (EndfieldRecoveredParticleNodeSource node in
+                     marker.particleNodes)
+            {
+                if (node == null || !node.nativeParticlePayloadApplied ||
+                    !node.nativeRendererPayloadApplied ||
+                    node.gameObjectPathId == 0 || node.transformPathId == 0 ||
+                    node.particleSystemPathId == 0 ||
+                    node.particleRendererPathId == 0 ||
+                    node.generatedParticleSystem == null ||
+                    node.generatedRenderer == null ||
+                    !gameObjectPathIds.Add(node.gameObjectPathId) ||
+                    !particleSystemPathIds.Add(node.particleSystemPathId) ||
+                    !particleRendererPathIds.Add(node.particleRendererPathId) ||
+                    !boundSystems.Add(node.generatedParticleSystem) ||
+                    !boundRenderers.Add(node.generatedRenderer) ||
+                    !hierarchyByTransformPathId.TryGetValue(
+                        node.transformPathId,
+                        out EndfieldRecoveredParticleHierarchyNodeSource hierarchyRow) ||
+                    hierarchyRow.gameObjectPathId != node.gameObjectPathId ||
+                    hierarchyRow.generatedTransform !=
+                        node.generatedParticleSystem.transform ||
+                    node.generatedRenderer.transform !=
+                        node.generatedParticleSystem.transform ||
+                    node.generatedParticleSystem.GetComponents<ParticleSystem>().Length != 1 ||
+                    node.generatedParticleSystem
+                        .GetComponents<ParticleSystemRenderer>().Length != 1 ||
+                    node.generatedParticleSystem
+                        .GetComponent<ParticleSystemRenderer>() != node.generatedRenderer ||
+                    Array.IndexOf(systems, node.generatedParticleSystem) < 0 ||
+                    Array.IndexOf(renderers, node.generatedRenderer) < 0 ||
+                    !string.Equals(node.hierarchy, hierarchyRow.hierarchy,
+                        StringComparison.Ordinal) ||
+                    !node.sourceRendererEnabled ||
+                    (int)node.generatedRenderer.renderMode !=
+                        node.sourceRendererRenderMode ||
+                    (int)node.generatedParticleSystem.main.scalingMode !=
+                        node.sourceScalingMode)
+                {
+                    reason = "Endminf v2 particle owner/source identity drifted.";
+                    return false;
+                }
+
+                ParticleSystem.ShapeModule shape =
+                    node.generatedParticleSystem.shape;
+                if (shape.enabled != node.sourceShapeEnabled ||
+                    (int)shape.shapeType != node.sourceShapeType ||
+                    shape.texture != node.generatedShapeTexture ||
+                    (node.sourceShapeTexturePathId == 6970530313307194154L &&
+                     node.generatedShapeTexture == null) ||
+                    (node.sourceShapeTexturePathId != 0 &&
+                     node.sourceShapeTexturePathId != 6970530313307194154L) ||
+                    (node.sourceShapeTexturePathId == 0 &&
+                     node.generatedShapeTexture != null))
+                {
+                    reason = "Endminf v2 particle shape ownership drifted.";
+                    return false;
+                }
+                if (node.sourceShapeTexturePathId == 6970530313307194154L)
+                    shapeTextureOwnerCount++;
+                ParticleSystem.LightsModule lights =
+                    node.generatedParticleSystem.lights;
+                if (node.sourceLightsEnabled || node.sourceLightPathId != 0 ||
+                    node.generatedLight != null || lights.enabled ||
+                    lights.light != null)
+                {
+                    reason = "Endminf v2 particle Light ownership drifted.";
+                    return false;
+                }
+
+                if (node.materialPathIds == null || node.meshPathIds == null ||
+                    node.resolvedSourceMaterials == null ||
+                    node.resolvedSourceMeshes == null ||
+                    (node.resolvedSourceMaterials.Length > 0 &&
+                     node.resolvedSourceMaterials.Length !=
+                        node.materialPathIds.Length) ||
+                    (node.resolvedSourceMeshes.Length > 0 &&
+                     node.resolvedSourceMeshes.Length != node.meshPathIds.Length))
+                {
+                    reason = "Endminf v2 resolved render dependency set drifted.";
+                    return false;
+                }
+
+                if (!TryValidateParticleRendererState(
+                        node,
+                        node.generatedRenderer,
+                        true,
+                        out reason))
+                    return false;
+            }
+            int expectedShapeTextureOwners = marker.effectRoot ==
+                    "P_fxui_endminm003_overview_02" ||
+                marker.effectRoot == "P_fxui_endminm003_overview_04"
+                ? 2
+                : 0;
+            if (shapeTextureOwnerCount != expectedShapeTextureOwners)
+            {
+                reason = "Endminf v2 shape-texture owner census drifted.";
+                return false;
+            }
+            if (boundSystems.Count != systems.Length ||
+                boundRenderers.Count != renderers.Length)
+            {
+                reason = "Endminf v2 direct particle references are incomplete.";
+                return false;
+            }
+            return true;
+        }
+
+        private static string HierarchyIncludingSourceRoot(
+            Transform target,
+            Transform root,
+            string sourceRootName)
+        {
+            if (target == null || root == null ||
+                string.IsNullOrEmpty(sourceRootName))
+                return string.Empty;
+            var names = new List<string>();
+            Transform current = target;
+            while (current != null)
+            {
+                // Unity mutates instantiated root names before the runtime
+                // audit runs. The marker's pinned effectRoot and root PathIDs
+                // own that segment; all descendant names and direct references
+                // remain validated from the live clone.
+                names.Add(current == root ? sourceRootName : current.name);
+                if (current == root)
+                {
+                    names.Reverse();
+                    return string.Join("/", names.ToArray());
+                }
+                current = current.parent;
+            }
+            return string.Empty;
+        }
+
+        private static bool TryValidateParticleRendererState(
+            EndfieldRecoveredParticleNodeSource node,
+            ParticleSystemRenderer renderer,
+            bool allowFailClosed,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (renderer == null)
+            {
+                reason = "Particle renderer is missing.";
+                return false;
+            }
+            if (!node.sourceRendererEnabled)
+            {
+                if (renderer.enabled)
+                {
+                    reason = "Disabled source renderer became enabled.";
+                    return false;
+                }
+                return true;
+            }
+            if (node.rendererFailClosedForUnrecoveredShader && allowFailClosed)
+            {
+                if (renderer.enabled)
+                {
+                    reason = "Fail-closed Endminf renderer became enabled.";
+                    return false;
+                }
+                return true;
+            }
+            if (!renderer.enabled)
+            {
+                reason = "Enabled source renderer became disabled.";
+                return false;
+            }
+            if (renderer.sharedMaterials == null ||
+                renderer.sharedMaterials.Length == 0 ||
+                !SameMaterialReferences(
+                    renderer.sharedMaterials,
+                    node.resolvedSourceMaterials))
+            {
+                reason = "Enabled particle renderer material identity drifted.";
+                return false;
+            }
+            var meshes = new Mesh[renderer.meshCount];
+            renderer.GetMeshes(meshes);
+            if (!SameMeshReferences(meshes, node.resolvedSourceMeshes))
+            {
+                reason = "Enabled particle renderer mesh identity drifted.";
+                return false;
+            }
+            foreach (Material material in renderer.sharedMaterials)
+            {
+                if (material == null || material.shader == null ||
+                    material.shader.name.IndexOf(
+                        "Unavailable",
+                        StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    material.shader.name.IndexOf(
+                        "FailClosed",
+                        StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    reason =
+                        "Particle material/shader is unresolved or explicitly " +
+                        "fail-closed.";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool SameMaterialReferences(
+            Material[] actual,
+            Material[] expected)
+        {
+            if (actual == null || expected == null ||
+                actual.Length != expected.Length)
+                return false;
+            for (int index = 0; index < actual.Length; index++)
+                if (actual[index] != expected[index])
+                    return false;
+            return true;
+        }
+
+        private static bool SameMeshReferences(Mesh[] actual, Mesh[] expected)
+        {
+            if (actual == null || expected == null ||
+                actual.Length != expected.Length)
+                return false;
+            for (int index = 0; index < actual.Length; index++)
+                if (actual[index] != expected[index])
+                    return false;
+            return true;
+        }
+
         public static bool TryValidateBindingForRecoveryAudit(
             Binding binding,
             EndfieldOverviewEffectRequest request,
             out string reason)
         {
             return TryValidateBinding(binding, request, out reason);
+        }
+
+        public static bool TryValidateEndminfV2MarkerForRecoveryAudit(
+            GameObject prefab,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (prefab == null)
+            {
+                reason = "Endminf v2 prefab is null.";
+                return false;
+            }
+            EndfieldRecoveredParticleEffectSource marker =
+                prefab.GetComponent<EndfieldRecoveredParticleEffectSource>();
+            if (marker == null || !string.Equals(
+                    marker.contractSchema,
+                    EndminfOverviewContractSchema,
+                    StringComparison.Ordinal))
+            {
+                reason = "Endminf v2 source marker is missing or stale.";
+                return false;
+            }
+            return TryValidateEndminfV2Marker(
+                prefab,
+                marker,
+                prefab.GetComponentsInChildren<ParticleSystem>(true),
+                prefab.GetComponentsInChildren<ParticleSystemRenderer>(true),
+                out reason);
         }
 
         private static bool TryValidateStaticMeshBinding(Binding binding, out string reason)
@@ -857,7 +1442,9 @@ namespace EndfieldGraphShaderLab
 
         private void FailClosed(string code, string effectName, string reason)
         {
-            if (rejectUnboundRequests || code != "unbound_effect_request")
+            string key = code + "\n" + effectName;
+            if ((rejectUnboundRequests || code != "unbound_effect_request") &&
+                reportedFailureKeys.Add(key))
             {
                 Debug.LogWarning(
                     "[Endfield CharEffect] " + code + " for '" + effectName + "': " +

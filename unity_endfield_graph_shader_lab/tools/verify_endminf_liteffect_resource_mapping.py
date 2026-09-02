@@ -28,6 +28,8 @@ EVIDENCE_PATH = ROOT / "unity_endfield_graph_shader_lab" / "Assets" / "EndfieldG
 CLOSURE_PATH = ROOT / "unity_endfield_graph_shader_lab" / "Assets" / "EndfieldGraphShaderLab" / "Generated" / "Characters" / "Playable" / "Endminf" / "ExternalUiEffects" / "endminf_material_closure.json"
 MATERIAL_ROOT = ROOT / "export_full" / "recovered" / "AnimeStudio-cli" / "StreamingAssets" / "json_by_type" / "Material"
 REPORT_PATH = ROOT / "unity_endfield_graph_shader_lab" / "Assets" / "EndfieldGraphShaderLab" / "Generated" / "Characters" / "Playable" / "Endminf" / "ExternalUiEffects" / "endminf_liteffect_resource_mapping.json"
+EXACT_UNITY_PORT = ROOT / "unity_endfield_graph_shader_lab" / "Assets" / "EndfieldGraphShaderLab" / "Shaders" / "Recovered" / "EndfieldEndminfM27HGBuffer.shader"
+COMPATIBILITY_UNITY_PORT = ROOT / "unity_endfield_graph_shader_lab" / "Assets" / "EndfieldGraphShaderLab" / "Shaders" / "Recovered" / "EndfieldEndminfLitEffectVisualCompatibility.shader"
 
 VERTEX_FILE = "0114_endfield_dxbc_0.dxbc"
 FRAGMENT_FILE = "0115_endfield_dxbc_1.dxbc"
@@ -55,6 +57,22 @@ TEXTURE_NAMES = (
     "_MROMap",
     "_BaseColorMap",
 )
+EXPECTED_FRAGMENT_TEXTURE_REGISTERS = {
+    0: "_BaseColorMap",
+    1: "_NormalMap",
+    2: "_MROMap",
+    3: "_ParallaxMap",
+    4: "_ParallaxMaskMap",
+    5: "_ParallaxNoiseMap",
+}
+EXPECTED_FRAGMENT_SAMPLERS = {
+    0: "sampler_LinearClamp",
+    1: "sampler_LinearRepeat",
+    2: "sampler_LinearMirror",
+    3: "sampler_LinearMirrorOnce",
+    4: "sampler_PointClamp",
+    5: "sampler_PointRepeat",
+}
 PARALLAX_FLOATS = (
     "_EnableParallaxMap",
     "_ParallaxStrength",
@@ -663,6 +681,234 @@ def _map_vertex_fields(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def _validate_unity_transport_ports(
+    exact_text: str | None = None,
+    compatibility_text: str | None = None,
+) -> dict[str, Any]:
+    """Gate only the source-proven sampling/channel subgraph in Unity ports.
+
+    Match coupled expressions after removing comments and normalizing
+    whitespace.  Disconnected declarations or channel tokens are not enough:
+    each admitted texture must remain paired with its physical sampler and
+    output channel, and the UV/MRO fields must remain in their proven roles.
+    """
+    if exact_text is None:
+        exact_text = EXACT_UNITY_PORT.read_text(encoding="utf-8")
+    if compatibility_text is None:
+        compatibility_text = COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+
+    def normalized_code(text: str) -> str:
+        text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+        text = re.sub(r"//[^\r\n]*", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    exact_code = normalized_code(exact_text)
+    compatibility_code = normalized_code(compatibility_text)
+
+    def require_single_assignment(
+        label: str,
+        code: str,
+        variables: tuple[str, ...],
+    ) -> None:
+        """Reject shadowing and post-definition reroutes of admitted values.
+
+        This is deliberately bounded to the source-proven transport variables,
+        but unlike token-presence checks it verifies that each has one typed
+        definition and no subsequent simple/compound assignment or increment.
+        """
+        for variable in variables:
+            declarations = re.findall(
+                rf"\b(?:float(?:[234](?:x[234])?)?|uint)\s+{re.escape(variable)}\s*=",
+                code,
+            )
+            writes = re.findall(
+                rf"\b{re.escape(variable)}\s*(?:[+\-*/%&|^]?=|\+\+|--)",
+                code,
+            )
+            if len(declarations) != 1 or len(writes) != 1:
+                raise VerificationError(
+                    f"{label} admitted value is not single-assignment: "
+                    f"{variable} declarations={len(declarations)} writes={len(writes)}")
+
+    def reject_indirect_mutation(label: str, code: str) -> None:
+        """Reject the bounded alias routes that evade direct-assignment counts.
+
+        Neither maintained port needs source macros nor out/inout helper
+        parameters or conditional preprocessing. Admitting any of these would
+        let a helper rewrite a proven local or let the preprocessor disable or
+        reroute required source spelling in the unpreprocessed text.
+        """
+        macros = re.findall(r"#\s*define\s+([A-Za-z_]\w*)", code)
+        conditional_directives = re.findall(
+            r"#\s*(if|ifdef|ifndef|elif|else|endif|undef)\b",
+            code,
+        )
+        output_parameter_qualifiers = re.findall(r"\b(?:inout|out)\b", code)
+        if macros or conditional_directives or output_parameter_qualifiers:
+            raise VerificationError(
+                f"{label} admits indirect mutation/aliasing: "
+                f"macros={macros!r} conditionals={conditional_directives!r} "
+                f"outQualifiers={output_parameter_qualifiers!r}")
+
+    def require_single_output_writes(
+        label: str,
+        code: str,
+        members: tuple[str, ...],
+    ) -> None:
+        if re.search(r"\boutput\s*(?:[+\-*/%&|^]?=|\+\+|--)", code):
+            raise VerificationError(
+                f"{label} overwrites the complete output after source stores")
+        for member in members:
+            writes = re.findall(
+                rf"\boutput\.{re.escape(member)}(?:\.[A-Za-z_]\w*)?\s*"
+                rf"(?:[+\-*/%&|^]?=|\+\+|--)",
+                code,
+            )
+            if len(writes) != 1:
+                raise VerificationError(
+                    f"{label} output store is not single-assignment: "
+                    f"{member} writes={len(writes)}")
+    exact_required = (
+        "ZTest GEqual",
+        "ZWrite On",
+        "Cull Back",
+        "float2 baseUV = mad( lerp(input.uv0, input.uv1, _BaseUVSet), _BaseColorMap_ST.xy, _BaseColorMap_ST.zw);",
+        "float2 pbrUV = mad( lerp(input.uv0, input.uv1, _BasePbrMapUVSet), _NormalMap_ST.xy, _NormalMap_ST.zw);",
+        "float2 parallaxBaseUV = mad(_ParallaxMapUVType, uvDelta, input.uv0);",
+        "float4 baseSample = _BaseColorMap.SampleBias( sampler_LinearClamp, baseUV, _GlobalMipBias);",
+        "float4 normalSample = _NormalMap.SampleBias( sampler_LinearRepeat, pbrUV, _GlobalMipBias);",
+        "float4 mroSample = _MROMap.SampleBias( sampler_LinearMirror, pbrUV, _GlobalMipBias);",
+        "float maskTexture = _ParallaxMaskMap.SampleBias( sampler_PointClamp, input.uv1, _GlobalMipBias).r;",
+        "float sampledHeight = _ParallaxNoiseMap.SampleGrad( sampler_PointRepeat, parallaxBaseUV * _ParallaxNoiseMapTilling + rayOffset, uvDx, uvDy).r;",
+        "float parallaxSample = _ParallaxMap.SampleBias( sampler_LinearMirrorOnce, parallaxUV, _GlobalMipBias).g;",
+        "float _GlobalMipBiasPow2;",
+        "float2 uvDx = ddx_coarse(input.uv0) * _GlobalMipBiasPow2;",
+        "float2 uvDy = ddy_coarse(input.uv0) * _GlobalMipBiasPow2;",
+        "geometricNormal * normalZ + tangent * (normalXY.x * _NormalScale) + bitangent * (normalXY.y * _NormalScale)",
+        "float metallic = lerp( mroSample.r, _Metallic, saturate(_BaseTextureMapCount - 1.0));",
+        "float roughness = lerp( _RoughnessMin, _RoughnessMax, mroSample.g);",
+        "float occlusion = mad( _OcclusionStrength, mroSample.b - 1.0, 1.0);",
+        "output.gBufferA = float4( metallic, occlusion, 0.0,",
+        "output.gBufferB = float4( mad(octNormal, 0.5, 0.5), roughness,",
+        "float3 parallaxColor = lerp( _ParallaxColorDark.rgb, _ParallaxColor.rgb, parallaxSample);",
+    )
+    compatibility_required = (
+        "float2 baseUV = lerp(input.uv0, input.uv1, _BaseUVSet) * _BaseColorMap_ST.xy + _BaseColorMap_ST.zw;",
+        "float2 pbrUV = lerp(input.uv0, input.uv1, _BasePbrMapUVSet) * _NormalMap_ST.xy + _NormalMap_ST.zw;",
+        "float2 parallaxBaseUV = lerp( input.uv0, input.uv1, _ParallaxMapUVType);",
+        "float4 baseSample = _BaseColorMap.SampleBias( sampler_LinearClamp, baseUV, _GlobalMipBias);",
+        "float4 normalSample = _NormalMap.SampleBias( sampler_LinearRepeat, pbrUV, _GlobalMipBias);",
+        "float3 mro = _MROMap.SampleBias( sampler_LinearMirror, pbrUV, _GlobalMipBias).rgb;",
+        "float3 sourceBaseColor = lerp( saturate( baseSample.rgb * _BaseColor.rgb * _BaseColorBrighterScale), _BaseColor.rgb, _BaseColorTintCover);",
+        "float sampledHeight = _ParallaxNoiseMap.SampleGrad( sampler_PointRepeat, parallaxBaseUV * _ParallaxNoiseMapTilling + rayOffset, noiseDx, noiseDy).r;",
+        "float parallax = _ParallaxMap.SampleBias( sampler_LinearMirrorOnce, parallaxUV, _GlobalMipBias).g;",
+        "float _GlobalMipBiasPow2;",
+        "float2 noiseDx = ddx_coarse(input.uv0) * _GlobalMipBiasPow2;",
+        "float2 noiseDy = ddy_coarse(input.uv0) * _GlobalMipBiasPow2;",
+        "float3 normalTS = float3( normalXY * _NormalScale, normalZ);",
+        "if (_TwoSidedNormal > 0.0 && !isFrontFace) normalZ = -normalZ;",
+        "float sourceMetallic = lerp( mro.r, _Metallic, saturate(_BaseTextureMapCount - 1.0));",
+        "float sourceRoughness = lerp( _RoughnessMin, _RoughnessMax, mro.g);",
+        "float sourceOcclusion = mad( _OcclusionStrength, mro.b - 1.0, 1.0);",
+        "float metallic = saturate(sourceMetallic);",
+        "float occlusion = saturate(sourceOcclusion);",
+        "float3 parallaxColor = lerp( _ParallaxColorDark.rgb, _ParallaxColor.rgb, parallax);",
+        "return float4(lit + emission, baseSample.a);",
+    )
+    forbidden = (
+        "_ParallaxMap.SampleGrad(",
+        "_ParallaxNoiseMap.SampleBias(",
+        "float roughness = clamp(mro.r",
+        "float metallic = saturate(mro.g)",
+        "_MetallicMax",
+        "_RecoveredM27ParallaxGradientScale",
+    )
+    exact_forbidden = ("ZTest Off", "Cull Off")
+    for label, code, required in (
+        ("exact M27 producer", exact_code, exact_required),
+        ("M01/M38 visual compatibility port", compatibility_code,
+         compatibility_required),
+    ):
+        missing = [token for token in required if token not in code]
+        retained = [token for token in forbidden if token in code]
+        if missing or retained:
+            raise VerificationError(
+                f"{label} source sampling transport drifted: "
+                f"missing={missing!r} forbidden={retained!r}")
+    retained_fixed_state = [
+        token for token in exact_forbidden if token in exact_code
+    ]
+    if retained_fixed_state:
+        raise VerificationError(
+            "exact M27 producer fixed state drifted: "
+            f"forbidden={retained_fixed_state!r}")
+    require_single_assignment(
+        "exact M27 producer",
+        exact_code,
+        (
+            "baseUV", "pbrUV", "parallaxBaseUV", "baseSample",
+            "normalSample", "mroSample", "uvDx",
+            "uvDy", "sampledHeight", "parallaxSample", "metallic",
+            "roughness", "occlusion", "parallaxColor",
+        ),
+    )
+    require_single_assignment(
+        "M01/M38 visual compatibility port",
+        compatibility_code,
+        (
+            "baseUV", "pbrUV", "parallaxBaseUV", "baseSample",
+            "normalSample", "mro", "sampledHeight", "parallax",
+            "sourceBaseColor", "sourceMetallic", "sourceRoughness",
+            "sourceOcclusion", "metallic", "occlusion", "parallaxColor",
+        ),
+    )
+    reject_indirect_mutation("exact M27 producer", exact_code)
+    reject_indirect_mutation(
+        "M01/M38 visual compatibility port",
+        compatibility_code,
+    )
+    require_single_output_writes(
+        "exact M27 producer",
+        exact_code,
+        ("sceneColor", "sceneMotion", "gBufferA", "gBufferB", "gBufferC"),
+    )
+    return {
+        "sourceProvenSubgraph": {
+            "physicalTextures": EXPECTED_FRAGMENT_TEXTURE_REGISTERS,
+            "physicalSamplers": EXPECTED_FRAGMENT_SAMPLERS,
+            "mroChannels": {
+                "r": "metallic",
+                "g": "roughness",
+                "b": "occlusion",
+            },
+            "parallax": (
+                "march _ParallaxNoiseMap.r with PointRepeat, then sample "
+                "_ParallaxMap.g with LinearMirrorOnce"
+            ),
+            "mipTransport": (
+                "SampleBias uses live _GlobalMipBias and parallax height "
+                "gradients use live _GlobalMipBiasPow2"
+            ),
+            "baseMaterial": (
+                "saturate(BaseColorMap.rgb * BaseColor.rgb * "
+                "BaseColorBrighterScale), then BaseColorTintCover"
+            ),
+            "fixedState": "ZTest GEqual, ZWrite On, Cull Back",
+        },
+        "exactM27Producer": {
+            "path": str(EXACT_UNITY_PORT.relative_to(ROOT)).replace("\\", "/"),
+            "sha256": _sha256(EXACT_UNITY_PORT),
+            "classification": "source_equation_port_consumer_still_gated",
+        },
+        "m01M38Compatibility": {
+            "path": str(COMPATIBILITY_UNITY_PORT.relative_to(ROOT)).replace("\\", "/"),
+            "sha256": _sha256(COMPATIBILITY_UNITY_PORT),
+            "classification": "source_sampling_subgraph_forward_presentation_non_exact",
+        },
+    }
+
+
 def build_report() -> dict[str, Any]:
     vertex_path = BYTECODE_ROOT / VERTEX_FILE
     fragment_path = BYTECODE_ROOT / FRAGMENT_FILE
@@ -758,6 +1004,24 @@ def build_report() -> dict[str, Any]:
     dynamic_samplers = {row["BindPoint"]: row["Name"] for row in fragment_meta["samplers"] if isinstance(row.get("BindPoint"), int) and 0 <= row["BindPoint"] <= 5 and str(row.get("Name", "")).startswith("_")}
     if dynamic_samplers != {i: name for i, name in enumerate(TEXTURE_NAMES)}:
         raise VerificationError(f"PerMaterial sampler/name order mismatch: {dynamic_samplers!r}")
+    # BindPoint is descriptor order, not the physical D3D texture register.
+    # PackedBinding byte 2 carries the fragment register and proves the
+    # non-monotonic logical mapping used by the selected retail variant.
+    texture_descriptor_rows = [
+        row for row in descriptor_contract["perMaterial"]
+        if row.get("DescriptorType") == 2
+    ]
+    physical_texture_names: dict[int, str] = {}
+    for row in texture_descriptor_rows:
+        register = _packed_stage_register(row, "fragment")
+        if register is None or register in physical_texture_names:
+            raise VerificationError(
+                "PerMaterial texture PackedBinding is absent or ambiguous")
+        physical_texture_names[register] = str(row.get("Name"))
+    if physical_texture_names != EXPECTED_FRAGMENT_TEXTURE_REGISTERS:
+        raise VerificationError(
+            "PerMaterial physical texture register map mismatch: "
+            f"{physical_texture_names!r}")
     vertex_resources = []
     for resource in vertex_reference["resources"]:
         if resource["register"] == 0:
@@ -772,15 +1036,27 @@ def build_report() -> dict[str, Any]:
         slot = resource["register"]
         if resource.get("name") != expected_resource_names.get(slot):
             raise VerificationError(f"fragment texture resource name mismatch at t{slot}")
-        logical = dynamic_samplers.get(slot)
-        fragment_resources.append({**resource, "logicalName": logical, "status": "resolved" if logical else "gap", "basis": ["historical HLSL register", "serialized SamplerParameters BindPoint 0..5", "PerMaterial descriptor texture binding 6..11"] if logical else []})
+        logical = physical_texture_names.get(slot)
+        fragment_resources.append({
+            **resource,
+            "logicalName": logical,
+            "sampler": EXPECTED_FRAGMENT_SAMPLERS.get(slot),
+            "status": "resolved" if logical else "gap",
+            "basis": [
+                "historical HLSL physical register",
+                "serialized PerMaterial texture descriptor PackedBinding fragment byte",
+                "pinned static sampler declaration at the same physical slot",
+            ] if logical else [],
+        })
     if len(fragment_resources) != 6:
         raise VerificationError(f"expected six fragment texture resources, got {len(fragment_resources)}")
 
     static_samplers = [{**row, "status": "resolved_static_name"} for row in fragment_reference["samplers"]]
     if [row["register"] for row in static_samplers] != list(range(6)):
         raise VerificationError("fragment historical HLSL samplers are not the six s0..s5 slots")
-    expected_reference_samplers = ["sampler_LinearClamp", "sampler_LinearRepeat", "sampler_LinearMirror", "sampler_LinearMirrorOnce", "sampler_PointClamp", "sampler_PointRepeat"]
+    expected_reference_samplers = [
+        EXPECTED_FRAGMENT_SAMPLERS[index] for index in range(6)
+    ]
     if [row["name"] for row in static_samplers] != expected_reference_samplers:
         raise VerificationError("fragment historical HLSL sampler declarations changed")
     static_metadata_names = {row.get("Name") for row in fragment_meta["samplers"] if isinstance(row.get("BindPoint"), int) and 5 <= row["BindPoint"] <= 10 and str(row.get("Name", "")).startswith("s_")}
@@ -822,6 +1098,7 @@ def build_report() -> dict[str, Any]:
         "reason": "AnimeStudio Shader JSON omits ParserBindChannels.m_Channels; DXBC ISGN/OSGN signatures above are the available interface reflection.",
         "serializedMetadataClass": "ParserBindChannels",
     }
+    unity_ports = _validate_unity_transport_ports()
     report = {
         "schema": "endfield.endminf-liteffect-resource-mapping.v1",
         "status": "verified_with_selected_variant_material_offsets_and_consumer_gaps",
@@ -837,6 +1114,7 @@ def build_report() -> dict[str, Any]:
         "fragmentInputs": fragment_reflection["inputs"],
         "mrtOutputs": fragment_reflection["outputs"],
         "resources": {"vertex": vertex_resources, "fragmentTextures": fragment_resources, "fragmentSamplers": static_samplers},
+        "unityTransportPorts": unity_ports,
         "crossPlatformSpirv": {
             "vertex": vertex_spirv_ubos,
             "fragment": fragment_spirv_ubos,

@@ -2,8 +2,9 @@
 
 The probe reuses the shared runtime-trace process, hash gate, EventWriter, and
 Frida loading infrastructure used by ``character_dynamics_telemetry.py``.
-It observes ``kernel32!LoadLibraryW``, ``kernel32!GetProcAddress``, and the
-returns from five pinned ``BurstDirectCall.GetFunctionPointer`` wrappers.  It
+It observes ``kernel32!LoadLibraryW``, ``kernel32!GetProcAddress``, the
+returns from six pinned ``BurstDirectCall.GetFunctionPointer`` wrappers, one
+read-only CalcLine CPU-selection slot, and the two CalcLine route gates. It
 never calls a returned pointer or changes game state.
 
 Examples from the repository root::
@@ -42,8 +43,8 @@ from scripts.story_recovery import runtime_trace_core as core  # noqa: E402
 
 DEFAULT_MANIFEST = ROOT / "unity_endfield_graph_shader_lab/config/burst_resolver_telemetry_hooks.json"
 DEFAULT_AGENT = SCRIPT_DIR / "burst_resolver_telemetry_agent.js"
-EVENT_SCHEMA = "burstResolverTelemetry.event.v1"
-MANIFEST_SCHEMA = "burstResolverTelemetry.hooks.v1"
+EVENT_SCHEMA = "burstResolverTelemetry.event.v3"
+MANIFEST_SCHEMA = "burstResolverTelemetry.hooks.v3"
 AGENT_PLACEHOLDER = "__BURST_RESOLVER_TRACE_CONFIG__"
 DEFAULT_OUTPUT_ROOT = ROOT / "scratch/reverse_engineering/burst_resolver_telemetry"
 TARGET_IDS = {
@@ -52,8 +53,11 @@ TARGET_IDS = {
     "end_simulation_step_range_kernel",
     "collider_start_simulation_step_range_kernel",
     "collider_end_simulation_step_range_kernel",
+    "calc_line_normal_tangent_kernel",
 }
-TARGETS_SHA256 = "423d9df619cdb3215764b0cbe893579139984aa0306f622352804c0893951f4a"
+TARGETS_SHA256 = "5439b71925c147bc92074cad03719b35464c6205913b6e2f916a616f2b887ada"
+ROUTE_PROBES_SHA256 = "3a6bb06fc1b62974334c3fb43f9a728f6d37467b00065722680d352e29f11a75"
+CALC_LINE_CPU_SELECTION_SHA256 = "6c6025fd92f27b5a32820a7692f5e4b2900980700922220b699e3bde92ca4ce2"
 TARGET_WINDOW_ROLES = {
     "constructor",
     "static_constructor",
@@ -152,6 +156,73 @@ def verify_call_target_probes(gameassembly: Path, manifest: dict[str, Any]) -> N
                     f"target {target['id']} indirect-call instruction bytes drifted"
                 )
 
+        route_probes = manifest["routeProbes"]
+
+        def verify_body(probe: dict[str, Any], label: str) -> None:
+            start = int(probe["startOffset"], 16)
+            end = int(probe["endOffsetExclusive"], 16)
+            actual = hashlib.sha256(bytes_at_rva(start, end - start)).hexdigest()
+            if actual != probe["bodySha256"]:
+                raise CaptureConfigurationError(
+                    f"route probe {label} body hash drifted: {actual}"
+                )
+
+        def verify_direct_call(
+            offset_text: str,
+            return_text: str,
+            instruction_text: str,
+            target_rva: int,
+            label: str,
+        ) -> None:
+            offset = int(offset_text, 16)
+            return_offset = int(return_text, 16)
+            instruction = bytes.fromhex(instruction_text)
+            if return_offset != offset + len(instruction):
+                raise CaptureConfigurationError(
+                    f"route probe {label} return offset drifted"
+                )
+            actual = bytes_at_rva(offset, len(instruction))
+            if actual != instruction:
+                raise CaptureConfigurationError(
+                    f"route probe {label} call instruction bytes drifted"
+                )
+            if len(actual) != 5 or actual[0] != 0xE8:
+                raise CaptureConfigurationError(
+                    f"route probe {label} is not a pinned rel32 call"
+                )
+            displacement = struct.unpack_from("<i", actual, 1)[0]
+            if return_offset + displacement != target_rva:
+                raise CaptureConfigurationError(
+                    f"route probe {label} direct-call target drifted"
+                )
+
+        burst = route_probes["calcLineBurstEnabled"]
+        verify_body(burst, "calcLineBurstEnabled")
+        verify_direct_call(
+            burst["invokeCallOffset"],
+            burst["invokeReturnOffset"],
+            burst["callInstructionBytes"],
+            int(burst["startOffset"], 16),
+            "calcLineBurstEnabled",
+        )
+        ifix = route_probes["fromToRotationIfix"]
+        verify_body(ifix, "fromToRotationIfix")
+        verify_direct_call(
+            ifix["callOffset"],
+            ifix["callReturnOffset"],
+            ifix["callInstructionBytes"],
+            int(ifix["startOffset"], 16),
+            "fromToRotationIfix",
+        )
+        for index, caller in enumerate(ifix["calcLineCallerReturns"]):
+            verify_direct_call(
+                caller["callOffset"],
+                caller["returnOffset"],
+                caller["instructionBytes"],
+                int(ifix["fromToRotationStartOffset"], 16),
+                f"fromToRotationIfix.calcLineCallerReturns[{index}]",
+            )
+
 
 def default_output_path() -> Path:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -222,7 +293,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
     targets = manifest.get("targets")
     if not isinstance(targets, list) or len(targets) != len(TARGET_IDS) or {target.get("id") for target in targets if isinstance(target, dict)} != TARGET_IDS:
-        raise CaptureConfigurationError("manifest targets must contain exactly the five pinned Burst range targets")
+        raise CaptureConfigurationError("manifest targets must contain exactly the six pinned Burst range targets")
     target_digest = hashlib.sha256(
         json.dumps(targets, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -301,6 +372,61 @@ def load_manifest(path: Path) -> dict[str, Any]:
         call_offset = int(probe["indirectCallOffset"], 16)
         if not int(probe["invokeStartOffset"], 16) <= call_offset < int(probe["invokeEndOffsetExclusive"], 16):
             raise CaptureConfigurationError(f"target {target_id} callTargetProbe indirect call is outside invoke body")
+    route_probes = manifest.get("routeProbes")
+    if not isinstance(route_probes, dict) or set(route_probes) != {
+        "calcLineBurstEnabled", "fromToRotationIfix"
+    }:
+        raise CaptureConfigurationError("manifest routeProbes must contain the two pinned CalcLine route gates")
+    route_digest = hashlib.sha256(
+        json.dumps(route_probes, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if route_digest != ROUTE_PROBES_SHA256:
+        raise CaptureConfigurationError(
+            f"manifest pinned CalcLine route probes drifted: {route_digest}"
+        )
+    cpu_selection = manifest.get("calcLineCpuSelection")
+    if not isinstance(cpu_selection, dict) or set(cpu_selection) != {
+        "targetId", "functionPointerSlotRva", "variants"
+    }:
+        raise CaptureConfigurationError(
+            "manifest calcLineCpuSelection must contain the exact target, slot, and variants"
+        )
+    cpu_selection_digest = hashlib.sha256(
+        json.dumps(cpu_selection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if cpu_selection_digest != CALC_LINE_CPU_SELECTION_SHA256:
+        raise CaptureConfigurationError(
+            f"manifest pinned CalcLine CPU selection drifted: {cpu_selection_digest}"
+        )
+    if cpu_selection["targetId"] != "calc_line_normal_tangent_kernel":
+        raise CaptureConfigurationError("calcLineCpuSelection targetId is invalid")
+    if not isinstance(cpu_selection["functionPointerSlotRva"], str) or not re.fullmatch(
+        r"0x[0-9a-fA-F]+", cpu_selection["functionPointerSlotRva"]
+    ):
+        raise CaptureConfigurationError(
+            "calcLineCpuSelection functionPointerSlotRva is invalid"
+        )
+    variants = cpu_selection["variants"]
+    if not isinstance(variants, list) or len(variants) != 2:
+        raise CaptureConfigurationError(
+            "calcLineCpuSelection must contain exactly the pinned SSE2 and AVX2 variants"
+        )
+    names: set[str] = set()
+    entry_rvas: set[str] = set()
+    for variant in variants:
+        if not isinstance(variant, dict) or set(variant) != {"cpuVariant", "entryRva"}:
+            raise CaptureConfigurationError("CalcLine CPU variant schema is invalid")
+        name = variant["cpuVariant"]
+        entry_rva = variant["entryRva"]
+        if name not in {"x64_sse2", "avx2"} or name in names:
+            raise CaptureConfigurationError("CalcLine CPU variant name is invalid or duplicated")
+        if not isinstance(entry_rva, str) or not re.fullmatch(r"0x[0-9a-fA-F]+", entry_rva):
+            raise CaptureConfigurationError("CalcLine CPU variant entryRva is invalid")
+        normalized_rva = hex(int(entry_rva, 16))
+        if normalized_rva in entry_rvas:
+            raise CaptureConfigurationError("CalcLine CPU variant entryRva is duplicated")
+        names.add(name)
+        entry_rvas.add(normalized_rva)
     boundary = manifest.get("evidenceBoundary")
     if not isinstance(boundary, dict) or not isinstance(boundary.get("nonClaims"), list) or not boundary["nonClaims"]:
         raise CaptureConfigurationError("manifest evidenceBoundary.nonClaims must be non-empty")
@@ -328,6 +454,8 @@ def render_agent_source(
             "hooks": manifest["hooks"],
             "capture": manifest["capture"],
             "targets": manifest["targets"],
+            "routeProbes": manifest["routeProbes"],
+            "calcLineCpuSelection": manifest["calcLineCpuSelection"],
             "resolverExpectedPath": str(resolver_expected_path.resolve()) if resolver_expected_path else None,
             "resolverExpectedSize": manifest["files"]["resolver"]["bytes"],
         },
@@ -535,6 +663,7 @@ def run_capture(
             raise RuntimeError("agent did not confirm the expected Burst resolver module name")
         hooks = ready_payload.get("hooks")
         call_target_hooks = ready_payload.get("callTargetHooks")
+        route_probe_hooks = ready_payload.get("routeProbeHooks")
         failed = ready_payload.get("failed") or []
         if not isinstance(hooks, dict) or set(hooks) != set(manifest["hooks"]):
             raise RuntimeError(f"agent hook handshake is incomplete: {hooks}")
@@ -544,6 +673,10 @@ def run_capture(
             raise RuntimeError(f"agent call-target hook handshake is incomplete: {call_target_hooks}")
         if any(value != "attached" for value in call_target_hooks.values()):
             raise RuntimeError(f"one or more Burst call-target hooks failed to attach: {call_target_hooks}")
+        if not isinstance(route_probe_hooks, dict) or set(route_probe_hooks) != set(manifest["routeProbes"]):
+            raise RuntimeError(f"agent CalcLine route-probe handshake is incomplete: {route_probe_hooks}")
+        if any(value != "attached" for value in route_probe_hooks.values()):
+            raise RuntimeError(f"one or more CalcLine route-probe hooks failed to attach: {route_probe_hooks}")
         writer.emit(
             "native_module_verified",
             {
@@ -551,6 +684,7 @@ def run_capture(
                 "verifiedFiles": file_facts,
                 "hookStates": hooks,
                 "callTargetHookStates": call_target_hooks,
+                "routeProbeHookStates": route_probe_hooks,
                 "kernel32ModuleName": ready_payload["kernel32ModuleName"],
                 "resolverModuleName": ready_payload["resolverModuleName"],
                 "resolverModuleIdentity": ready_payload.get("resolverModuleIdentity"),

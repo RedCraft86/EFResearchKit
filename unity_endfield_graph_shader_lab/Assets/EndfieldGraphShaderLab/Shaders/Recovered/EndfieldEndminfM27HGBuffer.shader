@@ -17,9 +17,9 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
         _BaseColorBrighterScale ("Base Color Brighter Scale", Float) = 1
         _NormalScale ("Normal Scale", Float) = 1
         _TwoSidedNormal ("Two Sided Normal", Float) = 1
-        _Metallic ("Metallic Minimum", Float) = 0
-        _MetallicMax ("Metallic Maximum", Float) = 1
+        _Metallic ("Metallic", Float) = 0
         _RoughnessMin ("Roughness Minimum", Float) = 0
+        _RoughnessMax ("Roughness Maximum", Float) = 1
         _OcclusionStrength ("Occlusion Strength", Float) = 1
 
         _ParallaxStrength ("Parallax Strength", Float) = 0.096
@@ -58,7 +58,6 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
         [HideInInspector] _TerrainSubsurfaceProfileInt ("Terrain Subsurface Profile", Float) = 0
         [HideInInspector] _RecoveredM27InstanceRecordC3 ("Captured Instance Record c3", Vector) = (0, 0, 0, 1)
         [HideInInspector] _RecoveredM27InstanceRecordC4 ("Captured Instance Record c4", Vector) = (1000, 0, 0, 0)
-        [HideInInspector] _RecoveredM27ParallaxGradientScale ("Captured Parallax Gradient Scale", Float) = 0.5
         [HideInInspector] _RecoveredSourceAuthoredLitEffect ("Source-authored live LitEffect", Float) = 0
     }
 
@@ -81,11 +80,13 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
                 "RenderType" = "HGLitShader"
             }
 
-            // Hash-pinned HGBuffer pass state: ZTest Off, Cull Off, writable
-            // depth through the bound depth attachment, and stencil replace.
-            ZTest Off
+            // The exact shared M01/M38/M27 runtime pair uses reversed-Z
+            // greater-or-equal depth, back-face culling, writable depth, and
+            // stencil replace. The serialized shader dump's unresolved
+            // Off/Off placeholders are not live fixed-state evidence.
+            ZTest GEqual
             ZWrite On
-            Cull Off
+            Cull Back
             Blend Off
             Stencil
             {
@@ -132,8 +133,8 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
             float _NormalScale;
             float _TwoSidedNormal;
             float _Metallic;
-            float _MetallicMax;
             float _RoughnessMin;
+            float _RoughnessMax;
             float _OcclusionStrength;
 
             float _ParallaxStrength;
@@ -159,13 +160,13 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
             float _TAAUNormalBiasReverse;
             float _TaauMaskModeValue;
             float _GlobalMipBias;
+            float _GlobalMipBiasPow2;
             float _HGRPExposureMultiplier;
             float4 _VFXParams0;
             float4 _AnchorWaveBright;
             float _TerrainSubsurfaceProfileInt;
             float4 _RecoveredM27InstanceRecordC3;
             float4 _RecoveredM27InstanceRecordC4;
-            float _RecoveredM27ParallaxGradientScale;
             float _RecoveredSourceAuthoredLitEffect;
 
             struct Attributes
@@ -356,15 +357,19 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
                 float2 rayOffset = rayStep;
                 float hitHeight = 0.0;
 
-                float2 uvDx = ddx_coarse(input.uv0) *
-                    _RecoveredM27ParallaxGradientScale;
-                float2 uvDy = ddy_coarse(input.uv0) *
-                    _RecoveredM27ParallaxGradientScale;
+                // ShaderVariablesGlobal c26.y is _GlobalMipBiasPow2 in the
+                // recovered source metadata. Consume that live engine value
+                // instead of replaying the captured 0.5 value.
+                float2 uvDx = ddx_coarse(input.uv0) * _GlobalMipBiasPow2;
+                float2 uvDy = ddy_coarse(input.uv0) * _GlobalMipBiasPow2;
 
                 [loop]
                 for (uint stepIndex = 0u; stepIndex < marchCount + 1u; ++stepIndex)
                 {
-                    float sampledHeight = _ParallaxMap.SampleGrad(
+                    // Physical t5 is _ParallaxNoiseMap. PackedBinding and
+                    // the pinned DXBC both place the height march here;
+                    // physical t3 is sampled only after the intersection.
+                    float sampledHeight = _ParallaxNoiseMap.SampleGrad(
                         sampler_PointRepeat,
                         parallaxBaseUV * _ParallaxNoiseMapTilling + rayOffset,
                         uvDx,
@@ -389,7 +394,7 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
                 float2 parallaxUV =
                     (parallaxBaseUV + rayStep * intersection + previousRayOffset) *
                     _ParallaxTilling;
-                float parallaxNoise = _ParallaxNoiseMap.SampleBias(
+                float parallaxSample = _ParallaxMap.SampleBias(
                     sampler_LinearMirrorOnce,
                     parallaxUV,
                     _GlobalMipBias).g;
@@ -446,7 +451,7 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
                 float3 parallaxColor = lerp(
                     _ParallaxColorDark.rgb,
                     _ParallaxColor.rgb,
-                    parallaxNoise);
+                    parallaxSample);
                 float3 emission = exposure * clamp(
                     brightness * fresnel * parallaxColor,
                     0.0,
@@ -485,16 +490,22 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
                     taaNormal);
 
                 uint terrainProfile = (uint)_TerrainSubsurfaceProfileInt;
-                float roughness = lerp(
+                // The pinned b3 field map and fragment stores prove the
+                // source MRO layout: R=metallic, G=roughness, B=occlusion.
+                float metallic = lerp(
                     mroSample.r,
-                    _RoughnessMin,
+                    _Metallic,
                     saturate(_BaseTextureMapCount - 1.0));
+                float roughness = lerp(
+                    _RoughnessMin,
+                    _RoughnessMax,
+                    mroSample.g);
                 float occlusion = mad(
                     _OcclusionStrength,
                     mroSample.b - 1.0,
                     1.0);
                 output.gBufferA = float4(
-                    roughness,
+                    metallic,
                     occlusion,
                     0.0,
                     (float)(terrainProfile >> 2u) * 0.3333333432674408);
@@ -511,7 +522,7 @@ Shader "Hidden/Endfield/Recovered/Endminf/M27LitEffectHGBuffer"
                 }
                 output.gBufferB = float4(
                     mad(octNormal, 0.5, 0.5),
-                    lerp(_Metallic, _MetallicMax, mroSample.g),
+                    roughness,
                     (float)(terrainProfile & 3u) * 0.3333333432674408);
 
                 return output;

@@ -254,7 +254,7 @@
           "componentType": "float"
         }
       ],
-      "ruri": {
+      "historicalHlslReference": {
         "file": "scratch/animestudio/endminf_liteffect_shader/sidecars/Shader/HGRP_LitEffect_p5936F49FA93F14DD.shader.bytecode/ruri_final/parallax_hgbuffer_vertex.hlsl",
         "bytes": 23831,
         "sha256": "766bb181381150caf1e732abb67e885e3388f6a589e8685cc82b8435dd689d9c",
@@ -1463,7 +1463,7 @@
           "componentType": "float"
         }
       ],
-      "ruri": {
+      "historicalHlslReference": {
         "file": "scratch/animestudio/endminf_liteffect_shader/sidecars/Shader/HGRP_LitEffect_p5936F49FA93F14DD.shader.bytecode/ruri_final/parallax_hgbuffer_fragment.hlsl",
         "bytes": 15426,
         "sha256": "7783cc2a916242f273853b115b2b4b67dfb8736940d86220d1cdf91dfe459744",
@@ -2902,7 +2902,7 @@
         "logicalName": "_VertexSkinMatrices",
         "status": "resolved",
         "basis": [
-          "DXBC/Ruri t0",
+          "DXBC/historical HLSL t0",
           "serialized BufferParameters",
           "Global descriptor binding 19"
         ]
@@ -2914,12 +2914,13 @@
         "name": "_8",
         "register": 0,
         "space": 0,
-        "logicalName": "_ParallaxNoiseMap",
+        "logicalName": "_BaseColorMap",
+        "sampler": "sampler_LinearClamp",
         "status": "resolved",
         "basis": [
-          "Ruri register",
-          "serialized SamplerParameters BindPoint 0..5",
-          "PerMaterial descriptor texture binding 6..11"
+          "historical HLSL physical register",
+          "serialized PerMaterial texture descriptor PackedBinding fragment byte",
+          "pinned static sampler declaration at the same physical slot"
         ]
       },
       {
@@ -2927,12 +2928,13 @@
         "name": "_9",
         "register": 1,
         "space": 0,
-        "logicalName": "_ParallaxMaskMap",
+        "logicalName": "_NormalMap",
+        "sampler": "sampler_LinearRepeat",
         "status": "resolved",
         "basis": [
-          "Ruri register",
-          "serialized SamplerParameters BindPoint 0..5",
-          "PerMaterial descriptor texture binding 6..11"
+          "historical HLSL physical register",
+          "serialized PerMaterial texture descriptor PackedBinding fragment byte",
+          "pinned static sampler declaration at the same physical slot"
         ]
       },
       {
@@ -2940,12 +2942,13 @@
         "name": "_10",
         "register": 2,
         "space": 0,
-        "logicalName": "_ParallaxMap",
+        "logicalName": "_MROMap",
+        "sampler": "sampler_LinearMirror",
         "status": "resolved",
         "basis": [
-          "Ruri register",
-          "serialized SamplerParameters BindPoint 0..5",
-          "PerMaterial descriptor texture binding 6..11"
+          "historical HLSL physical register",
+          "serialized PerMaterial texture descriptor PackedBinding fragment byte",
+          "pinned static sampler declaration at the same physical slot"
         ]
       },
       {
@@ -2953,12 +2956,13 @@
         "name": "_11",
         "register": 3,
         "space": 0,
-        "logicalName": "_NormalMap",
+        "logicalName": "_ParallaxMap",
+        "sampler": "sampler_LinearMirrorOnce",
         "status": "resolved",
         "basis": [
-          "Ruri register",
-          "serialized SamplerParameters BindPoint 0..5",
-          "PerMaterial descriptor texture binding 6..11"
+          "historical HLSL physical register",
+          "serialized PerMaterial texture descriptor PackedBinding fragment byte",
+          "pinned static sampler declaration at the same physical slot"
         ]
       },
       {
@@ -2966,12 +2970,13 @@
         "name": "_12",
         "register": 4,
         "space": 0,
-        "logicalName": "_MROMap",
+        "logicalName": "_ParallaxMaskMap",
+        "sampler": "sampler_PointClamp",
         "status": "resolved",
         "basis": [
-          "Ruri register",
-          "serialized SamplerParameters BindPoint 0..5",
-          "PerMaterial descriptor texture binding 6..11"
+          "historical HLSL physical register",
+          "serialized PerMaterial texture descriptor PackedBinding fragment byte",
+          "pinned static sampler declaration at the same physical slot"
         ]
       },
       {
@@ -2979,12 +2984,13 @@
         "name": "_13",
         "register": 5,
         "space": 0,
-        "logicalName": "_BaseColorMap",
+        "logicalName": "_ParallaxNoiseMap",
+        "sampler": "sampler_PointRepeat",
         "status": "resolved",
         "basis": [
-          "Ruri register",
-          "serialized SamplerParameters BindPoint 0..5",
-          "PerMaterial descriptor texture binding 6..11"
+          "historical HLSL physical register",
+          "serialized PerMaterial texture descriptor PackedBinding fragment byte",
+          "pinned static sampler declaration at the same physical slot"
         ]
       }
     ],
@@ -3026,6 +3032,45 @@
         "status": "resolved_static_name"
       }
     ]
+  },
+  "unityTransportPorts": {
+    "sourceProvenSubgraph": {
+      "physicalTextures": {
+        "0": "_BaseColorMap",
+        "1": "_NormalMap",
+        "2": "_MROMap",
+        "3": "_ParallaxMap",
+        "4": "_ParallaxMaskMap",
+        "5": "_ParallaxNoiseMap"
+      },
+      "physicalSamplers": {
+        "0": "sampler_LinearClamp",
+        "1": "sampler_LinearRepeat",
+        "2": "sampler_LinearMirror",
+        "3": "sampler_LinearMirrorOnce",
+        "4": "sampler_PointClamp",
+        "5": "sampler_PointRepeat"
+      },
+      "mroChannels": {
+        "r": "metallic",
+        "g": "roughness",
+        "b": "occlusion"
+      },
+      "parallax": "march _ParallaxNoiseMap.r with PointRepeat, then sample _ParallaxMap.g with LinearMirrorOnce",
+      "mipTransport": "SampleBias uses live _GlobalMipBias and parallax height gradients use live _GlobalMipBiasPow2",
+      "baseMaterial": "saturate(BaseColorMap.rgb * BaseColor.rgb * BaseColorBrighterScale), then BaseColorTintCover",
+      "fixedState": "ZTest GEqual, ZWrite On, Cull Back"
+    },
+    "exactM27Producer": {
+      "path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Shaders/Recovered/EndfieldEndminfM27HGBuffer.shader",
+      "sha256": "666f7930717fff915d88efe49fa838da02d0a605e8f0c6ba23a5dc6e867497b9",
+      "classification": "source_equation_port_consumer_still_gated"
+    },
+    "m01M38Compatibility": {
+      "path": "unity_endfield_graph_shader_lab/Assets/EndfieldGraphShaderLab/Shaders/Recovered/EndfieldEndminfLitEffectVisualCompatibility.shader",
+      "sha256": "24acac1a4a9c3dc15742fd3b24c589fea50d6301a1dc95b705eb8db05c94a71a",
+      "classification": "source_sampling_subgraph_forward_presentation_non_exact"
+    }
   },
   "crossPlatformSpirv": {
     "vertex": [
@@ -3106,7 +3151,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       },
       {
@@ -3122,7 +3167,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       },
       {
@@ -3139,7 +3184,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       }
     ],
@@ -3158,7 +3203,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       },
       {
@@ -3175,7 +3220,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       },
       {
@@ -3191,7 +3236,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       },
       {
@@ -3208,7 +3253,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       },
       {
@@ -3224,7 +3269,7 @@
         "basis": [
           "serialized PackedBinding stage/register bytes",
           "same-blob SPIR-V descriptor set/binding and block size",
-          "DXBC/Ruri used-prefix size"
+          "DXBC/historical HLSL used-prefix size"
         ]
       }
     ],
@@ -4775,7 +4820,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4790,7 +4835,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4805,7 +4850,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4820,7 +4865,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4835,7 +4880,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4850,7 +4895,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4865,7 +4910,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4880,7 +4925,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4895,7 +4940,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4910,7 +4955,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4925,7 +4970,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4950,7 +4995,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4965,7 +5010,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4980,7 +5025,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -4995,7 +5040,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -5030,7 +5075,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {
@@ -5045,7 +5090,7 @@
           "Endfield combined-program constant-buffer table",
           "serialized PerMaterial descriptor binding 12",
           "same-blob SPIR-V 576-byte layout",
-          "DXBC/Ruri fragment b3 496-byte used prefix"
+          "DXBC/historical HLSL reference fragment b3 496-byte used prefix"
         ]
       },
       {

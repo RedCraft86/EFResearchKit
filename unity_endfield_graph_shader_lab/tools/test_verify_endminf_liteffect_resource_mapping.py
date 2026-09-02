@@ -73,6 +73,257 @@ class LitEffectResourceMappingTests(unittest.TestCase):
             self.assertEqual(rows["_ParallaxNoiseMap"]["status"], "gap")
             self.assertEqual(rows["_ParallaxMaskMap"]["status"], "gap")
 
+    def test_physical_texture_and_static_sampler_map_uses_packed_binding(self) -> None:
+        report = MODULE.build_report()
+        textures = {
+            row["register"]: (row["logicalName"], row["sampler"])
+            for row in report["resources"]["fragmentTextures"]
+        }
+        self.assertEqual(
+            textures,
+            {
+                slot: (
+                    MODULE.EXPECTED_FRAGMENT_TEXTURE_REGISTERS[slot],
+                    MODULE.EXPECTED_FRAGMENT_SAMPLERS[slot],
+                )
+                for slot in range(6)
+            },
+        )
+        self.assertEqual(textures[0], ("_BaseColorMap", "sampler_LinearClamp"))
+        self.assertEqual(textures[2], ("_MROMap", "sampler_LinearMirror"))
+        self.assertEqual(textures[3], ("_ParallaxMap", "sampler_LinearMirrorOnce"))
+        self.assertEqual(textures[5], ("_ParallaxNoiseMap", "sampler_PointRepeat"))
+
+    def test_unity_ports_preserve_source_sampling_subgraph(self) -> None:
+        report = MODULE.build_report()
+        ports = report["unityTransportPorts"]
+        source = ports["sourceProvenSubgraph"]
+        self.assertEqual(
+            source["mroChannels"],
+            {"r": "metallic", "g": "roughness", "b": "occlusion"},
+        )
+        self.assertIn("_ParallaxNoiseMap.r", source["parallax"])
+        self.assertIn("_ParallaxMap.g", source["parallax"])
+        self.assertEqual(
+            ports["exactM27Producer"]["classification"],
+            "source_equation_port_consumer_still_gated",
+        )
+        self.assertEqual(
+            ports["m01M38Compatibility"]["classification"],
+            "source_sampling_subgraph_forward_presentation_non_exact",
+        )
+        exact = MODULE.EXACT_UNITY_PORT.read_text(encoding="utf-8")
+        compatibility = MODULE.COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+        self.assertIn(
+            "ddx_coarse(input.uv0) * _GlobalMipBiasPow2",
+            exact,
+        )
+        self.assertIn("ZTest GEqual", exact)
+        self.assertIn("Cull Back", exact)
+        self.assertNotIn("ZTest Off", exact)
+        self.assertNotIn("Cull Off", exact)
+        self.assertIn(
+            "ddx_coarse(input.uv0) * _GlobalMipBiasPow2",
+            compatibility,
+        )
+        self.assertIn(
+            "sampler_LinearClamp, baseUV, _GlobalMipBias",
+            compatibility,
+        )
+        self.assertNotIn("_RecoveredM27ParallaxGradientScale", exact)
+
+    def test_obsolete_m27_fixed_state_fails_closed(self) -> None:
+        exact = MODULE.EXACT_UNITY_PORT.read_text(encoding="utf-8")
+        compatibility = MODULE.COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+        mutated = exact.replace("ZTest GEqual", "ZTest Off", 1)
+        with self.assertRaisesRegex(
+            MODULE.VerificationError,
+            "source sampling transport drifted|fixed state drifted",
+        ):
+            MODULE._validate_unity_transport_ports(mutated, compatibility)
+
+    def test_swapped_unity_parallax_roles_fail_closed(self) -> None:
+        exact = MODULE.EXACT_UNITY_PORT.read_text(encoding="utf-8")
+        compatibility = MODULE.COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+        mutated = exact.replace(
+            "_ParallaxNoiseMap.SampleGrad(",
+            "_ParallaxMap.SampleGrad(",
+            1,
+        )
+        with self.assertRaisesRegex(
+            MODULE.VerificationError,
+            "source sampling transport drifted",
+        ):
+            MODULE._validate_unity_transport_ports(mutated, compatibility)
+
+    def test_swapped_unity_mro_roles_fail_closed(self) -> None:
+        exact = MODULE.EXACT_UNITY_PORT.read_text(encoding="utf-8")
+        compatibility = MODULE.COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+        mutated = compatibility.replace(
+            "mro.r,",
+            "mro.g,",
+            1,
+        )
+        with self.assertRaisesRegex(
+            MODULE.VerificationError,
+            "source sampling transport drifted",
+        ):
+            MODULE._validate_unity_transport_ports(exact, mutated)
+
+    def test_coupled_unity_sampler_channel_field_and_uv_attacks_fail_closed(self) -> None:
+        exact = MODULE.EXACT_UNITY_PORT.read_text(encoding="utf-8")
+        compatibility = MODULE.COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+        attacks = (
+            (
+                exact.replace(
+                    "float sampledHeight = _ParallaxNoiseMap.SampleGrad(\n"
+                    "                        sampler_PointRepeat,",
+                    "float sampledHeight = _ParallaxNoiseMap.SampleGrad(\n"
+                    "                        sampler_LinearClamp,",
+                    1,
+                ),
+                compatibility,
+            ),
+            (
+                exact.replace(
+                    "float4 baseSample = _BaseColorMap.SampleBias(\n"
+                    "                    sampler_LinearClamp,",
+                    "float4 baseSample = _BaseColorMap.SampleBias(\n"
+                    "                    sampler_LinearRepeat,",
+                    1,
+                ),
+                compatibility,
+            ),
+            (
+                exact.replace("mroSample.b - 1.0", "mroSample.r - 1.0", 1),
+                compatibility,
+            ),
+            (
+                exact,
+                compatibility.replace(
+                    "float sampledHeight = _ParallaxNoiseMap.SampleGrad(\n"
+                    "                        sampler_PointRepeat,",
+                    "float sampledHeight = _ParallaxNoiseMap.SampleGrad(\n"
+                    "                        sampler_LinearClamp,",
+                    1,
+                ),
+            ),
+            (
+                exact,
+                compatibility.replace(
+                    "normalXY * _NormalScale,",
+                    "normalXY,",
+                    1,
+                ),
+            ),
+            (
+                exact,
+                compatibility.replace(
+                    "input.uv1, _BaseUVSet) *",
+                    "input.uv1, _BasePbrMapUVSet) *",
+                    1,
+                ),
+            ),
+        )
+        for mutated_exact, mutated_compatibility in attacks:
+            self.assertTrue(
+                mutated_exact != exact or mutated_compatibility != compatibility,
+                "test mutation did not alter either Unity port",
+            )
+            with self.assertRaisesRegex(
+                MODULE.VerificationError,
+                "source sampling transport drifted",
+            ):
+                MODULE._validate_unity_transport_ports(
+                    mutated_exact,
+                    mutated_compatibility,
+                )
+
+    def test_post_definition_transport_reroutes_fail_closed(self) -> None:
+        exact = MODULE.EXACT_UNITY_PORT.read_text(encoding="utf-8")
+        compatibility = MODULE.COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+        attacks = (
+            exact.replace(
+                "float roughness = lerp(",
+                "metallic = mroSample.g;\n                float roughness = lerp(",
+                1,
+            ),
+            exact.replace(
+                "float fresnel = exp2(",
+                "parallaxSample = _MROMap.SampleBias("
+                "sampler_LinearMirror, pbrUV, 0.0).r;\n"
+                "                float fresnel = exp2(",
+                1,
+            ),
+            exact.replace(
+                "float4 baseSample = _BaseColorMap.SampleBias(",
+                "baseUV = input.uv0;\n                "
+                "float4 baseSample = _BaseColorMap.SampleBias(",
+                1,
+            ),
+        )
+        for mutated in attacks:
+            self.assertNotEqual(mutated, exact, "test mutation did not alter exact port")
+            with self.assertRaisesRegex(
+                MODULE.VerificationError,
+                "single-assignment",
+            ):
+                MODULE._validate_unity_transport_ports(mutated, compatibility)
+
+    def test_indirect_and_post_output_transport_reroutes_fail_closed(self) -> None:
+        exact = MODULE.EXACT_UNITY_PORT.read_text(encoding="utf-8")
+        compatibility = MODULE.COMPATIBILITY_UNITY_PORT.read_text(
+            encoding="utf-8")
+        attacks = (
+            exact.replace(
+                "            M27HGBufferOutput Frag(",
+                "            void RerouteMro(inout float4 target) "
+                "{ target = target.grba; }\n\n"
+                "            M27HGBufferOutput Frag(",
+                1,
+            ).replace(
+                "                float metallic = lerp(",
+                "                RerouteMro(mroSample);\n"
+                "                float metallic = lerp(",
+                1,
+            ),
+            exact.replace(
+                "                return output;",
+                "                output.gBufferA = "
+                "float4(roughness, metallic, 0.0, 0.0);\n"
+                "                return output;",
+                1,
+            ),
+            exact.replace(
+                "            float _GlobalMipBiasPow2;",
+                "            float _GlobalMipBiasPow2;\n"
+                "            #define _GlobalMipBiasPow2 0.0",
+                1,
+            ),
+            exact.replace(
+                "                float2 baseUV = mad(",
+                "                #if 0\n"
+                "                float2 baseUV = mad(",
+                1,
+            ).replace(
+                "                return output;",
+                "                return output;\n"
+                "                #endif\n"
+                "                return (M27HGBufferOutput)0;",
+                1,
+            ),
+        )
+        for mutated in attacks:
+            self.assertNotEqual(mutated, exact, "test mutation did not alter exact port")
+            with self.assertRaises(MODULE.VerificationError):
+                MODULE._validate_unity_transport_ports(mutated, compatibility)
+
     def test_constant_buffer_sizes_and_known_fields(self) -> None:
         report = MODULE.build_report()
         vertex = {row["register"]: row for row in report["constantBuffers"]["vertex"]}
@@ -178,6 +429,33 @@ class LitEffectResourceMappingTests(unittest.TestCase):
         MODULE._compact_metadata = altered
         try:
             with self.assertRaisesRegex(MODULE.VerificationError, "PerMaterial descriptor"):
+                MODULE.build_report()
+        finally:
+            MODULE._compact_metadata = original
+
+    def test_texture_packed_binding_attack_fails_closed(self) -> None:
+        original = MODULE._compact_metadata
+
+        def altered(path: Path):
+            value = original(path)
+            if path.name.startswith("0115_"):
+                binding = next(
+                    row
+                    for row in value["descriptorSets"][1]["Bindings"]
+                    if row.get("DescriptorType") == 2 and
+                    row.get("Name") == "_MROMap"
+                )
+                binding["PackedBinding"] = (
+                    int(binding["PackedBinding"]) & ~(0xFF << 16)
+                ) | (5 << 16)
+            return value
+
+        MODULE._compact_metadata = altered
+        try:
+            with self.assertRaisesRegex(
+                MODULE.VerificationError,
+                "PackedBinding|physical texture register map",
+            ):
                 MODULE.build_report()
         finally:
             MODULE._compact_metadata = original

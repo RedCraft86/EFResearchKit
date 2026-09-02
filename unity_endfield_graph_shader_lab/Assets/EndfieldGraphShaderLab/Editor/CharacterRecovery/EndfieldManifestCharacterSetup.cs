@@ -5969,11 +5969,86 @@ namespace EndfieldGraphShaderLabEditor
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             ManifestCharacterSpec endminf = PlayableCatalogCharacters().Single(character =>
                 string.Equals(character.RootName, "Endminf", StringComparison.OrdinalIgnoreCase));
-            GameObject root = BuildCharacter(endminf);
+            ActorBuildResult actor = BuildActor(
+                endminf.ManifestAssetPath,
+                endminf.RootName,
+                endminf.DisplayName,
+                endminf.SceneOffset,
+                endminf.Active,
+                endminf.PreviewClipPreference,
+                endminf.IncludeVariants,
+                rebuildAnimationAssets: true,
+                clearGeneratedAssets: false,
+                rebuildMeshAssets: true,
+                rebuildMaterialAssets: true,
+                configureSourceCharacterSemantics: true);
+            GameObject root = actor.Root;
             if (root == null)
                 throw new InvalidOperationException(
                     "Endminf manifest character rebuild returned no root");
+            ValidateEndminfBodyRecovery(root);
 
+            UnityEngine.Object.DestroyImmediate(root);
+            EndfieldEndminfOverviewEffectBindingBuilder.BuildAndValidate();
+            EndfieldEndminfLitEffectCompatibilityBindingBuilder.BuildAndValidate();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Debug.Log(
+                "Endminf outline mesh refresh complete: six TEXCOORD2 float4 streams " +
+                "preserved and overview effect augmentations restored.");
+        }
+
+        [MenuItem("Endfield/Character Recovery Lab/Rebuild Endminf Source Recovery")]
+        public static void RebuildEndminfSourceRecovery()
+        {
+            RecoveredAclClipDataImporter.ImportConfigured();
+            EnsureFolders();
+            EditorSceneManager.NewScene(
+                NewSceneSetup.EmptyScene,
+                NewSceneMode.Single);
+            ManifestCharacterSpec endminf = PlayableCatalogCharacters().Single(
+                character => string.Equals(
+                    character.RootName,
+                    "Endminf",
+                    StringComparison.OrdinalIgnoreCase));
+            ActorBuildResult actor = BuildActor(
+                endminf.ManifestAssetPath,
+                endminf.RootName,
+                endminf.DisplayName,
+                endminf.SceneOffset,
+                endminf.Active,
+                endminf.PreviewClipPreference,
+                endminf.IncludeVariants,
+                rebuildAnimationAssets: true,
+                clearGeneratedAssets: false,
+                rebuildMeshAssets: true,
+                rebuildMaterialAssets: true,
+                configureSourceCharacterSemantics: true);
+            if (actor == null || actor.Root == null)
+                throw new InvalidOperationException(
+                    "Endminf source rebuild returned no actor root");
+            ValidateEndminfBodyRecovery(actor.Root);
+            UnityEngine.Object.DestroyImmediate(actor.Root);
+
+            // Dependency order is deliberate: the exact stage replaces all
+            // four prefab contents and its two v2 AnimationClips; LitEffect
+            // then restores its source-material rows; the actor binding runs
+            // last so every serialized direct prefab reference targets those
+            // newly validated assets.
+            EndfieldEndminfOverviewEffectImporter.BuildAndValidate();
+            EndfieldEndminfLitEffectCompatibilityBindingBuilder.BuildAndValidate();
+            EndfieldEndminfOverviewEffectBindingBuilder.BuildAndValidate();
+            EndfieldSecondaryDynamicsBindingBuilder.VerifyGeneratedEndminfBinding();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Debug.Log(
+                "Endminf source recovery rebuilt: body animation/ACL, four v2 " +
+                "Overview roots, exact effect clips, source materials, direct " +
+                "bindings, and secondary-dynamics saved contracts validated.");
+        }
+
+        private static void ValidateEndminfBodyRecovery(GameObject root)
+        {
             string[] outlineMeshes =
             {
                 "S_actor_endminf_face_01_lod0",
@@ -6001,14 +6076,27 @@ namespace EndfieldGraphShaderLabEditor
                 }
             }
 
-            UnityEngine.Object.DestroyImmediate(root);
-            EndfieldEndminfOverviewEffectBindingBuilder.BuildAndValidate();
-            EndfieldEndminfLitEffectCompatibilityBindingBuilder.BuildAndValidate();
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-            Debug.Log(
-                "Endminf outline mesh refresh complete: six TEXCOORD2 float4 streams " +
-                "preserved and overview effect augmentations restored.");
+            EndfieldOverviewPlayback playback =
+                root.GetComponent<EndfieldOverviewPlayback>();
+            RecoveredAclAnimatorPoseDriver driver =
+                root.GetComponent<RecoveredAclAnimatorPoseDriver>();
+            if (playback == null || playback.animatorSource == null ||
+                !playback.requireAnimatorContract || driver == null ||
+                driver.animatorSource != playback.animatorSource ||
+                driver.poseRoot != root.transform || driver.states == null ||
+                driver.states.Length != 2 ||
+                driver.states.Any(state => state.clip == null ||
+                    !state.clip.TryValidate(out string _)) ||
+                driver.states.Count(state => state.fullStatePath ==
+                    playback.animatorStartStatePath) != 1 ||
+                driver.states.Count(state => state.fullStatePath ==
+                    playback.animatorLoopStatePath) != 1 ||
+                !driver.Rebind())
+            {
+                throw new InvalidDataException(
+                    "Endminf saved Animator/ACL source recovery is incomplete: " +
+                    (driver == null ? "pose driver is missing" : driver.BindingFailure));
+            }
         }
 
         private sealed class ActorBuildResult
@@ -11109,7 +11197,7 @@ namespace EndfieldGraphShaderLabEditor
             operatorLights.sourceBackedPunctualShadowTileResolution =
                 operatorLights.sourceBackedIsolatedPunctualSoftShadowProducer
                     ? ReadRecoveredPunctualShadowTileResolution()
-                    : 1024;
+                    : 512;
             if (!EndfieldOriginalOperatorLightImporter.TryRead(
                     lightingActorName,
                     out EndfieldHGOperatorLightData[] originalOperatorLights,
@@ -12436,10 +12524,19 @@ namespace EndfieldGraphShaderLabEditor
             camera.transform.rotation = Quaternion.LookRotation(
                 lookAtPosition - cameraPosition,
                 Vector3.up);
+            CharacterRecoveryPresentationProfile presentationProfile =
+                EndfieldPlayableCharInfoProfileBuilder.LoadProfile(actorName);
+            if (presentationProfile == null || !presentationProfile.sourceRecovered)
+            {
+                throw new InvalidOperationException(
+                    $"No source-recovered CharInfo presentation profile exists for " +
+                    $"gyroscope actor '{actorName}'.");
+            }
             EndfieldRecoveredCharInfoGyroscopeCameraState.TryApplyOverview(
                 camera,
                 actorName,
-                lookAtPosition);
+                lookAtPosition,
+                presentationProfile.gyroscopeEntryOffsets);
             camera.nearClipPlane = cameraEntry.NearClipPlane;
             camera.farClipPlane = cameraEntry.FarClipPlane;
             EndfieldRecoveredCharInfoSky sourceSky =
@@ -12572,10 +12669,11 @@ namespace EndfieldGraphShaderLabEditor
                 RecoveredPunctualShadowTileResolutionEnvironmentVariable);
             if (string.IsNullOrWhiteSpace(value))
             {
-                // Installed RTX 5080 device-default HGRP tier 5000 resolves to
-                // the recovered desktop B=1024 profile. B=512 remains an exact
-                // source-backed lower quality profile, not a fitted option.
-                return 1024;
+                // HGSettingParameters constructs the pinned installed native
+                // default as B=512 before any runtime/quality override. Keep
+                // the capture-observed B=1024 route explicit until its owner
+                // and selection predicate are source-closed.
+                return 512;
             }
 
             int resolution;
