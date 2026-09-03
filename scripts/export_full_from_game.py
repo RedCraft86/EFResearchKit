@@ -65,16 +65,17 @@ SOURCE_FINGERPRINT_EXCLUDED_TOP_LEVEL = {
 ANIMESTUDIO_STAGES = ("maps", "convert_by_type", "json_by_type")
 ANIMESTUDIO_SCOPES = ("story", "assets", "all")
 ANIMESTUDIO_ASSET_MODES = ("focused", "default", "debug")
-STRUCTURED_DUMP_MODES = ("webui", "full", "debug")
+STRUCTURED_DUMP_MODES = ("focused", "default", "debug")
 WORLD_SCENE_CHUNK_SPEC_RE = re.compile(
     r"^(?P<map>[A-Za-z0-9_]+):(?P<x>-?\d+):(?P<z>-?\d+)$"
 )
-WEBUI_STRUCTURED_REQUIRED_BLOCK_TYPES = (
+FOCUSED_STRUCTURED_BLOCK_TYPES = (
     "table",
     "json-data",
     "video",
     "audit-video",
 )
+TERRAIN_HEIGHT_FILE_REGEX = r"^Data/Terrain/PC/[^/]+/Terrain_[0-9]+_[0-9]+_[0-9]+_H\.bytes$"
 ANIMESTUDIO_STAGE_MERGE_MODES = ("auto", "never", "aggressive")
 ANIMESTUDIO_STAGE_MERGE_PRIMARY_STAGE = "convert_by_type"
 ANIMESTUDIO_STAGE_MERGE_SECONDARY_STAGE = "json_by_type"
@@ -335,6 +336,7 @@ class CommandResult:
     stdout_log: str
     stderr_log: str
     object_index_jsonl: str | None = None
+    managed_reference_diagnostics_jsonl: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2114,6 +2116,20 @@ def build_animestudio_stage_signature(stage: str, options: dict[str, Any], type_
             "external_resolution": ANIMESTUDIO_OBJECT_INDEX_EXTERNAL_RESOLUTION,
             "scalar_policy": ANIMESTUDIO_OBJECT_INDEX_SCALAR_POLICY,
         }
+    if (
+        options.get("managed_reference_diagnostics_enabled")
+        and stage == "json_by_type"
+        and type_spec is not None
+        and animestudio_type_name(type_spec) == "MonoBehaviour"
+    ):
+        signature["managed_reference_diagnostics"] = {
+            "enabled": True,
+            "type_regex": list(options.get("managed_reference_diagnostic_types") or ()),
+            "include_exact_matches": bool(
+                options.get("managed_reference_diagnostics_include_exact_matches")
+            ),
+            "sidecar_schema": "endfield-animestudio-managed-reference-diagnostics-v1",
+        }
     return signature
 
 
@@ -2176,6 +2192,7 @@ def plan_animestudio_stage(
         "run_items": run_items,
         "forced_refresh_items": [],
         "item_file_counts": {},
+        "item_marker_file_counts": {},
         "type_specs_to_run": tuple(type_specs_to_run),
         "should_run": bool(run_items),
         "cache_state": "no_cache",
@@ -2211,10 +2228,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--structured-dump-mode",
         choices=STRUCTURED_DUMP_MODES,
-        default="webui",
+        default="focused",
         help=(
-            "`webui` and `full` dump only WebUI-required structured VFS data and skip audio PCK/media files. "
-            "`debug` preserves the old broad dump of every dumpable block type."
+            "`focused` dumps the compact Story/Table/video VFS set; `default` also dumps Terrain `_H` height grids. "
+            "Both skip audio PCK/media files. `debug` dumps every dumpable block type."
         ),
     )
     parser.add_argument(
@@ -2264,6 +2281,32 @@ def parse_args() -> argparse.Namespace:
             "Build a deterministic original-data object/PPtr index for selected "
             "MonoBehaviour and PlayableDirector JSON jobs. This is opt-in because "
             "a broad Story export produces a large diagnostic index."
+        ),
+    )
+    parser.add_argument(
+        "--animestudio-managed-reference-diagnostics",
+        action="store_true",
+        help=(
+            "Write opt-in atomic JSONL sidecars containing exact payload bytes and "
+            "cursor evidence for partial MonoBehaviour managed references."
+        ),
+    )
+    parser.add_argument(
+        "--animestudio-managed-reference-diagnostic-type",
+        action="append",
+        default=[],
+        metavar="REGEX",
+        help=(
+            "Limit managed-reference diagnostics to matching assembly::namespace.class "
+            "identities. May be repeated; without it all partial managed references are selected."
+        ),
+    )
+    parser.add_argument(
+        "--animestudio-managed-reference-diagnostics-include-exact-matches",
+        action="store_true",
+        help=(
+            "Include exact decoded references matching the explicit diagnostic type filters. "
+            "This requires --animestudio-managed-reference-diagnostics and at least one type filter."
         ),
     )
     parser.add_argument(
@@ -2535,13 +2578,28 @@ def structured_dump_steps_with_world_scenes(
 ) -> list[dict[str, Any]]:
     if mode == "debug":
         return [{"name": "debug_all", "block_types": (), "file_regexes": ()}]
+    if mode not in {"focused", "default"}:
+        raise ValueError(f"unsupported structured dump mode: {mode}")
     steps = [
         {
             "name": "required",
-            "block_types": WEBUI_STRUCTURED_REQUIRED_BLOCK_TYPES,
+            "block_types": FOCUSED_STRUCTURED_BLOCK_TYPES,
             "file_regexes": (),
         },
     ]
+    if mode == "default":
+        # Terrain's six equal-sized record families total roughly 1.1 GiB in
+        # the current build. Map recovery needs only the compact `_H` height
+        # grids (about 64 MiB), so keep the production dump proportional to its
+        # consumer instead of exporting C/T/S/A/N payloads speculatively.
+        steps.append(
+            {
+                "name": "terrain_height",
+                "block_types": ("terrain",),
+                "file_regexes": (TERRAIN_HEIGHT_FILE_REGEX,),
+                "sources": ("StreamingAssets",),
+            }
+        )
     if world_scene_chunks:
         steps.append(
             {
@@ -2734,6 +2792,33 @@ def animestudio_object_index_part_path(
     return animestudio_object_index_dir(output_root, source) / "parts" / f"{safe_name}.jsonl"
 
 
+def animestudio_managed_reference_diagnostics_dir(output_root: Path, source: str) -> Path:
+    return animestudio_source_root(output_root, source) / "managed_reference_diagnostics"
+
+
+def animestudio_managed_reference_diagnostics_part_path(
+    output_root: Path,
+    source: str,
+    command_name: str,
+) -> Path:
+    safe_name = animestudio_log_suffix(command_name)
+    if safe_name != command_name:
+        safe_name = f"{safe_name}_{stable_hash(command_name)[:12]}"
+    return animestudio_managed_reference_diagnostics_dir(output_root, source) / "parts" / f"{safe_name}.jsonl"
+
+
+def animestudio_managed_reference_diagnostics_export_is_relevant(
+    stage: str,
+    export_type: str | None,
+    type_specs: tuple[str, ...],
+) -> bool:
+    return (
+        stage == "json_by_type"
+        and str(export_type or "").lower() == "json"
+        and any(animestudio_type_name(type_spec) == "MonoBehaviour" for type_spec in type_specs)
+    )
+
+
 def animestudio_object_index_export_is_relevant(
     stage: str,
     export_type: str | None,
@@ -2793,6 +2878,50 @@ def count_files(path: Path) -> int:
     if not path.exists():
         return 0
     return sum(1 for item in path.rglob("*") if item.is_file())
+
+
+def refresh_animestudio_plan_output_counts(
+    output_root: Path,
+    source: str,
+    stage: str,
+    plan: dict[str, Any],
+) -> None:
+    """Record every selected type's actual files after its stage has run.
+
+    A stage can dispatch several type items in one merged process, and an
+    asset-map/report-only path can populate one type's status before the other
+    items are summarized.  Counting while each item is processed therefore
+    loses siblings (the old ``item_file_counts`` map retained only whichever
+    type happened to be written last).  The output directories are the final
+    authority: enumerate each selected type once after all workers finish.
+
+    Marker files are real emitted evidence, but they are kept separate so a
+    marker-only directory is not mistaken for a successful decoded asset.
+    """
+    file_counts: dict[str, int] = {}
+    marker_counts: dict[str, int] = {}
+    stage_root = animestudio_stage_dir(output_root, source, stage)
+    for item in plan.get("items", []):
+        type_spec = item.get("type_spec")
+        if type_spec is None:
+            continue
+        type_name = animestudio_type_name(type_spec)
+        if type_name in file_counts:
+            continue
+        type_dir = stage_root / type_name
+        if not type_dir.is_dir():
+            files: list[Path] = []
+        else:
+            # AnimeStudio writes one output file per type directory.  Use a
+            # direct listing so unrelated nested diagnostic files cannot inflate
+            # the emitted asset count.
+            files = [path for path in type_dir.iterdir() if path.is_file()]
+        file_counts[type_name] = len(files)
+        marker_counts[type_name] = sum(
+            1 for path in files if animestudio_is_marker_output_path(path, type_name)
+        )
+    plan["item_file_counts"] = file_counts
+    plan["item_marker_file_counts"] = marker_counts
 
 
 def looks_like_dummy_dll_dir(path: Path) -> bool:
@@ -3534,6 +3663,9 @@ def run_animestudio_stage(
     command_name: str | None = None,
     secondary_export: AnimeStudioSecondaryExport | None = None,
     object_index_enabled: bool = False,
+    managed_reference_diagnostics_enabled: bool = False,
+    managed_reference_diagnostic_types: tuple[str, ...] = (),
+    managed_reference_diagnostics_include_exact_matches: bool = False,
 ) -> CommandResult:
     work_dir = ensure_dir(animestudio_work_dir(output_root))
     stage_out = ensure_dir(animestudio_stage_dir(output_root, source, stage))
@@ -3585,6 +3717,38 @@ def run_animestudio_stage(
             if stale_path.exists():
                 stale_path.unlink()
         cmd.extend(["--object_index_jsonl", str(object_index_jsonl)])
+    managed_reference_diagnostics_jsonl: Path | None = None
+    managed_reference_diagnostics_relevant = animestudio_managed_reference_diagnostics_export_is_relevant(
+        stage,
+        export_type,
+        expanded_types,
+    ) or (
+        secondary_export is not None
+        and animestudio_managed_reference_diagnostics_export_is_relevant(
+            secondary_export.stage,
+            secondary_export.export_type,
+            expanded_secondary_types,
+        )
+    )
+    if managed_reference_diagnostics_enabled and managed_reference_diagnostics_relevant:
+        managed_reference_diagnostics_jsonl = animestudio_managed_reference_diagnostics_part_path(
+            output_root,
+            source,
+            name,
+        )
+        ensure_dir(managed_reference_diagnostics_jsonl.parent)
+        for stale_path in (
+            managed_reference_diagnostics_jsonl,
+            managed_reference_diagnostics_jsonl.with_name(managed_reference_diagnostics_jsonl.name + ".tmp"),
+        ):
+            if stale_path.exists():
+                stale_path.unlink()
+        cmd.extend(["--managed_reference_diagnostics_jsonl", str(managed_reference_diagnostics_jsonl)])
+        if managed_reference_diagnostic_types:
+            cmd.append("--managed_reference_diagnostic_types")
+            cmd.extend(managed_reference_diagnostic_types)
+        if managed_reference_diagnostics_include_exact_matches:
+            cmd.append("--managed_reference_diagnostics_include_exact_matches")
     if mono_behaviour_type_tree_priority and any(
         animestudio_type_name(type_spec) == "MonoBehaviour" for type_spec in combined_type_specs
     ):
@@ -3613,11 +3777,23 @@ def run_animestudio_stage(
             cmd.extend(expanded_secondary_types)
     result = run_logged_command(name, cmd, work_dir, reports_dir, stream_output=True)
     result.object_index_jsonl = str(object_index_jsonl) if object_index_jsonl is not None else None
+    result.managed_reference_diagnostics_jsonl = (
+        str(managed_reference_diagnostics_jsonl)
+        if managed_reference_diagnostics_jsonl is not None
+        else None
+    )
     if result.returncode == 0 and animestudio_cli_usage_error(result):
         log(f"  animestudio command {name} printed CLI usage/validation output; treating as failed")
         result = mark_command_result_failed(result)
     if result.returncode != 0 and object_index_jsonl is not None:
         for failed_path in (object_index_jsonl, object_index_jsonl.with_name(object_index_jsonl.name + ".tmp")):
+            if failed_path.exists():
+                failed_path.unlink()
+    if result.returncode != 0 and managed_reference_diagnostics_jsonl is not None:
+        for failed_path in (
+            managed_reference_diagnostics_jsonl,
+            managed_reference_diagnostics_jsonl.with_name(managed_reference_diagnostics_jsonl.name + ".tmp"),
+        ):
             if failed_path.exists():
                 failed_path.unlink()
     return result
@@ -4391,6 +4567,20 @@ def run_animestudio_stage_merge_plan(
             "command_name": attempt.get("command_name"),
             "secondary_export": secondary_export,
             "object_index_enabled": object_index_enabled,
+            "managed_reference_diagnostics_enabled": bool(
+                primary_options.get("managed_reference_diagnostics_enabled")
+                or secondary_options.get("managed_reference_diagnostics_enabled")
+            ),
+            "managed_reference_diagnostic_types": tuple(
+                ordered_unique(
+                    list(primary_options.get("managed_reference_diagnostic_types") or ())
+                    + list(secondary_options.get("managed_reference_diagnostic_types") or ())
+                )
+            ),
+            "managed_reference_diagnostics_include_exact_matches": bool(
+                primary_options.get("managed_reference_diagnostics_include_exact_matches")
+                or secondary_options.get("managed_reference_diagnostics_include_exact_matches")
+            ),
         },
     }
     run_animestudio_call_tasks([merge_task], jobs=1, call_pool=call_pool)
@@ -4527,6 +4717,15 @@ def run_animestudio_stage_plan(
             "types": type_specs,
             "command_name": command_name,
             "object_index_enabled": object_index_enabled,
+            "managed_reference_diagnostics_enabled": bool(
+                options.get("managed_reference_diagnostics_enabled")
+            ),
+            "managed_reference_diagnostic_types": tuple(
+                options.get("managed_reference_diagnostic_types") or ()
+            ),
+            "managed_reference_diagnostics_include_exact_matches": bool(
+                options.get("managed_reference_diagnostics_include_exact_matches")
+            ),
         }
 
     if normal_items and (stage == "maps" or len(normal_items) <= 1 or merge_normal_items):
@@ -4616,6 +4815,15 @@ def run_animestudio_stage_plan(
                         "types": (type_spec,) if type_spec is not None else (),
                         "command_name": command_name,
                         "object_index_enabled": object_index_enabled,
+                        "managed_reference_diagnostics_enabled": bool(
+                            options.get("managed_reference_diagnostics_enabled")
+                        ),
+                        "managed_reference_diagnostic_types": tuple(
+                            options.get("managed_reference_diagnostic_types") or ()
+                        ),
+                        "managed_reference_diagnostics_include_exact_matches": bool(
+                            options.get("managed_reference_diagnostics_include_exact_matches")
+                        ),
                     },
                 }
             )
@@ -4702,6 +4910,7 @@ def run_animestudio_stage_plan(
     plan["failed_items"] = list(dict.fromkeys(failed))
     plan["stdout_log"] = stdout_log if all_results or plan.get("asset_caches") else default_stdout_log
     plan["stderr_log"] = stderr_log if all_results or plan.get("asset_caches") else default_stderr_log
+    refresh_animestudio_plan_output_counts(output_root, source, stage, plan)
     return all_results
 
 
@@ -5088,6 +5297,23 @@ def summarize_animestudio_source(
             plan.get("forced_refresh_items", []) if plan else previous_stage.get("forced_refresh_items", [])
         )
         result[stage]["item_file_counts"] = plan.get("item_file_counts", {}) if plan else previous_stage.get("item_file_counts", {})
+        result[stage]["item_marker_file_counts"] = (
+            plan.get("item_marker_file_counts", {})
+            if plan
+            else previous_stage.get("item_marker_file_counts", {})
+        )
+        marker_counts = result[stage]["item_marker_file_counts"]
+        if isinstance(marker_counts, dict):
+            result[stage]["marker_file_count"] = sum(
+                int(value) for value in marker_counts.values()
+            )
+            file_counts = result[stage]["item_file_counts"]
+            total_files = sum(int(value) for value in file_counts.values()) if isinstance(file_counts, dict) else 0
+            result[stage]["marker_file_ratio"] = (
+                result[stage]["marker_file_count"] / total_files
+                if total_files
+                else 0.0
+            )
         result[stage]["cache_state"] = plan.get("cache_state") if plan else previous_stage.get("cache_state")
         if plan and plan.get("stage_merge"):
             result[stage]["stage_merge"] = plan["stage_merge"]
@@ -5197,6 +5423,41 @@ def main() -> int:
         args.animestudio_scope,
         bool(args.skip_animestudio),
     )
+    managed_reference_diagnostics_enabled = bool(args.animestudio_managed_reference_diagnostics)
+    managed_reference_diagnostic_types = tuple(
+        ordered_unique(args.animestudio_managed_reference_diagnostic_type)
+    )
+    managed_reference_diagnostics_include_exact_matches = bool(
+        args.animestudio_managed_reference_diagnostics_include_exact_matches
+    )
+    if managed_reference_diagnostic_types and not managed_reference_diagnostics_enabled:
+        raise SystemExit(
+            "--animestudio-managed-reference-diagnostic-type requires "
+            "--animestudio-managed-reference-diagnostics"
+        )
+    if (
+        managed_reference_diagnostics_include_exact_matches
+        and not managed_reference_diagnostics_enabled
+    ):
+        raise SystemExit(
+            "--animestudio-managed-reference-diagnostics-include-exact-matches requires "
+            "--animestudio-managed-reference-diagnostics"
+        )
+    if (
+        managed_reference_diagnostics_include_exact_matches
+        and not managed_reference_diagnostic_types
+    ):
+        raise SystemExit(
+            "--animestudio-managed-reference-diagnostics-include-exact-matches requires "
+            "at least one --animestudio-managed-reference-diagnostic-type"
+        )
+    if managed_reference_diagnostics_enabled and (
+        args.skip_animestudio or args.animestudio_scope not in {"story", "all"}
+    ):
+        raise SystemExit(
+            "--animestudio-managed-reference-diagnostics requires a Story or all-scope "
+            "AnimeStudio MonoBehaviour JSON export"
+        )
     try:
         world_scene_chunks = parse_world_scene_chunks(args.world_scene_chunk)
     except ValueError as exc:
@@ -5329,6 +5590,19 @@ def main() -> int:
         "  animestudio original-data object index: "
         f"{'enabled' if animestudio_object_index_enabled else 'disabled'}"
     )
+    log(
+        "  animestudio managed-reference diagnostics: "
+        f"{'enabled' if managed_reference_diagnostics_enabled else 'disabled'}"
+    )
+    if managed_reference_diagnostics_enabled:
+        log(
+            "  animestudio managed-reference diagnostic types: "
+            + (", ".join(managed_reference_diagnostic_types) or "all partial managed references")
+        )
+        log(
+            "  animestudio managed-reference include exact matches: "
+            f"{'enabled' if managed_reference_diagnostics_include_exact_matches else 'disabled'}"
+        )
     if animestudio_object_index_requested and not animestudio_object_index_enabled:
         log(
             "  animestudio object index ignored: asset-only scope cannot replace "
@@ -5393,6 +5667,11 @@ def main() -> int:
         "object_index_requested": animestudio_object_index_requested,
         "object_index_enabled": animestudio_object_index_enabled,
         "object_index_merge_contract": ANIMESTUDIO_OBJECT_INDEX_MERGE_CONTRACT,
+        "managed_reference_diagnostics_enabled": managed_reference_diagnostics_enabled,
+        "managed_reference_diagnostic_types": list(managed_reference_diagnostic_types),
+        "managed_reference_diagnostics_include_exact_matches": (
+            managed_reference_diagnostics_include_exact_matches
+        ),
         "jobs": animestudio_jobs,
         "type_job_mode": args.animestudio_type_job_mode,
         "stage_merge_mode": args.animestudio_stage_merge_mode,
@@ -5542,6 +5821,13 @@ def main() -> int:
                 options = dict(animestudio_stage_options[stage])
                 options["mono_behaviour_type_tree_priority"] = animestudio_mono_behaviour_type_tree_priority
                 options["object_index_enabled"] = animestudio_object_index_enabled
+                options["managed_reference_diagnostics_enabled"] = (
+                    managed_reference_diagnostics_enabled and stage == "json_by_type"
+                )
+                options["managed_reference_diagnostic_types"] = managed_reference_diagnostic_types
+                options["managed_reference_diagnostics_include_exact_matches"] = (
+                    managed_reference_diagnostics_include_exact_matches
+                )
                 options["asset_cache_enabled"] = False
                 options["asset_shards"] = args.animestudio_shards
                 if stage == "maps":
@@ -5685,6 +5971,10 @@ def main() -> int:
                             item_names=succeeded_items,
                             skip_existing_types=True,
                         )
+                    # Asset status publication may have touched only one type;
+                    # refresh the complete per-type inventory after every stage
+                    # (including merged and shard-backed stages).
+                    refresh_animestudio_plan_output_counts(output_root, source, stage, plan)
                     failed_items = plan.get("failed_items", [])
                     if failed_items:
                         log(f"  animestudio stage {stage} for {source} failed items: {', '.join(failed_items)}")
@@ -5780,6 +6070,7 @@ def main() -> int:
                         stage=stage,
                         plan=plan,
                     )
+                    refresh_animestudio_plan_output_counts(output_root, source, stage, plan)
                     if plan["run_items"]:
                         log(
                             f"  animestudio report-only {stage} for {source}: "

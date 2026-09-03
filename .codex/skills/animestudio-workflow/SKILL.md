@@ -5,8 +5,8 @@ description: Build, run, debug, and modify the local Endfield AnimeStudio export
 
 # AnimeStudio Workflow
 
-Work from the repository root. For normal WebUI refresh decisions, also use
-the `endfield-webui-workflow` skill. Read `references/animestudio.md` before
+Work from the repository root. For WebUI delivery, use the relevant
+specialized WebUI skill. Read `references/animestudio.md` before
 changing exporter code, diagnosing nontrivial logs, or working with DummyDlls;
 it contains CLI details, code structure, and focused verification patterns.
 
@@ -53,6 +53,13 @@ Inspect subcommand help rather than duplicating its full option surface:
 `dump`, `stream`, and `vfs-index` support repeated `--block-type` and
 `--file-regex` filters. Audio defaults to direct lossless FLAC; request WAV or
 WEM only for explicit compatibility needs.
+
+For VFS-format or payload-semantic recovery, start with the "VFS recovery
+evidence index" in `references/animestudio.md`. It maps every active block
+family to its maintained reader, negative fixtures, corpus reports, and the
+remaining evidence boundary. Read the outer-boundary report before an inner
+format report: a valid offset/hash proves the bytes being studied, not their
+internal schema or runtime meaning.
 
 ## Scope and Concurrency
 

@@ -8,12 +8,12 @@ focused development or validation.
 
 | Goal | Command |
 | --- | --- |
-| First-time Story/Text setup | `.\setup_first_time.bat` |
+| First-time Story/Text setup | `.\setup.bat` |
 | Rebuild from the current export | `.\export.bat` |
 | Refresh Story from the game | `.\export.bat --from-game` |
 | Refresh Story and assets together | `.\export.bat --from-game --with-assets` |
-| Story/Mission recovery loop | `.\export.bat --mission-pipeline-only --reuse-timeline-orders --reuse-reference` |
-| Mission Pipeline JSON only | `.\export.bat --mission-pipeline-data-only` |
+| Story recovery loop | `python -m scripts.story_builder.build --languages CN --default-language CN` |
+| Mission Pipeline recovery (standalone, not WebUI) | `python -m scripts.build_mission_pipeline_data --refresh-source-story-gap-queue` |
 | Rebuild post-Story views, assets, and CN audio | `.\export_assets.bat` |
 | Refresh assets/audio and rebuild post-Story views | `.\export_assets.bat --from-game` |
 | Compare exports for Updates | `.\build_updates.bat OLD NEW` |
@@ -21,6 +21,14 @@ focused development or validation.
 
 The wrappers load `endfield_paths.bat`, then apply explicit path flags. Run any
 wrapper with `--help` for its supported options.
+
+For the recovery path and evidence boundary of an individual WebUI page, use
+[`memory/webui/README.md`](../memory/webui/README.md). This file remains the
+command and module-ownership map.
+
+`setup.bat` initializes only the required `tools/AnimeStudio` submodule.
+`endfield_reconstruction_lab` and `tools/EndfieldCapture` are optional and are
+not needed for the normal WebUI build.
 
 ## Export rules
 
@@ -45,8 +53,7 @@ Useful shared flags:
 - The configured `ENDFIELD_EXPORT_ROOT` is passed to installed-game extraction
   as `--output` and to downstream builders as `--export-root`; both halves of
   a run therefore use the same tree.
-- `--story-only`, `--mission-pipeline-only`,
-  `--mission-pipeline-data-only`, and `--assets-only` select the build scope;
+- `--story-only` and `--assets-only` select the wrapper build scope;
   at most one may be given. `--assets-only` skips Story evidence, Story, and
   Text Tables, and implies `--with-assets`; `export_assets.bat` is a thin
   wrapper that adds it.
@@ -71,15 +78,15 @@ a degraded reason instead of using them as direct evidence.
 | Story evidence | `story_builder/refresh_evidence.py` | `reports/story/` evidence |
 | Story links | `story_builder/source_links.py` | localized reference data |
 | Story | `story_builder/build.py` | `webui/data/lang/<LANG>/` |
-| Mission Pipeline | `build_mission_pipeline_data.py` | `webui/data/mission_pipeline/` |
-| Map | `build_map_recovery_data.py --with-preview` publishes map data, renders previews, then refreshes only the preview-backed payload field; `--preview-only` reuses current map data. `build_map_recovery_preview.py [--surface-point-density N]` remains the direct renderer (`N` is exact-surface samples/m2, default `0.25`). `recover_map_streaming_instances.py --level LEVEL [--level LEVEL ...] --jobs N` refreshes schema-2 exact-transform sidecars with one shared AssetMap mesh scan | `export_full/recovered/AnimeStudio-cli/StreamingAssets/map_streaming_instances/`, `reports/assets/map_recovery/`, `webui/data/map_recovery/` |
+| Mission Pipeline recovery | `build_mission_pipeline_data.py` | standalone recovery reports/data |
+| Map | `export.bat` runs map data, then `recover_map_streaming_instances.py --all-published-map-scenes`, then preview publication; a sidecar failure stops the phase instead of silently degrading to registry points. The recovery streams installed-game `InitChunkData` through AnimeStudio.CLI and joins the exported AssetMap/Mesh; colored output additionally needs Material JSON and Texture2D from the default asset scope. `build_map_recovery_data.py --with-preview` remains the direct data/preview path, while `--preview-only` reuses current map data and sidecars. `build_map_recovery_preview.py --refresh-exact-fallbacks-only` cheaply refreshes registry/quest point fallbacks. | `reports/assets/map_recovery/terrain_height_index.json`, `export_full/recovered/AnimeStudio-cli/StreamingAssets/map_streaming_instances/`, `reports/assets/map_recovery/`, `webui/data/map_recovery/` |
 | Lua consumer index | `story_builder/lua_consumer_references.py` | fingerprinted Mission Pipeline evidence |
 | Characters | `build_character_data.py` | character indexes |
 | Gameplay | `build_gameplay.py` | Gameplay datasets |
 | Assets | `build_assets.py` | asset indexes and media lookup |
 | Audio | `build_audio.py` | decoded/relinked audio data |
 | Audio semantics | `build_audio_semantics.py` | compact Audio page evidence and shards |
-| Updates | `build_updates.py` | `webui/data/updates/latest.json` |
+| Updates | `build_updates.py` | `webui/data/updates/latest.json`, `webui/data/updates/characters.json` |
 | Packaging | `pack_webui.py` | distributable static package |
 
 Packaging emits four matching archives. The main archive owns WebUI code and
@@ -111,6 +118,11 @@ four are built:
 in `gameplay_builder/`; its `asset-refs` stage calls the public
 `asset_builder.gameplay_refs` API with the current Gameplay and Assets indexes
 and is the sole writer of `webui/data/assets/gameplay_refs.json`.
+The base stage publishes every exact `chr_0NNN_token` identity registered in
+`StrIdNumTable`, even when `CharacterTable` has no row. Such namespace-only
+records remain visibly evidence-limited and do not claim availability,
+progression, runtime use, or playable status; longer skill/Buff/projectile ids
+and `chr_9*` placeholders are not promoted to characters.
 The base stage also resolves every BuffData id referenced by active Gameplay
 rows into a compact, fail-closed lifecycle/stacking/value catalog. Native enemy
 modifier, ability-event, skill-type, and cooldown-operation enum names are
@@ -166,6 +178,7 @@ AnimeStudio offline recovery probes:
 
 ```bat
 set ASCLI=tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe
+%ASCLI% vfs-audit --streaming-assets PERSISTENT --fallback-assets STREAMING_ASSETS --summary-json reports\animestudio\vfs_understanding_latest.json --ledger-jsonl-gz reports\animestudio\vfs_understanding_files_latest.jsonl.gz --report-md reports\animestudio\vfs_understanding_latest.md
 %ASCLI% shader-recover --input PATH_TO_SPIRV --output PATH_TO_HLSL
 %ASCLI% inspect-object --index OBJECT_INDEX.jsonl --path-id PATH_ID --source SOURCE --type TYPE
 %ASCLI% audit-refs --index OBJECT_INDEX.jsonl
@@ -174,7 +187,10 @@ set ASCLI=tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStud
 %ASCLI% schema-diff --left LEFT.json --right RIGHT.json
 ```
 
-These are bundle-free, fail-closed diagnostics. Object indexes may be JSONL or
+These are bundle-free, fail-closed diagnostics. `vfs-audit` streams each
+selected physical chunk once and intentionally returns non-zero for any missing
+or unauthenticated declaration while still publishing its terminal ledger.
+Object indexes may be JSONL or
 `.jsonl.gz`; `certify-index` requires a complete terminal summary row, `replay`
 uses one `{ "pathId": N, "source": "...", "type": "..." }` request per line,
 and `schema-diff` compares shape rather than values. Keep probes and request
@@ -192,7 +208,8 @@ Production parsing, validation, attachment, and generated schemas live in
 `story_recovery/`; they may import stable builder primitives, but production
 builders must not import or execute recovery modules.
 
-Mission Pipeline reads the canonical shipped-Lua consumer index through
+Mission Pipeline is a standalone recovery/reporting workflow; the WebUI export
+does not run it. It reads the canonical shipped-Lua consumer index through
 `story_builder.lua_consumer_references`; it does not consume a recovery-script
 artifact. Cinematic-handle classification and typed action-producer joins come
 from the reviewed, installed-build-gated
@@ -217,15 +234,15 @@ recovery-script subprocess.
 
 Work in small validated batches:
 
-1. Use focused unit tests, parser probes, or
-   `--mission-pipeline-data-only` while generated Story inputs are current.
+1. Use focused unit tests and parser probes while generated Story inputs are current.
 2. After at least three independent changes, or at the end of a coherent
-   30–60 minute batch, run the canonical `--mission-pipeline-only` rebuild.
+   30–60 minute batch, run the direct Mission Pipeline Python sequence.
 3. Rebuild earlier only for changed installed inputs, stale generated data, or
    a cross-cutting schema change that focused tests cannot validate.
 
-Reuse Timeline order and localized references only when their inputs are
-unchanged. `--reuse-reference` is incompatible with `--from-game`.
+Reuse Timeline order and localized references only through the direct Story
+builder when their inputs are unchanged. These options are not accepted by
+`export.bat` and must not be used with `--from-game`.
 
 Validators fail closed. A failure must name the validator, gate, affected
 mission or Story key, source path, bounded expected/actual values, and relevant
@@ -310,17 +327,16 @@ message IDs, and field offsets have one mutable source of truth.
 
 Prefer `export.bat --from-game --with-assets` when both Story and assets need a
 fresh extraction. When generated Story is already current,
-`export_assets.bat --from-game` refreshes assets/audio and rebuilds Mission
-Pipeline, map recovery, Characters, Gameplay/projectiles, the curated source
+`export_assets.bat --from-game` refreshes assets/audio and rebuilds map
+recovery, Characters, Gameplay/projectiles, the curated source
 graph, and combat relationships. Plain `export_assets.bat` rebuilds the same
 post-Story views while reusing existing decoded assets and audio.
 
 `export_assets.bat` is a thin wrapper around `export.bat --assets-only`, so it
 shares one option parser, runs `verify_export_freshness.py`, and writes a
 benchmark under `reports/export/benchmarks/` with an `export_assets_` label.
-The shared data-only Mission Pipeline plan validates the protocol registry and
-rebuilds Mission Pipeline/map JSON without refreshing Story gap evidence or
-rendering map previews. Asset-only installed-game extraction leaves structured
+Mission Pipeline is no longer part of the post-Story WebUI semantic builders;
+run its direct Python command separately when needed. Asset-only installed-game extraction leaves structured
 Story/Table outputs untouched and preserves their previous source fingerprints;
 its current asset scan is recorded separately, so it cannot make stale Story
 data pass the freshness guard after a client update.
@@ -1297,6 +1313,35 @@ python -m scripts.animestudio.generate_dummydll --replace
 Missing or stale DummyDlls warn and fall back to serialized schemas. Never
 reuse native registration addresses across game builds.
 
+Managed-reference schema work can opt into a separate fail-closed JSONL
+sidecar without changing normal JSON or object-index output:
+
+```bat
+python scripts\export_full_from_game.py --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics
+python scripts\export_full_from_game.py --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics --animestudio-managed-reference-diagnostic-type "AbilitySystemData$"
+python scripts\export_full_from_game.py --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics --animestudio-managed-reference-diagnostic-type "AbilitySystemForEnemyPartData$" --animestudio-managed-reference-diagnostics-include-exact-matches
+```
+
+Each MonoBehaviour worker writes a unique atomic part under
+`export_full/recovered/AnimeStudio-cli/<source>/managed_reference_diagnostics/parts/`.
+Only partial managed references are included by default. Exact class sweeps
+may add `--animestudio-managed-reference-diagnostics-include-exact-matches`,
+which requires at least one explicit diagnostic type filter and includes exact
+and partial matches for those identities. Rows carry exact object/RID/type
+identity, payload offset and length, SHA-256, bounded full base64 payload, and
+reader failure cursors when a focused decoder rejected the payload. When the
+serialized file supplies a matching managed-reference type entry, the row also
+carries its exact script/type hashes and bounded full TypeTree node list so
+field order is tied to the asset's serialized schema rather than runtime
+metadata alone. Payloads
+up to the explicit 1 MiB per-record cap include full base64 bytes; larger rows
+retain their exact range/hash with `truncated=true` and omit base64. A final
+file is published only after a successful worker and ends with a complete
+terminal summary; absent, temporary, truncated, errored, or incomplete parts
+are not evidence. Repeat the type option to constrain capture by
+`assembly::namespace.class` regex. The option is rejected outside Story/all
+MonoBehaviour JSON scope.
+
 ## Updates
 
 Updates compare two complete export folders. Pass `OLD NEW`, or configure
@@ -1317,6 +1362,18 @@ The default scan covers WebUI-facing exported text plus image, model, video,
 and decoded audio assets. `--text-only` omits all assets, `--no-audio` keeps
 other assets, `--exact` hashes contents, and `--full-export-scan` is for broad
 audits only.
+
+Every comparison also writes `webui/data/updates/characters.json` for the
+Characters page. This sidecar compares stable `CharacterTable` keys, complete
+semantic rows, and names resolved through available `I18nTextTable_<LANG>`
+tables on both sides. Only common, valid localization tables participate;
+missing or invalid languages are recorded as degraded instead of changing
+every character. It reports `added`, `modified`, and `deleted` independently of asset
+flags, including under `--text-only`. Missing or invalid `CharacterTable`
+input, invalid overlays, or a table without valid object rows on either side
+publishes an unavailable empty sidecar instead of
+treating the current roster as entirely new. It does not modify or participate
+in `build_character_data.py` recovery and grouping.
 
 Pruning is destructive. Preview byte-identical files in the previous export
 with `.\build_updates.bat --prune-old --dry-run`; run without `--dry-run` only

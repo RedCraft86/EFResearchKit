@@ -15,8 +15,11 @@ Keep the active documentation hierarchy concise:
   exhaustive implementation narrative.
 - `webui/README.md` documents only frontend scope, data layout, and behavior
   contracts.
-- each `memory/*.md` topic records current status, stable evidence boundaries,
-  essential commands, and the highest-value remaining gaps.
+- `memory/webui_recovery.md` documents only the shared WebUI export/publication
+  flow and cross-page contracts.
+- `memory/webui/` contains one recovery guide per active page.
+- the other indexed `memory/*_recovery.md` files document non-UI recovery
+  domains that remain useful independently of any one page.
 
 Fold durable observations, conclusions, and recovery status into the existing
 topic documents under `memory/`. Do not recreate one-file-per-investigation or
@@ -34,8 +37,9 @@ build-specific catalog across files:
   frontend evidence/filter contracts.
 - `memory/game_data_recovery.md` owns durable Wwise, serialized-data, and
   native-consumer conclusions plus the highest-value recovery gaps.
-- `memory/webui_recovery.md` owns the current user-visible Audio recovery
-  state and UI-facing evidence boundary.
+- `memory/webui/audio.md` owns the current user-visible Audio recovery state and
+  UI-facing evidence boundary; `memory/webui_recovery.md` owns only shared
+  cross-page and export contracts.
 - Per-build addresses, method tokens, hashes, mapping tables, and full
   inventories belong in versioned code contracts or generated reports, not in
   `AGENTS.md`, active READMEs, or memory prose. Changing counts belong in
@@ -56,11 +60,11 @@ index can supply both names and hashes.
 ## Commands
 
 ```bat
-.\setup_first_time.bat
+.\setup.bat
 .\export.bat
 .\export.bat --with-assets
 .\export.bat --from-game
-.\export.bat --mission-pipeline-only --reuse-timeline-orders --reuse-reference
+python -m scripts.build_mission_pipeline_data --refresh-source-story-gap-queue
 .\build_updates.bat
 .\build_updates.bat OLD NEW
 .\export_assets.bat
@@ -92,7 +96,7 @@ installed game data are rejected with an explanatory message when
 CRLF: cmd.exe mis-resolves backward `goto` in LF-only batch files, which
 breaks their argument loops.
 
-`setup_first_time.bat` is the user-facing all-in-one first-time setup path. It
+`setup.bat` is the user-facing all-in-one first-time setup path. It
 initializes `tools/AnimeStudio`, builds the AnimeStudio CLI, verifies the
 integrated AnimeStudio VFS/audio commands, runs `export.bat --from-game
 --story-only --animestudio-story-monobehaviour-names`,
@@ -100,6 +104,8 @@ prints optional `export_assets.bat --from-game` and plain `export.bat` follow-up
 commands for the remaining semantic views, explains that Updates requires two
 complete exports, then starts or reuses the default WebUI server.
 Pass `--no-serve` when setup should finish without starting `serve.py`.
+The `endfield_reconstruction_lab` and `tools/EndfieldCapture` submodules are
+optional and are not initialized by this quick-start path.
 
 `export.bat` is the canonical Story/Text Tables and curated semantic-view WebUI rebuild from an existing
 `export_full/`. It verifies that `export_full/` matches the current installed
@@ -118,14 +124,11 @@ rebuilds `reports/source_graph/endfield_source_graph.sqlite` with only the exact
 original AssetMap source/PathID rows consumed by WebUI material, shader,
 texture, and FMV edges, then builds the Combat view. Pass
 `--full-source-graph` only when exhaustive Unity-object/PathID investigation and
-generated graph follow-up reports are required. Pass `--mission-pipeline-only`
-for the Story/Mission Pipeline edit loop; it stops before unrelated semantic
-views and the graph. Pass `--mission-pipeline-data-only` when generated Story
-bundles/evidence are already current and only Mission Pipeline JSON or frontend
-work changed; it verifies export freshness, then deliberately skips Story,
-evidence, other semantic views, and the graph. Its shared data-only plan
-validates the protocol registry and rebuilds Mission Pipeline/map JSON without
-refreshing the source-story gap queue or map previews. The Combat builder refuses graph edges when the database predates
+generated graph follow-up reports are required. For a focused Mission Pipeline
+edit loop, call the direct Python builders listed in the project Mission
+Pipeline skill; the wrapper no longer owns a Mission Pipeline-only scope. The
+data-only sequence omits source-story gap refresh and map preview rendering.
+The Combat builder refuses graph edges when the database predates
 its Gameplay/manifest/asset/AbilityEntity/CharacterTemplate inputs and records a
 visible degraded-mode reason instead of treating stale edges as direct.
 `export.bat` does not refresh `webui/overrides/story_order.json`; active Story
@@ -146,7 +149,7 @@ comparing sizes. The wrapper forwards any other option to
 Use `export_assets.bat` (a thin wrapper around `export.bat --assets-only`, so
 it shares one option parser, freshness check, and benchmark report) when
 generated Story is already current to rebuild
-Mission Pipeline, map recovery, Characters, Gameplay/projectiles, WebUI Assets
+map recovery, Characters, Gameplay/projectiles, WebUI Assets
 indexes, compact Story media, CN audio links, the curated source graph, and
 combat relationships. Pass `--from-game` only when the user explicitly asks
 to run the default AnimeStudio image/model decode, `Material` JSON, and CN
@@ -195,10 +198,10 @@ sharding. `--animestudio-broad-json-jobs N` bounds concurrent broad loads and
 defaults to 1; values above 1 are not supported by any measurement.
 
 For repeated Mission Pipeline recovery builds with unchanged Timeline and
-Table inputs, use `--mission-pipeline-only --reuse-timeline-orders
---reuse-reference`. Reference reuse validates the existing localized reference
-index/files and is rejected with `--from-game`; omit both reuse flags
-after any installed-game refresh.
+Table inputs, use the direct Python sequences in
+`.codex/skills/endfield-mission-pipeline-build/SKILL.md`. Story reference reuse
+belongs to the direct Story builder and must not be used after an installed-game
+refresh.
 
 ### Mission Recovery Edit-Loop Policy
 
@@ -206,11 +209,9 @@ Do not run a canonical Story/Mission Pipeline rebuild after every individual
 recovery edit. Work in small validated batches:
 
 - accumulate at least three independently validated recovery changes before
-  running `export.bat --mission-pipeline-only`, or run it at the end of a
-  coherent 30-60 minute recovery batch;
-- during the batch, use focused unit tests, direct parser/builder probes, and
-  `--mission-pipeline-data-only` when generated Story bundles and evidence are
-  already current;
+  running the direct Mission Pipeline Python sequence, or run it at the end of
+  a coherent 30-60 minute recovery batch;
+- during the batch, use focused unit tests and direct parser/builder probes;
 - focused commits may be made after targeted validation; run the canonical
   rebuild once at the batch boundary before publishing generated WebUI data,
   documenting final counts, or declaring the batch complete;
@@ -284,7 +285,7 @@ longer shell timeout, such as 10-15 minutes (`timeout_ms` of at least
 Unity character recovery lab:
 
 ```bat
-cd unity_endfield_graph_shader_lab
+cd endfield_reconstruction_lab
 .\open_character_recovery_lab.bat
 .\build_all_character_recovery.bat
 ```
@@ -310,9 +311,8 @@ Browser behavior:
 - The Story reset button returns filters to Story sort while preserving
   expanded mission groups.
 - Normal semantic navigation exposes Gameplay and Characters. Mission Pipeline
-  is experimental and hidden unless the top-right `Show debug info` switch is
-  enabled; disabling debug while it is active must normalize to a visible page
-  and URL. The standalone Combat & Projectiles page is retired. Keep useful
+  recovery is standalone and is no longer a WebUI page or export stage. The
+  standalone Combat & Projectiles page is retired. Keep useful
   projectile behavior and playable sound links in Gameplay character skills;
   expose recovered character-skill and enemy SFX there as compact collapsed
   players with inferred ownership labeled;
@@ -341,13 +341,13 @@ Setup and export internals:
   `--fallback-assets <FALLBACK_ASSETS>`. `dump`, `stream`, and `vfs-index` accept repeated
   `--block-type` flags plus repeated `--file-regex` filters; `stream` exposes the
   same targeted VFS filtering for JSONL byte streaming.
-- Installed-game Story exports use `--structured-dump-mode webui` by default:
+- Installed-game Story exports use `--structured-dump-mode focused` by default:
   they dump only WebUI-consumed VFS blocks (`table`, `json-data`, and video)
   and skip raw asset bundles, audio PCK/media files, world-streaming bytes,
   irradiance volumes, extend-data bins, patch bytes, and Lua. `build_audio.py`
   streams Wwise bank metadata directly from VFS when relinking audio events.
-  `--structured-dump-mode full` keeps the same production skip rules; use
-  `--structured-dump-mode debug` only for broad VFS diagnostics.
+  `--structured-dump-mode default` adds Terrain while retaining the production
+  exclusions; use `--structured-dump-mode debug` only for broad VFS diagnostics.
 - `export_assets.bat --from-game` (that is, `export.bat --assets-only
   --from-game`) passes `--skip-structured`, writes a
   lightweight VFS metadata index, runs WebUI-facing image/model/Material
@@ -380,8 +380,7 @@ Browser data inputs and outputs:
   `webui/data/`.
 - Generated browser outputs include `webui/data/manifest.json`,
   `webui/data/lang/<code>/index.json`, `conv/*.json`, `mission/*.json`,
-  `reference/**`, `webui/data/mission_pipeline/index.json`,
-  `webui/data/mission_pipeline/missions/*.json`, `webui/data/gameplay/projectiles.json`,
+  `reference/**`, `webui/data/gameplay/projectiles.json`,
   `webui/data/lang/<code>/gameplay/projectile_audio.json`,
   `webui/data/lang/<code>/gameplay/sound_effects.json`,
   `webui/data/lang/<code>/characters/index.json`,
@@ -394,7 +393,11 @@ Browser data inputs and outputs:
 Tool pointers:
 
 - `tools/AnimeStudio/` is the tracked AnimeStudio fork submodule used by
-  installed-game Story and asset export paths.
+  installed-game Story and asset export paths. During audio or visual recovery,
+  agents may patch this fork and its wrapper integration when doing so improves
+  extraction quality, evidence coverage, or reproducibility. Keep changes
+  narrowly scoped, validate them with the AnimeStudio workflow, and preserve
+  existing fail-closed source/build gates.
 - `tools/endfield_source_graph.py` builds/query local SQLite evidence across
   generated WebUI story/text-table data, selected tables, audio, videos,
   assets, material links, and optional AnimeStudio asset maps.
@@ -421,24 +424,79 @@ Script notes:
 
 ## Memory Maintenance Rule
 
-`memory/` is intentionally flat and limited to the topic files indexed by
-`memory/README.md`. Treat those files as living sources of truth:
+`memory/` is limited to the ownership topics indexed by `memory/README.md`.
+Top-level recovery domains stay flat; the one deliberate exception is
+`memory/webui/`, which contains one guide per active WebUI page. Treat these
+documents as living sources of truth:
 
-- update the current conclusion, evidence boundary, commands, and recovery
-  queue in the owning topic;
-- keep the topic concise; replace superseded conclusions instead of appending
-  investigation chronology, native-address catalogs, hash inventories, or
-  per-session proof logs;
+- update the current conclusion, evidence boundary, essential commands, and
+  recovery queue in the owning topic;
+- keep each top-level recovery topic concise enough to scan as a maintenance
+  contract. Aim for roughly 250 lines or fewer; when a topic grows beyond that,
+  remove report-like detail or split only along a genuinely independent
+  ownership boundary;
+- replace superseded conclusions instead of appending investigation chronology,
+  native-address catalogs, hash inventories, per-session proof logs, long
+  object lists, or case-by-case current-corpus narration;
 - keep changing counts, exhaustive inventories, and generated audits in
   `reports/`, with only headline progress and durable interpretation in memory;
 - keep disposable probes and intermediate output in `scratch/` or `tmp/`;
-- add a new memory file only for a genuinely new durable topic, and update
-  `memory/README.md`, this guidance list, and relevant active docs together.
+- add a new top-level memory file only for a genuinely new durable topic;
+- add or remove a `memory/webui/` guide only with the corresponding active page,
+  and update `memory/README.md`, `memory/webui/README.md`, this guidance list,
+  and relevant active docs together.
 
-The owning topics are WebUI, Story recovery, game-data recovery, semantic asset
-recovery, AnimeStudio exporter recovery, and character render/animation
-recovery. Cross-topic improvement plans should be split into the recovery
-queues of those owning files rather than maintained as a second status source.
+Every `memory/webui/<page>.md` guide follows the same compact structure:
+
+1. purpose;
+2. inputs and recovery flow;
+3. primary generated outputs;
+4. evidence boundary;
+5. focused refresh commands;
+6. highest-value remaining gaps.
+
+Do not put general frontend behavior, a complete script option catalog,
+per-build counts, or long implementation narratives in a page guide. Link to
+`webui/README.md`, `scripts/README.md`, the owning recovery topic, project
+skill, or generated report instead. A page guide describes how evidence reaches
+that page; it does not become a second source of truth for the underlying
+Story, game-data, asset, or exporter semantics.
+
+The owning top-level topics are WebUI/export, Story recovery, game-data
+recovery, semantic asset recovery, AnimeStudio exporter recovery, and character
+render/animation recovery. WebUI page contracts are owned by their page guides;
+cross-page export and frontend rules remain in `memory/webui_recovery.md`.
+Cross-topic improvement plans should be split into the recovery queues of those
+owning files rather than maintained as a second status source.
+
+### Documentation change routing
+
+Update only the layers affected by a durable contract change:
+
+| Changed contract | Required documentation owner |
+| --- | --- |
+| User-facing quick start or headline capability | `README.md` |
+| Script command, module ownership, builder input/output | `scripts/README.md` |
+| Frontend routing, controls, layout, generated-data schema consumption | `webui/README.md` |
+| Shared export phases, wrapper selection, cross-page publication | `memory/webui_recovery.md` |
+| One page's inputs, recovery flow, outputs, evidence boundary, or gaps | matching `memory/webui/<page>.md` |
+| Story reconstruction truth conditions shared across consumers | `memory/game_story_recovery.md` |
+| Raw formats, overlay rules, native gates, gameplay/audio semantics, source graph | `memory/game_data_recovery.md` |
+| Cross-domain Unity asset/entity ownership | `memory/asset_recovery.md` |
+| AnimeStudio extraction, VFS/schema, scheduling, DummyDll, or exporter diagnostics | `memory/animestudio_recovery.md` |
+| Optional Unity character parity lab or retail graphics observation | `memory/character_render_and_animation_recovery.md` |
+
+Do not touch every document after every code change. Update a memory topic only
+when a durable conclusion, boundary, workflow, or recovery queue changed. A
+changing count or one successful/failed run updates its generated report, not
+memory prose. If a change crosses layers, update each actual owner and use links
+instead of copying the same explanation.
+
+Before deleting or merging a recovery topic, verify that its evidence and
+workflow cannot exist independently of the proposed destination, search all
+code/docs/skills for consumers, and update `memory/README.md` plus every
+reference in the same change. The current six top-level recovery topics are
+intentional; WebUI page splitting alone is not a reason to remove them.
 
 ## Current Guidance Locations
 
@@ -450,7 +508,8 @@ README-shaped or dated snapshots; update the current source of truth instead:
 - script/workflow contract: `scripts/README.md`
 - WebUI frontend scope: `webui/README.md`
 - memory topic index and writing rules: `memory/README.md`
-- concise WebUI recovery status: `memory/webui_recovery.md`
+- WebUI export and shared recovery contract: `memory/webui_recovery.md`
+- per-page WebUI recovery flows: `memory/webui/README.md`
 - Story reconstruction conclusions: `memory/game_story_recovery.md`
 - game-data formats, semantics, and source graph: `memory/game_data_recovery.md`
 - semantic asset/entity recovery: `memory/asset_recovery.md`
@@ -462,9 +521,17 @@ README-shaped or dated snapshots; update the current source of truth instead:
 Project-only Codex skills live under `.codex/skills/`. When a task matches one
 of these workflows, open the matching `SKILL.md` before acting:
 
-- `.codex/skills/endfield-webui-workflow/`: WebUI refresh, serving, packaging,
-  Updates tab, and static frontend scope, including current SNS inline-image
-  behavior.
+- `.codex/skills/endfield-webui-frontend/`: frontend behavior, routing, labels,
+  styles, and page contracts.
+- `.codex/skills/endfield-webui-serve-package/`: serving, smoke tests, and
+  static packaging.
+- `.codex/skills/endfield-story-recovery-build/`: Story/Text Tables and Story
+  evidence builders.
+- `.codex/skills/endfield-mission-pipeline-build/`: Mission Pipeline and map
+  recovery Python builders.
+- `.codex/skills/endfield-assets-audio-build/`: asset indexes, audio links, and
+  gameplay sound sidecars.
+- `.codex/skills/endfield-updates-build/`: Updates comparison feed.
 - `.codex/skills/endfield-source-graph/`: source graph build/query and
   graph-backed follow-up reports.
 - `.codex/skills/endfield-option-overrides/`: editing and validating
@@ -472,12 +539,15 @@ of these workflows, open the matching `SKILL.md` before acting:
   `webui/overrides/options.json`.
 - `.codex/skills/animestudio-workflow/`: building, running, patching, and
   debugging the local `tools/AnimeStudio` exporter and its WebUI wrappers.
+- `.codex/skills/map-interactive-legend/`: regenerating and reviewing the
+  offline map `detailId` legend under `reports/map_recovery/`.
 
-`tools/EndfieldCapture/README.md` is the local usage and requirements guide for
-the optional native observer. It requires Windows x64, Visual Studio 2022 C++
-build tools, CMake 3.23+, and an exact installed Endfield build selected by
-`ENDFIELD_GAME_ROOT` or `ENDFIELD_GAME_EXE`. Build and test it from the
-submodule with:
+`tools/EndfieldCapture/README.md` is the local usage guide for the optional
+native observer. No WebUI, export, or recovery workflow requires
+EndfieldCapture. When an investigation chooses to use it, the local environment
+needs Windows x64, Visual Studio 2022 C++ build tools, CMake 3.23+, and an exact
+installed Endfield build selected by `ENDFIELD_GAME_ROOT` or
+`ENDFIELD_GAME_EXE`. Build and test it from the submodule with:
 
 ```bat
 cmake -S tools\EndfieldCapture -B tools\EndfieldCapture\build-local -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON
@@ -493,17 +563,22 @@ modules, hash mismatches, hook errors, lost events, and incomplete provider
 summaries as failed evidence. Keep raw sessions under
 `scratch/reverse_engineering/endfield_capture/` and publish only compact,
 validated findings under the owning report or memory topic.
+During audio or visual recovery, agents may patch EndfieldCapture itself to
+improve observation coverage, event fidelity, diagnostics, or collection
+reproducibility, provided it remains observation-only and the exact-build,
+bounded-session, failure-reporting, build, and test gates above remain intact.
 
 The current checkout does not ship separate `endfield-story-recovery` or
 `endfield-character-recovery-lab` skill folders. For those workflows, use the
 active docs (`README.md`, `scripts/README.md`, `webui/README.md`, and
-`unity_endfield_graph_shader_lab/README.md`) plus the existing source-graph
+`endfield_reconstruction_lab/README.md`) plus the existing source-graph
 skill when graph evidence is relevant.
 
 The retired exploration snapshots were collapsed because they mixed active
 workflow guidance with stale conclusions and repeated generated-report status.
 Keep generated reports in `reports/`, concise durable conclusions in the six
-owning memory topics, and disposable experiments in `scratch/` or `tmp/`.
+top-level recovery topics, page publication contracts in `memory/webui/`, and
+disposable experiments in `scratch/` or `tmp/`.
 
 ## Update Tracking Rule
 
@@ -563,7 +638,7 @@ export folder so the cached scanner baseline is rebuilt.
 ## Repo Rules
 
 - Prefer the layout rooted at `serve.py`, `export.bat`, `webui/`,
-  `scripts/`, and `unity_endfield_graph_shader_lab/`.
+  `scripts/`, and `endfield_reconstruction_lab/`.
 - Keep `README.md` focused on active WebUI usage and headline recovery
   progress. Preserve its screenshots, Chinese links, and acknowledgements.
 - Keep active READMEs and memory topics concise. Put exhaustive implementation
@@ -604,7 +679,7 @@ export folder so the cached scanner baseline is rebuilt.
   project folder.
 - Preserve narrow, surgical changes when adjusting exporters or builders.
 - Do not promote an ad-hoc script into `scripts/` unless it supports WebUI or
-  `unity_endfield_graph_shader_lab`.
+  `endfield_reconstruction_lab`.
 
 ## Active Script Groups
 
@@ -663,7 +738,7 @@ Story recovery audit/refresh tools, not run by `export.bat`:
 
 Unity character recovery lab:
 
-- project-local scripts under `unity_endfield_graph_shader_lab/`
+- project-local scripts under `endfield_reconstruction_lab/`
 
 The old archived-script bucket has been retired. Do not recreate it; put
 disposable scripts in `scratch/` or `tmp/`, and promote only maintained

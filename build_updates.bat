@@ -114,8 +114,14 @@ if "%PRUNE_OLD%"=="1" if "%DRY_RUN%"=="0" set "MODE_ARGS=%MODE_ARGS% --prune-pre
 rem Unnamed sides fall back to endfield_paths.bat.
 if not defined OLD_EXPORT if defined ENDFIELD_PREVIOUS_EXPORT_ROOT set "OLD_EXPORT=%ENDFIELD_PREVIOUS_EXPORT_ROOT%"
 if not defined NEW_EXPORT if defined ENDFIELD_EXPORT_ROOT set "NEW_EXPORT=%ENDFIELD_EXPORT_ROOT%"
-if defined OLD_EXPORT set "ROOT_ARGS=%ROOT_ARGS% --previous-export-root "%OLD_EXPORT%""
-if defined NEW_EXPORT set "ROOT_ARGS=%ROOT_ARGS% --export-root "%NEW_EXPORT%""
+rem Normalize folder paths so a trailing backslash cannot escape a closing
+rem quote when cmd.exe passes the value to Python.
+if "%OLD_EXPORT:~-1%"=="\" set "OLD_EXPORT=%OLD_EXPORT:~0,-1%"
+if "%NEW_EXPORT:~-1%"=="\" set "NEW_EXPORT=%NEW_EXPORT:~0,-1%"
+if defined OLD_EXPORT for %%I in ("%OLD_EXPORT%") do set "OLD_EXPORT=%%~fI"
+if defined NEW_EXPORT for %%I in ("%NEW_EXPORT%") do set "NEW_EXPORT=%%~fI"
+if defined OLD_EXPORT set ROOT_ARGS=%ROOT_ARGS% --previous-export-root "%OLD_EXPORT%"
+if defined NEW_EXPORT set ROOT_ARGS=%ROOT_ARGS% --export-root "%NEW_EXPORT%"
 
 rem Naming a different old folder invalidates its cached scan, so rebuild that
 rem baseline here instead of making the user remember to ask for it.
@@ -128,8 +134,9 @@ echo [build_updates] new: %NEW_EXPORT%
 
 rem Updates pipeline:
 rem - compare WebUI-facing text JSON in the two exports
+rem - compare CharacterTable rows and localized names for Characters-page tags
 rem - compare exported image/model/video/audio assets by default
-rem - write webui\data\updates\latest.json for the Updates tab
+rem - write Updates feed and Characters-page change sidecar
 python .\scripts\build_updates.py%ROOT_ARGS%%MODE_ARGS%%EXTRA_ARGS%
 if errorlevel 1 exit /b %errorlevel%
 
@@ -218,6 +225,7 @@ echo   build_updates.bat "D:\exports\Endfield_old" "D:\exports\Endfield_new"
 echo.
 echo Writes:
 echo   webui\data\updates\latest.json
+echo   webui\data\updates\characters.json
 echo   reports\updates\game-data-change-summary.json and .md
 echo.
 echo Notes:

@@ -13,6 +13,8 @@ from scripts import export_full_from_game
 from scripts.export_full_from_game import (
     ANIMESTUDIO_STORY_JSON_TYPES,
     CommandResult,
+    animestudio_managed_reference_diagnostics_export_is_relevant,
+    animestudio_managed_reference_diagnostics_part_path,
     animestudio_object_index_export_is_relevant,
     animestudio_object_index_dir,
     animestudio_object_index_is_enabled,
@@ -35,6 +37,7 @@ from scripts.export_full_from_game import (
     structured_dump_steps_for_source,
     structured_dump_steps_with_world_scenes,
     world_scene_chunk_file_regex,
+    refresh_animestudio_plan_output_counts,
 )
 
 
@@ -186,6 +189,64 @@ class SourceFreshnessFingerprintTests(unittest.TestCase):
 
             self.assertEqual(summary["files"], 1)
             self.assertEqual(summary["bytes"], len(b"source"))
+
+
+class AnimeStudioOutputCountTests(unittest.TestCase):
+    def test_counts_all_selected_types_and_separates_marker_only_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary)
+            stage_root = (
+                output_root / "recovered" / "AnimeStudio-cli" / "StreamingAssets"
+                / "convert_by_type"
+            )
+            animation_dir = stage_root / "AnimationClip"
+            animator_dir = stage_root / "Animator"
+            empty_dir = stage_root / "Texture2D"
+            animation_dir.mkdir(parents=True)
+            animator_dir.mkdir()
+            empty_dir.mkdir()
+            (animation_dir / "walk.anim").write_bytes(b"anim")
+            (animation_dir / "run.anim").write_bytes(b"anim")
+            (animation_dir / "nested").mkdir()
+            (animation_dir / "nested" / "diagnostic.json").write_text("{}")
+            (animator_dir / "empty.fbx.empty.json").write_text("{}")
+
+            plan = {
+                "items": [
+                    {"type_spec": "AnimationClip:Both"},
+                    {"type_spec": "Animator:Both"},
+                    {"type_spec": "Texture2D:Both"},
+                ]
+            }
+            refresh_animestudio_plan_output_counts(
+                output_root, "StreamingAssets", "convert_by_type", plan
+            )
+
+            self.assertEqual(
+                plan["item_file_counts"],
+                {"AnimationClip": 2, "Animator": 1, "Texture2D": 0},
+            )
+            self.assertEqual(
+                plan["item_marker_file_counts"],
+                {"AnimationClip": 0, "Animator": 1, "Texture2D": 0},
+            )
+
+    def test_duplicate_type_specs_are_counted_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary)
+            type_dir = (
+                output_root / "recovered" / "AnimeStudio-cli" / "Persistent"
+                / "json_by_type" / "TextAsset"
+            )
+            type_dir.mkdir(parents=True)
+            (type_dir / "a.json").write_text("{}")
+            plan = {"items": [{"type_spec": "TextAsset:Both"}, {"type_spec": "TextAsset:Parse"}]}
+
+            refresh_animestudio_plan_output_counts(
+                output_root, "Persistent", "json_by_type", plan
+            )
+
+            self.assertEqual(plan["item_file_counts"], {"TextAsset": 1})
 
 
 class AnimeStudioStageOptionsTests(unittest.TestCase):
@@ -755,6 +816,61 @@ class AnimeStudioObjectIndexTests(unittest.TestCase):
             self.assertIsNone(unindexed.object_index_jsonl)
             self.assertNotIn("--object_index_jsonl", captured[1])
 
+    def test_managed_reference_diagnostics_are_atomic_and_monobehaviour_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            command_name = "Persistent_animestudio_json_by_type_MonoBehaviour"
+            part = animestudio_managed_reference_diagnostics_part_path(
+                root, "Persistent", command_name
+            )
+            part.parent.mkdir(parents=True)
+            part.write_text("stale", encoding="utf-8")
+            part.with_name(part.name + ".tmp").write_text("stale", encoding="utf-8")
+            captured: list[list[str]] = []
+
+            def fake_run(name, argv, cwd, reports_dir, stream_output=False):
+                self.assertFalse(part.exists())
+                self.assertFalse(part.with_name(part.name + ".tmp").exists())
+                captured.append(argv)
+                return CommandResult(name, argv, str(cwd), 0, 0.0, "", "")
+
+            with mock.patch.object(export_full_from_game, "run_logged_command", side_effect=fake_run):
+                result = run_animestudio_stage(
+                    source="Persistent",
+                    input_root=root / "input",
+                    output_root=root,
+                    reports_dir=root / "reports",
+                    animestudio_exe=root / "AnimeStudio.CLI.exe",
+                    animestudio_dummy_dlls=None,
+                    mono_behaviour_type_tree_priority="SerializedFirst",
+                    stage="json_by_type",
+                    export_type="JSON",
+                    types=("MonoBehaviour:Both",),
+                    command_name=command_name,
+                    managed_reference_diagnostics_enabled=True,
+                    managed_reference_diagnostic_types=("AbilitySystemData$", "ProjectileComponentData$"),
+                    managed_reference_diagnostics_include_exact_matches=True,
+                )
+
+            self.assertEqual(result.managed_reference_diagnostics_jsonl, str(part))
+            self.assertIn("--managed_reference_diagnostics_jsonl", captured[0])
+            self.assertIn("--managed_reference_diagnostics_include_exact_matches", captured[0])
+            type_flag = captured[0].index("--managed_reference_diagnostic_types")
+            self.assertEqual(
+                captured[0][type_flag + 1 : type_flag + 3],
+                ["AbilitySystemData$", "ProjectileComponentData$"],
+            )
+            self.assertTrue(
+                animestudio_managed_reference_diagnostics_export_is_relevant(
+                    "json_by_type", "JSON", ("MonoBehaviour:Both",)
+                )
+            )
+            self.assertFalse(
+                animestudio_managed_reference_diagnostics_export_is_relevant(
+                    "json_by_type", "JSON", ("TextAsset:Both",)
+                )
+            )
+
 
 class WorldSceneChunkExportTests(unittest.TestCase):
     def test_parses_and_deduplicates_chunk_specs(self) -> None:
@@ -783,12 +899,27 @@ class WorldSceneChunkExportTests(unittest.TestCase):
         )
 
     def test_world_scene_step_only_runs_for_streaming_assets(self) -> None:
-        steps = structured_dump_steps_with_world_scenes("webui", (("map02", 2, -13),))
+        steps = structured_dump_steps_with_world_scenes("focused", (("map02", 2, -13),))
 
         streaming_steps = structured_dump_steps_for_source(steps, "StreamingAssets")
         persistent_steps = structured_dump_steps_for_source(steps, "Persistent")
         self.assertEqual([step["name"] for step in streaming_steps], ["required", "world_scene_chunks"])
         self.assertEqual([step["name"] for step in persistent_steps], ["required"])
+
+    def test_default_structured_dump_adds_filtered_terrain_height_step(self) -> None:
+        focused = structured_dump_steps_with_world_scenes("focused", ())
+        default = structured_dump_steps_with_world_scenes("default", ())
+
+        self.assertEqual(default[0], focused[0])
+        self.assertEqual([step["name"] for step in default], ["required", "terrain_height"])
+        self.assertEqual(default[1]["block_types"], ("terrain",))
+        self.assertEqual(default[1]["sources"], ("StreamingAssets",))
+        self.assertRegex("Data/Terrain/PC/map02/Terrain_6_16_32_H.bytes", default[1]["file_regexes"][0])
+        self.assertNotRegex("Data/Terrain/PC/map02/Terrain_6_16_32_C.bytes", default[1]["file_regexes"][0])
+
+    def test_rejects_unknown_structured_dump_mode(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsupported structured dump mode"):
+            structured_dump_steps_with_world_scenes("unknown", ())
 
 
 class StoryMonoBehaviourNameFilterTests(unittest.TestCase):
