@@ -24,12 +24,24 @@ evidence needs a domain join or presentation contract.
 | --- | --- | --- |
 | Refresh Story/Text | `.\export.bat --from-game` | structured focused dump, maps, broad Story JSON |
 | Refresh Story and assets together | `.\export.bat --from-game --with-assets` | one combined Story/asset pass |
+| Apply a local client delta without publishing Updates | `.\export.bat --changed-only` | changed focused VFS files, reuse bundle-derived outputs, all WebUI builders |
 | Refresh assets and CN audio only | `.\export_assets.bat --from-game` | skip structured Story, asset maps/conversion/JSON, VFS index, audio |
 
 The focused structured dump includes Table, JsonData, and video. It excludes raw
 bundles, audio packages, world streaming, irradiance, ExtendData, patch data,
 and Lua. `--structured-dump-mode default` additionally includes the maintained
 Terrain height subset; `debug` is for broad diagnosis.
+
+Changed-only export keeps a private, export-root-local logical-file snapshot
+and compares decoded FileDataMd5 plus length/type/path/encryption identity. It
+uses exact full-path dump filters for changed structured files, validates the
+staged output set, and handles deletions explicitly. The first post-update run
+may seed the old side only from a certified VFS ledger whose input set and
+physical inventory bind to the previous export summary; otherwise it fails
+closed and requires a full export. Bundle-derived maps, objects, assets, and
+audio are refreshed broadly because a changed bundle does not prove safe
+per-output ownership. The snapshot commits only after the complete WebUI
+pipeline succeeds, and this local mode never reads or writes Updates state.
 
 Asset modes are intentionally ordered:
 
@@ -46,6 +58,7 @@ After extraction, page builders consume `export_full/`; see
 ```bat
 git submodule update --init tools/AnimeStudio
 .\scripts\animestudio\setup_dotnet9.bat
+.\scripts\animestudio\setup_vgmstream.bat
 .\scripts\animestudio\rebuild.bat -Target CLI
 .\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
 ```
@@ -60,7 +73,9 @@ Use direct `dump`, `audio`, `stream`, `vfs-index`, or `list` only for a bounded
 probe. Inspect each subcommand's `--help`; do not maintain another option
 catalog here. `dump`, `audio`, `stream`, and `vfs-index` support the sibling
 root fallback. `dump`, `stream`, and `vfs-index` support repeated block-type and
-file-regex filters. Audio defaults to direct lossless FLAC.
+file-regex filters. Audio defaults to direct lossless FLAC: the CLI pipes PCM
+from the pinned repo-local vgmstream decoder into its in-process FLAC encoder,
+without an intermediate WAV file or `ffmpeg`.
 
 ## Export model and provenance
 
@@ -127,11 +142,105 @@ Current durable boundaries:
 - Bundle and InitBundle nested-container framing, current VFS logical-file
   reads, Terrain and Streaming envelopes, all five DynamicStreaming root
   families, LipSync payloads, video outer framing, and several routed JsonData
-  families have fail-closed readers.
-- Deeper Terrain, streaming, irradiance, manifest, mmap-oriented string/hash and
-  bone data, patch, and remaining JsonData semantics are incomplete.
-- Audio decodes and indexes AKPK/Wwise data, but graph/control evidence still
-  does not prove selected runtime playback or audibility.
+  families have fail-closed readers. SpawnerConfig framing treats the integer
+  dictionary key and serialized string wave key as independent fields; exact
+  wave maps still require one unique bounded parse through physical EOF.
+  Terrain additionally validates its body-length word against the complete
+  decoded payload. A current-build UnityPlayer reader, IL2CPP GraphicsFormat
+  enum, and native format-footprint table now close every selected-build body
+  as exact contiguous anonymous ranges. In particular, raw words 108/109 are
+  BC7 sRGB/UNorm footprints with 16 bytes per 4x4 block; the 1024-to-1 bodies
+  split into eleven ranges and consume EOF. Offset 14 is therefore a direct
+  format selector, while offset 12's numeric mip-count interpretation remains
+  inferred. Block contents, D/N path meaning, texture-array ownership, and
+  final rendering remain unresolved; unobserved header tuples fail closed.
+- The current Table corpus has a direct low-output sweep covering selected
+  overlay provenance, decoded MD5, exact read length, SparkBuffer parsing, and
+  EOF for every metadata declaration. BundleManifest and IFixPatchOut likewise
+  have current exact framing sweeps. BundleManifest uses corrected size/count
+  fixed-width sections plus a repeated-size terminal variable envelope. Its
+  variable payload begins with a gap-free sequential anonymous span of UTF-16LE
+  fragments and three counted-u32 regions per record; its 48-byte rows index a
+  second span with the same record multiset under a different order. Terminal
+  bytes stay opaque. It has
+  exact inner-file-count, basename-multiplicity, and row-index witnesses, but
+  no serialized field ownership. Stale AssetMap source chunks cannot supply it.
+  Exact method pins exist, but unresolved stream/ref-out carriers still block a
+  safe lookup capture ABI. IFix instruction/runtime meanings remain separate
+  claims.
+- Irradiance-volume region framing is exact for seven files; all 92 IV indexes
+  have a bounded unique UTF-16LE filename-table parser that references the 138
+  remaining payloads exactly once. Supported single/grouped v3 indexes strictly
+  bind filename-ordered groups to ranges that restart at zero and cover each
+  payload through EOF without gaps or overlaps. Directory starts may use
+  absolute or filename-table-end-relative four-byte alignment, but the combined
+  candidate must remain unique. Other words and renderer meanings stay opaque;
+  legacy indexes use a separate EOF-ending 24-record directory whose grouped
+  ranges also tile every referenced payload. All indexed payload boundaries are
+  now exact; record and renderer semantics remain open.
+- IV runtime capture has a narrow UnityPlayer parser/cursor candidate, but must
+  still close exact module/build/entry/caller, buffer-length, and final-cursor
+  contracts. A generic file-I/O hook cannot preserve the authenticated virtual-
+  path/hash join, and a stale capture manifest must fail preflight before the
+  game starts. The current native parsers have no payload-length parameter or
+  final EOF check, and repeated in-payload magic values rule out signature
+  scanning as a replacement boundary witness.
+- Audio has fail-closed AKPK/BNK/DIDX/DATA/media framing and a direct audit;
+  its non-voice HIRC lane now exact-frames numeric object envelopes and keeps
+  unknown types. HIRC behavior, selected runtime playback, and audibility
+  remain separate.
+- Audio availability is data-driven rather than type-excluded: shared and all
+  language blocks parse normally whenever any declared chunk exists. A block
+  wholly absent from both overlay roots remains visible as a conditional
+  missing terminal state and does not fail; partial presence, bad hashes, and
+  malformed payloads remain fail-closed.
+- SkillData and BuffData have current exact-build member-count and file-hash
+  censuses, but nested MemoryPack unions and whole-file ownership are not
+  proven. SkillData now has a strict anonymous EOF terminal-shape reader that
+  keeps its prefix opaque and preserves multiple valid starts as ambiguity.
+  BuffData additionally has a bounded anonymous member-18 stacking-action
+  reader; its fixed extent and terminal markers can be exact without claiming
+  semantic field order, while changed or unsupported rows remain explicit.
+  LevelScriptData and LevelData expose partial top-level frames only when their
+  independently parsed prefix/suffix regions are unique and
+  EOF-exact; nonempty/null LevelScript action maps may also expose only an
+  anonymous first-list/record-envelope or raw-null prefix while all later
+  union data stays opaque. One high-coverage first-record variant has a bounded
+  sequential body reader, but later records/lists remain unowned. AnimationConfig likewise separates
+  a proven anonymous prefix (and a small exact whole-frame variant) from an
+  opaque remainder. Keep structural framing distinct from semantic schema
+  ownership until formatter IL or a bounded deserialization trace closes the
+  complete named cursor.
+  Current v29 metadata identifies formatter/wrapper methods and setters, but
+  its missing generic mapping and mismatched native code-registration witness
+  do not prove serialized field order. The current residual JsonData census
+  keeps every outer-verified unresolved row explicitly unclassified; SkillData
+  is the largest by bytes and still lacks whole-object cursor proof. The NPC
+  Montage reader exact-frames all 3,631 current rows, including both non-empty
+  counted collections and their nested member markers, while keeping UTF-8 and
+  fixed record bodies anonymous. StreamingChunkInfo exact-frames the anonymous
+  table/vector graph in all 89 current files, including reused/forward vtables
+  and 4/8/12-byte vector widths; every nonzero byte is owned and the sole
+  four-byte gap is zero alignment. InitChunkData and StreamingChunkData also
+  share two exact anonymous subgraphs across all current files. Root fields
+  3/4/5 are selected-build vectors with observed element widths 4/1/4, equal
+  counts, bounded field-5 row tables, and a bounded row-field-0 byte range.
+  The latter remains ambiguous between a FlatBuffer string and a byte vector
+  followed by zero. Root fields 6/7 retain the paired-group, descriptor, and
+  blob-length closure. Root field 2, all other field-5 children, and bytes
+  outside the two subgraphs stay opaque; no union, entity, component, matrix,
+  descriptor, field name, or runtime meaning follows from this structural
+  result.
+- Both StringPathHash dictionaries and FacBoneTRS now self-bound their lookup
+  and value pools. FacBoneTRS proves its file-provided unit count, observed
+  boundary overlaps, contiguous bone records, and 64-byte ranges through EOF;
+  every value is shape-consistent with a row-vector homogeneous rigid-affine
+  4x4 float representation. The exact type/convention remains unnamed, and
+  unit/bone hashes have no exact match in either StringPathHash dictionary.
+- Terrain block/channel meaning, Streaming root field 2, deeper field-5
+  children, remaining tails and field meaning,
+  manifest-row, mmap value semantics, patch-instruction/runtime, and remaining
+  JsonData semantics are incomplete.
 - Material and shader extraction preserves recoverable metadata; it does not
   prove renderer ownership, selected variants, final lighting, or appearance.
 
@@ -140,13 +249,39 @@ Current durable boundaries:
 ```bat
 python -m scripts.animestudio.generate_dummydll --dry-run
 python -m scripts.animestudio.generate_dummydll --replace
+python -m scripts.animestudio.generate_dummydll --status-only
 ```
 
 DummyDll generation is tied to the exact installed `GameAssembly.dll` and
 `global-metadata.dat`. The generator must uniquely recover registrations,
 validate a complete staged managed image set, publish atomically, preserve the
-previous set, and record provenance in `tools/DummyDll/generation.json`. Never
-reuse registration addresses from another build.
+previous set, and record provenance in `tools/DummyDll/generation.json`. It
+must reject any type-population failure, required-image skip, and catastrophic
+type/size regression by default, and must join every staged non-module TypeDef
+to the selected metadata on assembly, token, and full name before publication.
+Endfield Cpp2IL compatibility is maintained as source in
+`Variante/Cpp2IL-Endfield` on `endfield/2022.0.7`; the generator consumes an
+immutable release pinned by tag and commit instead of applying a local patch.
+The checkout is tracked as the optional `tools/Cpp2IL-Endfield` submodule;
+`setup.bat` does not initialize it, while the DummyDll generator initializes it
+on demand for script-schema recovery. A pinned commit is insufficient by
+itself: both preparation and validation also reject a foreign origin or tracked
+local changes.
+Never reuse registration addresses from another build.
+
+Cpp2IL must attach a method shell and predeclare every method generic parameter
+in metadata order before importing constraints, return types, or parameters.
+Importing an MVAR-bearing return through the declaring type fails, while lazy
+return-first parameter creation can silently reorder multi-generic signatures.
+Commit global method maps only after signature construction succeeds and roll
+back the shell plus newly registered parameters on failure.
+
+The selected v29 build uses exact 92-byte TypeDef rows: the prefix is the stock
+v29 layout, while one additional int32 occurs after the eight range-start
+fields and before the ushort counts. Keep that slot semantically unnamed. The
+image ranges, all eight start/count families, nested-child relationships, and
+token sequences close exactly under this boundary; a retained-byref prefix
+interpretation is disproven.
 
 The safe TypeTree priority is `serialized-first`. Use `script-first` only for a
 focused comparison. Missing, stale, malformed, or incomplete DummyDlls warn and

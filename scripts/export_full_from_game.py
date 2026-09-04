@@ -24,6 +24,7 @@ if __package__:
         resolve_env_emoji_prefab_key,
     )
     from .common import resolve_installed_game_data_root
+    from .animestudio.generate_dummydll import current_output_status as dummy_dll_status
     from .animestudio_object_index import (
         MERGE_CONTRACT as ANIMESTUDIO_OBJECT_INDEX_MERGE_CONTRACT,
         PART_SCHEMA_VERSION as ANIMESTUDIO_OBJECT_INDEX_PART_SCHEMA_VERSION,
@@ -42,6 +43,7 @@ else:
         resolve_env_emoji_prefab_key,
     )
     from common import resolve_installed_game_data_root
+    from animestudio.generate_dummydll import current_output_status as dummy_dll_status
     from animestudio_object_index import (
         MERGE_CONTRACT as ANIMESTUDIO_OBJECT_INDEX_MERGE_CONTRACT,
         PART_SCHEMA_VERSION as ANIMESTUDIO_OBJECT_INDEX_PART_SCHEMA_VERSION,
@@ -2445,6 +2447,14 @@ def parse_args() -> argparse.Namespace:
         help="Skip VFS structured exports",
     )
     parser.add_argument(
+        "--structured-incremental-manifest",
+        type=Path,
+        help=(
+            "Treat structured files as already refreshed by the local changed-only workflow. "
+            "Requires --skip-structured and a complete manifest matching the exact current inputs."
+        ),
+    )
+    parser.add_argument(
         "--skip-vfs-index",
         action="store_true",
         help="Skip the lightweight VFS metadata index used by asset exports",
@@ -2545,6 +2555,49 @@ def structured_freshness_source_sizes(
         source: dict(previous_sizes.get(source) or {})
         for source in selected_sources
     }
+
+
+def load_structured_incremental_manifest(
+    path: Path,
+    *,
+    game_root: Path,
+    output_root: Path,
+    selected_sources: tuple[str, ...],
+    current_source_sizes: dict[str, dict[str, Any]],
+    structured_dump_mode: str | None = None,
+) -> dict[str, Any]:
+    """Validate the commit gate written by export_changed_game_data.prepare."""
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot read incremental structured manifest {path}: {exc}") from exc
+    if payload.get("schemaVersion") != 1 or payload.get("complete") is not True or payload.get("applied") is not True:
+        raise ValueError(f"incremental structured manifest is not complete/applied: {path}")
+    if payload.get("updatesIntegration") != "disabled":
+        raise ValueError("incremental structured manifest must explicitly disable Updates integration")
+    if structured_dump_mode is not None and payload.get("structuredDumpMode") != structured_dump_mode:
+        raise ValueError(
+            "incremental structured manifest dump mode does not match this export: "
+            f"expected={structured_dump_mode}, actual={payload.get('structuredDumpMode')}"
+        )
+    if os.path.normcase(str(Path(payload.get("gameRoot", "")).resolve())) != os.path.normcase(str(game_root)):
+        raise ValueError("incremental structured manifest game root does not match this export")
+    if os.path.normcase(str(Path(payload.get("outputRoot", "")).resolve())) != os.path.normcase(str(output_root)):
+        raise ValueError("incremental structured manifest output root does not match this export")
+    manifest_sizes = payload.get("sourceFingerprints") or {}
+    fields = ("files", "bytes", "fingerprint", "latest_mtime_ns")
+    for source in selected_sources:
+        expected = current_source_sizes[source]
+        actual = manifest_sizes.get(source) or {}
+        drift = {
+            field: {"expected": expected.get(field), "actual": actual.get(field)}
+            for field in fields
+            if expected.get(field) != actual.get(field)
+        }
+        if drift:
+            raise ValueError(f"incremental structured manifest source drift for {source}: {drift}")
+    return payload
 
 
 def parse_world_scene_chunks(values: list[str] | tuple[str, ...]) -> tuple[tuple[str, int, int], ...]:
@@ -2935,7 +2988,9 @@ def normalize_dummy_dll_path(path: Path | str) -> Path:
     return Path(text).expanduser()
 
 
-def validate_dummy_dll_dir(path: Path | str, source: str) -> Path | None:
+def validate_dummy_dll_dir(
+    path: Path | str, source: str, game_root: Path
+) -> Path | None:
     candidate = normalize_dummy_dll_path(path)
     if not looks_like_dummy_dll_dir(candidate):
         log(
@@ -2944,17 +2999,33 @@ def validate_dummy_dll_dir(path: Path | str, source: str) -> Path | None:
             "continuing without that DummyDll path"
         )
         return None
+    data_root = game_root.resolve()
+    gameassembly = data_root.parent / "GameAssembly.dll"
+    metadata = data_root / "il2cpp_data" / "Metadata" / "global-metadata.dat"
+    if not gameassembly.is_file() or not metadata.is_file():
+        log(
+            f"  warning: cannot validate AnimeStudio DummyDll provenance from {source}; "
+            "installed native inputs are missing; continuing without that DummyDll path"
+        )
+        return None
+    status, detail = dummy_dll_status(candidate.resolve(), gameassembly, metadata)
+    if status != "current":
+        log(
+            f"  warning: AnimeStudio DummyDll directory from {source} is {status} "
+            f"({detail}); continuing without that DummyDll path"
+        )
+        return None
     return candidate.resolve()
 
 
 def resolve_animestudio_dummy_dlls(explicit: Path | None, game_root: Path) -> tuple[Path | None, str | None]:
     if explicit is not None:
-        resolved = validate_dummy_dll_dir(explicit, "--animestudio-dummy-dlls")
+        resolved = validate_dummy_dll_dir(explicit, "--animestudio-dummy-dlls", game_root)
         return (resolved, "--animestudio-dummy-dlls") if resolved is not None else (None, None)
 
     env_value = os.environ.get(ANIMESTUDIO_DUMMY_DLL_ENV, "").strip()
     if env_value:
-        resolved = validate_dummy_dll_dir(env_value, ANIMESTUDIO_DUMMY_DLL_ENV)
+        resolved = validate_dummy_dll_dir(env_value, ANIMESTUDIO_DUMMY_DLL_ENV, game_root)
         if resolved is not None:
             return resolved, ANIMESTUDIO_DUMMY_DLL_ENV
     candidates = (
@@ -2971,7 +3042,9 @@ def resolve_animestudio_dummy_dlls(explicit: Path | None, game_root: Path) -> tu
             continue
         seen.add(key)
         if looks_like_dummy_dll_dir(candidate):
-            return candidate.resolve(), source
+            resolved = validate_dummy_dll_dir(candidate, source, game_root)
+            if resolved is not None:
+                return resolved, source
     return None, None
 
 
@@ -5408,6 +5481,10 @@ def main() -> int:
     args = parse_args()
     game_root = args.game_root.resolve()
     output_root = args.output.resolve()
+    if args.structured_incremental_manifest and not args.skip_structured:
+        raise SystemExit("--structured-incremental-manifest requires --skip-structured")
+    if args.structured_incremental_manifest and args.report_only:
+        raise SystemExit("--structured-incremental-manifest cannot be used with --report-only")
     reports_root = ensure_dir(DEFAULT_REPORTS.resolve())
     report_run_id = current_report_run_id()
     reports_runs_root = ensure_dir(reports_root / "runs")
@@ -5632,6 +5709,23 @@ def main() -> int:
             f"source size {source}: files={info['files']} "
             f"bytes={info['bytes']} gb={info['gigabytes']}"
         )
+    structured_incremental_manifest: dict[str, Any] | None = None
+    if args.structured_incremental_manifest:
+        try:
+            structured_incremental_manifest = load_structured_incremental_manifest(
+                args.structured_incremental_manifest.resolve(),
+                game_root=game_root,
+                output_root=output_root,
+                selected_sources=selected_sources,
+                current_source_sizes=source_sizes,
+                structured_dump_mode=args.structured_dump_mode,
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        log(
+            "  structured export: local changed-only files already applied; "
+            "validated exact current source fingerprints"
+        )
     inventory_summary: dict[str, Any] | None = None
     if previous_summary.get("inventory"):
         inventory_summary = previous_summary["inventory"]
@@ -5640,7 +5734,11 @@ def main() -> int:
     command_results: list[CommandResult] = []
     command_results_by_name: dict[str, CommandResult] = {}
     vfs_index_summary: dict[str, Any] = dict(previous_summary.get("vfs_index") or {})
-    structured_summary: dict[str, Any] = {}
+    structured_summary: dict[str, Any] = (
+        dict(previous_summary.get("structured") or {})
+        if structured_incremental_manifest is not None
+        else {}
+    )
     raw_summary: dict[str, Any] = {}
     structured_failures_by_source: dict[str, list[dict[str, str]]] = {}
     structured_manifest_by_source: dict[str, list[dict[str, str]]] = {}
@@ -5684,6 +5782,11 @@ def main() -> int:
         "stages_selected": list(selected_animestudio_stages),
         "sources": {},
     }
+    reuse_incremental_extraction = bool(structured_incremental_manifest is not None and args.skip_animestudio)
+    if reuse_incremental_extraction:
+        raw_summary = dict(previous_summary.get("raw_vfs") or {})
+        animestudio_summary = dict(previous_summary.get("animestudio") or animestudio_summary)
+        animestudio_summary["reused_without_export"] = True
 
     for source in selected_sources:
         source_root = game_root / source
@@ -6145,19 +6248,22 @@ def main() -> int:
 
     unresolved_dir = ensure_dir(output_root / "unresolved")
     log(f"writing unresolved summaries to {unresolved_dir}")
-    failed_lines = build_failed_decode_text(structured_failures_by_source, raw_failures_by_source, selected_sources)
     failed_txt = unresolved_dir / "failed_to_decode.txt"
-    failed_txt.write_text("\n".join(failed_lines) if failed_lines else "", encoding="utf-8")
-    manifest_lines = build_manifest_missing_text(
-        structured_manifest_by_source,
-        raw_manifest_chunks_by_source,
-        selected_sources,
-    )
     manifest_txt = unresolved_dir / "manifest_reference_missing.txt"
-    manifest_txt.write_text("\n".join(manifest_lines) if manifest_lines else "", encoding="utf-8")
+    failed_lines = failed_txt.read_text(encoding="utf-8").splitlines() if failed_txt.is_file() else []
+    manifest_lines = manifest_txt.read_text(encoding="utf-8").splitlines() if manifest_txt.is_file() else []
+    if not reuse_incremental_extraction:
+        failed_lines = build_failed_decode_text(structured_failures_by_source, raw_failures_by_source, selected_sources)
+        failed_txt.write_text("\n".join(failed_lines) if failed_lines else "", encoding="utf-8")
+        manifest_lines = build_manifest_missing_text(
+            structured_manifest_by_source,
+            raw_manifest_chunks_by_source,
+            selected_sources,
+        )
+        manifest_txt.write_text("\n".join(manifest_lines) if manifest_lines else "", encoding="utf-8")
     command_failures = [item for item in command_results if item.returncode != 0]
     summary_commands = [asdict(item) for item in command_results]
-    if args.report_only and not summary_commands:
+    if (args.report_only or reuse_incremental_extraction) and not summary_commands:
         summary_commands = previous_summary.get("commands", [])
 
     structured_source_sizes = structured_freshness_source_sizes(
@@ -6166,6 +6272,8 @@ def main() -> int:
         current_source_sizes=source_sizes,
         previous_summary=previous_summary,
     )
+    if structured_incremental_manifest is not None:
+        structured_source_sizes = source_sizes
     summary = {
         "game_root": str(game_root),
         "output_root": str(output_root),
@@ -6178,7 +6286,8 @@ def main() -> int:
         # claiming that untouched structured data came from the current build.
         "source_sizes": structured_source_sizes,
         "current_source_sizes": source_sizes,
-        "structured_source_sizes_preserved": bool(args.skip_structured),
+        "structured_source_sizes_preserved": bool(args.skip_structured and structured_incremental_manifest is None),
+        "structured_incremental": structured_incremental_manifest,
         "inventory": inventory_summary,
         "commands": summary_commands,
         "vfs_index": vfs_index_summary,
@@ -6263,7 +6372,16 @@ def main() -> int:
                     md_lines.append(f"  stderr: `{info.get('stderr_log')}`")
 
     md_lines.extend(["", "## Structured Export"])
-    if args.skip_structured:
+    if structured_incremental_manifest is not None:
+        md_lines.append("- Local changed-only structured files were applied before this AnimeStudio run.")
+        md_lines.append("- Updates integration: `disabled`")
+        for info in structured_incremental_manifest.get("sources") or []:
+            md_lines.append(
+                f"- `{info.get('source')}`: added=`{info.get('added')}`, "
+                f"modified=`{info.get('modified')}`, deleted=`{info.get('deleted')}`, "
+                f"unchanged=`{info.get('unchanged')}`"
+            )
+    elif args.skip_structured:
         md_lines.append("- Skipped")
     else:
         for source in selected_sources:
@@ -6291,7 +6409,9 @@ def main() -> int:
     md_lines.append("- Skipped")
 
     md_lines.extend(["", "## AnimeStudio Export"])
-    if args.skip_animestudio:
+    if reuse_incremental_extraction:
+        md_lines.append("- Reused previous bundle-derived outputs; no AnimeStudio export was run")
+    elif args.skip_animestudio:
         md_lines.append("- Skipped")
     else:
         md_lines.append(f"- Executable: `{animestudio}`")

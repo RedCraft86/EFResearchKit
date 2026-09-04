@@ -6736,6 +6736,10 @@ def find_buff_timeline_actions_body_end(
     for candidate_end in range(offset + 1, scan_end):
         try:
             read_buff_trigger_interval_bool_tail_exact(data, candidate_end)
+            # A syntactically valid EOF tail can also occur inside opaque action
+            # bytes.  Accept the boundary only when the anonymous outer records
+            # consume exactly to it; inner union payloads remain opaque.
+            decode_buff_timeline_actions_outer(data, offset, action_count, candidate_end)
         except (struct.error, UnicodeDecodeError, ValueError):
             continue
         candidates.append(candidate_end)
@@ -6757,6 +6761,11 @@ BUFF_OPAQUE_STACK_EFFECT_ACTION_LAYOUTS = {
     #               total fixed bytes excluding effectName bytes, trailing shape)
     15: (74, 37, 471, "target-settings-u32"),
     17: (85, 71, 581, "target-settings-u32-plus-guard-bool"),
+    # Current-build anonymous structural variant.  Across the complete
+    # outer-authenticated stacking blocker family, every non-empty action has
+    # this member/discriminator/marker/name/tail shape.  The bytes between the
+    # anchors stay opaque; no setter-order field ownership is asserted here.
+    18: (13, 138, 648, "target-settings-u32-plus-guard-bool"),
 }
 
 
@@ -6779,6 +6788,7 @@ def skip_buff_stack_effects_effect_actions_body(
     samples: list[dict[str, Any]] = []
     effect_name_counts: Counter[str] = Counter()
     action_layout_counts: Counter[int] = Counter()
+    action_terminal_shape_counts: Counter[str] = Counter()
     diagnostic_u32_counts: dict[int, Counter[int]] = {
         raw_offset: Counter() for raw_offset in BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_U32_OFFSETS
     }
@@ -6822,7 +6832,13 @@ def skip_buff_stack_effects_effect_actions_body(
                 raise ValueError(
                     f"stackEffects[{item_index}].effectActions[{action_index}]:discriminator={discriminator}"
                 )
-            marker = struct.unpack_from("<I", data, action_start + 18)[0]
+            # The current member-18 shape begins with a one-byte nested member
+            # count at +18; older shapes carry a four-byte marker there.
+            marker = (
+                data[action_start + 18]
+                if member_count == 18
+                else struct.unpack_from("<I", data, action_start + 18)[0]
+            )
             if marker != cfg_member_count:
                 raise ValueError(f"stackEffects[{item_index}].effectActions[{action_index}]:marker={marker}")
             name_len = struct.unpack_from("<I", data, action_start + name_offset)[0]
@@ -6845,24 +6861,28 @@ def skip_buff_stack_effects_effect_actions_body(
                 raise ValueError(
                     f"stackEffects[{item_index}].effectActions[{action_index}].effectName:unexpected={effect_name[:24]}"
                 )
-            if member_count == 17:
+            actual_trailing_shape = trailing_shape
+            if member_count in (17, 18):
                 if struct.unpack_from("<I", data, name_end)[0] != 0:
                     raise ValueError(
                         f"stackEffects[{item_index}].effectActions[{action_index}]"
                         ".effectPosData:nonempty-list"
                     )
-                if (
-                    data[action_end - 5:action_end - 1] != b"\x04\x00\x00\x00"
-                    or data[action_end - 1] not in (0, 1)
-                ):
+                terminal = data[action_end - 5:action_end]
+                has_guard_tail = terminal[:4] == b"\x04\x00\x00\x00" and terminal[4] in (0, 1)
+                has_zero_tail = member_count == 18 and terminal == b"\x00\x00\x00\x00\x00"
+                if not has_guard_tail and not has_zero_tail:
                     raise ValueError(
                         f"stackEffects[{item_index}].effectActions[{action_index}]"
                         ":missing-target-settings-tail-or-guard-bool"
                     )
+                if has_zero_tail:
+                    actual_trailing_shape = "zeroed-current-tail"
             elif data[action_end - 4:action_end] != b"\x04\x00\x00\x00":
                 raise ValueError(f"stackEffects[{item_index}].effectActions[{action_index}]:missing-terminal-u32")
             effect_name_counts[effect_name] += 1
             action_layout_counts[member_count] += 1
+            action_terminal_shape_counts[actual_trailing_shape] += 1
             diagnostic_u32: dict[str, int] = {}
             for raw_offset in BUFF_STACK_EFFECT_ACTION_DIAGNOSTIC_U32_OFFSETS:
                 source_offset = action_start + raw_offset
@@ -6894,7 +6914,7 @@ def skip_buff_stack_effects_effect_actions_body(
                     "memberCount": member_count,
                     "rawDiscriminator": discriminator,
                     "effectActionCfgMemberCount": marker,
-                    "trailingShape": trailing_shape,
+                    "trailingShape": actual_trailing_shape,
                     "effectName": effect_name,
                     "effectNameLength": name_len,
                     "normalizedU32Fields": diagnostic_u32,
@@ -6928,7 +6948,9 @@ def skip_buff_stack_effects_effect_actions_body(
         "stackEffectsBodyShape": (
             "opaque EffectAction list with exact versioned byte boundaries; memberCount=15 uses "
             "EffectActionCfg memberCount=74/name@+37/fixed=471, while memberCount=17 uses "
-            "EffectActionCfg memberCount=85/name@+71/fixed=581 and the added guard-source tail"
+            "EffectActionCfg memberCount=85/name@+71/fixed=581 and memberCount=18 uses an "
+            "anonymous current-build marker=13/name@+138/fixed=648 shape; the latter two retain "
+            "the added guard-source tail"
         ),
         "stackingKeyPrefixOffset": format_offset(stacking_key_prefix_offset),
         "stackingKeyPrefixHandling": stacking_key_prefix_handling,
@@ -6937,6 +6959,7 @@ def skip_buff_stack_effects_effect_actions_body(
         "opaqueEffectActionCount": total_action_count,
         "effectActionsPerStackEffect": action_counts,
         "effectActionMemberCountCounts": short_counter_dict(action_layout_counts),
+        "effectActionTerminalShapeCounts": short_counter_dict(action_terminal_shape_counts),
         "effectActionNameCounts": short_counter_dict(effect_name_counts, limit=32),
         "effectActionNormalizedU32Counts": {
             format_offset(raw_offset): short_counter_dict(counter)
@@ -7466,12 +7489,16 @@ BUFF_IGNITE_NESTED_BLOCK_START = b"\x03\x01\x00\x00\x00\x03"
 BUFF_IGNITE_NESTED_BLOCK_LONG_HEADERS = (
     ("energy-shard-long-v1", b"\x03\x01\x00\x00\x00\x03\x02\x00\x00\x00\xfa\x44\x01\x08"),
     ("energy-shard-long-v2", b"\x03\x01\x00\x00\x00\x03\x02\x00\x00\x00\xfa\x5d\x01\x08"),
+    # Current 175A input-set variant, observed identically at all three long
+    # block positions in each of the four energy-shard payloads.
+    ("energy-shard-long-175a", b"\x03\x01\x00\x00\x00\x03\x02\x00\x00\x00\xfa\x72\x01\x08"),
 )
 
 
 BUFF_IGNITE_NESTED_BLOCK_SHORT_HEADERS = (
     ("energy-shard-short-v1", b"\x03\x01\x00\x00\x00\x03\x01\x00\x00\x00\x82\x11\x01"),
     ("energy-shard-short-v2", b"\x03\x01\x00\x00\x00\x03\x01\x00\x00\x00\x8a\x13\x01"),
+    ("energy-shard-short-175a", b"\x03\x01\x00\x00\x00\x03\x01\x00\x00\x00\x92\x13\x01"),
 )
 
 

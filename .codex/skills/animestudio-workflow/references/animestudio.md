@@ -12,6 +12,7 @@ Primary parent-repo build wrappers:
 
 ```bat
 .\scripts\animestudio\setup_dotnet9.bat
+.\scripts\animestudio\setup_vgmstream.bat
 .\scripts\animestudio\rebuild.bat -Target CLI
 .\scripts\animestudio\rebuild.bat -Target CLI -NoRestore
 ```
@@ -122,8 +123,11 @@ AnimeStudio.CLI.exe list
 `--file-regex` filters. The fallback is consulted for `.blc` block metadata and
 `.chk` payloads; the WebUI wrapper configures StreamingAssets and Persistent as
 sibling fallbacks in both directions. `stream` writes matching file payloads as JSONL base64.
-The `audio` command defaults to direct lossless FLAC through the in-process
-CUETools FLAKE encoder. Use `--format wav` or `--format wem` only when that
+The `audio` command defaults to direct lossless FLAC. The pinned repo-local
+vgmstream CLI decodes WEM to a PCM pipe consumed by the in-process CUETools
+FLAKE encoder, without an intermediate WAV file. `setup_vgmstream.bat` installs
+the decoder under `tools/vgmstream/`; `ANIMESTUDIO_VGMSTREAM_CLI` remains an
+explicit override. Use `--format wav` or `--format wem` only when that
 compatibility output is explicitly required.
 `vfs-index --jsonl` writes compact streaming metadata records while its default
 output remains the existing JSON document.
@@ -156,17 +160,24 @@ The stable code and fixture entry points are:
 | Bundle / InitBundle inner container | `AnimeStudio/VFSFile.cs`, `AnimeStudio/Crypto/VFSUtils.cs`, CLI `vfs-inner-audit` | `VFSFileType5Tests.cs`, `VFSDirectoryInfoTests.cs`, `VFSInnerStructureTests.cs`, `StreamExtensionsTests.cs` |
 | BundleManifest | `scripts/game_data/bundle_manifest.py` | `scripts/tests/test_bundle_manifest.py` |
 | IFixPatchOut | `scripts/game_data/ifix_patch.py` and the selected-build native contract | `scripts/tests/test_ifix_patch.py`, `test_ifix_patch_contract.py` |
-| Streaming | `scripts/game_data/streaming.py` | `scripts/tests/test_streaming.py` |
+| Streaming | `scripts/game_data/streaming.py`, `scripts/game_data/streaming_corpus.py` | `scripts/tests/test_streaming.py`, `scripts/tests/test_streaming_corpus.py` (all envelopes/roots, exact anonymous Info graphs, exact anonymous field3/4/5 first-level and field6/7 paired-group subgraphs; field 2, deeper field-5 children, and semantics remain opaque) |
 | DynamicStreaming | `scripts/dynamic_streaming.py` | `scripts/tests/test_dynamic_streaming.py` |
-| Irradiance volume | `scripts/game_data/irradiance_volume.py` | `scripts/tests/test_irradiance_volume.py` |
-| Terrain | `scripts/terrain_tret.py` | `scripts/tests/test_terrain_tret.py` |
+| Irradiance volume | `scripts/game_data/irradiance_volume.py` | `scripts/tests/test_irradiance_volume.py` (region framing, bounded index filename tables, and single/grouped v3 index-directed payload ranges) |
+| Terrain | `scripts/terrain_tret.py`, `scripts/game_data/terrain_native.py`, `scripts/game_data/terrain_corpus.py` | `scripts/tests/test_terrain_tret.py`, `test_terrain_native.py`, `test_terrain_corpus.py` (current native gate, exact selected-build tiling, negative framing/provenance fixtures; unsupported shapes fail closed) |
 | Table / SparkBuffer | `AnimeStudio/Endfield/Extraction/EndfieldSparkBuffer.cs` | `EndfieldSparkBufferTests.cs` |
 | JsonData / LipSync | `scripts/game_data/memorypack/lipsync.py` | `scripts/tests/test_memorypack_lipsync.py` |
-| JsonData / gameplay subfamilies | `scripts/story_builder/*_binary.py`, routed per virtual-path family | matching `scripts/tests/test_*_binary.py`, including `test_jsondata_binary.py` |
+| JsonData / gameplay subfamilies | `scripts/story_builder/*_binary.py`, `scripts/game_data/memorypack/`, routed per virtual-path family | matching `scripts/tests/test_*_binary.py`, including `test_jsondata_binary.py`; current SkillData/BuffData and LevelData/LevelScriptData partial framings stay non-exact |
+| JsonData / NPC Montage | `scripts/game_data/memorypack/npc_montage.py` | `scripts/tests/test_memorypack_npc_montage.py` (both counted collections and nested markers exact-frame the current family) |
 | ExtendData / CompressData | `AnimeStudio/Endfield/Extraction/EndfieldCompressData.cs`, `scripts/game_data/extend_data_binary.py` | AnimeStudio CLI fixtures and `scripts/tests/test_mmap_extend_data.py` |
 | Lua | `AnimeStudio/Endfield/Extraction/EndfieldLuaDecoder.cs` | AnimeStudio CLI fixtures plus the `lua-sweep` mode |
 | Video / USM | `AnimeStudio/Endfield/Extraction/EndfieldUsmConverter.cs` | AnimeStudio CLI USM framing fixtures |
-| Audio / AKPK-Wwise | `AnimeStudio/Endfield/Audio/EndfieldAkpkPackage.cs`, `scripts/build_audio.py` | audio-domain tests under `scripts/tests/` |
+| Audio / AKPK-Wwise | `AnimeStudio/Endfield/Audio/EndfieldAkpkPackage.cs`, CLI `audio-audit`, `scripts/build_audio.py` | `EndfieldAkpkTests.cs` plus audio-domain tests under `scripts/tests/` |
+
+The mmap ExtendData reader proves file-provided counts, fixed record widths,
+bounded string/TRS ranges, observed lookup/table overlaps, non-overlap of
+owned value ranges, and exact EOF. FacBoneTRS now self-bounds its complete
+lookup, unit, bone, and 64-byte value pools; hash roles and the 64-byte value
+meaning must not be promoted without independent semantic evidence.
 
 Changing counts, hashes, source roots, and per-file failures belong in the
 reports or `tmp/animestudio/`, not in this reference. A parser may be promoted
@@ -190,6 +201,128 @@ serialized Unity object boundaries, TypeTrees, PPtrs, or gameplay meaning. The
 decoded custom-header `size` word must remain unnamed unless a specific flag
 uses it; current files disprove treating it as the logical container length.
 
+For Terrain work, first rebuild the outer VFS audit and pass its exact
+`inputSetSha256` to the maintained corpus gate:
+
+```bat
+python -m scripts.game_data.terrain_corpus --outer-summary OUTER.json --outer-ledger OUTER.jsonl.gz --expected-input-set-sha256 SHA256 --game-root ENDFIELD_DATA --output-json reports/animestudio/terrain_tret_latest.json --output-md reports/animestudio/terrain_tret_latest.md
+```
+
+The gate revalidates the current `GameAssembly.dll`, `global-metadata.dat`, and
+`UnityPlayer.dll`, the pinned reader/footprint byte ranges, GraphicsFormat enum
+rows, outer ledger hash, every selected logical-file range/hash, and exact TRET
+EOF consumption. The reader proves offset 14 is GraphicsFormat, offset 16 is
+the checked payload length, and offset 20 is the copy source; its ABI has no
+input length or final source cursor, so it cannot replace the outer/body-length
+checks. Selected-build words 108/109 use 4x4, 16-byte BC7 footprints. Keep the
+range contents, D/N ownership, channel meaning, texture-array slot, and runtime
+selection unresolved.
+
+For BundleManifest field recovery, first require all three corrected
+size/count-delimited fixed-width sections and the repeated-size terminal
+variable envelope to consume exact EOF, then join the manifest to the current
+inner ledger before consulting generated AssetMaps. One anonymous record span
+consumes sequentially from payload offset zero and the 48-byte rows' four
+relative pointers bound a second span; both use UTF-16/count-u32 components and
+have the same record multiset under different orders. All component meanings,
+ordering roles, and terminal bytes stay unnamed. Equal table/file
+counts, exact bundle-name multiplicity, and a numeric row-index sequence are
+structural witnesses, not serialized field ownership. Reject an AssetMap as current-build
+evidence when any recorded source chunk does not join the authoritative outer
+ledger; do not infer field names from managed field order or row size.
+Exact-build ManifestDataBinary method pins are not sufficient for a runtime
+receipt when the stream or ref/out result carriers remain unresolved inflated
+type specs. Resolve and test the ABI first; never derive it from field names,
+managed native size, or call appearance.
+
+For a low-output current-corpus SparkBuffer framing check, build the CLI test
+project and run:
+
+```bat
+AnimeStudio.CLI.Tests.exe table-sweep PERSISTENT STREAMING_ASSETS tmp\animestudio\table_sparkbuffer_sweep.json INPUT_SET_SHA256
+```
+
+The sweep uses the maintained VFS loader, verifies each decoded FileDataMd5,
+records the selected primary/fallback chunk and exact bytes read, invokes
+`EndfieldSparkBuffer.ParseBytes`, and requires exact EOF for every metadata
+declaration. Any file failure or count mismatch writes a structured report and
+returns nonzero. Treat the supplied input-set SHA as a provenance label: obtain
+it from the current `vfs-audit` report and reject the result during review if it
+does not match; the sweep does not compute that aggregate fingerprint itself.
+
+For shared/CN audio package work, run the low-output structural gate before
+event/HIRC semantics:
+
+```bat
+AnimeStudio.CLI.exe audio-audit --streaming-assets PERSISTENT --fallback-assets STREAMING_ASSETS --output tmp/animestudio/audio_structure_audit.json
+```
+
+The default audit covers `InitAudio`, `Audio`, `AuditAudio`, `HotfixAudio`, and
+all language audio blocks. A verified row
+proves bounded AKPK sectors, bank/media intervals, BNK/DIDX/DATA framing,
+required decryption, and RIFF/RIFX or PLUG envelopes. It does not prove HIRC
+behavior, posted events, selected media, or audibility. Any audio block whose
+declared chunks are all absent from both roots emits an explicit
+`excluded_missing_audio` terminal row and does not fail; if any chunk exists,
+the block enters normal parsing and partial absence or corruption fails.
+Use `--hirc-only` for a lower-I/O BNK/HIRC census. It skips media magic checks
+but still authenticates the selected VFS files and requires exact BNK section
+and HIRC object consumption. Preserve numeric HIRC type IDs; object-envelope
+framing is not object behavior, event selection, or audibility.
+Numeric HIRC type `0x02` additionally has a bounded 14-byte source prefix and,
+for plugin type `0x02`, a checked length-prefixed parameter range. Keep its
+NodeBase and remaining tail bytes opaque until separately proven.
+
+For IV recovery, region, index filename-table, and index-directed payload
+framing are distinct claims. `parse_index_bytes` proves one unambiguous count-
+prefixed UTF-16LE `iv_*.bytes` filename table. For supported single/grouped v3
+indexes, the indexed-payload framers accept a directory only when filename-
+ordered groups uniquely cover each authenticated payload from zero through EOF
+without gaps or overlaps. Candidate starts may be absolute-four-byte aligned or
+four-byte aligned relative to the filename-table end, but the combined
+candidate set must still be unique. All non-range words and surrounding bytes
+stay opaque. Legacy indexes use a separate unique EOF-ending record directory
+whose filename-ordered groups must also tile each authenticated payload.
+Preserve numeric magic values until consumer evidence supplies stable names.
+Do not add a generic `ReadFile`/CRT capture for the remaining payloads. A narrow
+UnityPlayer parser/cursor candidate exists, but a capture must still pin exact
+build hashes, RVAs, entry bytes/body hashes, resolver/caller gates, path/hash
+carrier, payload base/length, and final cursor/result contract; otherwise the
+observation cannot join back to one authenticated VFS logical file. A capture
+preflight mismatch is failed evidence and must be fixed before asking the user
+to run the game. The current native parser signatures carry no payload length
+and perform no final cursor/EOF comparison. Their numeric magic values recur
+inside the same payloads, so signature scanning cannot substitute for those
+missing bounds or establish a record start.
+
+For SkillData/BuffData work, begin with the current envelope censuses under
+`tmp/animestudio/` and the exact-build metadata hash recorded there. Member
+counts and metadata field-name sets are discovery gates only. The maintained
+SkillData framer may certify an anonymous EOF terminal shape while keeping its
+prefix opaque and multiple starts ambiguous; this is not a whole schema. The
+BuffData member-18 stacking-action framer likewise proves only its anonymous
+marker/extent/EOF contract and must keep intermediate bytes and field order
+opaque. Do not label a family semantically decoded until nested unions, field
+order, bounds, and EOF consumption are covered by maintained positive and
+negative tests plus a full current sweep. For LevelScriptData and LevelData,
+maintained prefix/suffix
+framers may expose exact ranges with an opaque middle, but an apparent tail at
+EOF remains insufficient for whole-schema status: the complete top-level
+object and any ActionSerializedMap must be consumed first. AnimationConfig may
+similarly expose an anonymous common prefix or exact small frame while leaving
+the remaining payload explicitly opaque.
+Current v29 metadata can identify formatter/wrapper methods and setter
+declarations, but lacks a usable TypeSpec/MethodSpec mapping; if the recorded
+native code registration maps outside the current image, fail closed. Do not
+promote setter declaration order or the union-tag registry to serialized cursor
+order without current method bodies or a bounded trace.
+For residual JsonData prioritization, start from
+`tmp/animestudio/jsondata_unclassified_family_census_20260903.json`; keep its
+outer-verified rows in the denominator, and do not treat SkillData's uniform
+`30 02` prefix as more than a 48-member envelope witness.
+Use the payload-understanding report's current blocker/evidence pointers before
+adding another family-specific probe.
+
 `export_assets.bat --from-game` writes the lightweight bundle VFS index
 through `vfs-index`, then decodes CN audio through `audio` before relinking
 browser conversations.
@@ -203,11 +336,17 @@ point samples additionally require the Material JSON and Texture2D outputs
 provided by the default asset scope. A stream/sidecar failure stops the map
 task; it is not silently replaced by sparse registry points.
 
-`build_updates_by_patch.bat` uses `vfs-index --jsonl` to detect logical source
-changes. Its patch apply path dumps changed Table/JsonData/Video/AuditVideo/Lua
-files with exact `--file-regex` filters. If other changed blocks can affect
-Unity assets or Story objects, it refreshes the configured AnimeStudio scope in
-the cloned staging export rather than claiming unsafe per-output ownership.
+`export.bat --changed-only` uses `vfs-index --jsonl` to compare focused
+structured logical files by decoded MD5, length, numeric type, path, and
+encryption identity. It dumps additions/modifications with exact full-path
+`--file-regex` filters, removes deleted outputs, and validates the staged file
+set. It reuses existing bundle-derived AnimeStudio outputs and decoded audio,
+then runs every normal WebUI builder. The private local snapshot advances only
+after every builder succeeds. A retry after a later-stage failure may reuse
+already-applied structured files only when the aborted manifest matches the
+exact game root, output root, dump mode, and current source fingerprints. This
+mode never calls the Updates builder or touches its previous-export baseline;
+Updates remains the separate `build_updates.bat OLD NEW` workflow.
 
 ## Wrapper Integration
 
@@ -237,6 +376,7 @@ Pass an optional usable DummyDll folder to the story JSON export with:
 Generate or refresh the preferred repo-local folder with:
 
 ```bat
+python -m scripts.animestudio.generate_dummydll --status-only
 python -m scripts.animestudio.generate_dummydll --dry-run
 python -m scripts.animestudio.generate_dummydll --replace
 ```
@@ -246,21 +386,34 @@ The generator uses the installed `GameAssembly.dll` and matching
 Unity 2021 x64 CodeRegistration module table; derives the nearby
 MetadataRegistration from the registration call site; and rejects missing,
 ambiguous, or pointer-invalid results. The addresses are build-specific and
-must never be copied from an earlier patch.
+must never be copied from an earlier game build.
 
-It prepares a local Cpp2IL `2022.0.7` checkout with the maintained
-`scripts/animestudio/cpp2il-2022.0.7-endfield.patch`. That patch tolerates
-Endfield's malformed packing/type relationships, skips bad images/types rather
-than aborting the whole set, makes `--suppress-attributes` cover attribute
-restoration, and accepts the generator's validated registration environment
-overrides without interactive prompts. Raw work stays under
+It initializes the optional `tools/Cpp2IL-Endfield` submodule on demand, then
+uses the immutable `endfield-2022.0.7-vN` release pinned by both tag and commit
+from `https://github.com/Variante/Cpp2IL-Endfield`. `setup.bat` deliberately
+does not initialize this schema-recovery dependency. The maintained
+source tolerates Endfield's malformed packing/type relationships, skips bad
+images/types rather than aborting the whole set, makes
+`--suppress-attributes` cover attribute restoration, and accepts the
+generator's validated registration environment overrides without interactive
+prompts. Endfield source changes belong on that fork's
+`endfield/2022.0.7` branch; build and tag them there, then update both pins in
+the generator. A clean checkout with the expected origin advances to a new pin
+automatically; tracked local changes or a foreign origin fail closed. Do not
+reintroduce an in-repo patch. Raw work stays under
 `tmp/animestudio/dummydll/` on failure or with `--keep-work-dir`.
 
 Before publication, every generated DLL name must exactly match the DLL images
-in metadata and each file must be a managed PE. Publication is atomic;
+in metadata and each file must be a managed PE. The built AnimeStudio CLI then
+indexes the staged set, and every non-module metadata type must match exactly
+on assembly, token, and full name; invalid, missing, unexpected, or mismatched
+identities fail closed. Required-image skips,
+catastrophic skipped-type ratios, and same-image-set size collapse are blocked
+unless explicitly overridden for a reviewed diagnostic publication. Publication is atomic;
 `--replace` moves the previous folder to a timestamped sibling. The resulting
-`generation.json` records both source hashes, registration summaries, Cpp2IL
-and patch provenance, per-DLL hashes, and malformed-image/type skip counts.
+`generation.json` records both native source hashes, registration summaries,
+Cpp2IL-Endfield repository/tag/commit provenance, per-DLL hashes,
+malformed-image/type skip counts, and the exact identity-join counts.
 
 DummyDlls supply names, inheritance, and serialized field shapes, not original
 method implementations. A loaded assembly does not prove a particular type was
@@ -270,9 +423,12 @@ serialized-first control with script-first output before changing defaults.
 
 The wrapper checks explicit DummyDll paths, then falls back to
 `ANIMESTUDIO_DUMMY_DLLS`, then known local locations such as `tools\DummyDll`.
-It only forwards AnimeStudio.CLI `--dummy_dlls` when the selected directory
-exists and contains `.dll` files. Missing or stale DummyDll paths warn and
-continue without DummyDlls instead of failing the export.
+It forwards AnimeStudio.CLI `--dummy_dlls` only when the selected directory
+contains a current, non-degraded `generation.json` whose native,
+Cpp2IL-Endfield release, generator, DLL-list, size, and content provenance
+validate. Missing, unverified,
+stale, invalid, or degraded paths warn and continue without DummyDlls instead
+of failing the export.
 
 `export_assets.bat --from-game` defaults to the default asset mode:
 

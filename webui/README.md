@@ -208,9 +208,11 @@ do not require a rebuild. Debug-only controls must not leak into normal page
 navigation.
 
 When available, `data/updates/characters.json` supplies optional version-change
-badges and filters. Added or modified table ids are joined to the constituent
-ids and aliases of the already-recovered identity group; deleted ids are shown
-as read-only previous-version snapshots. The sidecar never changes automatic or
+badges and filters. It compares the final version-owned Characters catalogs,
+including identities and evidence recovered from Tables, Story actors, and
+exported assets. Added or modified ids are joined to the constituent ids and
+aliases of the already-recovered identity group; deleted ids are shown as
+read-only previous-version snapshots. The sidecar never changes automatic or
 manual grouping, naming, evidence, or override behavior, and its absence leaves
 the Characters page fully usable without change badges.
 
@@ -218,11 +220,10 @@ Gameplay owns character progression, equipment, enemies, skills, projectiles,
 assets, and compact sound players. Evidence labels distinguish exact authored
 ownership from family-, animation-, or identifier-inferred placement.
 
-- Exact `chr_0NNN_token` namespaces are published even without a
+- Exact `chr_NNNN_token` namespaces are published even without a
   `CharacterTable` row. These entries are labeled namespace-only and leave
   availability, progression, runtime use, and playable status unproven;
-  character skill/Buff/projectile child ids and `chr_9*` placeholders do not
-  create separate entries.
+  character skill/Buff/projectile child ids do not create separate entries.
 
 - Enemy level selectors show only authored level points; missing levels are not
   interpolated.

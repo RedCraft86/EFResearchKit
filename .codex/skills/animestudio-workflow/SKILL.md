@@ -17,6 +17,7 @@ Initialize and build the tracked submodule:
 ```bat
 git submodule update --init tools/AnimeStudio
 .\scripts\animestudio\setup_dotnet9.bat
+.\scripts\animestudio\setup_vgmstream.bat
 .\scripts\animestudio\rebuild.bat -Target CLI
 ```
 
@@ -35,8 +36,9 @@ Use repository wrappers for production workflows:
 
 - Story refresh: `export.bat --from-game`.
 - Story and assets together: `export.bat --from-game --with-assets`.
+- Local changed-file refresh with every normal WebUI builder: `export.bat --changed-only`.
 - Assets and CN audio only: `export_assets.bat --from-game`.
-- Installed-data patch workflow: `build_updates_by_patch.bat`.
+- Updates publication from two complete exports: `build_updates.bat OLD NEW`.
 
 Use direct CLI calls only for targeted parity probes, extraction, or debugging.
 Inspect subcommand help rather than duplicating its full option surface:
@@ -46,6 +48,10 @@ Inspect subcommand help rather than duplicating its full option surface:
 .\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe audio --help
 .\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe stream --help
 .\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe vfs-index --help
+.\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe vfs-audit --help
+.\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe vfs-profile --help
+.\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe vfs-inner-audit --help
+.\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe audio-audit --help
 .\tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe list --help
 ```
 
@@ -54,12 +60,33 @@ Inspect subcommand help rather than duplicating its full option surface:
 `--file-regex` filters. Audio defaults to direct lossless FLAC; request WAV or
 WEM only for explicit compatibility needs.
 
+The installed-game WebUI export also produces a reusable generic object index
+when its Story JSON jobs run with `--animestudio-object-index`. The canonical
+combined command is:
+
+```bat
+.\export.bat --from-game --with-assets
+```
+
+AnimeStudio emits per-source `object_index/parts/`, and the wrapper publishes a
+complete `object_index/objects.jsonl.gz` plus `summary.json` under each of
+`StreamingAssets` and `Persistent`. Object rows retain exact serialized
+identity, schema, PPtrs, and bounded generic `fields` path/value entries for
+downstream WebUI builders. Consumers must validate the complete summary and
+source/CLI provenance first; incomplete or truncated indexes are not evidence
+of absence and require an explicit JSON fallback.
+
 For VFS-format or payload-semantic recovery, start with the "VFS recovery
 evidence index" in `references/animestudio.md`. It maps every active block
 family to its maintained reader, negative fixtures, corpus reports, and the
 remaining evidence boundary. Read the outer-boundary report before an inner
 format report: a valid offset/hash proves the bytes being studied, not their
 internal schema or runtime meaning.
+
+After any installed-game change, rerun `vfs-audit` first and treat its
+`inputSetSha256` as the provenance gate for every inner census. Do not transfer
+a prior type-level "current corpus" result merely because file counts stayed
+constant; rejoin identities/hashes or rerun the relevant sweep.
 
 ## Scope and Concurrency
 
@@ -75,20 +102,44 @@ filtered exports match byte-for-byte; equal object counts are insufficient.
 
 ## DummyDll Recovery
 
-Use DummyDlls only when script-derived MonoBehaviour schemas matter. After an
-installed-game update, or when provenance is stale, run:
+Use DummyDlls only when script-derived MonoBehaviour schemas matter. Before
+schema-dependent work, and after an installed-game, generator, or pinned
+Cpp2IL-Endfield release change, check the repo-local set first:
 
 ```bat
+python -m scripts.animestudio.generate_dummydll --status-only
 python -m scripts.animestudio.generate_dummydll --dry-run
 ```
 
-Run `--replace` only after unique registration and staged validation pass.
-Never reuse registration addresses from an earlier build. Missing or stale
+If status is missing, stale, invalid, or degraded and script schemas are in
+scope, refresh it proactively: require the dry run's unique registration and
+source-provenance checks, then run `--replace` and re-run `--status-only`. Never reuse
+registration addresses from an earlier build. The generator must block any
+type-population failure, a required-image skip, catastrophic size regression,
+or any mismatch in the full metadata-to-DummyDll `(assembly, token, FullName)`
+identity join by default; do not use its coverage-regression override during
+routine refreshes.
+The identity gate requires a built AnimeStudio CLI. Missing or unusable
 DummyDlls must warn and fall back cleanly; normal exports must continue.
 
-Keep serialized-first TypeTree priority by default. Treat Cpp2IL skip counts as
-coverage gaps, verify the required full type name exists in the generated
-assembly, and use script-first only for a focused comparison.
+Keep serialized-first TypeTree priority by default. Treat historical or
+experimental Cpp2IL type skips as coverage gaps, verify the required full type
+name exists in the generated assembly, and use script-first only for a focused
+comparison. Method generic parameters must be declared in metadata order before
+constraints, return types, or parameters are imported; return-first lazy MVAR
+creation can silently reorder multi-generic signatures.
+
+Cpp2IL Endfield compatibility is owned by
+`https://github.com/Variante/Cpp2IL-Endfield`, branch
+`endfield/2022.0.7`. Make source changes there, build them, publish a new
+immutable `endfield-2022.0.7-vN` tag, and update both the tag and commit pin in
+`generate_dummydll.py`. It is an optional submodule: do not add it to
+`setup.bat`; let the DummyDll generator initialize it on demand when schema
+recovery needs it. Every prepared checkout, including one already at the pinned
+commit, must have no tracked changes and the expected origin; a dirty or foreign
+checkout must fail closed. When publishing a new pin, update the generator's
+tag/commit and the parent gitlink together. Do not restore the retired in-repo
+patch workflow.
 
 ## Diagnose and Change Safely
 

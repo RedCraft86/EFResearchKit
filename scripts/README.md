@@ -12,6 +12,7 @@ focused development or validation.
 | Rebuild from the current export | `.\export.bat` |
 | Refresh Story from the game | `.\export.bat --from-game` |
 | Refresh Story and assets together | `.\export.bat --from-game --with-assets` |
+| Refresh changed local game files and all WebUI views, excluding Updates | `.\export.bat --changed-only` |
 | Story recovery loop | `python -m scripts.story_builder.build --languages CN --default-language CN` |
 | Mission Pipeline recovery (standalone, not WebUI) | `python -m scripts.build_mission_pipeline_data --refresh-source-story-gap-queue` |
 | Rebuild post-Story views, assets, and CN audio | `.\export_assets.bat` |
@@ -22,13 +23,22 @@ focused development or validation.
 The wrappers load `endfield_paths.bat`, then apply explicit path flags. Run any
 wrapper with `--help` for its supported options.
 
+The maintained Terrain structure gate is
+`python -m scripts.game_data.terrain_corpus`; it consumes a completed VFS audit
+summary/ledger plus that audit's exact `inputSetSha256`, revalidates the pinned
+current native consumer contract, and writes
+`reports/animestudio/terrain_tret_latest.{json,md}`. It is a focused recovery
+command, not part of normal WebUI export.
+
 For the recovery path and evidence boundary of an individual WebUI page, use
 [`memory/webui/README.md`](../memory/webui/README.md). This file remains the
 command and module-ownership map.
 
 `setup.bat` initializes only the required `tools/AnimeStudio` submodule.
-`endfield_reconstruction_lab` and `tools/EndfieldCapture` are optional and are
-not needed for the normal WebUI build.
+`tools/Cpp2IL-Endfield`, `endfield_reconstruction_lab`, and
+`tools/EndfieldCapture` are optional and are not needed for the normal WebUI
+build. The DummyDll generator initializes Cpp2IL-Endfield on demand when
+script-schema recovery needs it.
 
 ## Export rules
 
@@ -40,6 +50,19 @@ when the extraction must be refreshed from the installed client.
 Useful shared flags:
 
 - `--with-assets` adds asset indexes and CN audio relinking.
+- `--changed-only` implies `--from-game --with-assets`. It compares focused
+  structured VFS logical files by decoded MD5, length, type, path, and
+  encryption identity, dumps only additions/modifications, removes deleted
+  outputs, reuses existing bundle-derived AnimeStudio and decoded-audio
+  outputs, and then runs the complete normal WebUI build. It never invokes
+  `build_updates.py`, changes an
+  Updates baseline, or publishes an Updates entry. Its private snapshot under
+  `export_full/recovered/AnimeStudio-cli/local_incremental/` advances only
+  after every builder succeeds; the latest delta is recorded in
+  `reports/export/local_changed_export_latest.json`. If a later WebUI stage
+  fails after the changed files were published, an exact-fingerprint retry
+  reuses those applied files and reruns the WebUI flow without requiring an
+  older audit snapshot.
 - `--focused-assets`, `--default-assets`, and `--debug-assets` select asset
   scope from narrowest to broadest.
 - The default asset scope includes AnimationClip conversion plus
@@ -48,8 +71,13 @@ Useful shared flags:
   controller JSON stays on the broad dependency-loading path so cross-bundle
   PPtr targets are not silently withheld.
 - `--asset-jobs N` caps AnimeStudio workers; `--webui-jobs N` caps independent
-  post-Story builders.
+  post-Story builders and supplies the Map data/streaming worker count on
+  normal semantic rebuilds. Runs that also rebuild assets keep Map at one
+  worker to avoid competing with image/model conversion for disk and memory.
 - `--game-root PATH` overrides the configured client for one run.
+- `--skip-freshness` bypasses the `export_full` versus installed-game guard for
+  one run. Use only when the existing export is known to be compatible; it
+  does not refresh stale source data.
 - The configured `ENDFIELD_EXPORT_ROOT` is passed to installed-game extraction
   as `--output` and to downstream builders as `--export-root`; both halves of
   a run therefore use the same tree.
@@ -73,15 +101,16 @@ a degraded reason instead of using them as direct evidence.
 | Area | Entry point | Main output |
 | --- | --- | --- |
 | Extraction | `export_full_from_game.py` | `export_full/` |
+| Local logical-file delta | `export_changed_game_data.py` | changed structured files and private snapshot |
 | Export freshness | `verify_export_freshness.py` | validation result |
 | WebUI orchestration | `build_webui_views.py` | semantic page data |
 | Story evidence | `story_builder/refresh_evidence.py` | `reports/story/` evidence |
 | Story links | `story_builder/source_links.py` | localized reference data |
 | Story | `story_builder/build.py` | `webui/data/lang/<LANG>/` |
 | Mission Pipeline recovery | `build_mission_pipeline_data.py` | standalone recovery reports/data |
-| Map | `export.bat` runs map data, then `recover_map_streaming_instances.py --all-published-map-scenes`, then preview publication; a sidecar failure stops the phase instead of silently degrading to registry points. The recovery streams installed-game `InitChunkData` through AnimeStudio.CLI and joins the exported AssetMap/Mesh; colored output additionally needs Material JSON and Texture2D from the default asset scope. `build_map_recovery_data.py --with-preview` remains the direct data/preview path, while `--preview-only` reuses current map data and sidecars. `build_map_recovery_preview.py --refresh-exact-fallbacks-only` cheaply refreshes registry/quest point fallbacks. | `reports/assets/map_recovery/terrain_height_index.json`, `export_full/recovered/AnimeStudio-cli/StreamingAssets/map_streaming_instances/`, `reports/assets/map_recovery/`, `webui/data/map_recovery/` |
+| Map | `export.bat` runs map data, then `recover_map_streaming_instances.py --all-published-map-scenes`, then preview publication; a sidecar failure stops the phase instead of silently degrading to registry points. The recovery streams installed-game `InitChunkData` through AnimeStudio.CLI and joins the exported AssetMap/Mesh; colored output additionally needs Material JSON and Texture2D from the default asset scope. `build_map_recovery_data.py --with-preview` remains the direct data/preview path, while `--preview-only` reuses current map data and sidecars. `--jobs N` bounds both the per-level data workers and preview processes; maps sharing one exact Streaming scene remain together so their shared bounds and outputs cannot race. Preview rendering checkpoints each completed exact streaming, point, and inferred HLOD render under `reports/assets/map_recovery/render_cache/`; matching map, matrix, mesh, material, texture, renderer-index, bounds, density, and renderer-version inputs reuse the published PNG/sample set across runs. Missing outputs or changed inputs invalidate only that checkpoint, and the CLI reports cache hits/writes; pass `build_map_recovery_preview.py --no-render-cache` for a forced rerender. `--refresh-exact-fallbacks-only` cheaply refreshes registry/quest point fallbacks. | `reports/assets/map_recovery/terrain_height_index.json`, `export_full/recovered/AnimeStudio-cli/StreamingAssets/map_streaming_instances/`, `reports/assets/map_recovery/`, `webui/data/map_recovery/` |
 | Lua consumer index | `story_builder/lua_consumer_references.py` | fingerprinted Mission Pipeline evidence |
-| Characters | `build_character_data.py` | character indexes |
+| Characters | `build_character_data.py` | character indexes and versioned final-catalog snapshots |
 | Gameplay | `build_gameplay.py` | Gameplay datasets |
 | Assets | `build_assets.py` | asset indexes and media lookup |
 | Audio | `build_audio.py` | decoded/relinked audio data |
@@ -118,11 +147,11 @@ four are built:
 in `gameplay_builder/`; its `asset-refs` stage calls the public
 `asset_builder.gameplay_refs` API with the current Gameplay and Assets indexes
 and is the sole writer of `webui/data/assets/gameplay_refs.json`.
-The base stage publishes every exact `chr_0NNN_token` identity registered in
+The base stage publishes every exact `chr_NNNN_token` identity registered in
 `StrIdNumTable`, even when `CharacterTable` has no row. Such namespace-only
 records remain visibly evidence-limited and do not claim availability,
 progression, runtime use, or playable status; longer skill/Buff/projectile ids
-and `chr_9*` placeholders are not promoted to characters.
+are not promoted to characters.
 The base stage also resolves every BuffData id referenced by active Gameplay
 rows into a compact, fail-closed lifecycle/stacking/value catalog. Native enemy
 modifier, ability-event, skill-type, and cooldown-operation enum names are
@@ -179,6 +208,7 @@ AnimeStudio offline recovery probes:
 ```bat
 set ASCLI=tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStudio.CLI.exe
 %ASCLI% vfs-audit --streaming-assets PERSISTENT --fallback-assets STREAMING_ASSETS --summary-json reports\animestudio\vfs_understanding_latest.json --ledger-jsonl-gz reports\animestudio\vfs_understanding_files_latest.jsonl.gz --report-md reports\animestudio\vfs_understanding_latest.md
+python -m scripts.game_data.streaming_corpus --input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
 %ASCLI% shader-recover --input PATH_TO_SPIRV --output PATH_TO_HLSL
 %ASCLI% inspect-object --index OBJECT_INDEX.jsonl --path-id PATH_ID --source SOURCE --type TYPE
 %ASCLI% audit-refs --index OBJECT_INDEX.jsonl
@@ -190,6 +220,9 @@ set ASCLI=tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStud
 These are bundle-free, fail-closed diagnostics. `vfs-audit` streams each
 selected physical chunk once and intentionally returns non-zero for any missing
 or unauthenticated declaration while still publishing its terminal ledger.
+`streaming_corpus` reauthenticates block-15 rows from that ledger and writes
+`reports/animestudio/streaming_root_subgraphs_latest.json` plus `.md`; pass the
+exact `inputSetSha256` from the current outer summary.
 Object indexes may be JSONL or
 `.jsonl.gz`; `certify-index` requires a complete terminal summary row, `replay`
 uses one `{ "pathId": N, "source": "...", "type": "..." }` request per line,
@@ -347,7 +380,10 @@ data pass the freshness guard after a client update.
 lossless FLAC without intermediate WAV files or `ffmpeg`. The maintained decode
 and WebUI output are FLAC-only. Existing WAV/WEM files remain readable when an
 index-only maintenance run encounters them, but the builder no longer produces
-or converts those formats. Projectile behavior and authored event hashes stay
+or converts those formats. WEM decoding uses the pinned 64-bit vgmstream CLI;
+`setup.bat` installs it under `tools/vgmstream/`, or it can be installed
+directly with `scripts\animestudio\setup_vgmstream.bat`. Projectile behavior
+and authored event hashes stay
 immutable in `webui/data/gameplay/projectiles.json`; Audio publishes playable
 HIRC candidates separately in
 `webui/data/lang/<LANG>/gameplay/projectile_audio.json`.
@@ -1310,6 +1346,9 @@ python -m scripts.animestudio.generate_dummydll --dry-run
 python -m scripts.animestudio.generate_dummydll --replace
 ```
 
+The generator consumes a tag-and-commit-pinned release from
+`Variante/Cpp2IL-Endfield`; Cpp2IL compatibility changes are released there
+before updating the local pin. It does not apply an in-repo source patch.
 Missing or stale DummyDlls warn and fall back to serialized schemas. Never
 reuse native registration addresses across game builds.
 
@@ -1362,18 +1401,21 @@ The default scan covers WebUI-facing exported text plus image, model, video,
 and decoded audio assets. `--text-only` omits all assets, `--no-audio` keeps
 other assets, `--exact` hashes contents, and `--full-export-scan` is for broad
 audits only.
+AnimeStudio `object_index`/`field_index` directories (including their
+`parts`) and exporter index-only JSONL, compressed, and temporary files are
+excluded from every Updates comparison and previous-export prune; ordinary
+WebUI JSON, media, and decoded audio remain in scope.
 
-Every comparison also writes `webui/data/updates/characters.json` for the
-Characters page. This sidecar compares stable `CharacterTable` keys, complete
-semantic rows, and names resolved through available `I18nTextTable_<LANG>`
-tables on both sides. Only common, valid localization tables participate;
-missing or invalid languages are recorded as degraded instead of changing
-every character. It reports `added`, `modified`, and `deleted` independently of asset
-flags, including under `--text-only`. Missing or invalid `CharacterTable`
-input, invalid overlays, or a table without valid object rows on either side
-publishes an unavailable empty sidecar instead of
-treating the current roster as entirely new. It does not modify or participate
-in `build_character_data.py` recovery and grouping.
+Every Characters build also saves its final generated catalog under
+`export_full/recovered/WebUI/characters/<LANG>.json`. Every Updates comparison
+writes `webui/data/updates/characters.json` by comparing those version-owned
+catalog snapshots. The comparison therefore covers the same Table, Story actor,
+and exported-asset identities and evidence that formed each Characters page,
+not only `CharacterTable`. Only languages present on both sides participate.
+It reports `added`, `modified`, and `deleted` independently of asset flags,
+including under `--text-only`. Missing, invalid, empty, or legacy exports
+without snapshots publish an unavailable empty sidecar instead of treating the
+current roster as entirely new. The sidecar does not alter recovery or grouping.
 
 Pruning is destructive. Preview byte-identical files in the previous export
 with `.\build_updates.bat --prune-old --dry-run`; run without `--dry-run` only

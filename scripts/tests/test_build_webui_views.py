@@ -157,6 +157,29 @@ class WebuiViewPlanTests(unittest.TestCase):
         self.assertIn("recover_map_streaming_instances.py", joined_map_task.commands[0].argv[1])
         self.assertIn("--all-published-map-scenes", joined_map_task.commands[0].argv)
         self.assertIn("--preview-only", joined_map_task.commands[1].argv)
+        self.assertEqual(
+            joined_map_task.commands[1].argv[
+                joined_map_task.commands[1].argv.index("--jobs") + 1
+            ],
+            "4",
+        )
+
+    def test_map_build_uses_worker_budget_with_and_without_assets(self) -> None:
+        normal = commands_for(
+            build_webui_views.build_phases(build_webui_views.parse_args(["--jobs", "3"])),
+            "map_recovery",
+        )
+        self.assertEqual(normal[0][normal[0].index("--jobs") + 1], "3")
+        self.assertEqual(normal[1][normal[1].index("--jobs") + 1], "3")
+
+        with_assets = commands_for(
+            build_webui_views.build_phases(
+                build_webui_views.parse_args(["--jobs", "3", "--with-assets"])
+            ),
+            "map_recovery",
+        )
+        self.assertEqual(with_assets[0][with_assets[0].index("--jobs") + 1], "3")
+        self.assertEqual(with_assets[1][with_assets[1].index("--jobs") + 1], "3")
 
     def test_full_graph_omits_relevant_scope_filters(self) -> None:
         args = build_webui_views.parse_args(["--full-source-graph"])
@@ -277,7 +300,7 @@ class WebuiViewPlanTests(unittest.TestCase):
             for line in source.splitlines()
             if line.startswith("python .\\scripts\\export_full_from_game.py")
         ]
-        self.assertEqual(len(extraction_lines), 3)
+        self.assertEqual(len(extraction_lines), 4)
         for line in extraction_lines:
             self.assertIn("%EXTRACTION_OUTPUT_ARG%", line)
 
@@ -295,6 +318,13 @@ class WebuiViewPlanTests(unittest.TestCase):
             "python .\\scripts\\verify_export_freshness.py %GAME_ROOT_ARG%",
             source,
         )
+
+    def test_export_wrapper_has_opt_in_freshness_bypass(self) -> None:
+        source = (ROOT / "export.bat").read_text(encoding="utf-8")
+        self.assertIn('if /I "%~1"=="--skip-freshness" goto :opt_skip_freshness', source)
+        self.assertIn('set "SKIP_FRESHNESS=1"', source)
+        self.assertIn("Freshness check skipped by --skip-freshness.", source)
+        self.assertIn('if "%SKIP_FRESHNESS%"=="1" (', source)
 
     def test_custom_roots_are_forwarded_to_every_subprocess_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

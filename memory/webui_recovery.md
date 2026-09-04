@@ -31,6 +31,7 @@ Choose the smallest workflow that owns the changed input:
 | Rebuild all generated views from current `export_full/` | `.\export.bat` |
 | Refresh installed-game Story/Table data, then rebuild | `.\export.bat --from-game` |
 | Refresh Story and assets in one extraction, then rebuild | `.\export.bat --from-game --with-assets` |
+| Apply changed installed VFS files locally, then rebuild every normal view | `.\export.bat --changed-only` |
 | Story is current; rebuild downstream views/assets/audio | `.\export_assets.bat` |
 | Story is current; refresh installed-game assets/audio first | `.\export_assets.bat --from-game` |
 | Compare two complete exports for Updates | `.\build_updates.bat OLD NEW` |
@@ -53,10 +54,20 @@ The canonical full flow is:
 5. Write step timings and process-tree memory benchmarks under
    `reports/export/`.
 
-`--webui-jobs N` limits post-Story concurrency; `--asset-jobs N` limits
+`--webui-jobs N` limits post-Story concurrency and supplies Map's internal
+workers when assets are being reused; asset rebuilds keep Map serial while the
+asset converter owns the heavy disk/memory phase. `--asset-jobs N` limits
 AnimeStudio workers. `--focused-assets`, `--default-assets`, and
 `--debug-assets` select increasing extraction scope. Use
 `--full-source-graph` only for exhaustive Unity object/PathID investigation.
+
+`--changed-only` is a local refresh, not an Updates comparison. It runs the
+same complete Story, semantic-view, asset, audio-linking, graph, and
+graph-consumer publication path while reusing existing bundle-derived assets
+and decoded audio. Only changed structured VFS logical files are extracted; it
+neither calls the Updates builder nor advances any previous-export/Updates
+baseline. Its private VFS snapshot commits only after all publication stages
+succeed.
 
 ## Shared contracts
 
