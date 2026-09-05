@@ -142,6 +142,21 @@ only.
   retail shader binaries. D3D12 experiments remain labeled diagnostics.
 - CharacterNPR, LitEffect, deferred resolve, shadow, post-processing, temporal,
   and Streamline resources retain separate producers and frame-lifetime gates.
+- Scene-shadow attenuation/blend are environment-phase inputs copied each
+  frame by the ordinary native shadow-manager route. The inspected volume path
+  preserves authored values; a disable flag alone does not establish blend 1.
+  Recover per-camera/shared-phase selection and interpolation ownership before
+  publishing live values. Per-camera interpolation state is not itself an
+  authored override. Trigger selection, active volumes and weights remain
+  necessary; constructor defaults and captured constants do not establish them. See
+  `reports/assets/character_recovery/shadow_simulation_native_ownership.json`.
+- ContactShadow captured-input replay needs repeat controls: original dispatches
+  can differ at pixels with overlapping recovered output writes. Preserve the
+  original dot-product instructions through distance quantization; scalar
+  multiply-add expansion caused a stable single-writer rounding mismatch.
+  Matching the single-writer subset does not certify overlapping writes, live
+  input ownership, or complete rendering parity. The compact evidence is in
+  `reports/assets/character_recovery/contact_shadow_write_overlap.json`.
 - Recovered scene-color/SceneMV copies must preserve attachment orientation so
   color remains registered to shared depth. `SetViewProjectionMatrices` takes
   the API-independent camera projection, not `GetGPUProjectionMatrix` output;
@@ -220,21 +235,33 @@ only.
   identifies distinct Default t11 as ContactShadowCS/RayTracingV2's
   `_ContactShadow` UAV output, also sampled by the scene producer at t5.
   The legacy cross-backend screen-mask name is disproven. Dispatch-local
-  constant-buffer slices and output bytes remain missing. Bounded isolated GPU
+  constant-buffer slices and output bytes are authenticated in the combined
+  two-entry evidence package. Bounded isolated GPU
   comparisons support the recovered arithmetic, but current native publishers
   read interpolated environment settings and a camera frame counter; constructor
   defaults do not validate those live values. Exact t7 uses the completed
   resolve, and t11 uses same-camera/frame contact output with separate content
   gates. Legacy HLSL bindings remain a different contract.
-  The dedicated `StartEndminfContactShadowCapture.bat` observer now retains
-  bounded dispatch-local buffer ranges and pre-dispatch inputs, then checks
-  output snapshots at both consumers. Its WARP/collection tests validate the
-  observation mechanics, not retail stability or pixel parity. Follow the
-  EndfieldCapture README's single-entry procedure; it does not replace the
-  separate ScreenShadow two-entry capture.
+  The combined capture needs no repeat for those graphics inputs. The optional
+  environment-shadow extension observes selected phases, ordered applied
+  volumes/factors and camera/shadow-manager state within the same two entries.
+  It uses guarded reads and original-call forwarding without Unity API calls.
+  Per-window completeness and exact camera bytes must validate before using
+  a runtime phase to explain a captured draw; raw instance IDs are not source
+  asset names. Follow the EndfieldCapture README's opt-in procedure and retain
+  any unresolved source identity explicitly.
   See `reports/assets/character_recovery/contact_shadow_runtime_source_join.json`.
-  Deferred presentation remains fail-closed
-  until a corrected current-outfit capture validates the draw-local t7 payload.
+  Offline execution of the original Default shader with authenticated draw-local
+  inputs and the captured blend reproduces the retained pass output byte-for-byte.
+  The earlier M27 color is numerically sufficient as its starting target; this
+  does not establish temporal identity with the immediate pre-Default color.
+  See `reports/assets/character_recovery/default_deferred_original_dxbc_replay.json`.
+  Canonical deferred presentation remains fail-closed until live t7/t11 input
+  production is validated; frozen capture replay is not a replacement.
+  Keep the captured output-merger blend: shader-side equivalent arithmetic
+  changes retained pixels. Sidecar presentation seeds owned scene color, then
+  blends the resolver through hardware; its equality test uses the published
+  surface depth, not the fullscreen triangle depth.
 - The AnimeStudio-owned shader recovery path may provide readable code and
   metadata. It does not prove runtime variant selection or final appearance.
 
@@ -332,6 +359,32 @@ Failed or partially collected retail sessions remain under scratch as
 diagnostics. Their observations may justify a tool fix, but never become parity
 evidence retroactively.
 
+When several visual gaps need retail observation, prefer the explicit combined
+Endminf workflow in the observer README: one attachment, two authenticated UI
+entries, early palettes and native timeline, a separately published ContactShadow
+transaction, then exact M27 and joined Default resources. Descriptor discovery
+must allocate no GPU staging, and later-entry readiness requires writer
+acknowledgments plus a completed Animator sequence. Keep GPU and retained CPU
+limits distinct, record arming delays, and never join resource contents across
+entries as one frame. Retain authenticated transient entry triggers across disk
+publication; require current actor evidence when arming instead of requiring the
+entrance shader to recur. This does not replace fresh-process cloth lifecycle proof.
+Retain exact SphereOutside draw metadata before owner-window collection starts
+and through joined-packet compaction; require its actual same-Present call order.
+Once every bounded packet is published, rejected admission must terminate instead
+of waiting for another entry. A constant scene-shadow R channel is admissible only
+when the archived original shader and same-draw bound constants prove its explicit
+white-output branch; texture appearance alone cannot establish this exception.
+Shader admission pins must match original bytes from the selected installed
+shader variant and a retained retail observation. Exercise bytecode hashing in
+capture regressions; fixtures that synthesize the expected identity can conceal
+a stale pin even when every local test passes.
+The combined packet contract now has a fully collected retail example. Use its
+authenticated source inputs for deferred recovery; capture completeness does
+not establish final rendering or cloth parity. Collection must validate the
+individual producer/consumer owners within a joined packet, and its streamed
+artifact hashing bound must accommodate the observer's permitted payload size.
+
 ## Reference and comparison policy
 
 - Keep one named clean retail sequence as the primary visual reference and
@@ -376,6 +429,12 @@ build and collection procedure.
 
 ## Remaining gaps
 
+- Current-build Animator callbacks confirm the lab's rotation-only formula,
+  but alternate built-in root-motion flags and forced-evaluation caller order
+  remain unresolved. A native forced evaluation method alone does not justify
+  a playback offset or establish the PlayerLoop/particle phase. Use the current
+  Animator lifecycle report under `reports/assets/character_recovery/`; older
+  build addresses cannot authenticate this ordering.
 - Join the early rigid pose and camera to source animation. EndfieldCapture's
   dedicated pose-timing launcher preallocates a bounded dense palette sequence
   before readiness and arms on a new Animator/graphics trigger without waiting

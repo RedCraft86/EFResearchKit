@@ -194,11 +194,22 @@ Current durable boundaries:
   wholly absent from both overlay roots remains visible as a conditional
   missing terminal state and does not fail; partial presence, bad hashes, and
   malformed payloads remain fail-closed.
-- SkillData and BuffData have current exact-build member-count and file-hash
-  censuses, but nested MemoryPack unions and whole-file ownership are not
-  proven. SkillData now has a strict anonymous EOF terminal-shape reader that
-  keeps its prefix opaque and preserves multiple valid starts as ambiguity.
-  BuffData additionally has a bounded anonymous member-18 stacking-action
+- SkillData historical export-backed censuses cannot establish current VFS
+  coverage by accepting a newer boundary report. Its maintained
+  `memorypack.skill_corpus` gate starts from the authenticated outer ledger and
+  current decrypted VFS stream bytes, checks the complete identity set and
+  source/overlay/tool provenance at both ends, and records logical hashes.
+  The anonymous terminal reader enumerates direct-counted and wrapped branches
+  independently, including empty wrappers; unknown record member counts fail
+  closed. A unique EOF candidate is unique only within the supported grammar,
+  not a proven preceding cursor. Full record ranges, ambiguous candidates and
+  opaque gaps remain distinct from whole-file ownership. Current coverage and
+  full candidate inventories belong to
+  `reports/animestudio/skilldata_current_latest.json` and its Markdown companion;
+  the historical two-ambiguity census is superseded, not a current baseline.
+  BuffData needs a
+  provenance-matched census before reporting current coverage and has a bounded
+  anonymous member-18 stacking-action
   reader; its fixed extent and terminal markers can be exact without claiming
   semantic field order, while changed or unsupported rows remain explicit.
   LevelScriptData and LevelData expose partial top-level frames only when their
@@ -211,11 +222,179 @@ Current durable boundaries:
   opaque remainder. Keep structural framing distinct from semantic schema
   ownership until formatter IL or a bounded deserialization trace closes the
   complete named cursor.
-  Current v29 metadata identifies formatter/wrapper methods and setters, but
-  its missing generic mapping and mismatched native code-registration witness
-  do not prove serialized field order. The current residual JsonData census
-  keeps every outer-verified unresolved row explicitly unclassified; SkillData
-  is the largest by bytes and still lacks whole-object cursor proof. The NPC
+  Current registration locates real SkillData formatter/wrapper bodies and
+  their relative five-operation terminal read sequence, not a file offset.
+  The Core type used by `ReadValue<T>` differs from the generated wrapper's
+  `Register<T>` type; a generated wrapped reader alone does not prove the
+  adapter or active formatter. A separately gated immediate-registration site
+  now joins the Core key to `GenericMemoryPackFormatter` with ordered arguments
+  Core and `Beyond_Gameplay_Core_GameplayTagListForMemoryPack`: its type carrier
+  and constructor MethodSpec share the same registered class instantiation.
+  This proves static adapter identity and a conditional registration callsite,
+  not completed allocation ABI, executed registration or active Deserialize
+  dispatch. Registration and lookup independently share one RIP-relative cell
+  and the same class/static-storage dereferences. The lookup's matched node
+  supplies its returned value, but misses can invoke callbacks, retry or construct
+  alternatives; this does not fix live contents or replacement history. The separate
+  generic serializer's pointer/length-word carrier is not yet joined to this
+  formatter or authenticated VFS allocation. Keep both terminal candidates;
+  complete nested cursors and EOF remain unresolved. Native pins and reviewed
+  limits belong to `reports/animestudio/skilldata_native_review_latest.json`;
+  PE reads must remain within raw section extents: virtual-only globals have
+  no disk value and need runtime-initialization evidence, not adjacent file bytes.
+  Generic-instantiation registration is a pointer array, not inline records;
+  preserve the record's padding separately from its u32 argument count. The
+  maintained `scripts.game_data.il2cpp_context_audit` validates current native
+  inputs, every registered instance, and reciprocal open-parameter ownership.
+  Its inventory is `reports/animestudio/il2cpp_context_current_latest.json`.
+  The selected `GetFormatter<T>` parameter belongs to `ReadValue<T>`; a prior
+  concrete-type probe was an indirection bug, not a runtime counterexample.
+  This static join does not establish actual generic substitution or formatter
+  selection; preserve both terminal candidates until those separate gates close.
+  The native MVAR leaf reads a parameter ordinal and indexes the supplied
+  method-inst vector. The gate checks that ordinal against the selected call's
+  registered argument. Native normal-path stores now connect method records to
+  their class, the metadata image-range directory, and a module selected by
+  bytewise name comparison from the gated CodeRegistration. The static image
+  partition must be complete and unambiguous; module names must be unique since
+  the native loop continues after a match. This does not certify initialization
+  execution, all cold paths, active formatter selection, or source/cursor/EOF.
+  The selected call's on-disk usage cell also joins through the wrapper's guarded
+  lazy initializer and tag-specific MethodSpec/triple resolver. This establishes
+  the static initialization mechanism, not an observed live cell or cache entry.
+  The open formatter-check carrier independently joins the same MVAR through its
+  class-inst pointer; reject duplicate pointer identities and token ranges.
+  The native method-pointer resolver retries a missed original-context lookup
+  with transformed argument vectors. Its direct class-tag branch uses one shared
+  global carrier plus the type-record offset for both adapter arguments. The
+  normal producer's image/namespace/name lookup and class copy connect this to
+  the unique `mscorlib.dll / System.Object` byval record; its bytes match both
+  arguments of the static object/object candidate. Actual initialization, cache
+  population and interned pointer identity remain unobserved: byte equality does
+  not select a particular shared Deserialize body.
+  A separately gated initializer seeds the generic-instantiation cache from the
+  selected registration's pointer table; insertion and lookup share the same
+  storage global. This conditional path is not an observation of cache contents.
+  The gated object-tag comparator and hash use only the tag and one flag bit,
+  not record addresses; enumerate every registered pair matching that projection.
+  A unique static match still does not prove the returned runtime instance.
+  Matching MethodSpecs join bounded method/invoker index triples and pointer
+  slots; the no-adjustor sentinel reuses the ordinary method pointer. Other
+  adjustors need an independently bounded table and remain unsupported here.
+  Keep RGCTX range-relative slots distinct from module entry indices. The adapter
+  class-token range connects its selected slot to a reciprocal second type
+  parameter (VAR), not an unrelated concrete type. The class initializer's
+  conditional path converts 16-byte definitions to eight-byte runtime slots
+  using the class generic context; static definitions are not observed slots.
+  The reviewed MethodInfo construction path stores the original instantiated
+  class separately from resolved shared-code pointers. Do not substitute the
+  shared body candidate's object/object arguments for the companion's class
+  context; actual cache contents and invocation still need independent evidence.
+  Nested class slots independently link MethodSpecs for the non-null adapter,
+  formatter lookup and instance creation to reciprocal parameters of that same
+  adapter type. Keep these static links separate from serialized read order.
+  The generated wrapper reader conditionally forwards the same reader after a
+  one-byte fast-path header to an independently joined `ReadPackable<List<...>>`
+  usage/MethodSpec/type carrier. This nested body is another provider/dispatch
+  layer, not the list element reader. Cold advance normally returns true, resets
+  the segment counter and accumulates the request; ensure can replace the cursor
+  with an existing or copied segment. Pointer deltas cannot certify source offsets.
+  The 24-byte descriptor has a conditional same-endpoint position-difference
+  length path. Independently token-joined constructors accept that descriptor or
+  a 16-byte pointer/length carrier and initialize total/remaining state and zero
+  consumption. Native getters identify consumed and total-minus-consumed roles;
+  reviewed caller paths return consumption but do not themselves compare EOF.
+  The token-joined object-return overload discards this count. Selected async
+  paths either discard it or forward it to another operation, not an EOF test.
+  These general serializer paths do not establish SkillData entry selection.
+  Exact Core.SkillData type arguments also join ResourceManager MethodSpecs;
+  their generic definition module slots are null. Separately enumerated
+  same-definition Object MethodSpecs supply shared-code candidates, not observed
+  sharing selection or invocation. Never confuse the same-named nested AI type
+  with the Core type, or substitute a shared body's arguments for live context.
+  A downstream native carrier wrapper forwards a reconstructed pointer/length
+  carrier to an inlined reader-state builder. Conditional dispatch uses that
+  state and an output slot; its returned consumption is discarded by the wrapper.
+  This corroborates the non-EOF boundary, not an authenticated file receipt.
+  The manager entry's declared input independently joins `System.IO.Stream`.
+  Native slot addressing connects its length calls and buffer-fill slot to the
+  metadata virtual slots for `get_Length` and `Read`. Both allocation branches
+  perform one `Read` and discard its returned count before parsing the requested
+  carrier extent. Repeated length results also undergo unchecked 32-bit narrowing;
+  no stability, allocation/filled-length equality or full-read guarantee follows.
+  The normal VFS allocation usage, constructor token and Stream parent now join
+  `VFSFileReadStream`. Its constructor copies a 32-byte descriptor and retains
+  the inner stream. Normal getters expose a descriptor length word and inner
+  position minus a descriptor base word. Read returns the inner stream's actual
+  count after a request-limit branch and optional prefix transformation, without
+  a full-fill loop. Normal inner-stream allocation joins `FileStream`; the two
+  selected helpers sign-extend the descriptor offset and seek with numeric origin
+  zero, but one requires a positive offset and the other any nonzero offset.
+  They discard the seek result. The normal mode getter shifts a packed dword;
+  its caller retains only eight bits, not the entire getter result. The relative
+  path's normal chunk-name branch uses a descriptor integer as a container
+  lookup key and copies a checked, indexed 16-byte result, not an inline hash
+  from the descriptor's leading bytes. Negative keys/results divert through a
+  helper; if it returns, the getter emits 16 zero bytes, not a proven exception.
+  Do not conflate this native descriptor with the serialized BLC file record.
+  The normal setter uses paired static containers: a lookup-hit integer or a
+  count-difference candidate reaches the descriptor; the miss path supplies the
+  integer and 16-byte input in opposite orders to two insertion helpers without
+  checking their returns. Original usage cells join Dictionary `TryGetValue` and
+  `set_Item` contexts with reversed Int32/UInt128 arguments, not the helper
+  identities suggested by inlined call targets. This is a conditional producer
+  path, not proof of successful insertion, reciprocal live contents or BLC MD5
+  provenance. Preserve the distinct seek predicates; complete container
+  mutation/initialization, alternate path branches, path encoding/root selection,
+  constructor/seek internals, replacements and the descriptor-to-authenticated
+  logical-file identity/hash remain unproved. This is not a runtime receipt.
+  `ReadFromByteBuf` now connects a mutable ByteBufStream cursor/array carrier to
+  the 16-byte lookup input and descriptor result on its normal path. Its initial
+  skip adds two in 16 bits before sign extension. The selected little-endian
+  eight-byte helper can return zero for insufficient length while the caller
+  still advances; do not treat successful return as byte provenance or reuse
+  this permissiveness in maintained parsers. The array's authenticated source,
+  later version/flag branches and final cursor still require independent proof.
+  Main-info construction now preserves the original array and supplied starting
+  index in that carrier, shared by nested chunk/file loops. The main reader's
+  pre-parse tail comparison is distinct from consumption: its normal final
+  remainder calculation clamps nonpositive values to zero, and the selected
+  legacy branch performs one extra integer read without a subsequent EOF
+  equality check. A returned object therefore cannot certify full consumption.
+  Its upstream block-group entry retains the original array through an in-place
+  transform and forwards that same array to the main reader. The normal worker
+  XORs input bytes with a state-buffer byte; its adapter aliases both arrays and
+  offsets. Nonpositive counts return without validation. The transform offset
+  and subsequent parse start are separate loads from the same static storage,
+  not a demonstrated immutable value. Key/span/constructor ABI, state-block
+  generation, complete cipher parity and replacement paths remain open; array
+  aliasing alone is not a decryption or EOF proof. Both block-construction
+  branches now retain the array returned by their normal file-helper path
+  through that entry. Those helpers converge on `File.ReadAllBytes`, whose
+  positive-length loop accumulates actual read counts and reduces remaining
+  bytes; zero returns leave the normal loop for error helpers. Its array/offset/
+  count overload uses slot 34, distinct from the previously reviewed slot 35.
+  Its normal FileStream overload reaches MonoIO, then a PE import-name join to
+  `ReadFile`; the supplied out DWORD, not the API boolean, supplies the read
+  count. The error word is populated through `GetLastError` on the failure
+  branch and selects count versus -1. Keep API status, error, byte count and
+  accumulated count distinct. This static join does not prove live IAT contents,
+  handle provenance or buffered-state invariants; full-fill remains conditional.
+  Root/path conversion, on-disk identity/hash, zero-length alternate behavior
+  and concrete constructor/Read execution remain unresolved.
+  Multi-segment conversion, the complete ResourceManager-to-reader path and authenticated input
+  identity remain unresolved. No observed final cursor or terminal uniqueness
+  follows from this conditional ABI.
+  Preserve the open formatter-check carrier window's uninterpreted tail: its bytes do not certify a
+  runtime allocation extent or select the returned formatter. Provider fallback
+  includes a lazy callback path whose population remains a separate evidence gap.
+  Saved corpus consumers must recheck live catalog, build, CLI, parser and chunk
+  fingerprints at both ends; authenticating the report hash alone does not
+  establish freshness after a tool rebuild. Reauthenticate affected bytes with
+  the rebuilt tool rather than rewriting old provenance pins.
+  DummyDll population and setter declarations do not fill these gaps. Historical
+  residual JsonData censuses supply family leads, not current denominators
+  without a ledger rejoin. SkillData still lacks whole-object cursor proof. The NPC
   Montage reader exact-frames all 3,631 current rows, including both non-empty
   counted collections and their nested member markers, while keeping UTF-8 and
   fixed record bodies anonymous. StreamingChunkInfo exact-frames the anonymous
@@ -354,6 +533,11 @@ pass license and target-framework review for AnimeStudio's .NET targets.
 
 ## Remaining gaps
 
+- Close SkillData's real formatter/ref-reader cursor from a current authenticated
+  logical file through the anonymous terminal start; method identity and a final
+  one-byte read alone do not prove source extent or exact EOF. Preserve candidate
+  ambiguity until that connection exists, then continue the residual JsonData
+  record queue rather than inferring field order from declarations.
 - Continue Streaming nested element/byte-body framing using the bottom-up
   queue in `game_data_recovery.md`; concrete runtime paths and field names
   follow structural closure, not the reverse.

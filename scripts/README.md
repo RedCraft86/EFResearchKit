@@ -210,6 +210,9 @@ set ASCLI=tools\AnimeStudio\AnimeStudio.CLI\bin\Release\net9.0-windows\AnimeStud
 %ASCLI% vfs-audit --streaming-assets PERSISTENT --fallback-assets STREAMING_ASSETS --summary-json reports\animestudio\vfs_understanding_latest.json --ledger-jsonl-gz reports\animestudio\vfs_understanding_files_latest.jsonl.gz --report-md reports\animestudio\vfs_understanding_latest.md
 python -m scripts.game_data.streaming_corpus --input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
 python -m scripts.game_data.streaming_marker17_corpus --input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+python -m scripts.game_data.streaming_marker13_corpus --input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+python -m scripts.game_data.streaming_marker2_corpus --input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+python -m scripts.game_data.memorypack.skill_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256 --output reports/animestudio/skilldata_current_latest.json --output-md reports/animestudio/skilldata_current_latest.md
 %ASCLI% shader-recover --input PATH_TO_SPIRV --output PATH_TO_HLSL
 %ASCLI% inspect-object --index OBJECT_INDEX.jsonl --path-id PATH_ID --source SOURCE --type TYPE
 %ASCLI% audit-refs --index OBJECT_INDEX.jsonl
@@ -241,10 +244,46 @@ joined to one authenticated logical file. Key namespace and signedness, field
 names, and semantics remain unresolved.
 `streaming_marker17_corpus` reuses the source-bound marker17 directory from that
 report, reauthenticates every listed physical range and refines the native-gated
-tag5 bodies with `streaming_marker17`; other bodies remain explicitly opaque.
-It writes `reports/animestudio/streaming_marker17_tag5_latest.json` plus `.md`.
+tag5 counted arrays and fixed tag1/4/6 profiles with `streaming_marker17`;
+unknown keys remain explicitly opaque/unsupported. It writes
+`reports/animestudio/streaming_marker17_bodies_latest.json` plus `.md`.
 Partial `--max-files` probes require explicit output paths and are not eligible
 as complete-corpus evidence. Record fields and runtime selection remain unknown.
+`streaming_marker13_corpus` rereads the complete block-15 ledger through the
+source-bound Streaming parser, joins marker13 references to independently
+certified structural neighbours, and tests native-gated explicit-selector9 and
+byte-proven absent-selector profiles. `streaming_pairs` binds paired file
+identities, complete ordered vectors and exact serialized ordinals; absence is
+never rewritten to a stored zero. Its inventory separates structure, read windows,
+physical gaps and opaque remainder; a physical gap is not a serialized sizeof or native EOF.
+Outputs are `reports/animestudio/streaming_marker13_latest.json`/`.md` and
+`streaming_marker13_inventory_latest.jsonl.gz`; partial outputs must stay in
+`tmp/` or `scratch/`. The summary authenticates the inventory's content/hash.
+`streaming_marker2_directory` owns the complete nested reference/occupancy
+replay. `streaming_marker2_corpus` gates the separate selector6 finite-gap
+parser against the same source-bound ledger and ordered pairs; it publishes
+`streaming_marker2_latest.json`/`.md` and
+`streaming_marker2_inventory_latest.jsonl.gz` under `reports/animestudio/`.
+Its four-byte native window is separate from the physical gap and opaque
+complement. Unknown representations and multi-target clusters remain explicit;
+partial probes cannot replace complete reports. Both ends of a sweep check
+the live BLC path set as well as fingerprint contents and executing sources.
+`memorypack.skill_corpus` owns the SkillData current-VFS gate; `skill` owns
+anonymous prefix/candidate framing and `skill_terminal` enumerates each terminal
+branch with complete record ranges. The gate joins current decrypted stream
+bytes to every selected outer-ledger identity and checks overlay, raw chunks,
+CLI and parser provenance at both ends. Historical census rebinding is rejected.
+Unique, ambiguous, unsupported and failed rows remain explicit; no candidate
+establishes whole-schema ownership. Partial `--max-files` outputs must stay in
+`tmp/` or `scratch/`.
+`python -m scripts.game_data.il2cpp_context_audit` emits an exact-build native
+generic-instantiation audit as JSON on stdout. `il2cpp_context` owns bounded
+pointer-table/record/vector decoding and reciprocal method-parameter identity;
+the audit checks selected native inputs and consumer pins, scans all registered
+instances, validates metadata image ownership and unique module-name joins, and
+rechecks the saved SkillData corpus's live input/tool/parser/chunk pins through
+`memorypack.skill_corpus.verify_current_report_inputs`. It does not
+re-stream VFS bytes or establish runtime formatter/cursor identity.
 Object indexes may be JSONL or
 `.jsonl.gz`; `certify-index` requires a complete terminal summary row, `replay`
 uses one `{ "pathId": N, "source": "...", "type": "..." }` request per line,

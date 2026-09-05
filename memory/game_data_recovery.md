@@ -96,14 +96,38 @@ its reader, fixtures, and generated corpus report. Durable current conclusions:
   absent selectors are not defaulted to zero. Directory counts reconcile with
   framing counts; failed gates suppress directory publication. This adds no
   owned bytes and does not name the opaque bodies or prove runtime selection.
-  The separate marker17 tag5 parser refines selected default slot3 bodies into
-  a 64-byte anonymous header, one optional record and five counted arrays.
+  The separate marker17 body parser refines selected default slot3 tag5 bodies
+  into a 64-byte anonymous header, one optional record and five counted arrays.
   Native-gated pointer arithmetic fixes their order and widths; counts are
   bounded before multiplication and the parser enforces exact body EOF.
   Header gaps and record fields remain opaque. Native construction, callback
   installation and publication are pinned separately from concrete execution;
   the native reader itself checks neither source extent nor final cursor.
   Its external-array equality remains conditional on an unavailable carrier.
+  The remaining selected profiles independently bind tags1/4/6 to their keys.
+  Their strict fixed lengths match reviewed maximum read ends and are tested
+  against authenticated bodies, not inferred as native EOF checks. Bytes30--31
+  are explicitly unread/opaque, not certified padding. Equal lengths do not
+  imply equal tags: the tag6 profile must not be dispatched as tag1.
+  The separate marker13 profile joins explicit raw selector9/root marker2 and
+  unique full key FF000000 to two independently pinned default consumers.
+  Its physical gap starts at a certified structural end and finishes at the
+  next certified start; other anonymous target addresses do not define either
+  boundary. The finite physical-gap profile accepts only 16 or 18 bytes; this
+  end need not equal the native 16-byte read end. Four anonymous
+  scalar32 positions are consumed conditionally; remaining gap bytes stay opaque
+  with unresolved ownership, even when zero. Serialized sizeof, field meanings and
+  native final cursor remain unknown; absent selectors and longer gaps are not
+  silently defaulted or treated as padding. The corpus gate inventories the
+  independently certified ranges, selected read windows and opaque complement,
+  keeping physical-gap lengths separate from read-window byte counts.
+  For absent selectors, the parser rechecks the actual row/vtable field2 and
+  preserves null. A separate pinned slot5 accessor-default-zero witness is
+  conditional on a new key and default registration, not a serialized value.
+  The pair validator binds both file identities, complete ordered field3/4
+  vectors and the same bounded ordinal, then rechecks the marker byte and row
+  uoffset. Only a complete source-reconciled corpus terminal permits publication;
+  existing-key history, overrides and runtime receipt remain unresolved.
   Marker16 belongs to a different outer-row shape. These associations do not
   prove a union registry. Marker15 references require nonzero forward bounded
   targets; hashes bind each source/slot directory, but target contents and
@@ -112,10 +136,24 @@ its reader, fixtures, and generated corpus report. Durable current conclusions:
   callback uses the second root's row-field3 for one scoped context. Full-u32
   key equality, collision probing, insertion/rehash and lookup are native-gated.
   Native duplicates retain the first ordinal; serialized joins instead reject
-  ambiguity. Unique count/element keys yield bounded marker2 four-byte and
-  marker15 sixteen-byte candidate reads, with known-range overlap checks.
+  ambiguity. Unique element keys yield bounded marker15 sixteen-byte candidate
+  reads, with known-range overlap checks.
   Missing count keys remain explicit unsupported rows; readable spans are not
   record extents or execution receipts.
+  The marker2 finite-gap parser selects only the independently gated
+  selector6/full-key09020000 context. It rebuilds the complete nested target
+  directory; unknown markers preserve raw slots and prevent occupancy closure.
+  An exclusive target must start at the preceding certified end and have a
+  4- or 6-byte gap to the next certified range. Only four bytes are projected;
+  the extra two remain opaque, even when zero. All u32 bit patterns are accepted
+  structurally. Native signed-positive loop use does not establish serialized
+  validity, a semantic count name or sizeof. Multi-target clusters remain
+  unsupported, aliases stay ambiguous, and unseen exclusive gap lengths fail.
+  Selector9 remains unsupported: its prefix writes into returned component
+  storage, but the live mapping index, record index and resulting pool span
+  are not bounded by the reviewed accessors. Constructor allocations alone
+  do not prove current backing ownership. A presumed valid runtime object
+  must not substitute for this missing carrier/extent evidence.
   Paired formatters prove first=Init and second=Streaming with identical
   root/dev/key inputs; both use one serialized ordinal, not runtime allocation
   order. Complete ordered field3/field4 witnesses match between paired files,
@@ -278,22 +316,21 @@ and before/after evidence belongs in `tmp/<topic>/`.
 
 ## Remaining gaps
 
-- Continue the remaining marker-17 fixed-body profiles from the source-bound
-  key directory, then marker15 target extents. A highest native read offset is
-  not an EOF check: bound unread gaps explicitly and verify full bodies. Use
-  independently reviewed consumer pointer arithmetic to select record order,
-  not length equations or fixed-size appearance alone. Paired
-  Init/Streaming leaf formats, shared serialized ordinal and ordered key/marker
-  witnesses are closed, but concrete runtime root/key provenance, existing-key
-  state, overrides and actual execution remain unobserved. The upstream
-  key's static Info source is bounded, but no concrete runtime Info record is
-  identified. Missing-count-
-  key rows remain unsupported by the selector profile; do not extend its
-  conditional subset to every marker-15 target. The directory is bounded,
-  not its records. Concrete runtime-root receipts and field-5 key namespace
-  follow the remaining structural/consumer closure.
-  Fixed-size-looking targets still need independent width/cursor
-  evidence; do not derive sizes solely from neighboring addresses. Then Terrain
+- Streaming's next advance requires independent record-end evidence or a
+  bounded runtime carrier witness. Keep selector9 held until its component
+  mapping indices and write span are authenticated; do not repeat anonymous
+  load-width or target-distance statistics. Multi-target clusters need extents;
+  neither zero values nor a loop skip establishes validity or sizeof.
+  Marker13's observed gap profiles are anonymous, and serialized absence is
+  not a numeric selector.
+  Marker17 body profiles are structurally closed but anonymous. Marker15 still
+  needs a concrete producer, source extent or independently bounded unread
+  region: repeating a 16-byte native load does not prove record size. Its
+  directory is bounded, not its records; missing count keys remain unsupported.
+  Paired Init/Streaming paths, serialized ordinals and ordered witnesses do not
+  prove concrete runtime root/key receipt, fresh key state, absence of overrides
+  or execution. Native Info provenance is conditional, not a concrete record.
+  Keep field namespaces and runtime semantics behind those gaps. Then Terrain
   block/channel semantics, DynamicStreaming, irradiance, manifest, mmap,
   patch, and JsonData body semantics.
 - Recover more exact gameplay action/selector/formula contracts without
