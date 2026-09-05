@@ -28,8 +28,17 @@ Current durable state:
   and major entrance effects are source-backed;
 - selected CharacterNPR/HGRP frame equations and resources are partial;
 - retail visual parity is not reached;
-- the main silhouette gap is secondary cloth/bone simulation and history, not
-  a license to hand-author mesh, pose, or camera corrections.
+- secondary cloth/bone simulation and history remain a confirmed silhouette
+  gap; early rigid pose/presentation is also unresolved. Animator state timing
+  alone does not prove that pose, and does not justify hand-authored corrections.
+- sampled entrance skin palettes agree closely with independent source-clip
+  poses at recorded Animator phases. That consistency does not authenticate
+  frame-end bytes as draw-consumed data or resolve the earlier visual pose gap;
+  the maintained palette audit preserves both phase candidates and both banks.
+  Draw metadata clocks bound observer state reads and constant copies, while
+  palette SRV aliases prove binding identity; neither establishes frame-end
+  palette bytes as draw-consumed data. Full capture's Streamline publication
+  prerequisite can postpone dense palette sampling beyond the early pose gap.
 
 Changing actor counts, shader hashes, frame metrics, session ids, and capture
 inventories belong in `reports/assets/character_recovery/`.
@@ -99,6 +108,31 @@ only.
 - Direct clip selection, state-graph selection, and restart share the same
   effect/audio composition owner. Resuming a paused clip remains side-effect
   free.
+- Character Info's common `CharEffect` is one scene-level non-looping particle
+  system. Selection activates it and calls `Play`; repeated selection while it
+  is in flight preserves its survivor clock and must not inject `Stop/Clear`.
+- Exact-build session `20260904T180646Z` proves a retained completed effect is
+  stopped at time 1/count 0 before `Play` and playing at time 0/count 0 after
+  it. The first overview Tick follows about 16.734 ms later. Its body clock is
+  already seeded to 0.034241635 s before Play, so Animator state time and
+  particle time remain distinct; the recovered scheduling must not add a
+  preroll, delayed actor start, or Animator-aliased effect clock.
+- Its recovered owner publishes a fail-closed generation plus source
+  hierarchy, Unity identities, system clocks, and live trail count. Exact
+  retained packet selection may use that evidence diagnostically, but
+  canonical output continues to simulate the source system.
+- Deterministic capture setup must not age the shared system while settling the
+  actor. The Endminf harness recreates the observed retained-completed
+  precondition, then invokes the same production-order Animator entry and
+  `Play`; this is a capture precondition, not a runtime particle-time override.
+  The corrected first saved frame measures 0.016666668 s particle time and
+  0.050908305 s body time, agreeing with the retail/QPC join within about
+  0.101 ms.
+- A first-effect RenderDoc capture must arm before the normal restart, after
+  the retained effect finishes naturally. Waiting for live particles and then
+  requesting the following frame misses that boundary. The lab's dedicated
+  windowed mode records and checks the single-step Play-to-render join; its
+  receipt and live draw still establish only Unity-side evidence.
 - A controller or effect definition proves authored composition, not that the
   retail frame executed it.
 
@@ -108,19 +142,99 @@ only.
   retail shader binaries. D3D12 experiments remain labeled diagnostics.
 - CharacterNPR, LitEffect, deferred resolve, shadow, post-processing, temporal,
   and Streamline resources retain separate producers and frame-lifetime gates.
+- Recovered scene-color/SceneMV copies must preserve attachment orientation so
+  color remains registered to shared depth. `SetViewProjectionMatrices` takes
+  the API-independent camera projection, not `GetGPUProjectionMatrix` output;
+  the latter caused a second Y/depth conversion and a compensating cull flip.
+  Actual post-fix VP and byte-identical scene-copy checks validate the D3D11
+  correction. GPU matrices still belong in explicitly GPU-space shader globals.
 - Endminf overview_01 combines ten physical rock renderers using LitEffect
   `_PARALLAX_MAP` M01/M38 with a companion VFXBaseV2 particle cohort. Complete
   serialized prefab ownership, including fail-closed renderers, is the required
   shader-census starting point. The later overview_02 M27 and overview_02/03
   M28 owners remain separately gated.
+- Recovered LitEffect material handoff uses one character-neutral, fail-closed
+  schema for the complete serialized texture, transform, color, and float
+  surface shared by the compatibility and five-MRT shaders. Overview_01 now
+  also has exact runtime evidence for exposure/aspect, the live VFX clock,
+  authenticated-zero anchor-wave state, and identity particle-mesh object
+  translation across its complete early M01/M38 sequence. The anchor state is
+  promoted through a hashed Resource plus active source-marker join, preserving
+  readiness separately from the zero value. That scope does not authorize the
+  later overview_02 M27 globals or either path's final deferred presentation.
 - Material keywords, pass/queue selection, constant-buffer values, textures,
   depth, motion vectors, shadows, exposure, and history are accepted only from
   their exact serialized or observed owner.
+- Shared CharEffect retains the source BC7 texture's complete authored mip
+  chain and sRGB interpretation. Its shader-owned linear-repeat sampler must
+  sample raw UVs; manually wrapping coordinates before clamp sampling changes
+  seam filtering and derivatives. Serialized curve infinity codes likewise
+  require explicit translation to Unity's public WrapMode enum, verified by
+  independent engine serialization rather than the importer's own mapping.
+  VFXRefract's separate RB displacement uses `_Intensity * vertexAlpha` and
+  `_UseMainTexAsMask`; its normal-derived magnitude includes refraction strength.
+  Recover names from the original compressed program's referenced parameter
+  record when exported metadata omits fields. Exact RB, RGB/blend, and dissolve
+  variants establish this contract; see the CharEffect RB parameter audit.
+  Offline hardware replay of the retained original first draw reproduces its
+  complete RT0 exactly. This proves packet sufficiency for that color output,
+  not reconstructed Unity fidelity or RT1 parity; preserve those boundaries.
+  Public Unity particle instance records require their own stream-layout
+  contract. The recovered refraction path selects its Custom1 record variant
+  from the renderer's mesh/GPU/active-stream settings and isolates that choice
+  from shared billboard materials. A native matrix-bank declaration does not
+  establish Unity's procedural buffer stride; validate the bound descriptor,
+  shader loads, and actual post-VS positions together.
+- A component-complete current-build Streamline capture retains two consecutive
+  native-resolution DLAA input/output/depth/motion transactions and a complete
+  selected-actor Animator timeline. Its direct
+  `ScalingInputColor` previews already contain Endminf's horizontal chromatic
+  entrance strips, proving that feature belongs to upstream
+  CharEffect/VFXRefract rendering rather than DLAA history. The output remains
+  close to the current input and slightly attenuates aggregate consecutive
+  change. The shared-QPC join places them at `ui_overview_start` 0.051009 s and
+  0.076166 s with no intervening selected-actor Tick. The broad whole-actor
+  echoes present at the matching bounded clean-video anchor are absent from
+  both surfaces, localizing their producer downstream of DLAA to Uber/final or
+  recording presentation. The lab's ordinary TAAU consumer remains
+  compatibility-only pending an exact reusable DLAA integration.
+- Native-resolution comparison is explicit rather than inferred: the lab
+  renderer accepts a paired 3840x2160 profile and the comparator's `source`
+  mode requires the exact recorded source dimensions, preserving the default
+  annotation-pinned 1920x1080 contract for existing diagnostics.
+- The observation-only Streamline schema-v2 capture is prepared to retain a
+  hashed 4K swapchain color immediately before each accepted packet's closing
+  `Present`, alongside its DLAA/depth/motion data on the same QPC chronology.
+  This is a collection capability, not evidence, until a fresh exact-build
+  session publishes and validates the new files.
 - A resource that exists or hashes identically is not necessarily bound to the
   selected draw. Same-camera, same-size, same-frame, submission-order, and
   lifetime constraints remain part of the join.
 - Compatibility shaders and lab-created buffers are explicitly approximations
   until the retail producer and consumer are independently closed.
+- The graphics-only Full screen-shadow observer is pinned to the August 25
+  client through a dedicated five-file manifest and passes installed-client
+  preflight without native gameplay/IL2CPP hooks. Current dense evidence proves
+  that two instanced fullscreen producers write one RG8 resource consumed by
+  Default Deferred at PS t7. An exact source/runtime compute-bytecode join
+  identifies distinct Default t11 as ContactShadowCS/RayTracingV2's
+  `_ContactShadow` UAV output, also sampled by the scene producer at t5.
+  The legacy cross-backend screen-mask name is disproven. Dispatch-local
+  constant-buffer slices and output bytes remain missing. Bounded isolated GPU
+  comparisons support the recovered arithmetic, but current native publishers
+  read interpolated environment settings and a camera frame counter; constructor
+  defaults do not validate those live values. Exact t7 uses the completed
+  resolve, and t11 uses same-camera/frame contact output with separate content
+  gates. Legacy HLSL bindings remain a different contract.
+  The dedicated `StartEndminfContactShadowCapture.bat` observer now retains
+  bounded dispatch-local buffer ranges and pre-dispatch inputs, then checks
+  output snapshots at both consumers. Its WARP/collection tests validate the
+  observation mechanics, not retail stability or pixel parity. Follow the
+  EndfieldCapture README's single-entry procedure; it does not replace the
+  separate ScreenShadow two-entry capture.
+  See `reports/assets/character_recovery/contact_shadow_runtime_source_join.json`.
+  Deferred presentation remains fail-closed
+  until a corrected current-outfit capture validates the draw-local t7 payload.
 - The AnimeStudio-owned shader recovery path may provide readable code and
   metadata. It does not prove runtime variant selection or final appearance.
 
@@ -136,6 +250,52 @@ frames, prepares only each owner's source indices, preserves old-frame state
 across multiple 90 Hz substeps, and publishes current state at the frame
 boundary. Its two-frame moving-collider verifier fails if registration reasserts
 `Reset` or caller-provided stale previous samples replace retained history.
+
+Unity image comparisons use physical `actualSeconds` relative to the first
+saved frame, gated by its annotated body phase; sparse runs must include time
+zero. Requested times and image ordinals can disagree with rendered phase.
+This relative join preserves the video anchor's existing uncertainty.
+On synchronized retail checkpoints,
+the current solver is worse than animation-only in both translation and
+rotation, and adding the recovered rotation-only post-proxy CalcLine stage does
+not repair the positional error. CalcLine therefore remains an independently
+gated diagnostic, while canonical output keeps solver writeback disabled. Angle
+jobs consume exactly their serialized baseline slices: the first
+`baseLineData` vertex is the local root even when its hierarchy parent is
+outside that slice.
+
+Sparse captured-trajectory replay must publish the requested target time again
+immediately before rendering; relying on the preceding `LateUpdate` can lag the
+oracle by one frame. Exact-time replay of the retained August 26 trajectory
+improves the matching August 26 visual sequence, but it is still evidence, not
+the maintained solver. Its first visible state is already materially displaced
+from an authored-pose solver seed, so the next recovery boundary is the retail
+actor's pre-visible cloth lifetime/reset/stabilization sequence. Bone-oracle
+metrics must not silently compare trajectories captured in different retail
+sessions.
+
+That lifecycle question now has a distinct observation contract rather than a
+weakened trajectory claim. EndfieldCapture's diagnostic-only
+`registration-timing full` profile retains one name-authenticated AddCloth
+return QPC per Endminf owner plus a bounded ledger of every matching clock,
+team/generation, and object identity independently of trajectory-window
+readiness. Its native source gate requires complete ledger accounting and rejects
+capacity loss, missing owners, clock, thread, lifecycle, hierarchy, publication,
+and shutdown failures. Animator timeline schema v5 reads the selected
+`CharUIModelMono.m_magicaCloths` collection (exact-build field token
+`0x04009205`, offset `0xf0`) after the original Tick and retains bounded cloth
+component pointers plus signed Unity instance IDs. The lab verifier joins each
+named registration to that authoritative actor-owned collection using both
+identities; other loaded Endminf instances remain reported but excluded. It
+then joins the selected ticks only to the same session's complete Animator
+timeline. A dedicated August 25 manifest now authenticates all five visual
+files, and the runtime pins only the current AddCloth/identity dependencies;
+trajectory hooks and windows remain disabled. The installed-client preflight
+passes. One diagnostic session observed four registrations per name among 179
+distinct cloth teams in one complete Animator entry; those first timestamps are
+not attributable to the visible actor. That session predates Animator schema v4;
+three fresh-process sessions must validate the ownership join and distinguish
+warm-up from cache state before solver initialization changes.
 
 The missing result is the complete retail numeric solve and actor-owned
 writeback/history across all relevant branches. Global scheduler values or a
@@ -179,6 +339,11 @@ evidence retroactively.
   generated report.
 - Comparison frames must join exact no-frame-generation source frames and the
   corresponding Unity clock/state. Do not align by appearance alone.
+- Annotate visible pointer/controller changes and split input-stable frames
+  from camera-motion-affected frames. Deterministic animation renders use the
+  actor's serialized camera entry state; capture-specific input endpoints or
+  trajectories remain external reference evidence and never become actor or
+  runtime constants.
 - Report spatial, temporal, silhouette, effect, and color errors separately.
   One aggregate score can hide a regression in a critical layer.
 - Captured resources and replayed lab outputs keep their color space, format,
@@ -211,12 +376,27 @@ build and collection procedure.
 
 ## Remaining gaps
 
+- Join the early rigid pose and camera to source animation. EndfieldCapture's
+  dedicated pose-timing launcher preallocates a bounded dense palette sequence
+  before readiness and arms on a new Animator/graphics trigger without waiting
+  for Full mode's Streamline publication. Follow its README procedure. Retained
+  palettes remain frame-end samples; metadata clocks and VS resource aliases
+  do not establish same-draw consumption. The first validated retail pose
+  session reaches the early entrance; use its phase-joined packets for an
+  independent Unity palette comparison. See the lab progress log and generated
+  pose-timing session review for the retained sample and startup-join gaps.
 - Close the character-neutral retail render frame: exact shader variants,
-  bindings, lighting/shadow resources, post-processing, temporal history, and
-  final presentation route.
+  bindings, lighting/shadow resources, post-processing, a phase-joined final
+  swapchain boundary, and final presentation route.
 - Recover Endminf's complete secondary-dynamics numeric solver, owner identity,
   job completion, and writeback/history.
-- Complete entrance/loop VFX timing and lifetime without hand-authored offsets.
+- Continue shared CharEffect draw comparison using the retained first-two-draw
+  packets. Topology, UVs, population, and the complete authored texture now agree;
+  the RB parameter mismatch is corrected. The strict particle-phase join remains
+  open, and broad temporal echoes are a separate downstream question. Preserve
+  exact-owner draw-local resource selection, readiness after application-device
+  attachment, and idle waiting before authenticated Play/draw; WARP bootstrap
+  readiness and regular Present scheduling are not valid substitutes.
 - Expand converter and shader fixtures while preserving exact source bytes.
 - Turn the validated Endminf solution into data-driven profiles for all
   playables without actor-specific renderer forks.

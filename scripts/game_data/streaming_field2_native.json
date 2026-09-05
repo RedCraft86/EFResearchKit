@@ -1,0 +1,1779 @@
+{
+  "schema": "endfield.streaming-field2-native-contract.v8",
+  "status": "validated",
+  "nativeMappingId": "endfield-2026-09-04-streaming-field2-row-carrier-and-scene-object-chain",
+  "nativeInputs": {
+    "gameAssemblySha256": "C24495E51B406F03B03890C4788EE618AE022C991405BE5D5B8B787CB775AE89",
+    "metadataSha256": "0076743397ACADF03D3B0064343A963C7C88863B8160526D397E4B3EFB96F02E",
+    "unityPlayerSha256": "BEE7BE52370ADDDD67BA61E4937CA51B7F272656841D187E95E505496DA798D1"
+  },
+  "unityPlayerRanges": [
+    {
+      "role": "rootMarkerRecordAllocator",
+      "rva": 437792,
+      "fileOffset": 435232,
+      "size": 197,
+      "bodySha256": "EFF2C7AF7C68CE01BB09F75652CB1A839637DC4132D6B44A3634A878768DAE87",
+      "entryBytesHex": "48895C2410564883EC20488B01498BF0488BD9448B104585D2743C488BD04D6B"
+    },
+    {
+      "role": "rootMarkerByteCopy",
+      "rva": 14968464,
+      "fileOffset": 14965904,
+      "size": 52,
+      "bodySha256": "C73A1E4B53E41A1FFB4F7B0CBBFC2D1666B4335965691AAB912CCD423C8B2C1F",
+      "entryBytesHex": "4885C9742C410FB601880133C08941108941044889410866C741010300488941"
+    },
+    {
+      "role": "rootMarkerDispatchSlots1To3",
+      "rva": 27075232,
+      "fileOffset": 27069088,
+      "size": 24,
+      "bodySha256": "2A1D8687BD8A0009AD324ADCEBE2548B5ECE77A1F04794F4E7E00808ABACE447",
+      "entryBytesHex": "B0D21B800100000070C21B8001000000C0B41B8001000000"
+    },
+    {
+      "role": "defaultConstructorContextBasePrefix",
+      "rva": 3681696,
+      "fileOffset": 3679136,
+      "size": 195,
+      "bodySha256": "F00908FFFA04AD2AD8CBD7F2DF2E889F05366839A79B7AF6A35F076F17A79715",
+      "entryBytesHex": "48895C2408488974241048897C24184C8974242055488DAC24F074FFFFB8108C",
+      "rangeKind": "selected-instruction-block"
+    },
+    {
+      "role": "registrationNativeFunctionVtableAddress",
+      "rva": 3681951,
+      "fileOffset": 3679391,
+      "size": 7,
+      "bodySha256": "B19413C24787B1E29E5C16AE961431DD91006A5D78445BFA740BB8869E974C17",
+      "entryBytesHex": "488D355A067301",
+      "rangeKind": "selected-instruction-block"
+    },
+    {
+      "role": "selector5DefaultRegistration",
+      "rva": 3683575,
+      "fileOffset": 3681015,
+      "size": 560,
+      "bodySha256": "42166C66E9C8727A6FA071A446CA3CA45D9C8D6521F300D2A248506030E0B205",
+      "entryBytesHex": "B205488D8D105C0000E84BD0FFFF488D05F445DEFF4889B55005000048898558",
+      "rangeKind": "selected-instruction-block"
+    },
+    {
+      "role": "descriptorConstructor",
+      "rva": 3671376,
+      "fileOffset": 3668816,
+      "size": 110,
+      "bodySha256": "C8CC73150C8254531907757B737CEB0F6C1D759504CB481DB83E99BE5369552F",
+      "entryBytesHex": "48895C2408574883EC7033FF881148897940488BD94889B9800000004889B9C0",
+      "rangeKind": "function"
+    },
+    {
+      "role": "publishTenCallbacks",
+      "rva": 16070512,
+      "fileOffset": 16067952,
+      "size": 95,
+      "bodySha256": "EFB93D3C939D8B4EDF95FD2F1D925EE01088C2E85AB3C7C50805B4674D065124",
+      "entryBytesHex": "48895C24084889742410574883EC200FB6C2498BF04C69C888020000410FB600",
+      "rangeKind": "function"
+    },
+    {
+      "role": "callbackAssignment",
+      "rva": 3681056,
+      "fileOffset": 3678496,
+      "size": 401,
+      "bodySha256": "9784692FBA647CF82104FA8369BB1B4B99EF18C77078074AAB4D15DC0C1D941D",
+      "entryBytesHex": "48895C2408488974241048897C241855488D6C24A94881ECA000000033C0488D",
+      "rangeKind": "function"
+    },
+    {
+      "role": "inlineCallbackMove",
+      "rva": 3681472,
+      "fileOffset": 3678912,
+      "size": 108,
+      "bodySha256": "99CA27F7D0C2379E89402FB91B8DCC25C186771D6D2D1082A275CCD0496F1241",
+      "entryBytesHex": "48895C2408574883EC2048837A3800488BDA488BF97442483952380F85A5C8B8",
+      "rangeKind": "function"
+    },
+    {
+      "role": "callbackReset",
+      "rva": 3681616,
+      "fileOffset": 3679056,
+      "size": 73,
+      "bodySha256": "B0987C77FE535342EFEE65DB33653B460A6C5102DBE147CEB17943774D93BCD8",
+      "entryBytesHex": "40534883EC204883793800488BD9742E488B49384C8D0DC5502000483BCB0F95",
+      "rangeKind": "function"
+    },
+    {
+      "role": "inlineCallbackCloneLeaf",
+      "rva": 3681024,
+      "fileOffset": 3678464,
+      "size": 22,
+      "bodySha256": "67BE6CDBF3A374DC267BCCC11968E650C9A1EDC3A6897167C393214DF9616AA1",
+      "entryBytesHex": "488D05F9097301488902488B410848894208488BC2C3",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "inlineCallbackMoveLeaf",
+      "rva": 3681584,
+      "fileOffset": 3679024,
+      "size": 22,
+      "bodySha256": "C42CDAD6D675E1140164A2C8ADC71B135A5FD23428522117476BD0BFA6A2875D",
+      "entryBytesHex": "488D05C9077301488902488B410848894208488BC2C3",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "inlineCallbackVtable",
+      "rva": 27997440,
+      "fileOffset": 27991296,
+      "size": 48,
+      "bodySha256": "7E33D484BD24899B78187DACB34BDBB8B2DC651BAFE96AA2B0985C07B75B2887",
+      "entryBytesHex": "002B388001000000302D388001000000F056418001000000907E588001000000",
+      "rangeKind": "data"
+    },
+    {
+      "role": "defaultSlot0FalseLeaf",
+      "rva": 1473280,
+      "fileOffset": 1470720,
+      "size": 3,
+      "bodySha256": "01CB47D078B4841B8408EC4FE278EFA83115C6F6E101972987507D2B2B57DCF0",
+      "entryBytesHex": "32C0C3",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "slot1RuntimeRecordDispatcher",
+      "rva": 449920,
+      "fileOffset": 447360,
+      "size": 220,
+      "bodySha256": "630377FE0C6187E9D81771B63DB63F638954411A8E55C6E992D96FB65E3492EB",
+      "entryBytesHex": "4883EC480FB6014C8BD2488D159FE414004C8D04804D03C0488D05394596014A",
+      "rangeKind": "function-fragment"
+    },
+    {
+      "role": "marker2Slot1DispatchEntry",
+      "rva": 27075448,
+      "fileOffset": 27069304,
+      "size": 8,
+      "bodySha256": "7D46D6BD1CC2FA6D59FF82F169B5C1D14D364203E0F3A533153397E1433D95EF",
+      "entryBytesHex": "30C21B8001000000",
+      "rangeKind": "data"
+    },
+    {
+      "role": "slot1RowField3ContextScope",
+      "rva": 1818816,
+      "fileOffset": 1816256,
+      "size": 366,
+      "bodySha256": "B07E411A3645E7383D69B9B64C2BB10199DC365632BE37F5087404FE67DA8D9B",
+      "entryBytesHex": "48895C24084889742410574881EC80000000410FB6C0488BF94869F088020000",
+      "rangeKind": "function"
+    },
+    {
+      "role": "record32GrowInsert",
+      "rva": 1816512,
+      "fileOffset": 1813952,
+      "size": 276,
+      "bodySha256": "49B7A4CD92A0902350992E6E1A047D78EC4DFFA6718B4CA7E1E652BFF44232EB",
+      "entryBytesHex": "48895C2418488974242057415441574883EC30488B4108488BFA482B39BBFFFF",
+      "rangeKind": "function-with-unwind-fragments"
+    },
+    {
+      "role": "record32RelocateLeaf",
+      "rva": 1816800,
+      "fileOffset": 1814240,
+      "size": 47,
+      "bodySha256": "AEB3D2894134002ACAA2C47312B46E8527B8CDD0FC5AFE4BA86A98170508F5BC",
+      "entryBytesHex": "483BCA750B498BC0C30F1F80000000000F1001410F11000F1049104883C12041",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "record32Publish",
+      "rva": 1816848,
+      "fileOffset": 1814288,
+      "size": 112,
+      "bodySha256": "76DFE87851B828C408ACD5E7BBC6E07B36ACC14DF841DBCB3E15D2AD182E29EF",
+      "entryBytesHex": "48895C240848896C24104889742418574883EC2048833900498BF9498BD8488B",
+      "rangeKind": "function"
+    },
+    {
+      "role": "selector5Slot1ActualReader",
+      "rva": 14923392,
+      "fileOffset": 14920832,
+      "size": 229,
+      "bodySha256": "7367EF92B5C0A4236C6DB289841AF468A39306E841103210BAC7B96BA8BC40B5",
+      "entryBytesHex": "48895C24084889742410574883EC40F20F1005D1C8C6004C8D4424608B05CEC8",
+      "rangeKind": "function"
+    },
+    {
+      "role": "selector5CountLookupKey",
+      "rva": 27950952,
+      "fileOffset": 27944808,
+      "size": 12,
+      "bodySha256": "1B4475A2632B148CE2CE25834E90BED5E69BC74098EEA0461A0F6E811C7C4F6C",
+      "entryBytesHex": "050000000200000000000000",
+      "rangeKind": "data"
+    },
+    {
+      "role": "keyIndexLookupWrapper",
+      "rva": 917440,
+      "fileOffset": 914880,
+      "size": 336,
+      "bodySha256": "407DB204CC1C57F37DF38105F20F988B58EA7CBBACF7833D5F3EB2C8D4A0FBC5",
+      "entryBytesHex": "40564883EC708B02498BF0C1E0080B4204C1E0100B4208488379780048897C24",
+      "rangeKind": "function-with-unwind-fragments"
+    },
+    {
+      "role": "unjoinedAssetEnqueue16Reader",
+      "rva": 908352,
+      "fileOffset": 905792,
+      "size": 266,
+      "bodySha256": "84F9F728CF8497E6C2A10F6E7956FE04C137ACCCDD9C04779389C50D91EEA591",
+      "entryBytesHex": "40534883EC60F20F10024C8D4424788B4208488BD9488D542430F20F11442430",
+      "rangeKind": "function"
+    },
+    {
+      "role": "parallelRootRowScopeDispatch",
+      "rva": 436432,
+      "fileOffset": 433872,
+      "size": 1354,
+      "bodySha256": "8F2BEDE92AFC05E74B38C6F2D07474E32D93D9924573125CEFEB3FBBF33A04FA",
+      "entryBytesHex": "48895C24185556574154415541564157488D6C24E14881EC900000000FB6014C"
+    },
+    {
+      "role": "parallelRowField3ContextScopeA",
+      "rva": 1820000,
+      "fileOffset": 1817440,
+      "size": 366,
+      "bodySha256": "8E710C622206028EEA5E19EBA8F175C682DD32558719B0D4AAAA9A326AEBC5BF",
+      "entryBytesHex": "48895C24084889742410574881EC80000000410FB6C0488BF94869F088020000"
+    },
+    {
+      "role": "parallelRowField3ContextScopeB",
+      "rva": 1821072,
+      "fileOffset": 1818512,
+      "size": 371,
+      "bodySha256": "7CFBE79E00714973BD479E0C83EA0BC4B536AA1B4E868AC52867E72A1F1CA8FD",
+      "entryBytesHex": "48895C24084889742410574881EC80000000410FB6C04C8BDA4869F088020000"
+    },
+    {
+      "role": "parallelScopeCallbackBridgeA",
+      "rva": 1820368,
+      "fileOffset": 1817808,
+      "size": 92,
+      "bodySha256": "388CA5CBCB2523A663811148AEDAC5B6C1A7059A58E9CDC4EC21C89F8CA59BBD",
+      "entryBytesHex": "4C8944241848895424104883EC2848837938004D8BC8488BC2743B4C8B513849"
+    },
+    {
+      "role": "parallelScopeCallbackBridgeB",
+      "rva": 1821936,
+      "fileOffset": 1819376,
+      "size": 75,
+      "bodySha256": "563FDA3EDD3C2C4ED9DACD6C5325CA401BD7C2C1AA814F8E730153C30F5D2A9D",
+      "entryBytesHex": "4C894424184883EC2848837938004C8BD27432488B4938488B014C8B4810488D"
+    },
+    {
+      "role": "parallelRootField4VectorAccessor",
+      "rva": 16048808,
+      "fileOffset": 16046248,
+      "size": 41,
+      "bodySha256": "E45D09C9D5D54A7334D027B7B3F51600B49FF4722217EB8770A5476ABDFD97C9",
+      "entryBytesHex": "486301488BD1482BD0B80C000000663B0273130FB7420C488D14016685C07406"
+    },
+    {
+      "role": "streamingField2RowConsumer",
+      "rva": 438000,
+      "fileOffset": 435440,
+      "size": 2412,
+      "bodySha256": "BD44277B87CBF26CA5CF6F4A10B37A667BB5F08C04553BDD26582318D9A8ABDD",
+      "entryBytesHex": "40555356574157488D6C24B04881EC50010000488B31488BDA4C8BC2488D5424"
+    },
+    {
+      "role": "field0ScalarAccessor",
+      "rva": 16070288,
+      "fileOffset": 16067728,
+      "size": 35,
+      "bodySha256": "D79FC509B7A0C27BE253D26DF7CE3CA498BF904696FCFCE49AC40B8AEF5C3699",
+      "entryBytesHex": "486301488BD1482BD0B804000000663B02730D0FB742046685C074048B0408C3"
+    },
+    {
+      "role": "field1ScalarAccessor",
+      "rva": 5803720,
+      "fileOffset": 5801160,
+      "size": 35,
+      "bodySha256": "2E9801AFDD4C72571189DCD316DBBAD883E863AAA05D3EE632F52435622F186A",
+      "entryBytesHex": "486301488BD1482BD0B806000000663B02730D0FB742066685C074048B0408C3"
+    },
+    {
+      "role": "field2ScalarAccessor",
+      "rva": 16077380,
+      "fileOffset": 16074820,
+      "size": 35,
+      "bodySha256": "C7BF6817AA86248AC4E4C7ABE496854891B9D0EAD173A92184E70155B8362AD4",
+      "entryBytesHex": "486301488BD1482BD0B808000000663B02730D0FB742086685C074048B0408C3"
+    },
+    {
+      "role": "inlineSlotAccessor",
+      "rva": 1816144,
+      "fileOffset": 1813584,
+      "size": 36,
+      "bodySha256": "1058B248F0C62717733D64B2C2F6D75202B2FB2150CA81E30DDA06C9E7D7CBA9",
+      "entryBytesHex": "4C6301488BC1492BC0663B1073130FB7D2440FB70402664585C074054A8D0401"
+    },
+    {
+      "role": "field3AccessorThunk",
+      "rva": 23514812,
+      "fileOffset": 23512252,
+      "size": 12,
+      "bodySha256": "61E77499A70AFB4F39F939A9A2F1A6BD49C8334EEFE08DCCB9C22FFB34DEFD80",
+      "entryBytesHex": "BA0A000000E98AE7B4FECCCC"
+    },
+    {
+      "role": "field4AccessorThunk",
+      "rva": 23514800,
+      "fileOffset": 23512240,
+      "size": 12,
+      "bodySha256": "AEEACA4DB854B6689C94769BDBE4F609CDFDDE54B03871B65A74BD984E76FD30",
+      "entryBytesHex": "BA0C000000E996E7B4FECCCC"
+    },
+    {
+      "role": "streamingCreateInjectedCarrierEntry",
+      "rva": 3661232,
+      "fileOffset": 3658672,
+      "size": 130,
+      "bodySha256": "183316AFC6C92C87001B30ADC0B1B18DEBC301804ADBE1D98449CE79C54968BB",
+      "entryBytesHex": "40534881ECA00000000F29B42490000000488BD90F57F6488D4C2430660F7F74"
+    },
+    {
+      "role": "streamingCarrierSceneAllocate",
+      "rva": 3662736,
+      "fileOffset": 3660176,
+      "size": 109,
+      "bodySha256": "62BBD7987A08ECBFAF866C86E88999A34088194D17C98CE824827E5279063A86",
+      "entryBytesHex": "48895C24084889742410574883EC30488B051A9B9901488BF2488BF9C7442420"
+    },
+    {
+      "role": "streamingCarrierSceneCreate",
+      "rva": 3662848,
+      "fileOffset": 3660288,
+      "size": 709,
+      "bodySha256": "9E6F53141797A67AC38631ADCDB6C4B2A3BA3C7DB9D5752AF0981BC6EF119975",
+      "entryBytesHex": "4055535657415441554156488DAC2450FFFFFF4881ECB00100004533E4C74424"
+    },
+    {
+      "role": "streamingCarrierSceneCreateContinuation",
+      "rva": 3663557,
+      "fileOffset": 3660997,
+      "size": 1229,
+      "bodySha256": "9CADC5271B73CD019491B1FBBD3F07A833723A3630E26463334A518793ABC281",
+      "entryBytesHex": "4C89BC24F8010000E83E130000488D4C2440E854120000488BC8E87C50BD0048"
+    },
+    {
+      "role": "streamingCarrierReadOperation",
+      "rva": 3668496,
+      "fileOffset": 3665936,
+      "size": 173,
+      "bodySha256": "D5F8A7900F841AA2FC42F63CC756C961BDF42706A5DABC63958844835FDA1AD1",
+      "entryBytesHex": "48895C24084889742410574883EC30895108488D0531574E01488BF1C7442428"
+    },
+    {
+      "role": "streamingCarrierReadDispatch",
+      "rva": 721168,
+      "fileOffset": 718608,
+      "size": 170,
+      "bodySha256": "5CE54546D5FF9591386B104DF16D90C6A97798C328AE1EC73D215977BEF59235",
+      "entryBytesHex": "48895C24104889742418574883EC30488D99C8090000488BF9488BCB488BF2FF"
+    },
+    {
+      "role": "streamingCarrierSuccessfulBase",
+      "rva": 3668272,
+      "fileOffset": 3665712,
+      "size": 56,
+      "bodySha256": "FEB42C04CC9233166D443F0A8916EA5CD6E71156AD797DE9111D3290C0449A9D",
+      "entryBytesHex": "40534883EC7048833900488BD90F84E1F6B800488B0148837868000F84D3F6B8"
+    },
+    {
+      "role": "streamingCarrierRootAccessor",
+      "rva": 16070496,
+      "fileOffset": 16067936,
+      "size": 14,
+      "bodySha256": "626276AB95D0112B10B247368185293AEB8215F823E835B037A28432073F9154",
+      "entryBytesHex": "4885C9750333C0C38B014803C1C3"
+    },
+    {
+      "role": "streamingRowConsumerCallerFragment",
+      "rva": 2444112,
+      "fileOffset": 2441552,
+      "size": 257,
+      "bodySha256": "3083950BF7652F59B85AD551D7B5298DCE4524BDA769482409B922203370C7A8",
+      "entryBytesHex": "4C89B424B80000004C8BF749C1E6044C89BC24C00000004D03F40F29B4248000"
+    },
+    {
+      "role": "runtimeRecordCopyThunk",
+      "rva": 23514960,
+      "fileOffset": 23512400,
+      "size": 5,
+      "bodySha256": "C177DE96A8F662D1BC7B320D2BCABEF4FF6C6608B6B5087A0D2112A6A06AA916",
+      "entryBytesHex": "E9EB31D1FE"
+    },
+    {
+      "role": "runtimeRecordCopy72",
+      "rva": 3670336,
+      "fileOffset": 3667776,
+      "size": 238,
+      "bodySha256": "FC6A2BC7E16E378F992960A4EB51C8C400D18F364DFB20A833C84B319BC223D2",
+      "entryBytesHex": "48895C24084889742410574883EC30488B01488BF2488BD98B3885FF74754C8B"
+    },
+    {
+      "role": "runtimeRecordIndex72",
+      "rva": 16057128,
+      "fileOffset": 16054568,
+      "size": 14,
+      "bodySha256": "7FE9E08A9F1875D22255F4DBD5F1753AF9DC58AF0E2BDF394EDD1674FD7A9F4B",
+      "entryBytesHex": "8BC2488D14C0488B01488D04D0C3"
+    },
+    {
+      "role": "runtimeRecordSlowCopy72",
+      "rva": 13242768,
+      "fileOffset": 13240208,
+      "size": 57,
+      "bodySha256": "B7AC0FBF2AA5C1C0A7BDE102D99EB3D46726496B01F63C9FC533C3AB3A4B2A16",
+      "entryBytesHex": "4885C97431410F1000488BC10F1101410F1048100F114910410F1040200F1141"
+    },
+    {
+      "role": "field5VectorAccessor",
+      "rva": 16052924,
+      "fileOffset": 16050364,
+      "size": 41,
+      "bodySha256": "FDF2302CD3138C5465710D8A66D9397D0FD97677426B0B98144ADE24A3774158",
+      "entryBytesHex": "486301488BD1482BD0B80E000000663B0273130FB7420E488D14016685C074068B024803C2C333C0C3"
+    },
+    {
+      "role": "field5RuntimeConsumer",
+      "rva": 440432,
+      "fileOffset": 437872,
+      "size": 607,
+      "bodySha256": "EF6C52363C3149688536CE5608CE9499F1055C0D5B2F49FD9C0958BF8680367C",
+      "entryBytesHex": "48895C241048896C2418565741564881EC90000000488B314C8BF14C8BC2488D"
+    },
+    {
+      "role": "field5RuntimeConsumerContinuation",
+      "rva": 441039,
+      "fileOffset": 438479,
+      "size": 95,
+      "bodySha256": "1A6BF414CCA5F7A13534BE5F1A95B86EADA6D594D570F5E682584863314DDA4B",
+      "entryBytesHex": "4C89BC24B0000000488B4B10E8DC37EE00488BCE8B54A804E8E40600008BD048"
+    },
+    {
+      "role": "field5ScalarLookup",
+      "rva": 442832,
+      "fileOffset": 440272,
+      "size": 262,
+      "bodySha256": "DD0B06F7A2078A42B62E4157C047FB07925D4759681068AFE551F54D69EFBEA2",
+      "entryBytesHex": "48895C240869C2011000004C8BD1448BDA418B92E800000005165DD57E448BC0"
+    },
+    {
+      "role": "field5ResolvedRecordIndex56",
+      "rva": 16048864,
+      "fileOffset": 16046304,
+      "size": 10,
+      "bodySha256": "A43D363F0749CA35AA40EAF4A93204B5FAF80ABC661B42A4A9BF6BB40BE29624",
+      "entryBytesHex": "8BC2486BC038480301C3"
+    },
+    {
+      "role": "createInjectedManagedMarshaller",
+      "rva": 3660912,
+      "fileOffset": 3658352,
+      "size": 165,
+      "bodySha256": "38DA5872E79F4D49C76DDD83E9EBED58F2C8195AB3589F6B965E6D9C952961A4",
+      "entryBytesHex": "48895C24084C89442418574883EC50488BFA488BD9488B124885D27421488D4C"
+    },
+    {
+      "role": "streamingChunkInfoPathFormatter",
+      "rva": 3668336,
+      "fileOffset": 3665776,
+      "size": 74,
+      "bodySha256": "7379CADCF4602893979E46E7C05EB3DDF4E16E36ACA6D671A9DCBB8A758F192A",
+      "entryBytesHex": "4C8BDC534883EC50488B05D9B88E01488BD9498943E8488D05FB1D8E01498943"
+    },
+    {
+      "role": "streamingPathLookupPrologue",
+      "rva": 1967200,
+      "fileOffset": 1964640,
+      "size": 9,
+      "bodySha256": "2A0A80622A2957403616D31E7C7F290A8384AF183959A050966F2F7768923B27",
+      "entryBytesHex": "40574881ECB0010000"
+    },
+    {
+      "role": "streamingPathLookupBody",
+      "rva": 1967209,
+      "fileOffset": 1964649,
+      "size": 607,
+      "bodySha256": "1CD689A3D6691CE87439E4EDE555E9473C30860CEB2B5C43F2B90E901219C3BB",
+      "entryBytesHex": "48899C24C8010000488BFA488BD9E83803D700488D4C2470488B90C8010000E8"
+    },
+    {
+      "role": "scenePrimaryManagerWrapperConstructor",
+      "rva": 3668416,
+      "fileOffset": 3665856,
+      "size": 68,
+      "bodySha256": "245E7A9F1CC83B6D6801CFBC08DB80B2816AE2C4E33960CBF5F8B6AE9C21C51E",
+      "entryBytesHex": "4889114C8D0DFE554E018B024533C04489411C8941204C8949084C8941108B02"
+    },
+    {
+      "role": "sceneRootField3VectorAccessor",
+      "rva": 16048720,
+      "fileOffset": 16046160,
+      "size": 41,
+      "bodySha256": "AE5C7AF45D93DE016AEB76B75AD6D5BCB79764F2FBF56C282B6CC19ED210577D",
+      "entryBytesHex": "486301488BD1482BD0B80A000000663B0273130FB7420A488D14016685C07406"
+    },
+    {
+      "role": "sceneRootRowField0InlineAccessorThunk",
+      "rva": 16070324,
+      "fileOffset": 16067764,
+      "size": 10,
+      "bodySha256": "609AA01939A861DB8963A861BDB46D90204CCB2AD5ECFEFEE1DB49BFA53CD84A",
+      "entryBytesHex": "BA04000000E9927F26FF"
+    },
+    {
+      "role": "sceneRootRowField1PairVectorAccessor",
+      "rva": 16070360,
+      "fileOffset": 16067800,
+      "size": 41,
+      "bodySha256": "D33FB48FDFEEDD1D29604F2DF59A484B7CC8D15B97D0D933180BEF6B64A0F4D0",
+      "entryBytesHex": "486301488BD1482BD0B806000000663B0273130FB74206488D14016685C07406"
+    },
+    {
+      "role": "sceneRootPairSetInsert",
+      "rva": 3664832,
+      "fileOffset": 3662272,
+      "size": 145,
+      "bodySha256": "12AAEFE316862EB5B09E54C1757C8283DBD7A913CE6AD435FDCD9A89B323F519",
+      "entryBytesHex": "4889742410574883EC30488BF2488BF94C8BC24883C128488D542420E8CF0200"
+    },
+    {
+      "role": "setStateInjected",
+      "rva": 5561248,
+      "fileOffset": 5558688,
+      "size": 15,
+      "bodySha256": "0006CBF9B9D63E1642D28E5A7AA4DB9039E0CAB5EE1630FEC3ABFD9A68B41250",
+      "entryBytesHex": "488B094584C0410F95C0E985F01101"
+    },
+    {
+      "role": "setStateManagerThunk",
+      "rva": 23514164,
+      "fileOffset": 23511604,
+      "size": 9,
+      "bodySha256": "704A4997D8E4FBF1AD3D11F7CBE226ED28AE9202674D53DCCA05D9A79E184D3D",
+      "entryBytesHex": "488B4908E92320D1FE"
+    },
+    {
+      "role": "managerStateFilter",
+      "rva": 3664992,
+      "fileOffset": 3662432,
+      "size": 423,
+      "bodySha256": "1F58195AD0D60ABB9CDB20DEA47293F03A95D32B145DEBB7918AF174CDC5C925",
+      "entryBytesHex": "895424104154415541574883EC70450FB6E0448BEA4C8BF94C8D842498000000"
+    },
+    {
+      "role": "updateSetInjected",
+      "rva": 5645472,
+      "fileOffset": 5642912,
+      "size": 8,
+      "bodySha256": "68FD616955B90D52884A4D820E2E3062913E5A9FB05BB825587BD9D1E93105D9",
+      "entryBytesHex": "488B09E9F829CFFF"
+    },
+    {
+      "role": "anonymousSceneObjectCaller",
+      "rva": 2442896,
+      "fileOffset": 2440336,
+      "size": 367,
+      "bodySha256": "E6BA2C6B60B8FB6702607199150D6C5903BBD8517A65A46CF8E483E0A94A5F96",
+      "entryBytesHex": "48895C240848896C2410488974241848897C242041564883EC204C8B5108488B"
+    },
+    {
+      "role": "wrapperCandidatePopulation",
+      "rva": 2441520,
+      "fileOffset": 2438960,
+      "size": 758,
+      "bodySha256": "86CEE98EBA7730FCC2D767D59CEC26B1DC63B8D179A534CB6F14FC291FA05435",
+      "entryBytesHex": "48895C241048894C24085556574154415541564157488D6C24D94881ECB00000"
+    },
+    {
+      "role": "rootRecordSpatialSelection",
+      "rva": 2452400,
+      "fileOffset": 2449840,
+      "size": 422,
+      "bodySha256": "D6B1104FC68C4FAC085EB72A68135516B01AA9CD7FBDB862ACF374DD0C4EC753",
+      "entryBytesHex": "405541544155415641574883EC70F30F10024D8BF0F30F5C42080F297424504C"
+    },
+    {
+      "role": "rootRecordHandleAssembly",
+      "rva": 2452832,
+      "fileOffset": 2450272,
+      "size": 179,
+      "bodySha256": "AD754836EED2C97D722A3DEC4F4DDE2B6178F83AE9861FA92BED322C1DCCBF51",
+      "entryBytesHex": "48895C241848896C24204889542410574883EC50488BF9498BE8488B094C8D44"
+    },
+    {
+      "role": "rowConsumerCaller",
+      "rva": 2443824,
+      "fileOffset": 2441264,
+      "size": 581,
+      "bodySha256": "5ABB955BB77D71F413904EB6A9DABB9A4158672717639CD55BF87ADE46AB170C",
+      "entryBytesHex": "48895C2420555657488D6C24B94881EC90000000488BF1498BD84883C128488B"
+    },
+    {
+      "role": "secondaryPathFormatterA",
+      "rva": 5035104,
+      "fileOffset": 5032544,
+      "size": 292,
+      "bodySha256": "3D4181C7B81D781D88A217747E58FD51AA68DE369085F714CCD950FD98DD6568",
+      "entryBytesHex": "40534883EC70488D05F79A3A014584C94889842488000000488BD9488D05D87C"
+    },
+    {
+      "role": "secondaryPathFormatterB",
+      "rva": 5035408,
+      "fileOffset": 5032848,
+      "size": 292,
+      "bodySha256": "694B4683D9E0E86136684D73E370BE94710851380450C07456906CEBB708C767",
+      "entryBytesHex": "40534883EC70488D058B993A014584C94889842488000000488BD9488D05A87B"
+    },
+    {
+      "role": "secondarySuccessfulBase",
+      "rva": 2086896,
+      "fileOffset": 2084336,
+      "size": 39,
+      "bodySha256": "57A33E8289BD53E787EAF42009EEBAD2BA6FA1EAD0059802A4478A7BD57A7658",
+      "entryBytesHex": "40534883EC20488BD9E8A2FCFFFF85C0750D488B03488B40684883C4205BC333"
+    },
+    {
+      "role": "secondaryRootResolver",
+      "rva": 5198736,
+      "fileOffset": 5196176,
+      "size": 244,
+      "bodySha256": "A34D06E040D5B811548036A00ECED256F5E664C9C544CACD8C98A6ED00014BC9",
+      "entryBytesHex": "48895C2408574883EC70488BF9498BD8488BCAE84884D0FF4885C0750433D2EB"
+    },
+    {
+      "role": "secondaryRootField2VectorAccessor",
+      "rva": 16070404,
+      "fileOffset": 16067844,
+      "size": 41,
+      "bodySha256": "E4C2E5D3E33A0C3469F1A29C7FAC66A36E7CC4B4B0C83C030221377697161F95",
+      "entryBytesHex": "486301488BD1482BD0B808000000663B0273130FB74208488D14016685C07406"
+    },
+    {
+      "role": "keyIndexMapInit",
+      "rva": 12768304,
+      "fileOffset": 12765744,
+      "size": 122,
+      "bodySha256": "F292493E97C7479953B2631C5825DA343C13A6E0C53B24B2DB91028AFD66EF18",
+      "entryBytesHex": "40534883EC20488D058B7BC300488BD948890133C04889410889411444894118",
+      "rangeKind": "function"
+    },
+    {
+      "role": "keyIndexMapResize",
+      "rva": 430000,
+      "fileOffset": 427440,
+      "size": 149,
+      "bodySha256": "71AEE9A2A45DAFFACEECAACF95C7614D0B5693AAC4C8A19562964C9CF40B5C53",
+      "entryBytesHex": "48895C24084889742410574883EC208BC28BDA99488BF983E20303D0C1FA02FF",
+      "rangeKind": "function"
+    },
+    {
+      "role": "keyIndexMapAllocateEmptySlots",
+      "rva": 430160,
+      "fileOffset": 427600,
+      "size": 101,
+      "bodySha256": "8D3FEDC82A78E79436C07E4C4C7267054FCDDBA9F0820135F1830F6D92304D13",
+      "entryBytesHex": "40534883EC30448B4118488D05F9C07F014863DA4533C9C74424283A040000BA",
+      "rangeKind": "function"
+    },
+    {
+      "role": "keyIndexMapRehashPreservingRows",
+      "rva": 402656,
+      "fileOffset": 400096,
+      "size": 111,
+      "bodySha256": "BB8B0825EE364F78C49A83244B81CC55AE3546FFCD8600BDAF73D98E705786F3",
+      "entryBytesHex": "48895C2408458BD04C8BDA4983C2048BD94B8D04514C03D04D3BCA74380F1F00",
+      "rangeKind": "function"
+    },
+    {
+      "role": "keyIndexMapInsert",
+      "rva": 917776,
+      "fileOffset": 915216,
+      "size": 573,
+      "bodySha256": "B842A01458601E1892C0F3E863444966CE48A2B861D24D0820F4307E0AB42C3C",
+      "entryBytesHex": "48895C2418555741574883EC3083791400498BE94D8BF8488BFA488BD9757D44",
+      "rangeKind": "function-with-three-unwind-fragments"
+    },
+    {
+      "role": "keyIndexMapInsertThunk",
+      "rva": 16052416,
+      "fileOffset": 16049856,
+      "size": 23,
+      "bodySha256": "78A350AB7DAA52CE5A98CC071CE633C2441E11F67B03A38E63E44183BA780648",
+      "entryBytesHex": "40534883EC20488BDAE8421019FF488BC34883C4205BC3",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "keyIndexMapFind",
+      "rva": 918608,
+      "fileOffset": 916048,
+      "size": 251,
+      "bodySha256": "8692A68733D77CA0ECE59407C105FBF5EBB7235E767DDB926C8F2F0B06610A4C",
+      "entryBytesHex": "48895C240848897C2410416900011000004C8BD9488BDA498BF8418B53080516",
+      "rangeKind": "function"
+    },
+    {
+      "role": "keyIndexMapEndIterator",
+      "rva": 423600,
+      "fileOffset": 421040,
+      "size": 25,
+      "bodySha256": "9DD574D08A28FC797F5CF6BF6D8A7F5B3A0E9F580F05268CBE577A0A49F20C2C",
+      "entryBytesHex": "8B41084883C0044C8D0440488BC24C03014C8942084C8902C3",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "keyIndexMapIteratorEquality",
+      "rva": 447408,
+      "fileOffset": 444848,
+      "size": 10,
+      "bodySha256": "A6F2D1F3D8B586EEB09F31F4CEAC5669CDF9E157C89FB47C4A50826F6424DEBB",
+      "entryBytesHex": "488B014839020F94C0C3",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "keyIndexMapInitialEmptySlot",
+      "rva": 25579464,
+      "fileOffset": 25573320,
+      "size": 12,
+      "bodySha256": "395AD663AEC84E8ADD5C503E990E18DE28E5642D3F74FE0D9D801529E171DC2E",
+      "entryBytesHex": "FFFFFFFF00000000E0241D81",
+      "rangeKind": "data"
+    },
+    {
+      "role": "secondaryPathsevenArgumentHelper",
+      "rva": 5035712,
+      "size": 146,
+      "fileOffset": 5033152,
+      "bodySha256": "F762CE5CEF472560A27B8D9F4DF6711DA09CF7CBDB83898E933712BCDBA7DAA2",
+      "entryBytesHex": "4C8BDC534883EC70498B01488BD9498943C8488B8424A00000004D8943C04C8B"
+    },
+    {
+      "role": "secondaryPathfiveArgumentHelper",
+      "rva": 5035872,
+      "size": 115,
+      "fileOffset": 5033312,
+      "bodySha256": "EC104E02D261CC77892291BB4B34A3DABE16522D1CF59CED4A754F71E67367E9",
+      "entryBytesHex": "4C8BDC534883EC60498B01488BD9498943D8488B8424900000004D8943D04C8B"
+    },
+    {
+      "role": "existingRuntimeKeyAppendDispatch",
+      "rva": 4913968,
+      "size": 636,
+      "fileOffset": 4911408,
+      "bodySha256": "367A07F8A247AC5BF93F934AAC8B118DF524D2CADDFDAC903303CCCFD98A8248",
+      "entryBytesHex": "48895C24084889742410574881EC900000000FB6014C8D0D74865F01418BF048"
+    },
+    {
+      "role": "runtimeKeyMapFindFullEquality",
+      "rva": 917152,
+      "size": 253,
+      "fileOffset": 914592,
+      "bodySha256": "D9D74C463182FE8FFBA409552007CA347B63A3937D58E6700F0AB1E390CA4334",
+      "entryBytesHex": "48895C240848897C2410416900011000004C8BD9488BDA498BF8418B53080516"
+    },
+    {
+      "role": "runtimeIteratorNotEqual",
+      "rva": 409456,
+      "size": 10,
+      "fileOffset": 406896,
+      "bodySha256": "FF6DCC5D65DEC93D2C9644A37751FBC7DF3E7EF9C7290E86BE5C8F04598489F2",
+      "entryBytesHex": "488B014839020F95C0C3"
+    },
+    {
+      "role": "runtimeKeyIndexInsertThunk",
+      "rva": 16048672,
+      "size": 23,
+      "fileOffset": 16046112,
+      "bodySha256": "001A17631DDECC3B8317EFE8FC6663409FC0A4609F18A79C6BB954ED1E18B3E9",
+      "entryBytesHex": "40534883EC20488BDAE802A511FF488BC34883C4205BC3"
+    },
+    {
+      "role": "runtimeKeyIndexInsertThreeUnwindFragments",
+      "rva": 427824,
+      "size": 573,
+      "fileOffset": 425264,
+      "bodySha256": "9E71CF9899C288918E003900FB11804D530D8509041C9BBAFAE722323D129A93",
+      "entryBytesHex": "48895C2418555741574883EC3083791400498BE94D8BF8488BFA488BD9757D44"
+    },
+    {
+      "role": "runtimeExistingMarkerDispatchFirstFourEntries",
+      "rva": 27951552,
+      "size": 32,
+      "fileOffset": 27945408,
+      "bodySha256": "71077599CA0053DE46A48DAF7661E0FDF4EA70B8D3436B9610A6D7F4057C7BFD",
+      "entryBytesHex": "000000000000000060364D800100000080B61B8001000000007C4A8001000000"
+    },
+    {
+      "role": "infoKey_streamingCarrierSceneCreateLogicalBody",
+      "rva": 3662848,
+      "size": 1977,
+      "fileOffset": 3660288,
+      "bodySha256": "D9E2271BBC2AC86F92B806C64833F74A9F6F76861AC15B86C6F19B660254BA49",
+      "entryBytesHex": "4055535657415441554156488DAC2450FFFFFF4881ECB00100004533E4C74424",
+      "rangeKind": "combined-logical-body-to-ret"
+    },
+    {
+      "role": "infoKey_outerMapInsertThunk",
+      "rva": 16070336,
+      "size": 24,
+      "fileOffset": 16067776,
+      "bodySha256": "18BCD296924961E31CF0BD6F998741E4F2E3821C5C9D1DAAFB0FE73A0884300D",
+      "entryBytesHex": "40534883EC20488BDAE8125854FF488BC34883C4205BC3CC",
+      "rangeKind": "function"
+    },
+    {
+      "role": "infoKey_outerMapInsertCombined",
+      "rva": 4820704,
+      "size": 523,
+      "fileOffset": 4818144,
+      "bodySha256": "0E7AE5FF35D6AB359AC03A3A4ABEB0204D7ECCAA2E1E2485A3766E6329F20E9E",
+      "entryBytesHex": "48895C241048896C24184889742420574883EC3083791400498BE9498BF0488B",
+      "rangeKind": "combined-unwind-body"
+    },
+    {
+      "role": "infoKey_sceneRootPairSetMembership",
+      "rva": 3666128,
+      "size": 90,
+      "fileOffset": 3663568,
+      "bodySha256": "6B2C38359598C750CA9F2674244946EB3CE9624D603E0793AA4706EA2244356A",
+      "entryBytesHex": "48895C2408574883EC20448B4130488BF9488B59284883C1284983C0104903D8",
+      "rangeKind": "function"
+    },
+    {
+      "role": "infoKey_sceneRootPairSetFindInitialSlotAndCollisionDispatch",
+      "rva": 3666224,
+      "size": 129,
+      "fileOffset": 3663664,
+      "bodySha256": "057A5815C4DB384DF3CA26C3DFB47DB1EB18C2793C623A6F5C9D55F0840A1B12",
+      "entryBytesHex": "4883EC284C8BDA4C8BC9E861790900458B4108448BD04423C04183E2FC418BC0",
+      "rangeKind": "incomplete-function-fragment"
+    },
+    {
+      "role": "infoKey_sceneRootPairHashCustomAbi",
+      "rva": 4287136,
+      "size": 163,
+      "fileOffset": 4284576,
+      "bodySha256": "E1B9690A16BA775345E327C46315161AC83E1B9A91EB2E493005E75A2C8DE8BC",
+      "entryBytesHex": "6942040110000005165DD57E8BC8C1E91333C881F13CC261C7446BC1214181C0",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "infoKey_sceneRootPairCollisionEquality",
+      "rva": 15789876,
+      "size": 33,
+      "fileOffset": 15787316,
+      "bodySha256": "9F7EDA77E10EAD30C7FCEF60F8D6D8700C90C26F858DEC7AF2D3CEA998F67CF6",
+      "entryBytesHex": "8B43044139030F856C0247FF8B4308413943040F855F0247FF488BC3E9220247",
+      "rangeKind": "shared-cold-fragment"
+    },
+    {
+      "role": "infoKey_activeInsertCallerAColdAlternative",
+      "rva": 15789784,
+      "size": 92,
+      "fileOffset": 15787224,
+      "bodySha256": "EBBE1C8854FB9BFF068BCE3ACABBBC81DD049DA113656A8D18A742F03764D581",
+      "entryBytesHex": "488D542430E8BE0D1DFF418B49084883C104488D1C49490319488B442430483B",
+      "rangeKind": "shared-cold-fragment"
+    },
+    {
+      "role": "infoKey_activeInsertCallerB",
+      "rva": 3665664,
+      "size": 456,
+      "fileOffset": 3663104,
+      "bodySha256": "69EC13FE6900CF85D040E3F573545125EDC63EA1E4DA5C349B0F4DD112B72302",
+      "entryBytesHex": "89542410555641564883EC60450FB6F08BF2488BE94C8D8424880000004881C1",
+      "rangeKind": "combined-logical-body-to-ret"
+    },
+    {
+      "role": "infoKey_outerMapLookupWrapper",
+      "rva": 2453024,
+      "size": 70,
+      "fileOffset": 2450464,
+      "bodySha256": "C2D26B0E22BEF8178461FB225261E9B1F729C482E35CE90F0DE2E696FEE3159E",
+      "entryBytesHex": "48895C2408574883EC208B4108488BFA4883C020498BD0488D1C80480319E82D",
+      "rangeKind": "function"
+    },
+    {
+      "role": "infoKey_outerMapLookup",
+      "rva": 2453104,
+      "size": 155,
+      "fileOffset": 2450544,
+      "bodySha256": "E98C157BAA33EDE23003408E85AB6D8D3E7D8874D300F51869073F9FE915B89B",
+      "entryBytesHex": "4883EC284C8BCA4C8BD1E821FC1B00418B5208448BC023D04183E0FC488D0492",
+      "rangeKind": "function"
+    },
+    {
+      "role": "infoKey_key16SetInsert",
+      "rva": 2448160,
+      "size": 577,
+      "fileOffset": 2445600,
+      "bodySha256": "C63B7262945C175B4E5785D19CA7EC51D612CBA949FB2CD1DFC6D1C26B2139FC",
+      "entryBytesHex": "48895C24185556574883EC3083791400498BF0488BFA488BD9757D448B490C49",
+      "rangeKind": "combined-unwind-body"
+    },
+    {
+      "role": "infoKey_key16Equals",
+      "rva": 1814160,
+      "size": 36,
+      "fileOffset": 1811600,
+      "bodySha256": "A0091BD3C9125A500507413A4DFBEAEFF5BE12EAEBA766518849ACB6B9CE1A2D",
+      "entryBytesHex": "8B023901751B8B420439410475138B4208394108750B8B420C39410C7503B001",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "infoKey_key16IteratorDeref",
+      "rva": 435488,
+      "size": 8,
+      "fileOffset": 432928,
+      "bodySha256": "DBF1B7D416ADAF7834B5968859C660DCB55B4E95717E33980B35471EB0409ED4",
+      "entryBytesHex": "488B014883C004C3",
+      "rangeKind": "leaf"
+    },
+    {
+      "role": "infoKey_sceneWrapperSharedOwnerConstruction",
+      "rva": 3663087,
+      "size": 115,
+      "fileOffset": 3660527,
+      "bodySha256": "84B5E016498F641411EEBFC892D2208E7589C2083FAC524DCA01D2EC936B1F0E",
+      "entryBytesHex": "4889460841B8080000008B10B968000000C744242011000000E8531E8C004885",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_infoOuterAndStaticPairIngestion",
+      "rva": 3664176,
+      "size": 221,
+      "fileOffset": 3661616,
+      "bodySha256": "7DB62D494763863388F0AF3AD1BDDF4685CAF880EDC33A18A9353BF800FB2FC6",
+      "entryBytesHex": "8B1F4803DF488BCBE8774DBD008B08898D08010000488BCBE8674DBD004C8B56",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_sceneGlobalActiveMembershipGuard",
+      "rva": 3664397,
+      "size": 57,
+      "fileOffset": 3661837,
+      "bodySha256": "17B5C7A75B4DA06B6A92E8A0D4CEE01CCD9F74BAF4EFBF967EFD1D4AF0D6737A",
+      "entryBytesHex": "8B1DE900A001488D5580448B25E200A001498D4E10895D8044896584E8A20600",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_runtimeActiveMembershipGuardA",
+      "rva": 3665309,
+      "size": 56,
+      "fileOffset": 3662749,
+      "bodySha256": "3534655666FD827B93CAC15A22EF44718A67FF6259D2BC3E0AF58CC4F86D926B",
+      "entryBytesHex": "8B4704488D4D10488D942490000000898424940000004489AC2490000000E810",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_runtimeActiveMembershipGuardB",
+      "rva": 3665924,
+      "size": 55,
+      "fileOffset": 3663364,
+      "bodySha256": "BF79150E995ABD00D0F735862669B46F5657D4CCDB6EAEF937F1D0FAEF968C10",
+      "entryBytesHex": "8B4004488D4B10488D9424800000008984248000000089B42484000000E8AA00",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_outerMapFullPairCompare",
+      "rva": 2453139,
+      "size": 120,
+      "fileOffset": 2450579,
+      "bodySha256": "4C7E3B798C137018F384A5D4F7CF61F07801C107822FD421DE9DBD0DB85A0DFA",
+      "entryBytesHex": "44390075088B48084139097443448B18B92000000048897C2420498B3A48895C",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_candidateProducerCalls",
+      "rva": 2441605,
+      "size": 49,
+      "fileOffset": 2439045,
+      "bodySha256": "2B5B3C24169A98FA88132089E83D37B9E19DADF242EFA6C2EFC314024D9B72A4",
+      "entryBytesHex": "4C8D4597488BD3498BCFE81C2A00004C8D4597488BD7498BCFE80D2A0000488B",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_ownerCurrentPendingInsertAndRetiredRemove",
+      "rva": 2442064,
+      "size": 44,
+      "fileOffset": 2439504,
+      "bodySha256": "97D94D5501AE893DEFBF29F7329DDF7C1C8908A6C75E88EC8372ED06C454AEC2",
+      "entryBytesHex": "4C8BC6488D5507498D4F08E8C01700004C8BC6488D5507498D4F28E8B0170000",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_pendingSetIterationAndExactCopy",
+      "rva": 2443917,
+      "size": 68,
+      "fileOffset": 2441357,
+      "bodySha256": "A9F44072A3B617ECAD1DC1F639331CD130FB6AE844607A333E745DE91B8BCCEA",
+      "entryBytesHex": "488D4E28488D55D7E816F4FFFF488D55E7E8BD0E0000488D55E7488D4DD7E8C0",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_unchangedKeyToPairedPathOwner",
+      "rva": 2444162,
+      "size": 23,
+      "fileOffset": 2441602,
+      "bodySha256": "64F9B3D5C0CB4B70347EB27720D08BFF18A639A89FBDB7EEF901DA445F8452A7",
+      "entryBytesHex": "0F1033488D55F7488BCE0F1175E70F2975F7E85763E1FF",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_keyAssemblyInnerThenOuter",
+      "rva": 2452945,
+      "size": 45,
+      "fileOffset": 2450385,
+      "bodySha256": "B82331AA4F746F9D0CE402842D16FA6E6FC01DA8502645185093655B2CC7E69E",
+      "entryBytesHex": "48895C24288B074C8D44242089442420488D5424308B4704488BCD89442424E8",
+      "rangeKind": "selected-code-or-table"
+    },
+    {
+      "role": "infoKey_globalOuterPair",
+      "rva": 29866456,
+      "size": 8,
+      "fileOffset": 29859288,
+      "bodySha256": "830C36064389B2CCCF203320175135214C8AF5E33FC4EDA15207AEF76BC1C0F9",
+      "entryBytesHex": "0000008000000080",
+      "rangeKind": "selected-code-or-table"
+    }
+  ],
+  "utf8Strings": [
+    {
+      "role": "field2DuplicateDiagnostic",
+      "rva": 26979248,
+      "text": "Grid with layer %u / sceneStateId %d / pos (%d, %d) already exist"
+    },
+    {
+      "role": "streamingNormalPathTemplate",
+      "rva": 26978976,
+      "text": "{0}/{1}.bytes"
+    },
+    {
+      "role": "streamingDevPathTemplate",
+      "rva": 26978880,
+      "text": "{0}/[dev]{1}.bytes"
+    },
+    {
+      "role": "streamingLoadFailureDiagnostic",
+      "rva": 26978944,
+      "text": "[Streaming] Failed to load %s"
+    },
+    {
+      "role": "streamingStaticFirstReadLeaf",
+      "rva": 27951632,
+      "text": "StreamingChunkInfo"
+    },
+    {
+      "role": "secondaryPathfirstLeaf",
+      "rva": 25653092,
+      "text": "Init"
+    },
+    {
+      "role": "secondaryPathsecondLeaf",
+      "rva": 25653032,
+      "text": "Streaming"
+    },
+    {
+      "role": "secondaryPathnormalTemplate",
+      "rva": 25652984,
+      "text": "{0}/{1}{2}ChunkData_{3}_{4}_{5}_{6}.bytes"
+    },
+    {
+      "role": "secondaryPathglobalTemplate",
+      "rva": 25653048,
+      "text": "{0}/{1}{2}ChunkData_Global_{3}_{4}.bytes"
+    },
+    {
+      "role": "secondaryPathdevPrefix",
+      "rva": 28323076,
+      "text": "[dev]"
+    }
+  ],
+  "rowLayout": [
+    {
+      "fieldIndex": 0,
+      "vtableEntryOffset": 4,
+      "representation": "little-endian-scalar32"
+    },
+    {
+      "fieldIndex": 1,
+      "vtableEntryOffset": 6,
+      "representation": "little-endian-scalar32"
+    },
+    {
+      "fieldIndex": 2,
+      "vtableEntryOffset": 8,
+      "representation": "little-endian-scalar32"
+    },
+    {
+      "fieldIndex": 3,
+      "vtableEntryOffset": 10,
+      "representation": "little-endian-int32[2]"
+    },
+    {
+      "fieldIndex": 4,
+      "vtableEntryOffset": 12,
+      "representation": "little-endian-float32[6]"
+    },
+    {
+      "fieldIndex": 5,
+      "vtableEntryOffset": 14,
+      "representation": "count-prefixed-little-endian-scalar32[]"
+    }
+  ],
+  "consumerObservations": {
+    "diagnosticRva": 26979248,
+    "diagnosticUtf8": "Grid with layer %u / sceneStateId %d / pos (%d, %d) already exist",
+    "diagnosticXrefRva": 439861,
+    "field3Loads": [
+      439749,
+      439752
+    ],
+    "field4Loads": [
+      440023,
+      440028,
+      440032,
+      440037,
+      440042,
+      440055
+    ],
+    "runtimeRecordSourceRva": 440010,
+    "runtimeRecordRawRowPointerStoreRva": 439990,
+    "runtimeRecordRawRowPointerOffset": 16,
+    "runtimeRecordCopyCallRva": 440078,
+    "runtimeRecordStrideBytes": 72,
+    "runtimeRecordLookupCallRva": 440532,
+    "runtimeRecordRawRowPointerLoads": [
+      440674,
+      440720,
+      440911,
+      441005,
+      441047
+    ],
+    "field5VectorAccessorCalls": [
+      440678,
+      440724,
+      440919,
+      440932,
+      440975,
+      441024,
+      441051,
+      441101
+    ],
+    "field5VectorCountLoads": [
+      440686,
+      440924,
+      440980,
+      441029
+    ],
+    "field5ElementLoads": [
+      440732,
+      440942,
+      441059
+    ],
+    "field5ScalarLookupCalls": [
+      440736,
+      440946,
+      441063
+    ]
+  },
+  "carrierObservations": {
+    "internalCallName": "UnityEngine.HyperGryph.Streaming.StreamingSceneV2::Create_Injected",
+    "internalCallRegistrationIndex": 623,
+    "internalCallEntryRva": 3661232,
+    "descriptorLengthOffset": 8,
+    "allocationHeaderBytes": 200,
+    "operationPayloadBaseOffset": 104,
+    "operationRequestedLengthOffset": 112,
+    "operationSourceScalarOffset": 120,
+    "operationActualLengthOffset": 128,
+    "operationStatusOffset": 40,
+    "successfulStatusValue": 0,
+    "positiveShortReadStatusValue": 4,
+    "otherReadStatusValue": 2,
+    "rootRepresentation": "payload-base+little-endian-u32(payload-base)",
+    "rootVersionField0RequiredValue": 1,
+    "baseLengthStatus": "exact-selected-build-family-level-native-carrier",
+    "staticFirstReadLeaf": "StreamingChunkInfo",
+    "staticFirstReadNormalTemplate": "{runtimeRoot}/StreamingChunkInfo.bytes",
+    "staticFirstReadDevTemplate": "{runtimeRoot}/[dev]StreamingChunkInfo.bytes",
+    "logicalFileJoinStatus": "bounded-authenticated-candidates-no-concrete-runtime-root",
+    "finalCursorStatus": "exact-selected-closure-pointer-only-no-final-cursor",
+    "rowConsumerCarrierJoinStatus": "exact-static-object-chain-concrete-create-instance-unresolved",
+    "rowConsumerRuntimeHandleRepresentation": "anonymous-little-endian-dword[4]"
+  },
+  "nestedContextObservations": {
+    "status": "direct-static-root-field5-row-field3-to-context",
+    "evidenceLevel": "direct",
+    "rootCarrier": "first secondary root at runtime carrier +0x28; concrete file identity unresolved",
+    "observations": {
+      "rootField4ByteLoadRva": 439531,
+      "rootField5DispatchCallerRva": 439594,
+      "rootField5RowTargetResolutionA": [
+        436511,
+        436581,
+        436583
+      ],
+      "rootField5RowTargetResolutionB": [
+        436906,
+        436976,
+        436978
+      ],
+      "scopeArgumentRowPointerStores": [
+        436770,
+        437122
+      ],
+      "scopeCalls": [
+        436784,
+        437137
+      ],
+      "scopeField3VtableEntry": 10,
+      "scopeField3ContextPointerOffset": 128,
+      "scopeField3ContextPointerStores": [
+        1820235,
+        1821309
+      ],
+      "sameContextCallbackArgumentRvas": [
+        1820253,
+        1821330
+      ],
+      "callbackBridgeCalls": [
+        1820263,
+        1821340
+      ],
+      "callbackDynamicCallRvas": [
+        1820428,
+        1820449,
+        1821988,
+        1822000
+      ],
+      "scopeContextPointerClears": [
+        1820319,
+        1821396
+      ]
+    },
+    "abi": {
+      "dispatcher": "RCX=runtime row record; EDX=row scalar; R8=runtime root-carrier record; R9D=parallel vector index. Root-table source is [R8+0x28]. Selected branches resolve root.field5[index] as unsigned-relative pointer and pass it in R9.",
+      "scope": "RCX=context; R9=outer row table; R8B=selector derived from outer row.field2; RDX=callback argument. scope stores row.field3 relative target at context+0x80 and passes the unchanged context to callback bridge as R8.",
+      "callback": "recognized branch invokes dynamically selected function with RDX=context; other branch passes saved context by reference. No unique callback target is proved."
+    },
+    "boundary": {
+      "exact": "Current-image body bytes and local field3->context+0x80 dataflow are validated. Static route from root.field5 selected row to scope is independent of managed declarations.",
+      "structuralOnly": "This establishes a native context carrier for the anonymous nested table. It does not add byte ownership, serialized semantic names or exact file receipt.",
+      "unresolved": [
+        "unreviewed root marker dispatch slots outside 1..3",
+        "nested field4 marker15 selection",
+        "callback target to asset helper",
+        "concrete authenticated file instance",
+        "final source cursor/record extent"
+      ]
+    },
+    "marker15SelectionStatus": "unresolved",
+    "callbackToAssetApiStatus": "unresolved",
+    "recordExtentStatus": "unresolved",
+    "additionalTargetOwnedBytes": 0
+  },
+  "nestedReaderPhaseObservations": {
+    "selectedRegistration": {
+      "selector": 5,
+      "blockStartRva": 3683575,
+      "descriptorStackBase": "RBP+0x5c10",
+      "slot0PointerLeaRva": 3683589,
+      "slot0PointerRva": 1473280,
+      "slot0AssignmentCallRva": 3683638,
+      "slot1PointerLeaRva": 3683655,
+      "slot1PointerRva": 14923392,
+      "slot1AssignmentCallRva": 3683704,
+      "publishCallRva": 3684130,
+      "callbackCount": 10,
+      "callbackStride": 64,
+      "publishedSelectorStride": 648,
+      "publishedBaseRelativeToContext": 144,
+      "slot1CallbackBaseRelativeToSelectedContext": 216
+    },
+    "recordChain": {
+      "source": "second root table at [runtime root-carrier+0x30], not first root+0x28",
+      "rootField5IndexedRowTargetRvas": [
+        436574,
+        436586,
+        436619,
+        436624,
+        436628,
+        436651,
+        436654
+      ],
+      "recordInputRowPointerStoreRva": 436802,
+      "recordRowPointerOffset": 16,
+      "recordCopyCallRva": 436840,
+      "recordGrowCopyRvas": [
+        1816678,
+        1816689,
+        1816702,
+        1816706
+      ],
+      "runtimeRecordPointerLoadRvas": [
+        449960,
+        449964
+      ],
+      "runtimeSelectorField2LoadRva": 449996,
+      "runtimeTailCallScopeRva": 450012,
+      "scopeContextField3PointerStoreRva": 1819051,
+      "scopeSameContextArgumentRva": 1819069,
+      "scopeCallbackCallRva": 1819079,
+      "scopePointerClearRva": 1819135
+    },
+    "readerAbi": {
+      "entry": "0xe3b680 accepts RDX=context from pinned callback bridge. It preserves context in RSI, obtains a scalar through key (5,2,0), and uses keys (5,1,index) in a bounded-by-that-scalar signed-positive loop.",
+      "countKey": [
+        5,
+        2,
+        0
+      ],
+      "elementKeyPrefix": [
+        5,
+        1
+      ],
+      "elementKeyPacking": "(((key0 << 8) | key1) << 16 | key2) modulo uint32; OR is not addition outside the bounded low-16-bit index lane.",
+      "countKeyCallRva": 14923447,
+      "countScalarLoadRva": 14923539,
+      "elementKeyStores": [
+        14923545,
+        14923553,
+        14923588
+      ],
+      "elementReaderCallRva": 14923592,
+      "candidateElementConsumedBytes": 16,
+      "candidateElementLoadRva": 908477,
+      "lookupBoundary": "Closed by nestedKeyIndexObservations: full u32 equality, collision resolution, first source-vector ordinal retained for duplicate keys. Maintained serialized join rejects duplicates as ambiguous."
+    },
+    "falseSlot0Reset": {
+      "sourceEmptyDescriptorStoreRva": 1820279,
+      "assignmentCallRva": 1820289,
+      "sourceCallbackPointerOffset": 56,
+      "interpretation": "For the reviewed native-function vtable, this is empty callback assignment after false, not a fallback reader. Unknown overridden functor branches remain dynamic."
+    },
+    "evidenceBoundary": {
+      "exact": "Selected native registration bytes put false stub in selector5 slot0 and actual reader0xe3b680 in slot1. Slot1 scope establishes row.field3 at context+0x80 for duration of the callback. The static record source is second-root field5, distinct from the first-root row used by initial slot0.",
+      "conditional": "Default registration must be the one installed in the context; script binding can replace callbacks and no concrete runtime registration receipt is provided. Runtime record instance/scheduler ownership is not newly proved.",
+      "unresolved": [
+        "marker15 target extent and representation",
+        "authentic logical-file receipt into one runtime instance",
+        "final cursor and whole-file native consumption",
+        "Existing runtime keys dispatch using a previously stored marker, not necessarily the current Init marker; paired current bytes do not prove live key-map state or actual execution."
+      ]
+    },
+    "nextTask": "Use separately gated paired paths/shared ordinal and complete corpus ordered witnesses as conditional reader compatibility only; concrete runtime root, existing-key marker state and callback overrides remain unresolved.",
+    "status": "direct-conditional-default-selector5-later-reader",
+    "sourceRoot": "second-secondary-root",
+    "marker15WidthStatus": "unresolved",
+    "targetOwnedBytes": 0,
+    "rootMarkerDispatch": {
+      "status": "direct-selected-build-byte-indexed-pointer-dispatch",
+      "tableBaseRva": 27075224,
+      "recordMarkerLoadRva": 436460,
+      "markerCopySourceLoadRva": 14968469,
+      "markerCopyDestinationStoreRva": 14968473,
+      "entries": [
+        {
+          "marker": 1,
+          "targetRva": 1823408
+        },
+        {
+          "marker": 2,
+          "targetRva": 1819248
+        },
+        {
+          "marker": 3,
+          "targetRva": 1815744
+        }
+      ],
+      "initialScopeBranches": {
+        "2": "scopeA",
+        "3": "scopeB"
+      },
+      "boundary": "Only slots1..3 are certified, not the full table or an enum registry. Root markers are not nested target markers."
+    }
+  },
+  "evidenceBoundary": {
+    "exact": "Current GameAssembly.dll, global-metadata.dat, UnityPlayer.dll, the bounded row construction and runtime-consumer bodies, record copy/index helpers, scalar lookup, and each accessor body are hash-gated before the representation claim is published.",
+    "direct": "The selected row consumer reads fields 0-2 with one 32-bit scalar accessor each, field 3 through an inline pointer followed by two signed 32-bit loads, and field 4 through an inline pointer followed by six float32 loads. It stores the source row pointer at byte 16 of a copied 72-byte runtime record. A later state consumer reloads that pointer, obtains vtable entry 14, reads the vector count, and loads each element at vector+4+index*4 before passing the 32-bit value as a hash-table lookup key. The first scene read formats the static leaf StreamingChunkInfo under an unavailable runtime root. A separate static object chain propagates anonymous scene-root pairs through a state-selected 16-byte handle to two secondary reads, then reaches the second secondary root's vtable-entry-8 row vector and this row consumer.",
+    "structuralOnly": "The contract proves stored value representations for anonymous fields 0-5, direct field-5 iteration, a family-level carrier base/requested-length/actual-length contract, and the selected static scene-object chain. It does not prove a managed serialized field order, the key namespace, one concrete Create instance, or the identity of one authenticated logical file at either native read boundary.",
+    "unresolved": "The concrete runtime root/path-to-authenticated-logical-file joins and scheduler edge to one Create instance are not closed. The selected closure is proven pointer-only after I/O and therefore has no outer-length offset checks, parsed-length result, or final cursor; differently encoded, inlined, dynamically dispatched, or unconnected verifier code elsewhere remains unexcluded. Field names, field-5 element meaning, cross-file ownership, runtime selection, and game semantics remain unresolved."
+  },
+  "nestedKeyIndexObservations": {
+    "status": "exact-selected-static-u32-key-to-first-vector-index-helper-chain",
+    "abi": {
+      "wrapper": "RCX=context, RDX=pointer to three dwords, R8=out uint32 index. Packs key modulo32 as (((k0<<8)|k1)<<16)|k2. If context+0x78 map is absent, constructs it once from context+0x80 table.field3, inserting each vector element as key and its zero-based ordinal as value. Returns AL=false for missing key without writing output; AL=true with map slot+8 copied to [out].",
+      "init": "0xc2d430 RCX=map allocation, EDX=expected source vector count, R8D=allocator selector. Initializes base to static empty slot, mask/count/free budget to zero; for nonzero expected count obtains power-of-two bucket count sufficient for approximately 3*n/2 entries then initializes empty slots. No external payload length input.",
+      "insertThunk": "0xf4f0c0 RCX=map,RDX=caller result struct,R8=key pointer,R9=index pointer. Calls0xe0110 with same arguments and returns result struct in RAX.",
+      "insert": "0xe0110 RCX=map,RDX=out(iterator pointer,end pointer,inserted byte),R8=key pointer,R9=index pointer. New entries store key at slot+4,index value at slot+8,masked hash at slot+0. Duplicate full key returns iterator with inserted=false and preserves original index.",
+      "find": "0xe0450 RCX=map,RDX=out(iterator pointer,end pointer),R8=key pointer. Compares both masked hash and full u32 key before successful result. Returns output struct pointer in RAX.",
+      "endAndEquality": "0x676b0 RCX=map,RDX=out iterator sets both pointers to base+3*(mask+4), returns output struct.0x6d3b0 RCX=iteratorA,RDX=iteratorB returns AL=(A.pointer==B.pointer).",
+      "rehash": "0x624e0 ECX=new mask,RDX=new base,R8D=old mask,R9=old base. Copies all12 bytes of occupied entries into new probe slots, preserving key and index, not merely hash."
+    },
+    "layout": {
+      "mapBaseOffset": 0,
+      "mapMaskOffset": 8,
+      "mapEntryCountOffset": 12,
+      "mapFreeBudgetOffset": 20,
+      "mapAllocatorOffset": 24,
+      "slotBytes": 12,
+      "slotMaskedHashOffset": 0,
+      "slotFullKeyOffset": 4,
+      "slotValueIndexOffset": 8,
+      "emptyMarker": 4294967295,
+      "deletedMarker": 4294967294,
+      "hashFingerprintMask": 4294967292,
+      "probeOffsetUpdate": "step starts0; each collision step+=4, offset=(offset+step)&mask; slot address=base+offset*3"
+    },
+    "observations": {
+      "wrapperPackedKeyRvas": [
+        917446,
+        917451,
+        917454,
+        917457,
+        917460
+      ],
+      "wrapperVectorElementAndIndexInsertRvas": [
+        917635,
+        917643,
+        917650
+      ],
+      "initialInsertFingerprintAndFullKeyEquality": [
+        918020,
+        918028
+      ],
+      "collisionInsertFingerprintAndFullKeyEquality": [
+        918151,
+        918156
+      ],
+      "duplicateInsertedFalseStores": [
+        918078,
+        918222
+      ],
+      "newKeyAndValueStores": [
+        918253,
+        918258
+      ],
+      "lookupFingerprintAndFullKeyEquality": [
+        918722,
+        918730,
+        918771,
+        918852
+      ],
+      "wrapperMissAndOutValueRvas": [
+        917750,
+        917763,
+        917768
+      ],
+      "rehashWholeRowLoadsAndStores": [
+        402716,
+        402721,
+        402725,
+        402729
+      ]
+    },
+    "evidenceBoundary": {
+      "exact": "Successful selected native map operations match full32-bit key, resolve collisions and retain first ordinal for duplicates. Hash equality alone is explicitly insufficient. Source vector ordinal is the stored index, not insertion-table slot order.",
+      "parserPolicy": "Still reject duplicate source keys as ambiguous rather than silently applying native first-insert-wins. Bound vector counts, key arithmetic, index lookup, scalar-count reads and every consumed target independently; native helpers have no source length guards.",
+      "runtimeCrossRootGap": "Runtime dispatch marker originates first-root.field4; saved row pointer originates second-root.field5 at same index. Second-root own field4 marker is not a runtime dispatch receipt. A per-file key/marker/span association can be reader-compatible conditional evidence only until the two-root pairing is authenticated.",
+      "notProven": [
+        "one runtime instance or current callback override state",
+        "allocation failure behavior or arbitrary corrupted map safety",
+        "authenticated file base/length or final cursor",
+        "all marker15 records use selector5/key(5,1,index)",
+        "16 bytes is whole record size rather than consumed span",
+        "field names/game semantics"
+      ]
+    }
+  },
+  "nestedPairedRootObservations": {
+    "status": "direct-selected-build-paired-paths-and-conditional-shared-ordinal",
+    "pathAbi": {
+      "ownerEntry": "0x6AEF0: RCX=owner wrapper; RDX=pointer to 16-byte key; [RCX] supplies state used for runtimeRoot/isDev; key is copied unchanged for both calls",
+      "sharedInputs": {
+        "runtimeRoot": "address RSI+0x30 after RSI=[owner RCX]",
+        "isDev": "byte RSI+0x58",
+        "key": "four little-endian dwords copied from [RDX] through RBX to the same stack slot before each formatter"
+      },
+      "normalPath": "{runtimeRoot}/{devPrefix}{leaf}ChunkData_{key[2]}_{key[3]}_{key[0]}_{key[1]}.bytes",
+      "globalCondition": "key[2] == 0x80000000 and key[3] == 0x80000000",
+      "globalPath": "{runtimeRoot}/{devPrefix}{leaf}ChunkData_Global_{key[0]}_{key[1]}.bytes",
+      "first": {
+        "leaf": "Init",
+        "formattedDescriptorCarrier": "+0x18",
+        "resolvedRootCarrier": "+0x28"
+      },
+      "second": {
+        "leaf": "Streaming",
+        "formattedDescriptorCarrier": "+0x20",
+        "resolvedRootCarrier": "+0x30"
+      }
+    },
+    "pathEvidenceBoundary": {
+      "exact": "On the gated selected UnityPlayer, the two calls use one identical 16-byte key and one runtimeRoot/isDev source. Literal injection and ordered carrier stores prove first=InitChunkData and second=StreamingChunkData.",
+      "direct": "The normal filename uses key dwords [2],[3],[0],[1]; the Global branch is selected only when dwords [2] and [3] equal 0x80000000 and uses dwords [0],[1].",
+      "structuralOnly": "The four dwords and both parsed roots remain anonymous runtime structures.",
+      "unresolved": [
+        "no concrete runtimeRoot receipt binds either formatted path to one authenticated logical file",
+        "actual execution, final cursor, whole-file consumption, field names and game semantics"
+      ],
+      "infoSourceJoin": "See infoKeyProducerObservations for shared owner/state and Info byte-value source through the reviewed direct insertion/selection paths. No concrete authenticated Info instance or runtime receipt is asserted."
+    },
+    "indexLoop": {
+      "carrier": "RDI carrier; [carrier+0x28]=FIRST root, [carrier+0x30]=SECOND root; [carrier+0x38]=saved progress ordinal.",
+      "index": "0x6b438 loads i into R14D; 0x6b441 compares unsigned i against SECOND field3 vector count. 0x6b464 increments saved progress; 0x6b55b increments R14D; 0x6b563 compares SECOND field3 count again.",
+      "key": "0x6b47b loads SECOND.field3[i] dword into R15D; 0x6b48e looks it up in manager+0xe0 runtime key map. dfea0 compares fingerprint AND full32-bit key at dff8f/dff96, not hash alone.",
+      "newKey": "0x6b4d8 selects FIRST root; 0x6b4dc field4 accessor; 0x6b4eb byte[vector+4+i] becomes new runtime marker. 0x6b4fd allocates runtime index j. 0x6b511 converts j to main-record address at manager+0x98 vector base+j*56. 0x6b51e copies unchanged i into R9D; 0x6b524 passes SECOND.field3[i] key as EDX; 0x6b52a calls 6a8d0 with RCX=mainRecord,R8=carrier,R9D=i,fifthArg=manager.",
+      "noSerializedRemapping": "6a8d0 directly indexes FIRST.field5[i] for slot0 scope and SECOND.field5[i] for stored 32-byte child record; runtime allocation index j is distinct from i and does not replace i in the serialized lookup.",
+      "mapInsert": "0x6b532 selects manager+0xe0 map, key copied from runtimeRecord+4, value is allocated index j; 0x6b552 calls f4e220->68730. Insert full-key comparisons at 6882c/688ac; new key at 6890d and j at 68912; duplicate leaves old value intact.",
+      "existingKey": "0x6b4c0 loads map value j at iterator+8; 0x6b4c3 obtains runtimeRecord; 0x6b4cb passes unchanged i as R8D to 4afb30. That helper dispatches using EXISTING runtimeRecord byte0, not current FIRST.field4[i]. Marker2 table entry points1bb680 and recognized inline branch4afc8e resolves SECOND.field5[i] and appends32B child at existing runtimeRecord+0x20 vector. No FIRST.field3 remapping here.",
+      "completion": "0x6b573 fetches SECOND.field5 vector count; 0x6b57a tests saved progress == count. Inequality returns to state/yield branch, not a bounds-validation error."
+    },
+    "runtimeRecordAbi": {
+      "mainRecord": "56 bytes; byte0 marker, dword+4 source key; vector descriptor at+0x20 has begin/end/capacity at+0x20/+0x28/+0x30.",
+      "childRecord": "32-byte copy consists of carrier+4 first16 bytes, SECOND.field5[i] pointer at child+0x10, branch-specific auxiliary qword at+0x18. This is runtime-owned storage, NOT a 32-byte serialized record claim.",
+      "initializer": "e46690 RCX=record,R9=pointer to marker byte; copies byte[R9] to record.byte0; initializes vector descriptor zero. Caller6ae20 returns allocated or recycled main-record ordinal EAX."
+    },
+    "indexEvidenceBoundary": {
+      "exact": "Conditional static ABI uses a shared serialized ordinal for FIRST marker and both roots row pointers on NEW-key branch. Existing-key branch preserves serialized ordinal but routes under already-existing runtime marker.",
+      "notNativeValidated": [
+        "FIRST.field3 equality/order versus SECOND.field3",
+        "all FIRST/SECOND vector counts equal or safe to index",
+        "concrete logical-file pair identity from authenticated VFS bytes",
+        "fresh key map / no prior same-key record / runtime scheduling",
+        "same-file SECOND marker proves FIRST or existing runtime marker",
+        "default callback has not been overridden",
+        "serialized field names, full marker15 record extent or game semantics"
+      ],
+      "witnessAdvice": "Corpus pair witness may compare complete ordered field3/field4 bytes and row identities explicitly, but must label file pairing a candidate until independent path/carrier selection proof. Unique keys inside one pair do not rule out previously loaded same key from another pair.",
+      "remainingMapBoundary": "Insert resize helper68970 and allocation/error behavior not re-audited in this subtask; no arbitrary map-corruption safety claim."
+    },
+    "runtimeSelectionStatus": "unresolved-concrete-root-key-map-state-and-callback-overrides",
+    "targetOwnedBytes": 0
+  },
+  "infoKeyProducerObservations": {
+    "status": "direct-selected-build-info-pairs-to-conditional-path-key",
+    "abi": {
+      "sceneWrapper": {
+        "+0x08": "one 0x3A8-byte anonymous internal state",
+        "+0x10": "first 0x68-byte owner wrapper",
+        "+0x18": "second 0x68-byte owner wrapper",
+        "sharedState": "both owner wrappers are constructed by 0x37F9C0 with the exact same sceneWrapper+0x08 pointer; owner+0x00 stores it"
+      },
+      "ownerWrapper": {
+        "+0x00": "shared anonymous internal-state pointer",
+        "+0x08": "16-byte-key set A",
+        "+0x28": "16-byte-key set B, iterated by 0x254A30 and passed unchanged to 0x6AEF0",
+        "+0x48": "16-byte-key set C",
+        "transitionAt0x254130": "each selected key is inserted unchanged into +0x08 and +0x28, then removed from +0x48; the inverse branch removes from +0x08/+0x28 and inserts into +0x48"
+      },
+      "infoRootField3Ingestion": {
+        "source": "0x37E8CD invokes the root.field3 vector accessor 0xF4E250",
+        "outerPair": "row.field0 accessor 0xF536B4 supplies two little-endian dwords copied unchanged as an 8-byte map key",
+        "innerPairs": "row.field1 accessor 0xF536D8 supplies a count-prefixed width-8 vector; each element is copied unchanged as two dwords",
+        "map": "sharedInternalState+0x228"
+      },
+      "mapRecord": {
+        "slot+0x08": "stored 8-byte outer pair; equality checks both dwords",
+        "slot+0x10": "static pair-set object populated from Info row.field1",
+        "slot+0x58": "active pair-set object",
+        "duplicateOuterPair": "0x498EE0 returns the existing slot with inserted=false after full two-dword equality; scene ingestion ignores inserted and merges later row.field1 pairs into that same record"
+      },
+      "pairSet": {
+        "orderedVector": "base+0x08 data pointer, base+0x18 element count; elements are exact 8-byte pairs",
+        "membershipIndex": "base+0x28 hash set; initial-slot equality at 0x37F181 and collision equality at 0xF0EF34 both compare both query dwords",
+        "hashHelperCustomAbi": "0x416AA0 reads query dwords [RDX+4] and [RDX], returns EAX hash, and its complete 163-byte leaf does not modify R9(container) or R11(query), which 0x37F130 uses after the call",
+        "duplicatePair": "for a normal container, 0x37EBC0 skips insertion and ordered-vector append when complete two-dword lookup reports an existing pair, preserving the first stored occurrence",
+        "reviewedActiveInsertCallers": "all three literal calls targeting slot+0x58 are dominated by a true result from 0x37F0D0 for the exact same 8-byte query within the pinned ordinary direct CFG of their complete logical callers",
+        "literalInsertionBoundary": "bounded only to the four literal calls to 0x37EBC0: the one static ingestion call is unguarded, while all three literal active-insert calls are membership-dominated; computed aliases, indirect calls and inlined equivalent mutations remain outside this inventory"
+      },
+      "keyProducer": {
+        "outerLookup": "0x256D60 looks up the complete candidate outer pair in sharedInternalState+0x228",
+        "activeIteration": "a successful lookup iterates only slot+0x58's ordered vector at slot+0x60 with count at slot+0x70",
+        "memoryOrder": "[innerPair.dword0, innerPair.dword1, outerPair.dword0, outerPair.dword1]",
+        "globalCandidate": "0x2541A3 loads the 8-byte table at RVA 0x1C7B9D8, i.e. [INT32_MIN, INT32_MIN], and passes it to 0x256D60",
+        "duplicateKey": "0x255B20 calls 0x1BAE90, which compares all four dwords; an existing exact 16-byte key sets inserted=false and is not replaced"
+      },
+      "consumerAndPath": {
+        "carrier": "0x254A30 iterates owner+0x28; 0x6A520 returns slot+4 and the exact 16 bytes are copied unchanged to 0x6AEF0",
+        "formatterInputOrder": "0x6AEF0 therefore receives [inner0, inner1, outer0, outer1]",
+        "normalFilenameOrder": "both formatters emit [key2, key3, key0, key1], restoring [outer0, outer1, inner0, inner1]",
+        "pairedLeaves": "the same key/root/isDev feeds literal leaves Init and Streaming; see secondary_paths_evidence.json for descriptor/root carrier pins"
+      }
+    },
+    "pairMembership": {
+      "hashAbi": {
+        "input": "RDX points to8B pair. Loads dword[RDX+4] at416AA0 and dword[RDX] at416ADD before clobbering EDX at416AF5.",
+        "output": "EAX u32 pair hash. Caller37F134 saved original pair pointer in R11,37F137 map pointer in R9. Complete163B leaf modifies only EAX/ECX/EDX/R8D and flags; preserves R9/R11 and nonvolatile registers. No memory writes, stack changes or calls.",
+        "boundary": "This is selected-build custom register-liveness evidence, not generic Windows ABI preservation of volatile registers. No payload-length argument or safety validation."
+      },
+      "controlFlow": [
+        "37F153 fingerprint equality takes initial hit37F181: compares pair[0] at37F184 and pair[1] at37F18C; only both equal return current slot via37F17C.",
+        "37F158 initializes step16;37F164 empty FFFFFFFF returns end.37F194 probe offset=(offset+step)&mask; slot=base+offset.37F1A3 compares fingerprint.",
+        "37F1A6 JE F0EF34 is normal collision-hit equality continuation, NOT exceptional handling.",
+        "F0EF34 loads collision slot+4 then F0EF37 compares pair[0].Mismatch F0EF3A jumps37F1AC.",
+        "F0EF40 loads collision slot+8 then F0EF43 compares pair[1].Mismatch F0EF47 jumps37F1AC.",
+        "Both equal: F0EF4D moves collision slot RBX to RAX; F0EF50 jumps37F177, restores savedRBX then37F17C restoresRSP and returns.",
+        "Mismatch37F1AC increments step16 then37F1AF jumps37F164 to continue probing; hash equality alone never succeeds.",
+        "Membership37F0D0 calls this find and returns AL=(result != end) after its iterator-skip handling. Normal found slots have fingerprint belowFFFFFFFE; selected end sentinel returnsfalse."
+      ]
+    },
+    "guardedCallerCfg": [
+      {
+        "role": "sceneGlobalActiveInsert",
+        "logicalBody": "0x37E400..0x37EBB8",
+        "entryRva": "0x37E400",
+        "membershipCallRva": "0x37EA29",
+        "trueFallthroughRva": "0x37EA32",
+        "falseTargetRva": "0x37EA46",
+        "insertCallRva": "0x37EA41",
+        "knownColdFragments": [],
+        "auditedIndirectJumpsInPinnedCaller": [],
+        "protectedRange": "0x37EA2E..0x37EA45",
+        "rawRelativeTransferCandidates": [
+          {
+            "sourceRva": "0x37EA42",
+            "targetRva": "0x37EA45",
+            "encoding": "rel8",
+            "bytesHex": "7A01",
+            "sourceAlreadyInsideProtectedRange": true
+          }
+        ],
+        "externalRelativeTransferCandidates": [],
+        "absolutePointerReferencesIntoProtectedRange": [],
+        "ordinaryDirectCfgDominance": true,
+        "boundary": "The all-section raw opcode scan is an over-approximation and can report unaligned immediates, but no candidate originating outside the protected range exists. Computed target construction and external corruption are not excluded."
+      },
+      {
+        "role": "runtimeActiveInsertA",
+        "logicalBody": "0x37EC60..0x37EE06 plus 0xF0EED8..0xF0EF33",
+        "entryRva": "0x37EC60",
+        "membershipCallRva": "0x37EDBB",
+        "trueFallthroughRva": "0x37EDC4",
+        "falseTargetRva": "0x37ED7F",
+        "insertCallRva": "0x37EDD0",
+        "knownColdFragments": [
+          "0xF0EED8..0xF0EF33: alternative removal path; returns to 0x37EDD7, after the insert block"
+        ],
+        "auditedIndirectJumpsInPinnedCaller": [],
+        "protectedRange": "0x37EDC0..0x37EDD4",
+        "rawRelativeTransferCandidates": [
+          {
+            "sourceRva": "0x37EDD1",
+            "targetRva": "0x37EDD0",
+            "encoding": "rel8",
+            "bytesHex": "EBFD",
+            "sourceAlreadyInsideProtectedRange": true
+          }
+        ],
+        "externalRelativeTransferCandidates": [],
+        "absolutePointerReferencesIntoProtectedRange": [],
+        "ordinaryDirectCfgDominance": true,
+        "boundary": "The all-section raw opcode scan is an over-approximation and can report unaligned immediates, but no candidate originating outside the protected range exists. Computed target construction and external corruption are not excluded."
+      },
+      {
+        "role": "runtimeActiveInsertB",
+        "logicalBody": "0x37EF00..0x37F0C7",
+        "entryRva": "0x37EF00",
+        "membershipCallRva": "0x37F021",
+        "trueFallthroughRva": "0x37F02A",
+        "falseTargetRva": "0x37F03B",
+        "insertCallRva": "0x37F036",
+        "knownColdFragments": [],
+        "auditedIndirectJumpsInPinnedCaller": [],
+        "protectedRange": "0x37F026..0x37F03A",
+        "rawRelativeTransferCandidates": [],
+        "externalRelativeTransferCandidates": [],
+        "absolutePointerReferencesIntoProtectedRange": [],
+        "ordinaryDirectCfgDominance": true,
+        "boundary": "The all-section raw opcode scan is an over-approximation and can report unaligned immediates, but no candidate originating outside the protected range exists. Computed target construction and external corruption are not excluded."
+      }
+    ],
+    "literalPairInsertCalls": [
+      {
+        "role": "staticFromInfoField1",
+        "callRva": "0x37E9E6",
+        "targetRva": "0x37EBC0",
+        "expectedHex": "E8D5010000",
+        "actualHex": "E8D5010000",
+        "destination": "staticPairSet(+0x10)",
+        "reviewedFallthroughMembershipGuardPresent": false,
+        "ordinaryDirectCfgWholeCallerDominanceProved": null,
+        "match": true
+      },
+      {
+        "role": "activeGlobalSentinel",
+        "callRva": "0x37EA41",
+        "targetRva": "0x37EBC0",
+        "expectedHex": "E87A010000",
+        "actualHex": "E87A010000",
+        "destination": "activePairSet(+0x58)",
+        "reviewedFallthroughMembershipGuardPresent": true,
+        "ordinaryDirectCfgWholeCallerDominanceProved": true,
+        "match": true
+      },
+      {
+        "role": "activeRuntimeBranchA",
+        "callRva": "0x37EDD0",
+        "targetRva": "0x37EBC0",
+        "expectedHex": "E8EBFDFFFF",
+        "actualHex": "E8EBFDFFFF",
+        "destination": "activePairSet(+0x58)",
+        "reviewedFallthroughMembershipGuardPresent": true,
+        "ordinaryDirectCfgWholeCallerDominanceProved": true,
+        "match": true
+      },
+      {
+        "role": "activeRuntimeBranchB",
+        "callRva": "0x37F036",
+        "targetRva": "0x37EBC0",
+        "expectedHex": "E885FBFFFF",
+        "actualHex": "E885FBFFFF",
+        "destination": "activePairSet(+0x58)",
+        "reviewedFallthroughMembershipGuardPresent": true,
+        "ordinaryDirectCfgWholeCallerDominanceProved": true,
+        "match": true
+      }
+    ],
+    "directReferenceBoundary": "This exhausts literal rel32 and absolute-pointer references, not computed aliases, indirect calls, or inlined equivalent mutations.",
+    "evidenceBoundary": {
+      "exact": [
+        "On the gated selected UnityPlayer, scene wrapper +0x10 and +0x18 owners share one internal state pointer.",
+        "Info root.field3 row.field0 supplies the full outer pair and row.field1 supplies exact 8-byte static pairs; duplicate outer rows coalesce and duplicate static pairs preserve first occurrence under complete two-dword equality.",
+        "Within each pinned complete logical caller's ordinary direct CFG, every entry to one of the three literal active-insert calls is dominated by a true 0x37F0D0 result for the exact same 8-byte query.",
+        "A successful selected key reaches the paired formatter owner unchanged and has memory order [inner, outer]; the filename formatter restores [outer, inner]."
+      ],
+      "direct": [
+        "The producer's Global outer candidate is the selected-build table pair [INT32_MIN, INT32_MIN].",
+        "The 16-byte selected-key set compares all four dwords and suppresses exact duplicates."
+      ],
+      "structuralOnly": [
+        "All pairs, sets, owner roles, spatial inputs and transitions remain anonymous structures.",
+        "The literal-call inventory proves a static-membership precondition for those three direct active insertions only; it does not prove all possible active-set mutations or runtime activation, path lookup or receipt."
+      ],
+      "unresolved": [
+        "No authenticated Info logical-file instance is joined to one concrete runtime root pointer by static evidence.",
+        "The float-driven branches in 0x256BB0 and dynamic state at internal+0x248/+0x268 are not assigned game semantics and no concrete selected subset is claimed.",
+        "Computed aliases, indirect calls and inlined equivalent mutations are outside the direct-reference inventory.",
+        "Computed entry targets, pointer aliases, indirect calls and inlined equivalent mutations are not excluded by the caller-CFG or literal-call inventories.",
+        "Actual execution, runtime receipt, final cursor, field names and gameplay meaning remain unproved."
+      ]
+    },
+    "targetOwnedBytes": 0
+  }
+}

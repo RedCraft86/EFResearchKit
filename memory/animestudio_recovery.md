@@ -222,23 +222,60 @@ Current durable boundaries:
   table/vector graph in all 89 current files, including reused/forward vtables
   and 4/8/12-byte vector widths; every nonzero byte is owned and the sole
   four-byte gap is zero alignment. InitChunkData and StreamingChunkData also
-  share two exact anonymous subgraphs across all current files. Root fields
-  3/4/5 are selected-build vectors with observed element widths 4/1/4, equal
-  counts, bounded field-5 row tables, and a bounded row-field-0 byte range.
-  The latter remains ambiguous between a FlatBuffer string and a byte vector
-  followed by zero. Root fields 6/7 retain the paired-group, descriptor, and
-  blob-length closure. Root field 2, all other field-5 children, and bytes
-  outside the two subgraphs stay opaque; no union, entity, component, matrix,
-  descriptor, field name, or runtime meaning follows from this structural
-  result.
+  share three exact anonymous subgraphs across all current files. Root field 2
+  is a width-4 table-offset vector: Init has an empty vector ending at EOF;
+  Streaming closes each immediate table/vtable against seven selected-build
+  layouts, and row field 5 is an exact count-prefixed vector of anonymous
+  little-endian scalar32 values. This terminal subgraph is continuous from the
+  field-2 vector
+  start through decoded EOF. Each row object also partitions exactly into its
+  four-byte vtable displacement and present slot-to-next-boundary spans:
+  fields 0/1/2 use 4-byte spans, field 3 uses 8, field 4 uses 24, and field 5
+  uses its proven 4-byte uoffset slot. A current-build hash-gated UnityPlayer
+  consumer and accessors directly close fields 0--2 as scalar32, field 3
+  as two int32 loads, and field 4 as six float32 loads. The same producer
+  retains the source row pointer at offset 16 of a copied 72-byte runtime
+  record; a later state consumer reloads it, reads the field-5 count and each
+  `vector+4+index*4` element, and passes the scalar32 value to a hash-table
+  lookup. Fields 0--5 therefore contain no padding and are directly consumed
+  in these representations. The numeric filename family has an exact current-corpus relation:
+  the field-3 lanes floor-divided by 128 equal the first two filename integers,
+  with residuals limited to 0/32/64/96; present fields 1/2 equal the last two
+  integers. The Global family has a separate present-field 1/2 relation to its
+  two integers. A separately hash-gated family-level native read path now
+  closes its payload base, requested length, returned byte count, exact-read
+  success branch, and `base + u32(base)` root calculation. Its first formatted
+  leaf is exactly `StreamingChunkInfo`, but the runtime root is unavailable,
+  leaving a bounded authenticated candidate set instead of one logical-file
+  identity. After I/O the selected closure is proven pointer-only: outer
+  length never reaches the FlatBuffer accessors and no parsed-length or final
+  cursor exists there. A separate hash-gated static chain carries anonymous
+  scene-root pairs through a state-selected 16-byte handle to two secondary
+  reads and the second root's field-2 row vector; the scheduler edge to one
+  concrete Create instance and both concrete paths remain unresolved. These
+  fields remain anonymous: the field-5 key namespace and signedness are
+  unresolved, and the matching managed `GridData` shape is candidate-only.
+  Root fields 3/4/5 have widths 4/1/4, equal counts, bounded field-5 row tables,
+  and a bounded row-field-0 byte range whose string/byte-vector representation
+  stays ambiguous. Rows with field 5 close only its empty count prefix,
+  not its element width, and field 3 as a nested table with equal-count
+  width-4/1/4 vectors. The marker-17 wrapper/byte-range closure and its
+  unresolved type boundary are owned by `game_data_recovery.md`; all other
+  nested targets remain opaque. Marker 15 additionally has bounded uoffset
+  targets, with widths unresolved and no target-byte ownership. Root fields
+  6/7 retain paired-group, descriptor, and blob-length closure. Bytes outside
+  the certified subgraphs stay opaque; no union, entity, component, matrix,
+  descriptor, field name, or runtime meaning follows.
 - Both StringPathHash dictionaries and FacBoneTRS now self-bound their lookup
   and value pools. FacBoneTRS proves its file-provided unit count, observed
   boundary overlaps, contiguous bone records, and 64-byte ranges through EOF;
   every value is shape-consistent with a row-vector homogeneous rigid-affine
   4x4 float representation. The exact type/convention remains unnamed, and
   unit/bone hashes have no exact match in either StringPathHash dictionary.
-- Terrain block/channel meaning, Streaming root field 2, deeper field-5
-  children, remaining tails and field meaning,
+- Terrain block/channel meaning, Streaming's concrete runtime-root/secondary-
+  path joins and field-5 key namespace/ownership, nested parallel-vector
+  element targets,
+  remaining tails,
   manifest-row, mmap value semantics, patch-instruction/runtime, and remaining
   JsonData semantics are incomplete.
 - Material and shader extraction preserves recoverable metadata; it does not
@@ -317,7 +354,9 @@ pass license and target-framework review for AnimeStudio's .NET targets.
 
 ## Remaining gaps
 
-- Complete inner semantics for the unresolved VFS payload families.
+- Continue Streaming nested element/byte-body framing using the bottom-up
+  queue in `game_data_recovery.md`; concrete runtime paths and field names
+  follow structural closure, not the reverse.
 - Improve per-object clean/partial/error certification and dependency diagnostics.
 - Recover more exact MonoBehaviour and managed-reference schemas.
 - Expand shader-container coverage and complete semantic shader fixtures.
