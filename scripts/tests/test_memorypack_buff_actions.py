@@ -25,6 +25,219 @@ def pair(a=b'',b=b'',flag=0):
     return b'\x03'+payload(a)+bytes([flag])+payload(b)
 
 
+def finder14d(items=(b'wire',None),query_items=(0,0xffffffff)):
+    return (b'\x03'+struct.pack('<i',-1 if items is None else len(items))+
+            b''.join(payload(v) for v in items or ())+b'\xff'*4+
+            b'\x02'+b'\x80'*4+struct.pack('<i',-1 if query_items is None else len(query_items))+
+            b''.join(struct.pack('<I',v) for v in query_items or ()))
+
+
+def tag14d(first=b'\xff',second=b'\xff',last=b'\xff'):
+    return b'\xfa\x4d\x01\x09\xfe'+b'\xff'*12+first+b'\x80'+b'\xfe'*4+second+last
+
+
+def tag42(first=b'\xff',second=b'\xff',bits=0x7fc00000):
+    return b'\x42\x0a\xfe'+b'\xff'*12+b'\x80'+struct.pack('<I',bits)+b'\xfe\xff'+first+second
+
+
+def tag27(first=b'\xff',middle=b'\xff',last=b'\xff'):
+    return b'\x27\x0a\xfe'+b'\xff'*12+first+b'\x80\xfe'+middle+b'\xff'+last
+
+
+def input95(items=(),identifier=b'\xff'):
+    return (b'\x03\xfe'+struct.pack('<i',-1 if items is None else len(items))+
+            b''.join(items or ())+identifier)
+
+
+def tag95(items=(),scalar=b'\xff',last=b'\xff'):
+    return (b'\x95\x08\xfe'+b'\xff'*12+b'\x80'+scalar+
+            struct.pack('<i',-1 if items is None else len(items))+b''.join(items or ())+last)
+
+
+def tag74(items=()):
+    return (b'\x74\x05\xfe'+b'\xff'*12+struct.pack('<i',-1 if items is None else len(items))+
+            b''.join(struct.pack('<I',v) for v in items or ()))
+
+
+def tag16d(first=b'\xff',second=b'\xff',bits=0xffffffff):
+    return b'\xfa\x6d\x01\x08\xfe'+b'\xff'*12+struct.pack('<I',bits)+b'\x80'+first+second
+
+
+def tag160(nested=b'\xff',first=0xffffffff,second=0x80000000):
+    return b'\xfa\x60\x01\x0a\xfe'+b'\xff'*12+b'\xfe\x80'+struct.pack('<I',first)+b'\xff'+struct.pack('<I',second)+nested
+
+
+def tag89(first=b'',second=b''):
+    return b'\x89\x06\xfe'+b'\xff'*12+payload(first)+payload(second)
+
+
+def tag51(first=b'\xff',second=b'\xff'):
+    return b'\x51\x06\xfe'+b'\xff'*12+first+second
+
+
+def tag03(items=(),scalar=b'\xff',last=255):
+    return b'\x03\x09\xfe'+b'\xff'*12+b'\x80'+scalar+b'\xfe'+struct.pack('<i',-1 if items is None else len(items))+b''.join(items or ())+bytes([last])
+
+
+def tag142(values=(None,b'',b'wire',b'\xff\x00',b'last'),nested=b'\xff',last=0xffffffff):
+    return b'\xfa\x42\x01\x0b\xfe'+b'\xff'*12+payload(values[0])+nested+b''.join(payload(v) for v in values[1:])+struct.pack('<I',last)
+
+
+def taga9(profiles=None):
+    t,u,c,d,i,a,b,e,f=profiles or (b'\xff',)*9
+    return (b'\xa9\x1c\xfe'+b'\xff'*12+b'\x80'+t+b'\xfe\xff'+b'\x80'*4+u+c+
+            b'\xff\x80'+d+b'\xfe'+b'\xff'*4+b'\x80'+i+b'\x80'*4+b'\xff'+a+
+            b'\x80\xfe\xff'+b+b'\xfe'+e+f)
+
+
+def query41(items=()):
+    return b'\x02'+b'\xff'*4+struct.pack('<i',-1 if items is None else len(items))+b''.join(struct.pack('<I',v) for v in items or ())
+
+
+def tag41(value=b'wire',query=b'\xff'):
+    return b'\x41\x06\xfe'+b'\xff'*12+payload(value)+query
+
+
+def tag174(first=b'\xff',second=b'\xff',value=b'wire',third=b'\xff',nested=b'\xff',last=255):
+    return b'\xfa\x74\x01\x0b\xfe'+b'\xff'*12+first+second+payload(value)+third+b'\x80'*4+nested+bytes([last])
+
+
+def tag84(nested=b'\xff',bits=0xffffffff):
+    return b'\x84\x06\xfe'+b'\xff'*12+nested+struct.pack('<I',bits)
+
+
+def tag13b(value=b'wire',bits=0xffffffff):
+    return b'\xfa\x3b\x01\x06\xfe'+b'\xff'*12+payload(value)+struct.pack('<I',bits)
+
+
+def tag5e(value=0xffffffff):
+    return b'\x5e\x05\xfe'+b'\xff'*12+struct.pack('<I',value)
+
+
+def tag06(value=0xffffffff):
+    return b'\x06\x05\xfe'+b'\xff'*12+struct.pack('<I',value)
+
+
+def scalar_flag(value=b'wire',last=255):
+    return b'\x04'+payload(value)+b'\x80'+b'\xff'*4+bytes([last])
+
+
+def tag1c(first=b'\xff',child=b'\xff',scalars=None,direction=b'\xff',second=b'\xff'):
+    a,b,c,d=scalars or (b'\xff',)*4
+    return b'\x1c\x0f\xfe'+b'\xff'*12+first+child+a+direction+b+b'\x80'*4+b'\xfe'+c+second+b'\xff'+d
+
+
+def tag126(nested=b'\xff'):
+    return b'\xfa\x26\x01\x05\xfe'+b'\xff'*12+nested
+
+
+def tag60(nested=b'\xff',value=0xffffffff):
+    return b'\x60\x06\xfe'+b'\xff'*12+struct.pack('<I',value)+nested
+
+
+def tagd4(first=b'\xff',second=b'\xff',raw=0x7fc00000,last=0xffffffff):
+    return b'\xd4\x08\xfe'+b'\xff'*12+first+second+struct.pack('<II',raw,last)
+
+
+def tag132(first=b'',second=b''):
+    return b'\xfa\x32\x01\x06\xfe'+b'\xff'*12+payload(first)+payload(second)
+
+
+def tag171(first=b'\xff',second=b'\xff',value=b'',third=b'\xff',nested=b'\xff',last=255):
+    return b'\xfa\x71\x01\x0d\xfe'+b'\xff'*16+first+second+payload(value)+third+b'\x80'*8+nested+bytes([last])
+
+
+def tag3f(nested=b'\xff',value=b'wire'):
+    return b'\x3f\x07\xfe'+b'\xff'*16+nested+payload(value)
+
+
+def tag61(nested=b'\xff',value=b'wire'):
+    return b'\x61\x0a\xfe'+b'\xff'*12+nested+b'\x80'*4+b'\xff\xfe'+b'\x01'*4+payload(value)
+
+
+def tagea(items=(),value=b'wire'):
+    return (b'\xea\x07\xfe'+b'\xff'*12+b'\x80'+payload(value)+
+            struct.pack('<i',-1 if items is None else len(items))+
+            (b'' if items is None else b''.join(items)))
+
+
+def tag35(first=b'\xff',second=b'\xff',curve=b'\xff',direction_value=b'\xff',last=b'\xff'):
+    return (b'\x35\x0f\xfe'+b'\xff'*12+first+b'\xfe\x80'+second+curve+
+            b'\xff'+direction_value+b'\xfe'+b'\x80'*8+last)
+
+
+def tag7e(first=b'\xff',second=b'\xff'):
+    return b'\x7e\x06\xfe'+b'\xff'*12+first+second
+
+
+def tag16b(first=b'\xff',second=b'\xff'):
+    return b'\xfa\x6b\x01\x06\xfe'+b'\xff'*12+first+second
+
+
+def curve24(items=()):
+    return (b'\x03'+struct.pack('<II',0xffffffff,0x80000000)+
+            struct.pack('<i',-1 if items is None else len(items))+
+            (b'' if items is None else b''.join(items)))
+
+
+def envelope24(first=b'\xff',second=b'\xff'):
+    return b'\x07'+first+b'\xff'*4+second+b'\x80'*4+b'\xfe\xff'+b'\x01'*4
+
+
+def impulse24(curve=b'\xff',envelope=b'\xff',value=b''):
+    return b'\x12'+b'\xff'*4+b'\xfe'+curve+b'\x80'*44+b'\xff'+payload(value)+b'\x01'*4+envelope
+
+
+def tag24(impulse=b'\xff',nested=b'\xff',value=b''):
+    return b'\x24\x0c\xfe'+b'\xff'*12+payload(value)+b'\x80'+impulse+b'\xfe'*4+bytes(range(12))+b'\xfe\xff'+nested
+
+
+def tag6a(first=(),second=()):
+    def values(items):
+        return struct.pack('<i',-1 if items is None else len(items))+(b'' if items is None else b''.join(struct.pack('<I',x) for x in items))
+    return b'\x6a\x08\xfe'+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)+b'\xff\x80'+values(first)+values(second)
+
+
+def tagbd(children=None,nested=None):
+    return (b'\xbd\x06\xfe'+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)+
+            (sequence() if children is None else children)+(target() if nested is None else nested))
+
+
+def tagde(assignments=(),points=(),nested=None):
+    def items(values):
+        return struct.pack('<i',-1 if values is None else len(values))+(b'' if values is None else b''.join(values))
+    t=target() if nested is None else nested
+    return (b'\xde\x25\xfe'+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)+
+            b'\x00\x80\xff'+items(assignments)+b'\x00\xfe\x80\xff'+bytes(4)+t+
+            bytes(range(12))+bytes(4)+bytes(range(12,24))+bytes(range(24,36))+bytes(4)+bytes(range(36,48))+bytes(4)+
+            b'\xfe\xff'+items(points)+payload(b'first')+payload(None)+t+
+            payload(b'')+payload(b'middle')+payload(b'last')+b'\xff'+bytes(4)+t+t+b'\xfe'+struct.pack('<II',0xffffffff,0x80000000))
+
+
+def tag145(first=None,second=None):
+    return (b'\xfa\x45\x01\x06\xfe'+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)+
+            (b'\x03'+payload(b'first')+b'\xff'+bytes.fromhex('FFFFFFFF') if first is None else first)+
+            (pair(b'second',b'last',128) if second is None else second))
+
+
+def tagc4(first=b'first',second=b'second',finder=None,nested=None):
+    if finder is None:
+        finder=b'\x03'+struct.pack('<i',2)+payload(b'finder')+payload(None)+bytes(4)+b'\x02'+struct.pack('<IiII',0xffffffff,2,1,0xffffffff)
+    return (b'\xc4\x08\xfe'+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)+
+            payload(first)+finder+payload(second)+(target() if nested is None else nested))
+
+
+def tag5a(nested=None,value=b'tail'):
+    return (b'\x5a\x06\xfe'+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)+
+            (pair(b'first',b'second',128) if nested is None else nested)+payload(value))
+
+
+def tag48(values=(0,0xffffffff),bits=0x80000000):
+    return (b'\x48\x06\xfe'+struct.pack('<IIII',0xffffffff,0x80000000,0x7fc00000,bits)+
+            struct.pack('<i',-1 if values is None else len(values))+
+            b''.join(struct.pack('<I',value) for value in (values or ())))
+
+
 def tag88(nested=None):
     return (b'\x88\x05\xfe'+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)+
             (scalar_payload() if nested is None else nested))
@@ -1340,6 +1553,1815 @@ class BuffActionsTests(unittest.TestCase):
         self.assertEqual((row['status'],row['diagnostic']['expected'],row['diagnostic']['actual']),('failed',1,2))
         self.assertEqual(row['diagnostic']['source'],'c5-element')
 
+    def test_tag27_independent_targets_and_paired_payloads(self):
+        for first in (b'\xff',target()):
+            for middle in (b'\xff',pair(None,b''),pair(b'\xff\x00',None),pair(b'first',b'last',255)):
+                for last in (b'\xff',target()):
+                    child=tag27(first,middle,last);end=19+len(child)
+                    row=event_prefix(prefix(sequence(child,b'\x59')),source='27.bin')
+                    self.assertEqual(row['diagnostic'],dict(source='27.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                    self.assertIn(dict(start=19,end=end,kind='union',tag=39),row['completedRecords'])
+                    self.assertIn(dict(start=34,end=34+len(first),kind='anonymous-target-profile'),row['completedRecords'])
+                    self.assertIn(dict(start=36+len(first),end=end-1-len(last),kind='anonymous-paired-payload'),row['completedRecords'])
+                    self.assertIn(dict(start=end-len(last),end=end,kind='anonymous-target-profile'),row['completedRecords'])
+
+    def test_tag95_independent_lists_and_id_payload(self):
+        assignment=b'\x06'+bytes(4)+payload(b'a')+bytes(4)+payload(None)+payload(b'b')+b'\xfe'
+        for outer in (None,(),(b'\xff',),tuple(input95(items,identifier) for items in (None,(),(b'\xff',assignment,assignment)) for identifier in (b'\xff',b'\x01'+payload(None),b'\x01'+payload(b'ID')))):
+            for scalar in (b'\xff',scalar_payload()):
+                child=tag95(outer,scalar,target());end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='95.bin')
+                self.assertEqual(row['diagnostic'],dict(source='95.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=149),row['completedRecords'])
+                profiles=[r for r in row['completedRecords'] if r['kind']=='anonymous-global-input-profile']
+                self.assertEqual(len(profiles),len(outer or ()))
+
+    def test_tag74_counted_scalar_bits_and_completion(self):
+        for items in (None,(),(0,),(0,0xffffffff,0x80000000,0x7fc00000)):
+            child=tag74(items);end=19+len(child)
+            row=event_prefix(prefix(sequence(child,b'\x59')),source='74.bin')
+            self.assertEqual(row['diagnostic'],dict(source='74.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+            self.assertIn(dict(start=19,end=end,kind='union',tag=116),row['completedRecords'])
+            self.assertIn(dict(start=34,end=end,kind='anonymous-scalar32-list'),row['completedRecords'])
+            spans=[r for r in row['ranges'] if r['kind']=='anonymous-scalar32' and r['start']>=38]
+            self.assertEqual([(r['start'],r['end']) for r in spans],[(38+4*i,42+4*i) for i in range(len(items or ()))])
+
+    def test_tag16d_independent_targets_and_raw_scalar(self):
+        for first in (b'\xff',target()):
+            for second in (b'\xff',target()):
+                for bits in (0,0xffffffff,0x80000000,0x7fc00000):
+                    child=tag16d(first,second,bits);end=19+len(child)
+                    row=event_prefix(prefix(sequence(child,b'\x59')),source='16d.bin')
+                    self.assertEqual(row['diagnostic'],dict(source='16d.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                    self.assertIn(dict(start=19,end=end,kind='union',tag=365),row['completedRecords'])
+                    self.assertIn(dict(start=41,end=41+len(first),kind='anonymous-target-profile'),row['completedRecords'])
+                    self.assertIn(dict(start=41+len(first),end=end,kind='anonymous-target-profile'),row['completedRecords'])
+
+    def test_tag160_separate_scalars_and_final_target(self):
+        for nested in (b'\xff',target()):
+            for first in (0,0xffffffff,0x80000000,0x7fc00000):
+                for second in (0,0xffffffff):
+                    child=tag160(nested,first,second);end=19+len(child)
+                    row=event_prefix(prefix(sequence(child,b'\x59')),source='160.bin')
+                    self.assertEqual(row['diagnostic'],dict(source='160.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                    self.assertIn(dict(start=19,end=end,kind='union',tag=352),row['completedRecords'])
+                    self.assertIn(dict(start=47,end=end,kind='anonymous-target-profile'),row['completedRecords'])
+                    for at in (38,43):self.assertIn(dict(start=at,end=at+4,kind='anonymous-scalar32'),row['ranges'])
+
+    def test_tag89_independent_payload_lengths_and_null_states(self):
+        for first in (None,b'',b'\xff\x00',b'first'):
+            for second in (None,b'',b'last\x89\x06'):
+                child=tag89(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='89.bin')
+                self.assertEqual(row['diagnostic'],dict(source='89.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=137),row['completedRecords'])
+                counts=[r['start'] for r in row['ranges'] if r['kind']=='count-i32' and r['start']>=34]
+                self.assertEqual(counts,[34,38+len(first or b'')])
+
+    def test_tag51_two_independent_paired_profiles(self):
+        for first in (b'\xff',pair(None,b''),pair(b'first',b'\xff',255)):
+            for second in (b'\xff',pair(b'',None),pair(b'last',b'\x51\x06',128)):
+                child=tag51(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='51.bin')
+                self.assertEqual(row['diagnostic'],dict(source='51.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=81),row['completedRecords'])
+                profiles=[v for v in row['completedRecords'] if v['kind']=='anonymous-paired-payload']
+                self.assertEqual([(v['start'],v['end']) for v in profiles],[(34,34+len(first)),(34+len(first),end)])
+                self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_tag51_every_cut_hard_limits_null_extended_and_trailing(self):
+        base=tag51(pair(None,b'wire'),pair(b'last',None))
+        for child in (base,tag51(),b'\x51\xff',b'\xfa\x51\x00'+base[1:]):
+            r=Reader(child,'51-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'51-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n)
+                    self.assertFalse(any(v.get('tag')==81 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_tag51_bad_independent_lengths_headers_and_second_profile(self):
+        first=pair(b'a',b'b');child=tag51(first,pair(b'c',b'd'))
+        r=Reader(child,'51-bounds');r.action(0)
+        counts=[v['start'] for v in r.ranges if v['kind']=='count-i32']
+        headers=[v['start'] for v in r.ranges if v['kind']=='member-header']
+        self.assertEqual(len(counts),4);self.assertEqual(len(headers),3)
+        for at in counts:
+            for value in (-2,0x7fffffff):
+                bad=bytearray(child);struct.pack_into('<i',bad,at,value);r=Reader(bad,'51-bounds')
+                with self.assertRaises(FrameError) as caught:r.action(0)
+                self.assertEqual(caught.exception.diagnostic['category'],'count-bounds')
+                self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('51-bounds',at,value))
+        for at in headers:
+            bad=bytearray(child);bad[at]=0;r=Reader(bad,'51-header')
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['offset'],at)
+            self.assertEqual(caught.exception.diagnostic['category'],'member-count')
+        r=Reader(child,'51-second',len(child)-1)
+        with self.assertRaises(FrameError):r.action(0)
+        self.assertIn(dict(start=15,end=15+len(first),kind='anonymous-paired-payload'),r.records)
+        self.assertFalse(any(v.get('tag')==81 for v in r.records))
+
+    def test_tag03_independent_list_elements_and_required_byte(self):
+        for items in (None,(),(b'\xff',),(b'\x01'+payload(None),b'\x01'+payload(b''),b'\x01'+payload(b'\xff\x03'))):
+            for scalar in (b'\xff',scalar_payload(b'wire')):
+                child=tag03(items,scalar);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='03.bin')
+                self.assertEqual(row['diagnostic'],dict(source='03.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=3),row['completedRecords'])
+                self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_tag03_every_cut_hard_limit_null_extended_and_trailing(self):
+        base=tag03((b'\x01'+payload(b'wire'),b'\xff'),scalar_payload(None))
+        for child in (base,tag03(None),b'\x03\xff',b'\xfa\x03\x00'+base[1:]):
+            r=Reader(child,'03-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'03-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n)
+                    self.assertFalse(any(v.get('tag')==3 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_tag03_bad_counts_headers_and_missing_final_byte(self):
+        child=tag03((b'\x01'+payload(b'a'),b'\x01'+payload(b'b')),scalar_payload(b'wire'))
+        r=Reader(child,'03-bounds');r.action(0)
+        counts=[v['start'] for v in r.ranges if v['kind']=='count-i32']
+        self.assertEqual(len(counts),4)
+        headers=[v['start'] for v in r.ranges if v['kind']=='member-header']
+        self.assertEqual(len(headers),4)
+        for at in counts:
+            for value in (-2,0x7fffffff):
+                bad=bytearray(child);struct.pack_into('<i',bad,at,value);r=Reader(bad,'03-bounds')
+                with self.assertRaises(FrameError) as caught:r.action(0)
+                self.assertEqual(caught.exception.diagnostic['category'],'count-bounds')
+                self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('03-bounds',at,value))
+        for at in headers:
+            bad=bytearray(child);bad[at]=0;r=Reader(bad,'03-header')
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['offset'],at)
+        for last in (0,128,254,255):
+            data=tag03(last=last);r=Reader(data,'03-tail');r.action(0);self.assertEqual(r.pos,len(data))
+            r=Reader(data[:-1],'03-tail')
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['category'],'truncated')
+            self.assertFalse(any(v.get('tag')==3 for v in r.records))
+
+    def test_tag142_independent_payloads_target_and_final_scalar(self):
+        for nested in (b'\xff',target()):
+            for values in ((None,)*5,(b'',)*5,(b'a',None,b'',b'\xfa\x42\x01',b'last')):
+                child=tag142(values,nested);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='142.bin')
+                self.assertEqual(row['diagnostic'],dict(source='142.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=322),row['completedRecords'])
+                self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_tag142_cuts_hard_limits_nulls_and_trailing(self):
+        for child in (tag142(),tag142(nested=target()),b'\xfa\x42\x01\xff'):
+            r=Reader(child,'142-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'142-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n)
+                    self.assertFalse(any(v.get('tag')==322 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_tag142_malformed_lengths_headers_and_unknown_target(self):
+        child=tag142((b'',)*5);r=Reader(child,'142-bounds');r.action(0)
+        counts=[v['start'] for v in r.ranges if v['kind']=='count-i32']
+        self.assertEqual(len(counts),5)
+        for at in counts:
+            for value in (-2,0x7fffffff):
+                bad=bytearray(child);struct.pack_into('<i',bad,at,value)
+                r=Reader(bad,'142-bounds')
+                with self.assertRaises(FrameError) as caught:r.action(0)
+                self.assertEqual(caught.exception.diagnostic['category'],'count-bounds')
+                self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('142-bounds',at,value))
+        for value in (0,5,10,12,254):
+            bad=bytearray(child);bad[3]=value;r=Reader(bad,'142-header')
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['category'],'member-count')
+        gap=tag142(nested=target(selector=b'\x03\x10'))
+        r=Reader(gap,'142-gap')
+        with self.assertRaises(Unsupported) as caught:r.action(0)
+        self.assertEqual(caught.exception.diagnostic['category'],'nested-profile')
+        self.assertFalse(any(v.get('tag')==322 for v in r.records))
+        self.assertLess(r.pos,len(gap)-sum(len(payload(v)) for v in (b'',b'wire',b'\xff\x00',b'last'))-4)
+
+    def test_taga9_independent_nested_fields_and_final_profile(self):
+        profiles=[target(),target(direction_value=b'\xff'),curve24((b'\xff'*28,)),direction(),
+                  scalar_flag(None),scalar_payload(None),scalar_payload(b''),scalar_payload(b'wire'),scalar_payload(b'last')]
+        cases=[profiles,(b'\xff',)*9]
+        for n in range(9):
+            case=list(profiles);case[n]=b'\xff';cases.append(case)
+        for case in cases:
+            child=taga9(case);end=19+len(child)
+            row=event_prefix(prefix(sequence(child,b'\x59')),source='a9.bin')
+            self.assertEqual(row['diagnostic'],dict(source='a9.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+            self.assertIn(dict(start=19,end=end,kind='union',tag=169),row['completedRecords'])
+            self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_taga9_every_cut_hard_limit_extended_null_and_trailing(self):
+        full=taga9([target(),target(),curve24((bytes(28),)),direction(),scalar_flag(b'\xff'),
+                    scalar_payload(None),scalar_payload(b''),scalar_payload(b'\xff'),scalar_payload(b'last')])
+        for child in (full,taga9(),b'\xa9\xff',b'\xfa\xa9\x00'+full[1:]):
+            r=Reader(child,'a9-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'a9-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n);self.assertFalse(any(v.get('tag')==169 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_taga9_bad_headers_counts_and_partial_parent(self):
+        child=taga9([target(),target(),curve24((bytes(28),)),direction(),scalar_flag(b'impact'),
+                     scalar_payload(None),scalar_payload(b''),scalar_payload(b'wire'),scalar_payload(b'last')])
+        r=Reader(child,'a9-bounds');r.action(0)
+        spans=[v for v in r.ranges if v['kind'] in ('member-header','count-i32')]
+        self.assertGreater(len(spans),20)
+        for span in spans:
+            for value in ((0,254) if span['kind']=='member-header' else (-2,0x7fffffff)):
+                bad=bytearray(child);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                r=Reader(bad,'a9-bounds')
+                with self.assertRaises(FrameError) as caught:r.action(0)
+                self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('a9-bounds',at,value))
+        r=Reader(child,'a9-tail',len(child)-1)
+        with self.assertRaises(FrameError):r.action(0)
+        self.assertEqual(sum(v.get('kind')=='anonymous-scalar-payload' for v in r.records),3)
+        self.assertFalse(any(v.get('tag')==169 for v in r.records))
+
+    def test_tag41_payload_and_independent_query_boundaries(self):
+        for value in (None,b'',b'\xff\x41\x06'):
+            for query in (b'\xff',query41(None),query41(),query41((0,0xffffffff,0x80000000))):
+                child=tag41(value,query);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='41.bin')
+                self.assertEqual(row['diagnostic'],dict(source='41.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=65),row['completedRecords'])
+                self.assertIn(dict(start=end-len(query),end=end,kind='anonymous-query-profile'),row['completedRecords'])
+                self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_tag41_every_cut_hard_limit_null_extended_and_trailing(self):
+        base=tag41(None,query41((1,0xffffffff)))
+        for child in (base,tag41(),b'\x41\xff',b'\xfa\x41\x00'+base[1:]):
+            r=Reader(child,'41-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'41-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n)
+                    self.assertFalse(any(v.get('tag')==65 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_tag41_bad_lengths_headers_and_incomplete_query(self):
+        child=tag41(b'a',query41((1,2)));r=Reader(child,'41-bounds');r.action(0)
+        spans=[v for v in r.ranges if v['kind'] in ('member-header','count-i32')]
+        self.assertEqual(len(spans),4)
+        for span in spans:
+            for value in ((0,254) if span['kind']=='member-header' else (-2,0x7fffffff)):
+                bad=bytearray(child);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                r=Reader(bad,'41-bounds')
+                with self.assertRaises(FrameError) as caught:r.action(0)
+                self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('41-bounds',at,value))
+        r=Reader(child,'41-query',len(child)-1)
+        with self.assertRaises(FrameError):r.action(0)
+        self.assertIn(dict(start=15,end=20,kind='anonymous-byte-payload',isNull=False),r.records)
+        self.assertFalse(any(v.get('tag')==65 for v in r.records))
+
+    def test_tag174_independent_profiles_and_final_byte(self):
+        for first in (b'\xff',scalar_payload(None)):
+            for second in (b'\xff',scalar_payload(b'first')):
+                for third in (b'\xff',scalar_payload(b'last')):
+                    for nested in (b'\xff',target()):
+                        child=tag174(first,second,None,third,nested);end=19+len(child)
+                        row=event_prefix(prefix(sequence(child,b'\x59')),source='174.bin')
+                        self.assertEqual(row['diagnostic'],dict(source='174.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                        self.assertIn(dict(start=19,end=end,kind='union',tag=372),row['completedRecords'])
+                        self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_tag174_every_cut_hard_limit_null_and_trailing(self):
+        base=tag174(scalar_payload(b'a'),scalar_payload(None),b'',scalar_payload(b'c'),target())
+        for child in (base,tag174(),b'\xfa\x74\x01\xff'):
+            r=Reader(child,'174-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'174-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n)
+                    self.assertFalse(any(v.get('tag')==372 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_tag174_bad_counts_headers_unknown_target_and_missing_byte(self):
+        child=tag174(scalar_payload(b'a'),scalar_payload(b'b'),b'v',scalar_payload(b'c'),target())
+        r=Reader(child,'174-bounds');r.action(0)
+        spans=[v for v in r.ranges if v['kind'] in ('member-header','count-i32')]
+        for span in spans:
+            for value in ((0,254) if span['kind']=='member-header' else (-2,0x7fffffff)):
+                bad=bytearray(child);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                r=Reader(bad,'174-bounds')
+                with self.assertRaises(FrameError) as caught:r.action(0)
+                self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('174-bounds',at,value))
+        gap=tag174(nested=target(selector=b'\x03\x10'));r=Reader(gap,'174-gap')
+        with self.assertRaises(Unsupported) as caught:r.action(0)
+        self.assertEqual(caught.exception.diagnostic['category'],'nested-profile')
+        self.assertLess(r.pos,len(gap)-1)
+        self.assertFalse(any(v.get('tag')==372 for v in r.records))
+        for last in (0,128,254,255):
+            data=tag174(nested=target(),last=last);r=Reader(data,'174-tail');r.action(0)
+            self.assertEqual(r.pos,len(data));r=Reader(data,'174-tail',len(data)-1)
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['offset'],len(data)-1)
+            self.assertFalse(any(v.get('tag')==372 for v in r.records))
+
+    def test_tag84_target_and_final_scalar_boundary(self):
+        for nested in (b'\xff',target(),target(selector=b'\xff',direction_value=b'\xff')):
+            for bits in (0,0xffffffff,0x80000000,0x7fc00000):
+                child=tag84(nested,bits);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='84.bin')
+                self.assertEqual(row['diagnostic'],dict(source='84.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=132),row['completedRecords'])
+                self.assertIn(dict(start=end-4,end=end,kind='anonymous-scalar32'),row['ranges'])
+                self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_tag84_every_cut_hard_limit_null_extended_and_trailing(self):
+        base=tag84(target())
+        for child in (base,tag84(),b'\x84\xff',b'\xfa\x84\x00'+base[1:]):
+            r=Reader(child,'84-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'84-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n)
+                    self.assertFalse(any(v.get('tag')==132 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_tag84_bad_counts_headers_unknown_target_and_scalar(self):
+        child=tag84(target());r=Reader(child,'84-bounds');r.action(0)
+        spans=[v for v in r.ranges if v['kind'] in ('member-header','count-i32')]
+        for span in spans:
+            for value in ((0,254) if span['kind']=='member-header' else (-2,0x7fffffff)):
+                bad=bytearray(child);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                r=Reader(bad,'84-bounds')
+                with self.assertRaises(FrameError) as caught:r.action(0)
+                self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('84-bounds',at,value))
+        gap=tag84(target(selector=b'\x03\x10'));r=Reader(gap,'84-gap')
+        with self.assertRaises(Unsupported) as caught:r.action(0)
+        self.assertEqual(caught.exception.diagnostic['category'],'nested-profile')
+        self.assertLess(r.pos,len(gap)-4)
+        self.assertFalse(any(v.get('tag')==132 for v in r.records))
+        for n in range(len(child)-4,len(child)):
+            r=Reader(child,'84-tail',n)
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['offset'],len(child)-4)
+            self.assertTrue(any(v['start']==15 and v['end']==len(child)-4 for v in r.records))
+            self.assertFalse(any(v.get('tag')==132 for v in r.records))
+
+    def test_tag13b_payload_and_required_scalar_boundary(self):
+        for value in (None,b'',b'\xff\xfa\x3b\x01'):
+            for bits in (0,0xffffffff,0x80000000,0x7fc00000):
+                child=tag13b(value,bits);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='13b.bin')
+                self.assertEqual(row['diagnostic'],dict(source='13b.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=315),row['completedRecords'])
+                self.assertIn(dict(start=end-4,end=end,kind='anonymous-scalar32'),row['ranges'])
+                self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+
+    def test_tag13b_every_cut_hard_limit_null_and_trailing(self):
+        for child in (tag13b(),tag13b(None),b'\xfa\x3b\x01\xff'):
+            r=Reader(child,'13b-cut');r.action(0);self.assertEqual(r.pos,len(child))
+            for n in range(len(child)):
+                results=[]
+                for data in (child,child[:n],child[:n]+b'\xff'*(len(child)-n)):
+                    r=Reader(data,'13b-cut',n)
+                    with self.assertRaises(FrameError) as caught:r.action(0)
+                    self.assertLessEqual(r.pos,n)
+                    self.assertFalse(any(v.get('tag')==315 for v in r.records))
+                    results.append((caught.exception.diagnostic,r.pos,r.ranges))
+                self.assertEqual(results[0],results[1]);self.assertEqual(results[0],results[2])
+            for tail in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(sequence(child)+tail)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+
+    def test_tag13b_bad_length_header_and_incomplete_final_scalar(self):
+        child=tag13b()
+        for value in (-2,0x7fffffff):
+            bad=bytearray(child);struct.pack_into('<i',bad,17,value);r=Reader(bad,'13b-length')
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['category'],'count-bounds')
+            self.assertEqual((caught.exception.diagnostic['source'],caught.exception.diagnostic['offset'],caught.exception.diagnostic['actual']),('13b-length',17,value))
+        for value in (0,5,7,254):
+            bad=bytearray(child);bad[3]=value;r=Reader(bad,'13b-header')
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['category'],'member-count')
+            self.assertEqual(caught.exception.diagnostic['offset'],3)
+        for n in range(len(child)-4,len(child)):
+            r=Reader(child,'13b-tail',n)
+            with self.assertRaises(FrameError) as caught:r.action(0)
+            self.assertEqual(caught.exception.diagnostic['offset'],len(child)-4)
+            self.assertIn(dict(start=17,end=len(child)-4,kind='anonymous-byte-payload',isNull=False),r.records)
+            self.assertFalse(any(v.get('tag')==315 for v in r.records))
+
+    def test_tag5e_final_scalar_raw_bits_and_unknown_successor(self):
+        for value in (0,0xffffffff,0x80000000,0x7fc00000):
+            child=tag5e(value);end=19+len(child)
+            row=event_prefix(prefix(sequence(child,b'\x59')),source='5e.bin')
+            self.assertEqual(row['diagnostic'],dict(source='5e.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+            self.assertIn(dict(start=19,end=end,kind='union',tag=94),row['completedRecords'])
+            self.assertIn(dict(start=end-4,end=end,kind='anonymous-scalar32'),row['ranges'])
+
+    def test_tag5e_null_extended_cuts_and_trailing(self):
+        for child in (tag5e(),b'\x5e\xff',b'\xfa\x5e\x00'+tag5e()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='5e-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='5e-limit',limit=n))
+
+    def test_tag5e_malformed_headers_counts_and_required_scalar(self):
+        raw=prefix(sequence(tag5e()));good=event_prefix(raw,source='5e-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='5e-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('5e-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==94 for r in row['completedRecords']))
+        for limit in range(34,38):
+            row=event_prefix(raw,source='5e-tail',limit=limit)
+            self.assertEqual(row['status'],'failed');self.assertEqual(row['diagnostic']['offset'],34)
+            self.assertFalse(any(r.get('tag')==94 for r in row['completedRecords']))
+
+    def test_tag06_final_scalar_raw_bits_and_unknown_successor(self):
+        for value in (0,0xffffffff,0x80000000,0x7fc00000):
+            child=tag06(value);end=19+len(child)
+            row=event_prefix(prefix(sequence(child,b'\x59')),source='06.bin')
+            self.assertEqual(row['diagnostic'],dict(source='06.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+            self.assertIn(dict(start=19,end=end,kind='union',tag=6),row['completedRecords'])
+            self.assertIn(dict(start=end-4,end=end,kind='anonymous-scalar32'),row['ranges'])
+
+    def test_tag06_null_extended_cuts_and_trailing(self):
+        for child in (tag06(),b'\x06\xff',b'\xfa\x06\x00'+tag06()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='06-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='06-limit',limit=n))
+
+    def test_tag06_malformed_headers_counts_and_required_scalar(self):
+        raw=prefix(sequence(tag06()));good=event_prefix(raw,source='06-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='06-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('06-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==6 for r in row['completedRecords']))
+        for limit in range(34,38):
+            row=event_prefix(raw,source='06-tail',limit=limit)
+            self.assertEqual(row['status'],'failed');self.assertEqual(row['diagnostic']['offset'],34)
+            self.assertFalse(any(r.get('tag')==6 for r in row['completedRecords']))
+
+    def test_tag1c_independent_nested_profiles_and_final_scalar(self):
+        for child in (b'\xff',scalar_flag(None),scalar_flag(b''),scalar_flag()):
+            for mask in range(16):
+                scalars=tuple(scalar_payload(bytes([i])) if mask&(1<<i) else b'\xff' for i in range(4))
+                action=tag1c(target(),child,scalars,second=target());end=19+len(action)
+                row=event_prefix(prefix(sequence(action,b'\x59')),source='1c.bin')
+                self.assertEqual(row['diagnostic'],dict(source='1c.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=28),row['completedRecords'])
+                at=34+len(target())
+                self.assertIn(dict(start=at,end=at+len(child),kind='anonymous-scalar-flag-payload'),row['completedRecords'])
+                self.assertIn(dict(start=end-len(scalars[-1]),end=end,kind='anonymous-scalar-payload'),row['completedRecords'])
+
+    def test_tag1c_null_extended_cuts_and_trailing(self):
+        direction=b'\x08\xfe\xff'+b'\x80'*4+b'\xfe'+(b'\xff'+b'\x80'*4)*2
+        for child in (tag1c(),tag1c(target(),scalar_flag(),(scalar_payload(),)*4,direction,target()),b'\x1c\xff',b'\xfa\x1c\x00'+tag1c()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='1c-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='1c-limit',limit=n))
+
+    def test_tag1c_malformed_profiles_and_unknown_targets(self):
+        raw=prefix(sequence(tag1c(target(),scalar_flag(),(scalar_payload(),)*4,second=target())))
+        good=event_prefix(raw,source='1c-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='1c-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('1c-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==28 for r in row['completedRecords']))
+        unknown=target(selector=b'\x03\x10')
+        for first,second in ((unknown,target()),(target(),unknown)):
+            row=event_prefix(prefix(sequence(tag1c(first,second=second))),source='1c-gap')
+            self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+            self.assertFalse(any(r.get('tag')==28 for r in row['completedRecords']))
+
+    def test_scalar_flag_payload_requires_own_final_byte(self):
+        child=scalar_flag();raw=prefix(sequence(tag1c(child=child)));at=35
+        row=event_prefix(raw,source='1c-child-tail',limit=at+len(child)-1)
+        self.assertEqual(row['status'],'failed');self.assertEqual(row['diagnostic']['offset'],at+len(child)-1)
+        self.assertFalse(any(r.get('tag')==28 or r['kind']=='anonymous-scalar-flag-payload' for r in row['completedRecords']))
+        for value in (None,b'',b'wire'):
+            data=scalar_flag(value)
+            for n in range(len(data)):
+                r=Reader(data,'child',n)
+                with self.assertRaises(FrameError):r.scalar_flag_payload()
+                self.assertFalse(any(rec['kind']=='anonymous-scalar-flag-payload' for rec in r.records))
+
+    def test_tag126_final_target_boundary(self):
+        for nested in (b'\xff',target()):
+            child=tag126(nested);end=19+len(child)
+            row=event_prefix(prefix(sequence(child,b'\x59')),source='126.bin')
+            self.assertEqual(row['diagnostic'],dict(source='126.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+            self.assertIn(dict(start=19,end=end,kind='union',tag=294),row['completedRecords'])
+            self.assertIn(dict(start=36,end=end,kind='anonymous-target-profile'),row['completedRecords'])
+
+    def test_tag126_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag126(),tag126(target()),b'\xfa\x26\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='126-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='126-limit',limit=n))
+
+    def test_tag126_malformed_counts_headers_and_target_gap(self):
+        raw=prefix(sequence(tag126(target())))
+        good=event_prefix(raw,source='126-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='126-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('126-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==294 for r in row['completedRecords']))
+        row=event_prefix(prefix(sequence(tag126(target(selector=b'\x03\x10')))),source='126-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+        self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+        self.assertFalse(any(r.get('tag')==294 for r in row['completedRecords']))
+
+    def test_tag60_raw_scalar_and_final_target(self):
+        for nested in (b'\xff',target()):
+            for value in (0,0xffffffff,0x80000000,0x7fc00000):
+                child=tag60(nested,value);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='60.bin')
+                self.assertEqual(row['diagnostic'],dict(source='60.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=96),row['completedRecords'])
+                self.assertIn(dict(start=34,end=38,kind='anonymous-scalar32'),row['ranges'])
+                self.assertIn(dict(start=38,end=end,kind='anonymous-target-profile'),row['completedRecords'])
+
+    def test_tag60_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag60(),tag60(target()),b'\x60\xff',b'\xfa\x60\x00'+tag60()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='60-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='60-limit',limit=n))
+
+    def test_tag60_malformed_counts_headers_and_target_gap(self):
+        raw=prefix(sequence(tag60(target())))
+        good=event_prefix(raw,source='60-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='60-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('60-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==96 for r in row['completedRecords']))
+        row=event_prefix(prefix(sequence(tag60(target(selector=b'\x03\x10')))),source='60-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+        self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+        self.assertFalse(any(r.get('tag')==96 for r in row['completedRecords']))
+
+    def test_tagd4_independent_targets_and_raw_tail(self):
+        for first in (b'\xff',target()):
+            for second in (b'\xff',target()):
+                for bits in (0,0xffffffff,0x80000000,0x7fc00000):
+                    child=tagd4(first,second,bits,bits);end=19+len(child)
+                    row=event_prefix(prefix(sequence(child,b'\x59')),source='d4.bin')
+                    self.assertEqual(row['diagnostic'],dict(source='d4.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                    self.assertIn(dict(start=19,end=end,kind='union',tag=212),row['completedRecords'])
+                    self.assertIn(dict(start=34,end=34+len(first),kind='anonymous-target-profile'),row['completedRecords'])
+                    self.assertIn(dict(start=34+len(first),end=end-8,kind='anonymous-target-profile'),row['completedRecords'])
+                    for at in (end-8,end-4):self.assertIn(dict(start=at,end=at+4,kind='anonymous-scalar32'),row['ranges'])
+
+    def test_tagd4_null_extended_cuts_limits_and_trailing(self):
+        for child in (tagd4(),tagd4(target(),target()),b'\xd4\xff',b'\xfa\xd4\x00'+tagd4()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='d4-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='d4-limit',limit=n))
+
+    def test_tagd4_malformed_children_and_required_tail(self):
+        child=tagd4(target(),target());raw=prefix(sequence(child));end=19+len(child)
+        good=event_prefix(raw,source='d4-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='d4-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('d4-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==212 for r in row['completedRecords']))
+        for limit in range(end-8,end):
+            row=event_prefix(raw,source='d4-tail',limit=limit)
+            self.assertEqual(row['status'],'failed')
+            self.assertIn(dict(start=34+len(target()),end=end-8,kind='anonymous-target-profile'),row['completedRecords'])
+            self.assertFalse(any(r.get('tag')==212 for r in row['completedRecords']))
+        unknown=target(selector=b'\x03\x10')
+        for first,second in ((unknown,target()),(target(),unknown)):
+            child=tagd4(first,second);row=event_prefix(prefix(sequence(child)),source='d4-gap')
+            self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+            self.assertLess(row['consumedEnd'],19+len(child)-8)
+            self.assertFalse(any(r.get('tag')==212 for r in row['completedRecords']))
+            if first!=unknown:self.assertIn(dict(start=34,end=34+len(first),kind='anonymous-target-profile'),row['completedRecords'])
+
+    def test_tag132_independent_payload_lengths_and_null_states(self):
+        for first in (None,b'',b'\xff\x00',b'first'):
+            for second in (None,b'',b'last\x89\x06'):
+                child=tag132(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='132.bin')
+                self.assertEqual(row['diagnostic'],dict(source='132.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=306),row['completedRecords'])
+                counts=[r['start'] for r in row['ranges'] if r['kind']=='count-i32' and r['start']>=36]
+                self.assertEqual(counts,[36,40+len(first or b'')])
+
+    def test_tag132_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag132(),tag132(None,None),tag132(b'first',b'last'),b'\xfa\x32\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='132-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='132-limit',limit=n))
+
+    def test_tag132_malformed_headers_lengths_and_incomplete_second(self):
+        raw=prefix(sequence(tag132(b'first',b'last')))
+        good=event_prefix(raw,source='132-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='132-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('132-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==306 for r in row['completedRecords']))
+        row=event_prefix(raw,source='132-second',limit=45)
+        self.assertEqual(row['status'],'failed');self.assertEqual(row['diagnostic']['offset'],45)
+        self.assertFalse(any(r.get('tag')==306 for r in row['completedRecords']))
+        self.assertEqual(row['ranges'],[r for r in good['ranges'] if r['end']<=45])
+
+    def test_tag171_independent_scalar_profiles_and_final_byte(self):
+        for first in (b'\xff',scalar_payload(b'a')):
+            for second in (b'\xff',scalar_payload(None)):
+                for third in (b'\xff',scalar_payload(b'c')):
+                    for value in (None,b'',b'raw'):
+                        child=tag171(first,second,value,third,target(),128);end=19+len(child)
+                        row=event_prefix(prefix(sequence(child,b'\x59')),source='171.bin')
+                        self.assertEqual(row['diagnostic'],dict(source='171.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                        self.assertIn(dict(start=19,end=end,kind='union',tag=369),row['completedRecords'])
+                        for at,size in ((40,len(first)),(40+len(first),len(second)),(40+len(first)+len(second)+len(payload(value)),len(third))):
+                            self.assertIn(dict(start=at,end=at+size,kind='anonymous-scalar-payload'),row['completedRecords'])
+                        self.assertIn(dict(start=end-1,end=end,kind='anonymous-nonzero-byte'),row['ranges'])
+
+    def test_tag171_null_cuts_limits_and_trailing(self):
+        for child in (tag171(),tag171(scalar_payload(),scalar_payload(None),b'raw',scalar_payload(b'c'),target()),b'\xfa\x71\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='171-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='171-limit',limit=n))
+
+    def test_tag171_malformed_counts_headers_and_unconsumed_tail(self):
+        raw=prefix(sequence(tag171(scalar_payload(),scalar_payload(None),b'raw',scalar_payload(b'c'),target())))
+        good=event_prefix(raw,source='171-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='171-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('171-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==369 for r in row['completedRecords']))
+        child=tag171(nested=target(selector=b'\x03\x10'))
+        row=event_prefix(prefix(sequence(child)),source='171-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+        self.assertLess(row['consumedEnd'],19+len(child)-1)
+        self.assertFalse(any(r.get('tag')==369 for r in row['completedRecords']))
+        child=tag171(nested=target());full=prefix(sequence(child));end=19+len(child)
+        row=event_prefix(full,source='171-final-byte',limit=end-1)
+        self.assertEqual(row['status'],'failed');self.assertEqual(row['diagnostic']['offset'],end-1)
+        self.assertTrue(any(r['kind']=='anonymous-target-profile' for r in row['completedRecords']))
+        self.assertFalse(any(r.get('tag')==369 for r in row['completedRecords']))
+
+    def test_tag89_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag89(),tag89(None,None),tag89(b'first',b'last'),b'\x89\xff',b'\xfa\x89\x00'+tag89()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='89-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='89-limit',limit=n))
+
+    def test_tag89_malformed_headers_lengths_and_incomplete_second(self):
+        raw=prefix(sequence(tag89(b'first',b'last')))
+        good=event_prefix(raw,source='89-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='89-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('89-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==137 for r in row['completedRecords']))
+        row=event_prefix(raw,source='89-second',limit=43)
+        self.assertEqual(row['status'],'failed');self.assertEqual(row['diagnostic']['offset'],43)
+        self.assertFalse(any(r.get('tag')==137 for r in row['completedRecords']))
+        self.assertEqual(row['ranges'],[r for r in good['ranges'] if r['end']<=43])
+
+    def test_tag160_null_cuts_limits_and_trailing(self):
+        for child in (tag160(),tag160(target()),b'\xfa\x60\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='160-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='160-limit',limit=n))
+
+    def test_tag160_malformed_counts_headers_and_target_gap(self):
+        raw=prefix(sequence(tag160(target())))
+        good=event_prefix(raw,source='160-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='160-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('160-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==352 for r in row['completedRecords']))
+        row=event_prefix(prefix(sequence(tag160(target(selector=b'\x03\x10')))),source='160-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+        self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+        self.assertFalse(any(r.get('tag')==352 for r in row['completedRecords']))
+
+    def test_tag16d_null_cuts_limits_and_trailing(self):
+        for child in (tag16d(),tag16d(target(),target()),b'\xfa\x6d\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='16d-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='16d-limit',limit=n))
+
+    def test_tag16d_malformed_counts_headers_and_independent_gaps(self):
+        raw=prefix(sequence(tag16d(target(),target())))
+        good=event_prefix(raw,source='16d-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='16d-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('16d-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==365 for r in row['completedRecords']))
+        unknown=target(selector=b'\x03\x10')
+        for first,second in ((unknown,target()),(target(),unknown)):
+            row=event_prefix(prefix(sequence(tag16d(first,second))),source='16d-gap')
+            self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+            self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+            self.assertFalse(any(r.get('tag')==365 for r in row['completedRecords']))
+            profiles=[r for r in row['completedRecords'] if r['kind']=='anonymous-target-profile']
+            self.assertEqual(profiles,[] if first==unknown else [dict(start=41,end=41+len(first),kind='anonymous-target-profile')])
+
+    def test_tag74_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag74(),tag74(None),tag74((0,0xffffffff,0x80000000)),b'\x74\xff',b'\xfa\x74\x00'+tag74((1,))[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='74-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='74-limit',limit=n))
+
+    def test_tag74_malformed_counts_headers_and_incomplete_parent(self):
+        raw=prefix(sequence(tag74((0,0xffffffff))))
+        good=event_prefix(raw,source='74-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='74-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('74-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==116 for r in row['completedRecords']))
+        row=event_prefix(raw,source='74-short-element',limit=45)
+        self.assertEqual(row['status'],'failed')
+        self.assertEqual(row['diagnostic']['offset'],34)
+        self.assertFalse(any(r['kind']=='anonymous-scalar32-list' for r in row['completedRecords']))
+
+    def test_tag95_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag95(),tag95((input95((b'\xff',),b'\x01'+payload(b'ID')),),scalar_payload(),target()),b'\x95\xff',b'\xfa\x95\x00'+tag95()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='95-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='95-limit',limit=n))
+
+    def test_tag95_malformed_counts_headers_and_target_gap(self):
+        assignment=b'\x06'+bytes(4)+payload(b'a')+bytes(4)+payload(None)+payload(b'b')+b'\xfe'
+        items=(input95((assignment,),b'\x01'+payload(b'ID')),)
+        raw=prefix(sequence(tag95(items,scalar_payload(),target())))
+        good=event_prefix(raw,source='95-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='95-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('95-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==149 for r in row['completedRecords']))
+        row=event_prefix(prefix(sequence(tag95(items,last=target(selector=b'\x03\x10')))),source='95-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+        self.assertEqual(len([r for r in row['completedRecords'] if r['kind']=='anonymous-global-input-list']),1)
+        self.assertFalse(any(r.get('tag')==149 for r in row['completedRecords']))
+
+    def test_tag27_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag27(),tag27(target(),pair(b'first',b'last'),target()),b'\x27\xff',b'\xfa\x27\x00'+tag27()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='27-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='27-limit',limit=n))
+
+    def test_tag27_malformed_counts_headers_and_target_gaps(self):
+        raw=prefix(sequence(tag27(target(),pair(b'first',b'last'),target())))
+        good=event_prefix(raw,source='27-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='27-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('27-bounds',at,value))
+        bad_target=target(selector=b'\x03\x10');middle=pair(b'first',None)
+        for first,last in ((bad_target,target()),(target(),bad_target)):
+            row=event_prefix(prefix(sequence(tag27(first,middle,last))),source='27-gap')
+            self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+            self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+            self.assertFalse(any(r.get('tag')==39 for r in row['completedRecords']))
+            paired=[r for r in row['completedRecords'] if r['kind']=='anonymous-paired-payload']
+            self.assertEqual(paired,[] if first==bad_target else [dict(start=36+len(first),end=36+len(first)+len(middle),kind='anonymous-paired-payload')])
+
+    def test_tag42_independent_targets_and_scalar_bits(self):
+        for first in (b'\xff',target(),target(direction_value=b'\xff')):
+            for second in (b'\xff',target()):
+                for bits in (0,0x80000000,0x7fc00000,0xffffffff):
+                    child=tag42(first,second,bits);end=19+len(child)
+                    row=event_prefix(prefix(sequence(child,b'\x59')),source='42.bin')
+                    self.assertEqual(row['diagnostic'],dict(source='42.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                    self.assertIn(dict(start=19,end=end,kind='union',tag=66),row['completedRecords'])
+                    self.assertIn(dict(start=41,end=41+len(first),kind='anonymous-target-profile'),row['completedRecords'])
+                    self.assertIn(dict(start=41+len(first),end=end,kind='anonymous-target-profile'),row['completedRecords'])
+
+    def test_tag42_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag42(),tag42(target(),target()),b'\x42\xff',b'\xfa\x42\x00'+tag42()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='42-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='42-limit',limit=n))
+
+    def test_tag42_malformed_counts_headers_and_target_gaps(self):
+        raw=prefix(sequence(tag42(target(),target())))
+        good=event_prefix(raw,source='42-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='42-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('42-bounds',at,value))
+        bad_target=target(selector=b'\x03\x10')
+        for first,second in ((bad_target,target()),(target(),bad_target)):
+            row=event_prefix(prefix(sequence(tag42(first,second))),source='42-gap')
+            self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+            self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+            self.assertFalse(any(r.get('tag')==66 for r in row['completedRecords']))
+            completed=[r for r in row['completedRecords'] if r['kind']=='anonymous-target-profile']
+            self.assertEqual(completed,[] if first==bad_target else [dict(start=41,end=41+len(first),kind='anonymous-target-profile')])
+
+    def test_tag5d_final_scalar_boundary_and_raw_bits(self):
+        for bits in (0,1,0x80000000,0xffffffff,0x7fc00000):
+            child=b'\x5d\x05\xfe'+bytes(12)+struct.pack('<I',bits)
+            for encoded in (child,b'\xfa\x5d\x00'+child[1:],b'\x5d\xff'):
+                end=19+len(encoded)
+                row=event_prefix(prefix(sequence(encoded,b'\x59')),source='5d.bin')
+                self.assertEqual(row['diagnostic'],dict(source='5d.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertEqual(row['completedRecords'],[dict(start=19,end=end,kind='union',tag=93)])
+            reader=Reader(child,'5d-final',len(child)-1)
+            with self.assertRaises(FrameError) as caught:reader.action(0)
+            self.assertEqual(caught.exception.diagnostic,dict(source='5d-final',offset=15,expected={'bytes':4},actual={'remaining':3},category='truncated'))
+            self.assertEqual(reader.records,[])
+
+    def test_tag5d_null_extended_cuts_limits_and_trailing(self):
+        for child in (b'\x5d\x05'+b'\xff'*17,b'\xfa\x5d\x00\x05'+bytes(17),b'\x5d\xff',b'\xfa\x5d\x00\xff'):
+            raw=sequence(child,child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='5d-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='5d-limit',limit=n))
+
+    def test_tag5d_malformed_headers_and_enclosing_counts(self):
+        raw=prefix(sequence(b'\x5d\x05'+bytes(17)))
+        good=event_prefix(raw,source='5d-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='5d-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('5d-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==93 for r in row['completedRecords']))
+
+    def test_tag73_fixed_end_and_independent_adjacent_records(self):
+        for flag in (0,1,128,254,255):
+            child=b'\x73\x04'+bytes([flag])+struct.pack('<III',0xffffffff,0x80000000,0x7fc00000)
+            for encoded in (child,b'\xfa\x73\x00'+child[1:],b'\x73\xff'):
+                end=19+len(encoded)
+                row=event_prefix(prefix(sequence(encoded,b'\x59')),source='73.bin')
+                self.assertEqual(row['diagnostic'],dict(source='73.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertEqual(row['completedRecords'],[dict(start=19,end=end,kind='union',tag=115)])
+                raw=sequence(encoded,encoded)
+                reader=Reader(raw,'73-pair');reader.sequence()
+                self.assertEqual(reader.pos,len(raw))
+                self.assertEqual([r for r in reader.records if r['kind']=='union'],[
+                    dict(start=5,end=5+len(encoded),kind='union',tag=115),
+                    dict(start=5+len(encoded),end=5+2*len(encoded),kind='union',tag=115)])
+
+    def test_tag73_null_extended_cuts_limits_and_trailing(self):
+        for child in (b'\x73\x04'+b'\xff'*13,b'\xfa\x73\x00\x04'+bytes(13),b'\x73\xff',b'\xfa\x73\x00\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='73-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='73-limit',limit=n))
+
+    def test_tag73_malformed_headers_and_enclosing_counts(self):
+        raw=prefix(sequence(b'\x73\x04'+bytes(13)))
+        good=event_prefix(raw,source='73-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='73-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('73-bounds',at,value))
+                self.assertFalse(any(r.get('tag')==115 for r in row['completedRecords']))
+
+    def test_tag14d_three_independent_nested_boundaries(self):
+        for first in (b'\xff',finder14d(),finder14d(None,None),finder14d((),())):
+            for second in (b'\xff',target()):
+                for last in (b'\xff',scalar_payload(None),scalar_payload(b'wire',bits=b'\xff'*4)):
+                    child=tag14d(first,second,last);end=19+len(child)
+                    row=event_prefix(prefix(sequence(child,b'\x59')),source='14d.bin')
+                    self.assertEqual(row['diagnostic'],dict(source='14d.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                    self.assertIn(dict(start=19,end=end,kind='union',tag=333),row['completedRecords'])
+                    self.assertIn(dict(start=36,end=36+len(first),kind='anonymous-finder-profile'),row['completedRecords'])
+                    self.assertIn(dict(start=41+len(first),end=end-len(last),kind='anonymous-target-profile'),row['completedRecords'])
+                    self.assertIn(dict(start=end-len(last),end=end,kind='anonymous-scalar-payload'),row['completedRecords'])
+
+    def test_tag14d_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag14d(),tag14d(finder14d(),target(),scalar_payload(b'wire')),b'\xfa\x4d\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='14d-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='14d-limit',limit=n))
+
+    def test_tag14d_malformed_nested_counts_headers_and_target_gap(self):
+        raw=prefix(sequence(tag14d(finder14d(),target(),scalar_payload(b'wire'))))
+        good=event_prefix(raw,source='14d-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='14d-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('14d-bounds',at,value))
+        child=tag14d(finder14d(),target(selector=b'\x03\x10'),scalar_payload())
+        row=event_prefix(prefix(sequence(child)),source='14d-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+        self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+        self.assertIn(dict(start=36,end=36+len(finder14d()),kind='anonymous-finder-profile'),row['completedRecords'])
+        self.assertFalse(any(r.get('tag')==333 or r['kind']=='anonymous-scalar-payload' for r in row['completedRecords']))
+
+    def test_tag3f_independent_nested_and_final_payloads(self):
+        for nested in (b'\xff',scalar_payload(None),scalar_payload(b''),scalar_payload(b'\x00\xff',bits=b'\xff'*4)):
+            for value in (None,b'',b'\x00\xffwire'):
+                child=tag3f(nested,value);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='3f.bin')
+                self.assertEqual(row['diagnostic'],dict(source='3f.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=63),row['completedRecords'])
+                self.assertIn(dict(start=38,end=38+len(nested),kind='anonymous-scalar-payload'),row['completedRecords'])
+                self.assertIn(dict(start=38+len(nested),end=end,kind='anonymous-byte-payload',isNull=value is None),row['completedRecords'])
+
+    def test_tag3f_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag3f(),tag3f(scalar_payload(b'raw')),b'\x3f\xff',b'\xfa\x3f\x00'+tag3f()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='3f-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='3f-limit',limit=n))
+
+    def test_tag3f_malformed_independent_counts_and_headers(self):
+        raw=prefix(sequence(tag3f(scalar_payload(b'raw'))))
+        # Explicit source positions: nested payload count 39, final count 51.
+        for at in (39,51):
+            for value in (-2,2147483647):
+                bad=bytearray(raw);struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='3f-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual'],row['diagnostic']['category']),('3f-bounds',at,value,'count-bounds'))
+                self.assertFalse(any(r.get('tag')==63 for r in row['completedRecords']))
+        for at in (20,38):
+            for value in (0,254):
+                bad=bytearray(raw);bad[at]=value
+                row=event_prefix(bad,source='3f-header');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['offset'],row['diagnostic']['actual'],row['diagnostic']['category']),(at,value,'member-count'))
+                self.assertFalse(any(r.get('tag')==63 for r in row['completedRecords']))
+
+    def test_tag61_target_and_final_payload_boundaries(self):
+        for nested in (b'\xff',target(),target(direction_value=b'\xff')):
+            for value in (None,b'',b'\x00\xffwire'):
+                child=tag61(nested,value);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='61.bin')
+                self.assertEqual(row['diagnostic'],dict(source='61.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=97),row['completedRecords'])
+                self.assertIn(dict(start=34,end=34+len(nested),kind='anonymous-target-profile'),row['completedRecords'])
+                self.assertIn(dict(start=44+len(nested),end=end,kind='anonymous-byte-payload',isNull=value is None),row['completedRecords'])
+
+    def test_tag61_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag61(),tag61(target()),b'\x61\xff',b'\xfa\x61\x00'+tag61()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='61-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='61-limit',limit=n))
+
+    def test_tag61_malformed_counts_headers_and_target_gap(self):
+        raw=prefix(sequence(tag61(target())))
+        good=event_prefix(raw,source='61-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='61-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('61-bounds',at,value))
+        child=tag61(target(selector=b'\x03\x0a'))
+        row=event_prefix(prefix(sequence(child)),source='61-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',10))
+        self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+        self.assertFalse(any(r.get('tag')==97 or r['kind']=='anonymous-target-profile' for r in row['completedRecords']))
+
+    def test_tagea_independent_payload_and_target_list(self):
+        for value in (None,b'',b'\x00\xffwire'):
+            for items in (None,(),(b'\xff',),(target(),b'\xff',target(direction_value=b'\xff'))):
+                child=tagea(items,value);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='ea.bin')
+                self.assertEqual(row['diagnostic'],dict(source='ea.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=234),row['completedRecords'])
+                start=39+len(value or b'')
+                self.assertIn(dict(start=start,end=end,kind='anonymous-target-list'),row['completedRecords'])
+                cursor=start+4
+                for item in items or ():
+                    self.assertIn(dict(start=cursor,end=cursor+len(item),kind='anonymous-target-profile'),row['completedRecords'])
+                    cursor+=len(item)
+                self.assertEqual(cursor,end)
+
+    def test_tagea_null_extended_cuts_limits_and_trailing(self):
+        for child in (tagea(),tagea((target(),b'\xff',target())),b'\xea\xff',b'\xfa\xea\x00'+tagea()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='ea-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='ea-limit',limit=n))
+
+    def test_tagea_malformed_counts_headers_and_incomplete_list(self):
+        raw=prefix(sequence(tagea((target(),b'\xff',target()))))
+        good=event_prefix(raw,source='ea-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='ea-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('ea-bounds',at,value))
+        for before in ((),(b'\xff',target())):
+            child=tagea(before+(target(selector=b'\x03\x10'),))
+            row=event_prefix(prefix(sequence(child)),source='ea-gap')
+            self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),('unsupported','nested-profile',16))
+            self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+            self.assertFalse(any(r.get('tag')==234 or r['kind']=='anonymous-target-list' for r in row['completedRecords']))
+            self.assertEqual(len([r for r in row['completedRecords'] if r['kind']=='anonymous-target-profile']),len(before))
+
+    def test_tag35_independent_targets_and_final_source_boundary(self):
+        for first in (b'\xff',target(),target(direction_value=b'\xff')):
+            for second in (b'\xff',target(),target(selector=b'\x03\x05\x00'+bytes(8))):
+                child=tag35(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='35.bin')
+                self.assertEqual(row['diagnostic'],dict(source='35.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=53),row['completedRecords'])
+                self.assertIn(dict(start=34,end=34+len(first),kind='anonymous-target-profile'),row['completedRecords'])
+                self.assertIn(dict(start=36+len(first),end=36+len(first)+len(second),kind='anonymous-target-profile'),row['completedRecords'])
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+        child=tag35(curve=curve24((bytes(28),)),direction_value=direction(),last=scalar_payload(b'wire'))
+        row=event_prefix(prefix(sequence(child,b'\x59')),source='35-final')
+        end=19+len(child)
+        self.assertEqual(row['consumedEnd'],end)
+        self.assertIn(dict(start=end-14,end=end,kind='anonymous-scalar-payload'),row['completedRecords'])
+
+    def test_tag35_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag35(),tag35(target(),target(),curve24((bytes(28),bytes(28))),direction(),scalar_payload(b"wire")),b'\x35\xff',b'\xfa\x35\x00'+tag35()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='35-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='35-limit',limit=n))
+
+    def test_tag35_malformed_counts_headers_and_each_target_gap(self):
+        for curve in (b'\xff',curve24(None),curve24(()),curve24((bytes(28),))):
+            for last in (b'\xff',scalar_payload(None),scalar_payload(b''),scalar_payload(b'\xff',bits=b'\xff'*4)):
+                raw=sequence(tag35(curve=curve,last=last))
+                self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+        raw=prefix(sequence(tag35(target(),target(),curve24((bytes(28),bytes(28))),direction(),scalar_payload(b"wire"))))
+        good=event_prefix(raw,source='35-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='35-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('35-bounds',at,value))
+        for first_gap in (True,False):
+            bad=target(selector=b'\x03\x10');good_target=target()
+            child=tag35(bad,good_target) if first_gap else tag35(good_target,bad)
+            row=event_prefix(prefix(sequence(child)),source='35-gap')
+            self.assertEqual(row['status'],'unsupported')
+            self.assertEqual((row['diagnostic']['category'],row['diagnostic']['actual']),('nested-profile',16))
+            self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+            self.assertFalse(any(r.get('tag')==53 for r in row['completedRecords']))
+            self.assertEqual(len([r for r in row['completedRecords'] if r['kind']=='anonymous-target-profile']),0 if first_gap else 1)
+
+        for at in (8,13):
+            bad=bytearray(direction());bad[at]=13
+            child=tag35(direction_value=bad,last=scalar_payload())
+            row=event_prefix(prefix(sequence(child)),source='35-direction-gap')
+            self.assertEqual((row['status'],row['diagnostic']['category'],row['diagnostic']['actual']),
+                             ('unsupported','nested-profile',13))
+            self.assertEqual(row['consumedEnd'],40+at)
+            self.assertFalse(any(r.get('tag')==53 for r in row['completedRecords']))
+
+    def test_tag7e_two_independent_targets(self):
+        for first in (b'\xff',target(),target(direction_value=b'\xff')):
+            for second in (b'\xff',target(),target(selector=b'\x03\x05\x00'+bytes(8))):
+                child=tag7e(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='7e.bin')
+                self.assertEqual(row['diagnostic'],dict(source='7e.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=126),row['completedRecords'])
+                self.assertEqual([r for r in row['completedRecords'] if r['kind']=='anonymous-target-profile'],
+                    [dict(start=34,end=34+len(first),kind='anonymous-target-profile'),dict(start=34+len(first),end=end,kind='anonymous-target-profile')])
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tag7e_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag7e(),tag7e(target(),target()),b'\x7e\xff',b'\xfa\x7e\x00'+tag7e()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='7e-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='7e-limit',limit=n))
+
+    def test_tag7e_malformed_counts_headers_and_each_target_gap(self):
+        raw=prefix(sequence(tag7e(target(),target())))
+        good=event_prefix(raw,source='7e-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='7e-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('7e-bounds',at,value))
+        for first_gap in (True,False):
+            bad=target(selector=b'\x03\x10');good_target=target()
+            child=tag7e(bad,good_target) if first_gap else tag7e(good_target,bad)
+            row=event_prefix(prefix(sequence(child)),source='7e-gap')
+            self.assertEqual(row['status'],'unsupported')
+            self.assertEqual((row['diagnostic']['category'],row['diagnostic']['actual']),('nested-profile',16))
+            self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+            self.assertFalse(any(r.get('tag')==126 for r in row['completedRecords']))
+            self.assertEqual(len([r for r in row['completedRecords'] if r['kind']=='anonymous-target-profile']),0 if first_gap else 1)
+
+    def test_tag16b_scalar_payload_then_independent_target(self):
+        for first in (b'\xff',scalar_payload(None),scalar_payload(b''),scalar_payload(b'\x00\xffwire',bits=b'\xff'*4)):
+            for second in (b'\xff',target(),target(direction_value=b'\xff')):
+                child=tag16b(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='16b.bin')
+                self.assertEqual(row['diagnostic'],dict(source='16b.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=363),row['completedRecords'])
+                self.assertIn(dict(start=36,end=36+len(first),kind='anonymous-scalar-payload'),row['completedRecords'])
+                self.assertIn(dict(start=36+len(first),end=end,kind='anonymous-target-profile'),row['completedRecords'])
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tag16b_null_truncations_limits_and_trailing(self):
+        for child in (tag16b(),tag16b(scalar_payload(b'raw'),target()),b'\xfa\x6b\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='16b-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='16b-limit',limit=n))
+
+    def test_tag16b_malformed_counts_headers_and_unknown_target(self):
+        raw=prefix(sequence(tag16b(scalar_payload(b'payload'),target())))
+        good=event_prefix(raw,source='16b-bounds');self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='16b-bounds');self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('16b-bounds',at,value))
+        child=tag16b(scalar_payload(b'x'),target(selector=b'\x03\x10'))
+        row=event_prefix(prefix(sequence(child)),source='16b-gap')
+        self.assertEqual(row['status'],'unsupported')
+        self.assertEqual((row['diagnostic']['category'],row['diagnostic']['actual']),('nested-profile',16))
+        self.assertEqual(row['consumedEnd'],row['diagnostic']['offset'])
+        self.assertFalse(any(r.get('tag')==363 for r in row['completedRecords']))
+        row=event_prefix(prefix(sequence(b'\x6b'+tag16b()[3:])),source='16b-short')
+        self.assertEqual((row['diagnostic']['offset'],row['diagnostic']['actual'],row['diagnostic']['category']),(19,107,'union-tag'))
+
+    def test_tag24_nested_curve_counts_and_independent_envelope_members(self):
+        curves=(b'\xff',curve24(None),curve24(),curve24((bytes(range(28)),)),curve24((b'\xff'*28,b'\x80'*28)))
+        for first in curves:
+            for second in curves:
+                child=tag24(impulse24(first,envelope24(second,first),b'raw\x00\xff'),target(),b'outer')
+                end=19+len(child);row=event_prefix(prefix(sequence(child,b'\x59')),source='24.bin')
+                self.assertEqual(row['diagnostic'],dict(source='24.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=36),row['completedRecords'])
+                actual=[r for r in row['completedRecords'] if r['kind']=='anonymous-curve-profile']
+                self.assertEqual([r['end']-r['start'] for r in actual],[len(first),len(second),len(first)])
+                raw28=[r for r in row['ranges'] if r['kind']=='anonymous-raw28']
+                self.assertTrue(all(r['end']-r['start']==28 for r in raw28))
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tag24_null_extended_truncation_hard_limits_and_trailing(self):
+        children=(tag24(),tag24(impulse24()),tag24(impulse24(curve24((bytes(range(28)),)),envelope24(curve24(None),curve24()))),b'\x24\xff',b'\xfa\x24\x00'+tag24()[1:])
+        for child in children:
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='24-limit',limit=n)
+                self.assertEqual(row['status'],'failed');self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='24-limit',limit=n))
+
+    def test_tag24_malformed_all_headers_counts_and_lengths(self):
+        c=curve24((bytes(range(28)),));raw=prefix(sequence(tag24(impulse24(c,envelope24(c,c),b'payload'),target(),b'outer')))
+        good=event_prefix(raw,source='24-bounds')
+        self.assertEqual(good['status'],'supported-prefix')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='24-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('24-bounds',at,value))
+        child=tag24(impulse24(c,envelope24(c,c)),b'\x01')
+        row=event_prefix(prefix(sequence(child)),source='24-target')
+        self.assertEqual(row['status'],'failed')
+        self.assertEqual(row['diagnostic']['category'],'member-count')
+        self.assertFalse(any(r.get('tag')==36 for r in row['completedRecords']))
+        self.assertEqual(row['diagnostic']['offset'],19+len(child)-1)
+
+    def test_tag6a_two_independent_scalar32_lists(self):
+        for first in (None,(),(0,),(0xffffffff,0x80000000,0x7fc00000)):
+            for second in (None,(),(1,2),(0xffffffff,)):
+                child=tag6a(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='6a.bin')
+                self.assertEqual(row['diagnostic'],dict(source='6a.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=106),row['completedRecords'])
+                lists=[r for r in row['completedRecords'] if r['kind']=='anonymous-scalar32-list']
+                split=36+4+4*len(first or ())
+                self.assertEqual(lists,[dict(start=36,end=split,kind='anonymous-scalar32-list'),dict(start=split,end=end,kind='anonymous-scalar32-list')])
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tag6a_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag6a(),tag6a(None,None),tag6a((1,2),(0xffffffff,)),b'\x6a\xff',b'\xfa\x6a\x00'+tag6a()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='6a-limit',limit=n)
+                self.assertEqual(row['status'],'failed')
+                self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='6a-limit',limit=n))
+
+    def test_tag6a_malformed_headers_and_both_list_counts(self):
+        raw=prefix(sequence(tag6a((1,2),(3,4))));good=event_prefix(raw,source='6a-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='6a-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('6a-bounds',at,value))
+        row=event_prefix(prefix(sequence(b'\x6b'+tag6a()[1:])),source='6a-other')
+        self.assertEqual(row['diagnostic'],dict(source='6a-other',offset=19,expected='supported current union tag',actual=107,category='union-tag'))
+
+    def test_tagbd_sequence_then_independent_target(self):
+        for children in (b'\xff',b'\x03'+struct.pack('<i',-1)+b'\xfe\xff',sequence(),sequence(b'\xff',tag145()),sequence(tagbd(b'\xff',b'\xff'))):
+            for nested in (b'\xff',target()):
+                child=tagbd(children,nested);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='bd.bin')
+                self.assertEqual(row['diagnostic'],dict(source='bd.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=189),row['completedRecords'])
+                self.assertIn(dict(start=34,end=end-len(nested),kind='sequence'),row['completedRecords'])
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tagbd_null_extended_cuts_limits_and_trailing(self):
+        for child in (tagbd(),tagbd(sequence(tag145())),tagbd(b'\xff',b'\xff'),b'\xbd\xff',b'\xfa\xbd\x00'+tagbd()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='bd-limit',limit=n)
+                self.assertEqual(row['status'],'failed')
+                self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='bd-limit',limit=n))
+
+    def test_tagbd_malformed_counts_and_unknown_child_stop(self):
+        raw=prefix(sequence(tagbd(sequence(tag145()))));good=event_prefix(raw,source='bd-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='bd-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('bd-bounds',at,value))
+        row=event_prefix(prefix(sequence(tagbd(sequence(b'\x59')))),source='bd-child')
+        self.assertEqual(row['diagnostic'],dict(source='bd-child',offset=39,expected='supported current union tag',actual=89,category='union-tag'))
+        self.assertFalse(any(r.get('tag')==189 for r in row['completedRecords']))
+        self.assertEqual(row['opaqueRemainderRange'][0],39)
+
+    def test_tagbd_recursive_sequence_limit(self):
+        child=b'\xff'
+        for _ in range(64):child=tagbd(sequence(child),b'\xff')
+        self.assertEqual(sequence_frame(sequence(child))[-1]['end'],len(sequence(child)))
+        raw=sequence(tagbd(sequence(child),b'\xff'))
+        with self.assertRaises(Unsupported) as caught:sequence_frame(raw)
+        self.assertEqual((caught.exception.diagnostic['category'],caught.exception.diagnostic['actual']),('depth-limit',65))
+
+    def test_tagde_lists_raw_spans_and_final_scalars(self):
+        assignment=b'\x06'+bytes(4)+payload(b'key')+bytes(4)+payload(None)+payload(b'val')+b'\xff'
+        point=b'\x02'+target()+payload(bytes(range(256)))
+        for assignments in (None,(),(b'\xff',assignment)):
+            for points in (None,(),(b'\xff',point)):
+                child=tagde(assignments,points);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='de.bin')
+                self.assertEqual(row['diagnostic'],dict(source='de.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=222),row['completedRecords'])
+                spans=[r for r in row['ranges'] if r['kind']=='anonymous-raw12']
+                self.assertEqual(len(spans),4)
+                self.assertTrue(all(r['end']-r['start']==12 for r in spans))
+                self.assertEqual(row['ranges'][-1],dict(start=end-4,end=end,kind='anonymous-scalar32'))
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tagde_null_extended_cuts_limits_and_trailing(self):
+        for child in (tagde(),tagde(None,None,b'\xff'),tagde(points=(b'\x02\xff'+payload(None),)),b'\xde\xff',b'\xfa\xde\x00'+tagde()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='de-limit',limit=n)
+                self.assertEqual(row['status'],'failed')
+                self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='de-limit',limit=n))
+
+    def test_tagde_malformed_headers_counts_and_unknown_nested(self):
+        raw=prefix(sequence(tagde(points=(b'\x02'+target()+payload(b'key'),))))
+        good=event_prefix(raw,source='de-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='de-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('de-bounds',at,value))
+        row=event_prefix(prefix(sequence(tagde(points=(b'\x02'+target(selector=b'\x03\x06'+bytes(8))+payload(None),)))),source='de-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category']),('unsupported','nested-profile'))
+        self.assertFalse(any(r.get('tag')==222 for r in row['completedRecords']))
+
+    def test_target_bytes_profile_keeps_payload_after_target(self):
+        for raw in (b'\xff',b'\x02\xff'+payload(None),b'\x02'+target()+payload(bytes(range(256)))):
+            r=Reader(raw,'target-bytes',len(raw));r.target_bytes_profile()
+            self.assertEqual(r.pos,len(raw))
+            self.assertEqual(r.records[-1],dict(start=0,end=len(raw),kind='anonymous-target-bytes-profile'))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):Reader(raw,'target-bytes',n).target_bytes_profile()
+
+    def test_tag145_scalar_then_paired_payload_exact_order(self):
+        for first in (b'\xff',b'\x03'+payload(None)+b'\x00'+bytes(4),b'\x03'+payload(b'key')+b'\xfe'+bytes.fromhex('FFFFFFFF')):
+            for second in (b'\xff',pair(None,None),pair(b'',b''),pair(b'key',bytes(range(256)),255)):
+                child=tag145(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='145.bin')
+                self.assertEqual(row['diagnostic'],dict(source='145.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=325),row['completedRecords'])
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tag145_null_cuts_limits_and_trailing(self):
+        for child in (tag145(),tag145(b'\xff',b'\xff'),b'\xfa\x45\x01\xff'):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='145-limit',limit=n)
+                self.assertEqual(row['status'],'failed')
+                self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='145-limit',limit=n))
+
+    def test_tag145_bad_headers_counts_and_distinct_outer_tag(self):
+        raw=prefix(sequence(tag145()));good=event_prefix(raw,source='145-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='145-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('145-bounds',at,value))
+        row=event_prefix(prefix(sequence(b'\x45'+tag145()[3:])),source='145-other')
+        self.assertEqual(row['diagnostic'],dict(source='145-other',offset=19,expected='supported current union tag',actual=69,category='union-tag'))
+
+    def test_tagc4_two_payloads_separated_by_finder_then_target(self):
+        for first in (None,b'',b'first'):
+            for second in (None,b'',bytes(range(256))):
+                child=tagc4(first,second);end=19+len(child)
+                row=event_prefix(prefix(sequence(child,b'\x59')),source='c4.bin')
+                self.assertEqual(row['diagnostic'],dict(source='c4.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                self.assertIn(dict(start=19,end=end,kind='union',tag=196),row['completedRecords'])
+                self.assertIn(dict(start=end-len(target()),end=end,kind='anonymous-target-profile'),row['completedRecords'])
+                self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tagc4_null_extended_cuts_limits_and_trailing(self):
+        for child in (tagc4(),tagc4(None,None),tagc4(b'',b''),tagc4(finder=b'\xff'),tagc4(nested=b'\xff'),b'\xc4\xff',b'\xfa\xc4\x00'+tagc4()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='c4-limit',limit=n)
+                self.assertEqual(row['status'],'failed')
+                self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='c4-limit',limit=n))
+
+    def test_tagc4_bad_headers_counts_and_unknown_target(self):
+        raw=prefix(sequence(tagc4()));good=event_prefix(raw,source='c4-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='c4-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('c4-bounds',at,value))
+        row=event_prefix(prefix(sequence(tagc4(nested=target(selector=b'\x03\x06'+bytes(8))))),source='c4-gap')
+        self.assertEqual((row['status'],row['diagnostic']['category']),('unsupported','nested-profile'))
+        self.assertFalse(any(r.get('tag')==196 for r in row['completedRecords']))
+
+    def test_tag5a_paired_payload_then_independent_final_payload(self):
+        for first in (None,b'',b'key'):
+            for second in (None,b'',b'\xff\x00'):
+                for value in (None,b'',bytes(range(256))):
+                    nested=pair(first,second,128);child=tag5a(nested,value);end=19+len(child)
+                    row=event_prefix(prefix(sequence(child,b'\x59')),source='5a.bin')
+                    self.assertEqual(row['diagnostic'],dict(source='5a.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+                    self.assertIn(dict(start=19,end=end,kind='union',tag=90),row['completedRecords'])
+                    at=34+len(nested)
+                    self.assertIn(dict(start=at,end=at+4,kind='count-i32'),row['ranges'])
+                    self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tag5a_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag5a(),tag5a(pair(None,None),None),tag5a(pair(b'',b''),b''),tag5a(b'\xff'),b'\x5a\xff',b'\xfa\x5a\x00'+tag5a()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='5a-limit',limit=n)
+                self.assertEqual(row['status'],'failed')
+                self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='5a-limit',limit=n))
+
+    def test_tag5a_bad_headers_and_counts(self):
+        raw=prefix(sequence(tag5a()));good=event_prefix(raw,source='5a-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='5a-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('5a-bounds',at,value))
+        row=event_prefix(prefix(sequence(b'\xc4'+tag5a()[1:])),source='5a-other')
+        self.assertEqual(row['diagnostic'],dict(source='5a-other',offset=20,expected=8,actual=6,category='member-count'))
+
+    def test_tag48_final_list_extent_and_raw_bits(self):
+        for values in (None,(),(0,),(0xffffffff,0x80000000,0x7fc00000)):
+            child=tag48(values);end=19+len(child)
+            self.assertEqual(len(child),23+4*len(values or ()))
+            row=event_prefix(prefix(sequence(child,b'\x59')),source='48.bin')
+            self.assertEqual(row['diagnostic'],dict(source='48.bin',offset=end,expected='supported current union tag',actual=89,category='union-tag'))
+            self.assertIn(dict(start=19,end=end,kind='union',tag=72),row['completedRecords'])
+            self.assertIn(dict(start=38,end=end,kind='anonymous-scalar32-list'),row['completedRecords'])
+            self.assertEqual(row['opaqueRemainderRange'][0],end)
+
+    def test_tag48_null_extended_cuts_limits_and_trailing(self):
+        for child in (tag48(),tag48(None),tag48(()),b'\x48\xff',b'\xfa\x48\x00'+tag48()[1:]):
+            raw=sequence(child);self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
+            for n in range(len(raw)):
+                with self.assertRaises(FrameError):sequence_frame(raw[:n])
+            for extra in (b'\x00',b'\xff'):
+                with self.assertRaises(FrameError) as caught:sequence_frame(raw+extra)
+                self.assertEqual(caught.exception.diagnostic['category'],'trailing-byte')
+            full=prefix(raw)
+            for n in range(len(full)):
+                row=event_prefix(full,source='48-limit',limit=n)
+                self.assertEqual(row['status'],'failed')
+                self.assertLessEqual(row['consumedEnd'],n)
+                self.assertEqual(row,event_prefix(full[:n]+b'\xff'*(len(full)-n),source='48-limit',limit=n))
+
+    def test_tag48_bad_headers_and_counts(self):
+        raw=prefix(sequence(tag48()));good=event_prefix(raw,source='48-bounds')
+        for span in good['ranges']:
+            if span['kind'] not in ('member-header','count-i32'):continue
+            for value in ((0,254) if span['kind']=='member-header' else (-2,2147483647)):
+                bad=bytearray(raw);at=span['start']
+                if span['kind']=='member-header':bad[at]=value
+                else:struct.pack_into('<i',bad,at,value)
+                row=event_prefix(bad,source='48-bounds')
+                self.assertEqual(row['status'],'failed')
+                self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('48-bounds',at,value))
+        row=event_prefix(prefix(sequence(b'\xc4'+tag48()[1:])),source='48-other')
+        self.assertEqual(row['diagnostic'],dict(source='48-other',offset=20,expected=8,actual=6,category='member-count'))
+
     def test_tag88_scalar_payload_is_final_member(self):
         for value in (None,b'',b'x',bytes(range(256))):
             for bits in (bytes(4),b'\xff'*4,b'\x00\x00\xc0\x7f'):
@@ -1378,7 +3400,7 @@ class BuffActionsTests(unittest.TestCase):
                 self.assertEqual(row['status'],'failed')
                 self.assertEqual((row['diagnostic']['source'],row['diagnostic']['offset'],row['diagnostic']['actual']),('88-bounds',at,value))
         row=event_prefix(prefix(sequence(b'\x48'+tag88()[1:])),source='88-other')
-        self.assertEqual(row['diagnostic'],dict(source='88-other',offset=19,expected='supported current union tag',actual=72,category='union-tag'))
+        self.assertEqual(row['diagnostic'],dict(source='88-other',offset=20,expected=6,actual=5,category='member-count'))
 
     def test_tag7a_scalar_and_variable_payload_extent(self):
         for value in (None,b'',b'x',bytes(range(256))):
@@ -1976,9 +3998,9 @@ class BuffActionsTests(unittest.TestCase):
 
     def test_b4_exact_nested_boundaries_and_later_unknown(self):
         child=tag_b4();self.assertEqual(len(child),63)
-        row=event_prefix(prefix(sequence(child,b'\x51')),source='b4.bin')
+        row=event_prefix(prefix(sequence(child,b'\x59')),source='b4.bin')
         self.assertEqual(row['status'],'unsupported')
-        self.assertEqual(row['diagnostic']['actual'],81)
+        self.assertEqual(row['diagnostic']['actual'],89)
         self.assertEqual(row['consumedEnd'],19+63)
         records=row['completedRecords']
         self.assertIn(dict(start=19,end=82,kind='union',tag=180),records)
@@ -2180,9 +4202,9 @@ class BuffActionsTests(unittest.TestCase):
             self.assertEqual(row['status'],'unsupported')
             self.assertEqual(row['diagnostic']['category'],'nested-profile')
             self.assertFalse(any(r.get('tag')==236 for r in row['completedRecords']))
-        row=event_prefix(prefix(sequence(tag_ec(),b'\x51')),source='ec-next.bin')
+        row=event_prefix(prefix(sequence(tag_ec(),b'\x59')),source='ec-next.bin')
         self.assertEqual(row['status'],'unsupported')
-        self.assertEqual(row['diagnostic']['actual'],81)
+        self.assertEqual(row['diagnostic']['actual'],89)
         self.assertTrue(any(r.get('tag')==236 for r in row['completedRecords']))
 
     def test_tag50_ordered_pair_and_completed_record(self):
@@ -2238,9 +4260,9 @@ class BuffActionsTests(unittest.TestCase):
             raw=sequence(child)
             self.assertEqual(sequence_frame(raw)[-1]['end'],len(raw))
         child=tag50()
-        row=event_prefix(prefix(sequence(child,b'\x51')),source='50-next.bin')
+        row=event_prefix(prefix(sequence(child,b'\x59')),source='50-next.bin')
         self.assertEqual(row['status'],'unsupported')
-        self.assertEqual(row['diagnostic']['actual'],81)
+        self.assertEqual(row['diagnostic']['actual'],89)
         self.assertEqual(row['consumedEnd'],19+len(child))
         self.assertTrue(any(r.get('tag')==80 for r in row['completedRecords']))
 
