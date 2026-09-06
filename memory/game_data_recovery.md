@@ -207,6 +207,100 @@ selected native enum contracts, Assets, Audio, and the curated graph.
 - Action/condition unions publish only the typed prefix or body that consumes
   exactly. Unknown selectors, enums, tags, blackboard operations, and nested
   payloads stay unresolved.
+- Current-build native Buff action routes contradict the legacy reader's tag/name
+  map. Exact byte consumption alone does not validate those names for current
+  data. Selected token/module, switch-table and registered-type joins are recorded
+  in `reports/animestudio/il2cpp_context_current_latest.*`; they establish wrapper
+  identity, not nested field order or record extent. Do not alias unfamiliar tags
+  to old parsers or assume a uniform renumbering; current consumer evidence is
+  required before promoting legacy labels.
+  Selected IfElse paths overwrite the callsite companion in native thunks;
+  their common wrapper type argument does not determine the live formatter.
+  Reuse reaches state-dependent provider dispatch with the same reader/output,
+  not a direct field reader. The independently token/module-joined IfElse reader
+  proves a member-eight fast path with a 14-byte anonymous scalar prefix followed
+  by three calls carrying the same SequenceActionData type argument. This proves
+  selected-consumer order, not live provider selection, nested extents or EOF;
+  byte-to-boolean normalization must not be mistaken for a strict 0/1 encoding.
+  `memorypack.buff_actions` now frames the anonymous first collection forward
+  from byte zero under each retained filename-anchor candidate's hard limit.
+  It supports the current IfElse/Sequence grammar, the selected member-five
+  child profile, nulls and bounded counts,
+  records completed nested spans, and stops at the first unsupported union.
+  Atomic spans plus an explicit physical-file remainder tile the bytes; that
+  remainder is opaque, not a decoded record. `buff_corpus` publishes a separate
+  prefix success/failure/unsupported/ambiguity denominator and fails its gate
+  on malformed prefixes even when the legacy suffix reader succeeds. Current
+  Sequence consumer evidence places the counted indirect child array before
+  two nonzero-normalized bytes; child output-slot width does not bound payloads.
+  The member-five child closes a 13-byte anonymous scalar prefix followed by
+  a counted member-three record collection. Each record contains two signed-
+  length-prefixed byte spans separated by one nonzero-normalized byte. The
+  selected native wrapper's type argument independently joins a List of
+  BlackboardString; its element reader confirms that order and byte-length
+  advancement. This is a structural-only profile, not proof of live generic
+  formatter selection, decoder parity, field names or gameplay conditions.
+  Null and empty byte spans remain distinct; negative lengths below -1 fail
+  closed, and no standard MemoryPack UTF-16/negative-length variant is guessed.
+  The selected member-ten action now closes forward through anonymous member-13,
+  member-8 and member-3 nested profiles, then a byte, length-prefixed bytes,
+  scalar32 and a member-three scalar payload. Independent native read order
+  supports these boundaries; raw zero DWORDs in the action prefix are not a
+  nested object or collection count. The finite profile admits only null
+  recursive targets and empty selector collections; the finder admits null
+  or the independently joined zero-member union profile. Other
+  shapes remain unsupported without scanning for a later marker. The final
+  payload reader consumes four scalar bytes despite its managed Double name.
+  Keep those bits anonymous, including non-finite values. Byte decoding, live
+  provider selection and whole-BuffData EOF remain unresolved; selected native
+  pins and read order are owned by `scripts/game_data/buff_ec_native.json`.
+  The selected member-seven child reuses that scalar-payload profile twice,
+  after one byte and four scalar32 reads. The fourth scalar is serialized
+  before both nested records despite its later destination-object offset;
+  memory layout must not substitute for consumer order. Its selected native
+  contract is `scripts/game_data/buff_50_native.json`; the two identical static
+  type arguments do not certify live formatter selection or comparison meaning.
+  Extended unions consume FA followed by a little-endian unsigned tag; record
+  reports retain that decoded tag rather than the escape byte. Unknown tags
+  stop at the original start. The selected extended member-eight child reads
+  one byte, three scalar32 values, paired payload, scalar payload, one byte and
+  paired payload. Its normal reader crosses chained unwind regions: the first
+  `.pdata` end is not a record or function end. The selected read/null paths
+  live in `scripts/game_data/buff_11f_native.json`; names and runtime use remain
+  unresolved independently of this structural closure. Paired and scalar
+  payloads can have identical extents; select their profiles from independent
+  nested-consumer evidence, not byte length alone.
+  The selected member-thirteen child closes three target profiles, a finder
+  profile and a scalar payload in native read order. The finder contains a
+  counted byte-payload list, scalar32 and a member-two query whose selected
+  array helper consumes count times four bytes. Keep all values anonymous.
+  `scripts/game_data/buff_b4_native.json` owns the native contract, including
+  an explicit limitation: List<string> has a static type join but no separate
+  formatter MethodSpec; the shared List<Object> count/loop and String element
+  reader support a finite structural profile, not actual provider selection.
+  Related member-eight children have a byte payload, counted nested records,
+  scalar32 and the same query profile after their common scalar prefix.
+  `scripts/game_data/buff_56_native.json` pins the member-one value-type list;
+  `scripts/game_data/buff_57_native.json` joins a reference-type list whose
+  member-three elements contain two byte payloads separated by a byte.
+  Equal outer member counts do not imply equal element layouts. Each element
+  consumes its own header; a managed name or output-slot width cannot replace
+  the concrete nested reader. The reference-list loop remains conditional on
+  the shared consumer, and active formatter selection stays open for both.
+  A member-six child contains only a byte, four scalar32 values and scalar64.
+  Its final helper reads and advances eight source bytes; that cursor evidence,
+  pinned in `scripts/game_data/buff_5b_native.json`, establishes wire width.
+  Preserve the raw bits: a mask-like managed name does not prove flag meanings.
+  The member-nineteen child adds counted input profiles containing counted
+  assignment profiles, a scalar/byte-payload pair, and the existing scalar,
+  byte-payload-list and target profiles. Preserve the native read order rather
+  than destination offsets: helper calls also consume scalar and byte members.
+  `scripts/game_data/buff_92_native.json` pins these readers, nested contexts,
+  the assignment-list candidate and the selector finder's zero-member route.
+  Shared reference-list and provider dispatch remain conditional; a concrete
+  static reader is structural evidence, not proof of live formatter execution.
+  Next close the most frequent unsupported child consumers before extending
+  this grammar; do not import legacy tag/name aliases to improve coverage.
 - Gameplay tag names come from exact predefined/config registries or validated
   runtime capture under the same native gate. CRC/context-derived names retain
   their derivation label; raw unmapped ids remain visible.

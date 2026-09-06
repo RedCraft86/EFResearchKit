@@ -276,6 +276,19 @@ CLI and parser provenance at both ends. Historical census rebinding is rejected.
 Unique, ambiguous, unsupported and failed rows remain explicit; no candidate
 establishes whole-schema ownership. Partial `--max-files` outputs must stay in
 `tmp/` or `scratch/`.
+`memorypack.corpus_gate` owns shared outer-ledger, overlay, fingerprint and output
+guards. `memorypack.buff_corpus` joins the full current BuffData stream and retains
+every filename-string anchor and reader-accepted suffix candidate, without
+promoting legacy field labels or internal opaque bodies. Run
+`python -m scripts.game_data.memorypack.buff_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256 --output-json reports/animestudio/buffdata_current_latest.json --output-md reports/animestudio/buffdata_current_latest.md`.
+The report partitions selected files into successful candidate framing, failed
+reader execution and unsupported shapes; uniqueness is only within that reader.
+Each accepted BuffData suffix also records a hard-bounded prefix-reader stop and
+remaining gap, with prefix support counted separately from suffix acceptance.
+`memorypack.buff_actions` owns the independent anonymous event-prefix grammar;
+its per-candidate scalar/record spans and explicit opaque remainder have a separate
+success/failed/unsupported/ambiguous census. Malformed prefixes fail the corpus
+gate even if the legacy suffix candidate succeeds; unknown unions are not aliased.
 `python -m scripts.game_data.il2cpp_context_audit` emits an exact-build native
 generic-instantiation audit as JSON on stdout. `il2cpp_context` owns bounded
 pointer-table/record/vector decoding and reciprocal method-parameter identity;

@@ -295,8 +295,56 @@ Current durable boundaries:
   adapter type. Keep these static links separate from serialized read order.
   The generated wrapper reader conditionally forwards the same reader after a
   one-byte fast-path header to an independently joined `ReadPackable<List<...>>`
-  usage/MethodSpec/type carrier. This nested body is another provider/dispatch
-  layer, not the list element reader. Cold advance normally returns true, resets
+  usage/MethodSpec/type carrier. Its nested body follows relative slot zero through
+  `ReadPackable` to `ReadValue`, then `GetFormatter`, then the latter's MVAR type.
+  Each method edge independently joins one ordinal-zero parameter owned by its
+  preceding method; these are distinct records, not interchangeable MVAR identities.
+  The original concrete argument propagates only conditionally on context inflation.
+  This remains a provider/dispatch layer, not the list element reader or a selected
+  runtime formatter. A separately joined `ListFormatter` registration shares the
+  list element instantiation and supplies a static Deserialize code candidate.
+  Its fast path consumes a four-byte count; the remaining-length comparison is
+  unscaled, and each positive iteration delegates element decoding. The four-byte
+  element output slot is not a serialized-width proof. Counts below minus one
+  reach an error helper only on the new-output path; the existing-output path
+  clears its length and skips the nonpositive loop. Preserve that native distinction
+  without relaxing the maintained parser's negative-count rejection. Actual
+  provider selection and EOF are still open. The element dispatcher reloads the
+  actual object's class after initialization and takes its target/companion pair.
+  The non-specialized branch calls that target with object, reader, output slot
+  and the loaded companion; a distinct equal-target path delegates through class
+  RGCTX helpers. Incoming RCX is not a caller-selected slot. Neither branch proves
+  the live formatter identity or a fixed element byte width.
+  The comparison target separately joins a shared adapter code candidate with
+  GameplayTag/Object arguments; do not replace the loaded companion's context
+  with that candidate's Object argument. Its selected helper peeks for `FF` and
+  only on a match consumes one byte before returning true and clearing the output.
+  The byte consumer's own boolean is different and is not forwarded. A nonmatch
+  does not directly advance this helper's cursor; ensure may still replace its
+  segment. The non-FF helper passes the same reader and an initialized writable
+  object-reference slot to formatter dispatch. A null result produces zero;
+  otherwise a separate interface lookup selects a target/companion pair and
+  tail-jumps with the result object, without forwarding the reader. Returned EAX
+  becomes the four-byte output. This is a converted result width, not serialized
+  consumption. Interface record offsets and slot arithmetic are directly pinned,
+  and the conversion carrier independently joins
+  `IMemoryPackDeSerializeWrapper<T0>`: its argument reciprocally belongs to adapter
+  ordinal zero, distinct from the formatter query's ordinal-one argument. The
+  adjacent MethodSpec uses that same instantiation and names `GetValue`; its
+  metadata slot is explicitly zero, matching the native request without assuming
+  declaration order. The native branch does not directly read that MethodSpec slot.
+  Target-pair bounds, live provider/conversion implementation, branch selection
+  and non-FF source consumption remain unresolved; follow the delegated formatter
+  context before interpreting this output or eliminating a terminal candidate.
+  That provider takes a companion, not the reader: its first method-context slot
+  supplies a type-derived lookup key, and its second supplies the returned-object
+  check. A carrier table and a separate formatter cache participate; cache misses
+  reach conditional generation and writeback paths. This is direct state-dependent
+  control flow, not an observed cache entry or proof of the registered candidate's
+  selection. The class helper's identity return is conditional on an initialized
+  flag; its other branch delegates initialization. Do not collapse these branches
+  into unconditional pointer identity or infer serialization from provider names.
+  Cold advance normally returns true, resets
   the segment counter and accumulates the request; ensure can replace the cursor
   with an existing or copied segment. Pointer deltas cannot certify source offsets.
   The 24-byte descriptor has a conditional same-endpoint position-difference
@@ -380,8 +428,77 @@ Current durable boundaries:
   branch and selects count versus -1. Keep API status, error, byte count and
   accumulated count distinct. This static join does not prove live IAT contents,
   handle provenance or buffered-state invariants; full-fill remains conditional.
-  Root/path conversion, on-disk identity/hash, zero-length alternate behavior
-  and concrete constructor/Read execution remain unresolved.
+  The two file-helper checks copy a 32-byte/four-slot path carrier from distinct
+  builders. Slot +8 comes from their respective getter; null/empty first input
+  shifts the second candidate into +0x10 and leaves +0x18 zero. AppendPathInfo
+  forwards the slots in order after null substitution. Its original AppendFormat
+  MethodSpec has three ordered string arguments; shared-code type candidates
+  cannot replace this companion. The temporary cursor and subsequent append
+  count use two-byte units: append doubles count for copying but advances its
+  cursor by the original count, writing a zero terminator only below capacity.
+  The native tag-5 resolver independently connects selected first-slot loads to
+  bounded literal-table/pool bytes: four brace/slash patterns are static format
+  inputs, not executed output paths. The literal sweep validates every row while
+  allowing shared pool ranges; it does not claim exclusive metadata coverage.
+  The format-item helper and its separate cold fragment establish a local
+  32-byte return: selector, optional bounded colon span, index after the closing
+  brace and comma-derived numeric value. This cursor is not whole-format EOF;
+  The character helper bounds the DWORD index against carrier length and reads
+  two-byte elements. Literal construction independently joins ASCII widening,
+  element-count forwarding and the same length/data offsets in the output carrier.
+  Allocation/copy/capacity helpers, non-ASCII cold paths and complete arbitrary-input
+  grammar remain open; this does not establish Unicode conversion parity.
+  The normal streaming-path getter requests the exact Unity streaming-assets
+  interface name through a cached indirect-call resolver and stores its return.
+  This proves the static request, not the resolved implementation or directory;
+  The resolver reads a runtime tree, can retry with a helper-transformed query,
+  and returns a candidate value or zero on the final sentinel. A writer independently
+  stores its second argument into the same candidate value slot; a separate initializer
+  seeds a self-linked sentinel. A selected PE export chain connects
+  `il2cpp_add_internal_call` through an argument-preserving tail stub to this writer;
+  this is not complete export coverage or a concrete registration receipt.
+  Exact-build UnityPlayer additionally requests that export into a function cache;
+  a reviewed forwarder passes its original pair through optional callbacks before
+  tail-calling the cache. The loader's shared module-handle cell receives either
+  a helper-supplied cached qword or the preserved return from the static
+  `LoadLibraryW` import after representation conversion and slash replacement.
+  The lookup helper forwards module/name to the static `GetProcAddress` import;
+  its zero-result cold path rejoins the saved zero if diagnostic calls return.
+  Selected import descriptor/name-thunk joins prove these request identities,
+  not live IAT contents, conversion validity, input path or loaded image identity.
+  A selected caller independently constructs the exact inline `GameAssembly.dll`
+  basename, writes its terminator, sets the length representation and passes that
+  carrier to the loader. This proves requested bytes, not Windows search-path
+  resolution or the loaded image's absolute path/hash.
+  The conversion helper calls the static `MultiByteToWideChar` import first with
+  null output, then with a prepared output/count. Its first result sets the
+  representation length and prewritten terminator; the module caller does not
+  inspect the second result before deriving data plus twice that representation
+  length as the slash-loop end. Capacity/reset helpers and actual conversion
+  success remain open; the end pointer is not a verified converted-byte receipt.
+  Successful resolution and callback contents remain unknown.
+  A complete native loop now proves one static name/value pair by
+  loading both arrays with the same advancing byte offset; complete pointer vectors
+  are bounded, not fully decoded strings/functions. Its registered name omits the
+  request's parentheses. On successful delimiter search, the resolver constructs
+  a bounded prefix before the first left parenthesis, then moves that representation
+  into its second query. The comparator uses unsigned byte lexicographic ordering;
+  callers compare the shorter prefix then break ties by length, so equal prefixes
+  do not establish equal keys. Copy semantics, pointer validity and actual lookup remain open;
+  this is not arbitrary suffix stripping or a no-match guarantee. This is not evidence
+  of invocation, final registration ownership or target behavior. Insertion/query helpers, live contents
+  and the Unity implementation join remain open; static producer code is not execution.
+  The selected target returns a converter output slot after temporary cleanup.
+  The converter's tagged inline/pointer representation and length extraction are
+  directly connected. Loader requests and selected exports connect its dynamic
+  calls to string construction and an output-slot write barrier; the latter
+  stores the former's result. This is conditional on actual module/cache binding,
+  not proof of runtime construction, active GC state or directory value.
+  A static `StreamingAssets` literal is an input to a joining helper, not proof
+  of a concrete directory or validated managed-string construction.
+  Nested dispatch, capacity/copy helpers, getter values, final path/root,
+  on-disk identity/hash, zero-length alternate behavior and concrete execution
+  remain unresolved; neither four pointer slots nor getter names prove a path.
   Multi-segment conversion, the complete ResourceManager-to-reader path and authenticated input
   identity remain unresolved. No observed final cursor or terminal uniqueness
   follows from this conditional ABI.
@@ -538,6 +655,20 @@ pass license and target-framework review for AnimeStudio's .NET targets.
   one-byte read alone do not prove source extent or exact EOF. Preserve candidate
   ambiguity until that connection exists, then continue the residual JsonData
   record queue rather than inferring field order from declarations.
+- `memorypack.buff_corpus` supplies the full current BuffData denominator from
+  authenticated outer-ledger identities and decrypted stream bytes, using shared
+  `memorypack.corpus_gate` provenance guards. It retains all filename-string
+  anchors and reader-accepted EOF suffix candidates rather than inheriting the
+  legacy reader's anchor selection. A unique accepted suffix does not establish
+  its top-level ownership or certify internal opaque regions; whole-schema status
+  remains false. Coverage, multiple-anchor counts and per-file diagnostics belong
+  in `reports/animestudio/buffdata_current_latest.{json,md}`. Next close the opaque
+  prefix/anchor join and nested record bounds before promoting any field names.
+  The legacy prefix reader now rejects invalid anchor limits instead of clamping
+  them and receives only bytes before the anchor, so count/string/scalar helpers
+  cannot borrow suffix bytes. The corpus records its accepted prefix endpoint or
+  unsupported-action stop and the remaining gap for every accepted suffix; this
+  does not certify the legacy field labels or close that gap.
 - Continue Streaming nested element/byte-body framing using the bottom-up
   queue in `game_data_recovery.md`; concrete runtime paths and field names
   follow structural closure, not the reverse.

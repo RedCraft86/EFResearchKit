@@ -210,18 +210,32 @@ only.
   change. The shared-QPC join places them at `ui_overview_start` 0.051009 s and
   0.076166 s with no intervening selected-actor Tick. The broad whole-actor
   echoes present at the matching bounded clean-video anchor are absent from
-  both surfaces, localizing their producer downstream of DLAA to Uber/final or
-  recording presentation. The lab's ordinary TAAU consumer remains
+  both surfaces. Validated paired final-swapchain evidence now places broad
+  echoes inside the game's post-DLAA radial Uber draw before UI composition.
+  The lab's ordinary TAAU consumer remains
   compatibility-only pending an exact reusable DLAA integration.
 - Native-resolution comparison is explicit rather than inferred: the lab
   renderer accepts a paired 3840x2160 profile and the comparator's `source`
   mode requires the exact recorded source dimensions, preserving the default
   annotation-pinned 1920x1080 contract for existing diagnostics.
-- The observation-only Streamline schema-v2 capture is prepared to retain a
+- The observation-only Streamline schema-v2 capture retains a
   hashed 4K swapchain color immediately before each accepted packet's closing
   `Present`, alongside its DLAA/depth/motion data on the same QPC chronology.
-  This is a collection capability, not evidence, until a fresh exact-build
-  session publishes and validates the new files.
+  The validated pair is independent of Full owner-packet completeness. Keep
+  that evidence scope separate from exact draw/pose phase and clean-video
+  registration; see the generated paired-presentation review.
+  Schema-v3 evidence now authenticates the first unique fullscreen consumer of
+  that exact DLAA output, its immediate target, and draw-bound parameters before
+  UI or subsequent writes. Both retained frames show the echoes in that target;
+  the archived shader matches the recovered six-RGB-tap radial Uber exactly.
+  Joint radial/chromatic values distinguish the authored entrance pulse from
+  its late pulse. This identifies curve-value phases, not body-pose phases or
+  EffectInstance clock ownership. See the generated
+  `post_dlaa_uber_producer_review.json` and parameter audit.
+  Native-resolution lab stage captures already show the authored radial echoes
+  appearing in final Uber from comparatively clean after-temporal input. Keep
+  body-pose/camera alignment separate from the now-authenticated retail consumer
+  and parameters; preserve the existing runtime clock while closing those joins.
 - A resource that exists or hashes identically is not necessarily bound to the
   selected draw. Same-camera, same-size, same-frame, submission-order, and
   lifetime constraints remain part of the join.
@@ -246,6 +260,22 @@ only.
   environment-shadow extension observes selected phases, ordered applied
   volumes/factors and camera/shadow-manager state within the same two entries.
   It uses guarded reads and original-call forwarding without Unity API calls.
+  FrameSetup may have no observed calls during these entries. Pinned deferred
+  and contact-parameter getter callers supply independent observation routes;
+  route labels, hook-entry counters and patch checks preserve that distinction.
+  Retail entry/tail getters in the CPP render-request path yield complete
+  selected-phase and volume observations. The legacy manager can remain zero
+  while phase values and draw constants are one; do not assume its FrameSetup
+  publication contract governs CPP rendering. Different camera frames can share
+  one Present and identical matrices; the native-backed draw-local CB1 camera
+  frame counter disambiguates them. BeforeCullingCPP converts the selected
+  phase to a separate CPP shadow config. The engine can zero the pair for manual
+  CSM override, then packs it into pooled upload data. The observer retains the
+  earlier phase and compact request/config/working/packed state, guarded by live
+  code pins. Publication requires the unique camera-frame join, coherent pointer
+  rereads and the native branch. Matching owned producer-vector bytes still
+  does not identify the actual pooled upload resource and binding range;
+  that missing runtime lineage keeps publication closed.
   Per-window completeness and exact camera bytes must validate before using
   a runtime phase to explain a captured draw; raw instance IDs are not source
   asset names. Follow the EndfieldCapture README's opt-in procedure and retain
@@ -258,6 +288,23 @@ only.
   See `reports/assets/character_recovery/default_deferred_original_dxbc_replay.json`.
   Canonical deferred presentation remains fail-closed until live t7/t11 input
   production is validated; frozen capture replay is not a replacement.
+  Default also depends on low-bit stencil rejection: captured-input ablations
+  isolate its effect independently of depth. Unity's paired depth must carry
+  source-correct stencil population and an output-merger attachment; a blank
+  attachment cannot close this gap. See `default_deferred_stencil_ablation.json`
+  in the same report directory.
+  The diagnostic now records CharacterPrePass and HGBuffer on one five-MRT/
+  D32S8 surface, using the same character draw collector as canonical PreG.
+  Contact, low-resolution directional, VisibilitySH, and screen-shadow producers
+  consume that post-HG surface and its R32 depth copy. An active HG owner failure
+  cannot fall back to the independent character diagnostic. Default's paired
+  DSV is its t1 depth resource; t0 is the binning buffer. Native draw failure
+  cannot certify content merely because the metadata shell produced finite pixels.
+  Foreground HG geometry replaces classification only after passing shared
+  depth. This does not establish every retail stencil writer. Generic depth
+  overrides must honor source `DepthOnly` membership: Endminf's authored crystal
+  materials disable that pass, and the importer preserves this selection.
+  Opaque render queue alone does not authorize an earlier replacement draw.
   Keep the captured output-merger blend: shader-side equivalent arithmetic
   changes retained pixels. Sidecar presentation seeds owned scene color, then
   blends the resolver through hardware; its equality test uses the published
@@ -282,6 +329,16 @@ Unity image comparisons use physical `actualSeconds` relative to the first
 saved frame, gated by its annotated body phase; sparse runs must include time
 zero. Requested times and image ordinals can disagree with rendered phase.
 This relative join preserves the video anchor's existing uncertainty.
+The clean reference's central anchor also fails a conditional entry-phase
+consistency check: its first visible rigid actor maps before the authored
+controller entry. Overlapping silhouettes mean that image is not authenticated
+as one current physical pose. Preserve the runtime clock and annotation until
+the captured radial curve phase is joined to body-pose and camera consumption; do not
+choose a replacement anchor by visual fit. The bounded arithmetic and source
+hashes live in `reports/assets/character_recovery/reference_entry_phase_consistency.json`.
+Animator schema v6 brackets state API reads and the following Present-clock
+observation. Consumers validate those bounds; v5 remains interval-unobserved.
+Neither interval proves engine pose-evaluation order or palette upload ownership.
 On synchronized retail checkpoints,
 the current solver is worse than animation-only in both translation and
 rotation, and adding the recovered rotation-only post-proxy CalcLine stage does

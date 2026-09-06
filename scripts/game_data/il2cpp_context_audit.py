@@ -15,18 +15,67 @@ from pathlib import Path
 from scripts.common import check_installed_native_inputs
 from scripts.game_data.il2cpp_context import ContextError, GenericInstantiationTable, method_parameter_owner, type_image_owners, match_image_modules, method_spec_usage_index, generic_type_carrier, select_rgctx_range, unresolved_usage_index, rip_qword_load_target
 from scripts.game_data.memorypack.skill_corpus import verify_current_report_inputs
+from scripts.game_data.memorypack.corpus_gate import verify_current_report_inputs as verify_family_report_inputs
 from scripts.game_data.il2cpp_context import class_sharing_branch
 from scripts.game_data.il2cpp_context import named_top_level_type
 from scripts.game_data.il2cpp_context import object_type_comparison_key
 from scripts.game_data.il2cpp_context import method_pointer_indices, generic_method_candidates
 from scripts.game_data.il2cpp_context import type_parameter_owner, rgctx_range_entries
 from scripts.game_data.il2cpp_context import method_spec_record, usage_method_spec, relative_branch_target, method_token_pointer
+from scripts.game_data.il2cpp_context import literal_record
 
 ROOT = Path(__file__).resolve().parents[2]
 GA_SHA = 'C24495E51B406F03B03890C4788EE618AE022C991405BE5D5B8B787CB775AE89'
 MD_SHA = '0076743397ACADF03D3B0064343A963C7C88863B8160526D397E4B3EFB96F02E'
-CORPUS_SHA = '3B2B96545D1A17FFA4F7770B2BA7AF6045E4BDE701465AD42E2AFB0FA6D05943'
+UNITY_SHA = 'BEE7BE52370ADDDD67BA61E4937CA51B7F272656841D187E95E505496DA798D1'
+CORPUS_SHA = 'A6ECC2BCEC4D2045CD886AED382AF51174634EE7C67C18AD830735B8D06FA439'
 CONSUMER_WINDOWS = (
+    (0x3F7FD20,0x3F7FD7D,'B5AB987DB105917F14B247D7B4448C44A4408CC6DB8280D221EBB21FC67D413B'),
+    (0x3F7FD80,0x3F7FF19,'632D05A4F810BF260BFED357E3E80375DD943FFD926FC514382054E0DF2AFCEF'),
+    (0x3D9BAF0,0x3D9BB4D,'7C7BF6A31C88EA2D1D2925193F774396233F35465E56AFBAC2DFC756B3C2599D'),
+    (0x3D9BB50,0x3D9BCC5,'83DB6041548B27BB2CCE4E6DB6AD2803F3CFDDE712B2E07D02CA6D2127BDC05A'),
+    (0x2CA8860,0x2CA88B7,'CA6788FE028DC684758CD40833EFA107116A7BF664BFBF1746D792E52114639F'),
+    (0x2CA8700,0x2CA87C6,'B8944001C41E1AF65B44F7DDE366FCE5E4E8B35E2A32682E628C2E0A36145BEF'),
+    (0x2CA8A10,0x2CA8AFD,'A839E67CFE09CC6BF53DA3BE9E149AEF9B411E9AA20D23C981A94C18C13678BC'),
+    (0x39C6A40,0x39C6A9D,'650BBFFE813D1F3A7663C6C9C42E160E5799B70541246A11AAADABF1D3F08DD6'),
+    (0x39C6AA0,0x39C6FA7,'6444AF67AF86E7809AF5A50AE6DEE922B699DCB1CA686DC81F4C3584AB817B90'),
+    (0x3773670,0x37736CD,'D1E00A92152340C6A1F095DC4FF14393C99973AED0304478AD12506492E37A0C'),
+    (0x3774060,0x37742A8,'AC1FF978FEF71639E74980B43AE00D9746518A9DD94B41772F2867963A596ED8'),
+    (0x2CA88C0,0x2CA8912,'636D6E913965572E9F43C20D0BBA78706400327D19134D1EF6C71FB5DE6B397E'),
+    (0x2CA86B0,0x2CA8700,'2358C208F5DDD372AF9E5401907272C1FB2A6E4C49E211689FFC047A2872BB65'),
+    (0x3915318,0x3915998,'39C3FD3F0D261441F1790310D4D15455F09C4B0FD422E7810BA01A4C80D93189'),
+    (0x390D880,0x390D949,'886BE1DB0B85A14E60725049F3358D0108A316A77762E9825E15BDEF42CF4C52'),
+    (0xF8040,0xF8054,'6FAAAFEA02FCA6BE80BF3AB5DFD579015CCC2E16E4184E44799B89A328054879'),
+    (0x2DA4260,0x2DA4713,'BCF62513ABA710E9AB67DBFDA036EFE7CEC127E1CADFB21E16530E168D2EBE02'),
+    (0x4AF13B8,0x4AF14EB,'61FE687029897D01C5F5D0283742BCAB565002A11914EA01B54FBD87F2192D04'),
+    (0x2DA4770,0x2DA4D6B,'4D521FFBEB8FADA0965B6F8DCD9BAE153964F3D5BAF7E22A199509C24867BD0D'),
+    (0x2DF760,0x2DF827,'BB25B7DF06BAB2DBC8B2D54FB1DF15E7B5CB1E9EDCB553B06A82DDE63998F27D'),
+    (0x1F0A0,0x1F0F8,'C9F38013332566AD167609C71B8F69552B51A2C45D2CEA1FDD23F35A5E62C727'),
+    (0x2DF840,0x2DF8D0,'2D2C7C970E0E0DD329559040D4D6D0EEABAC001A756EDE943F1F05674FC7029B'),
+    (0x248D0,0x249AC,'444E365BB37D609DD9797249C52EFC2BB7C0C81A41446EC74418B8DF509CA026'),
+    (0x23970,0x23A01,'80D05BC4EB99B2FA602AEFA2B958A59BCBE6DC305730DEAC6B9985D636997060'),
+    (0x22010,0x220F8,'1E01E4A3A3DC36DBAF211D51E1D536B33242F17305D82026070B610A5D901C04'),
+    (0xE170,0xE1C2,'FD809E08E51CF3E1B28921E2E2C0652D36DC5D6352941014E8DC9D3C9F883A1C'),
+    (0x20760, 0x20A33, 'E117B0BE3EFF364A7242B6EEC5F4C709DEB7FAE4E79DB2E5C9BA32CC7E54E7E1'),
+    (0xF8718, 0xF8760, '83D8E4E7B974778AF6C6F832C5EB205EB612D2A469BDB76681A5B50156290EA1'),
+    (0x1F1B0, 0x1F463, '1E349215CBE3DEA915C8B755F51D6FC71E2497296E8CA1F59E2248444003B8D0'),
+    (0x2E6B64, 0x2E6B71, '7B5C59F3F5F7F5FE5E724565F80D81719EE1C470D4056BEA56BEE902565C6C37'),
+    (0x2F46C10, 0x2F46D6A, '1DC5C757B06C54E0DDDE9F58667379DA87DF70B02495782B65EE5C99311D37E3'),
+    (0x393CC10, 0x393CC45, 'F1AF611FC7780ADA8187C51843D77884F63A24E5B7F94E91FC9966C13351711E'),
+    (0x2CB7620, 0x2CB7644, 'C332CA386F5074737EB183541FF260B00C2E320643BF053F232BC20BB7A6893F'),
+    (0x24AD0, 0x24B56, 'C04E3409F7569FAE94392CA5CE396169B3B2772EAD624C33E830002C78A16997'),
+    (0x24B60, 0x2500D, '56A439DA1E4192F3408C7313DCE204E51B31BFE461F0BE1F8DEA1FF47EDB7B12'),
+    (0x25870, 0x25A20, 'A3ACD6AD99169AEAD1FA8F74CDF0B9F04742051A1889D30AD7DCC6C156B876E6'),
+    (0x2DF4460, 0x2DF4684, 'AC887FDEF479D755A8389CCF34DE243A1C762D32ABD70CE699DC2297985D01D9'),
+    (0x4C5DC40, 0x4C5DD38, '594A25EE92B3F5F9C4BAE27D83336887CDA9124D0779F6EB9DF94044B91AFBF6'),
+    (0x2D8DE0, 0x2D8EAC, '88A126F8A51C4D39BE8C73B8E5594A436A41066417A841C66EEA5DB04D8CC67A'),
+    (0x2DF2AA0, 0x2DF3271, 'AF49BFE87E68E091E58848935F5BEA3CC32DC280704D2235CD48D6DFCA3B753C'),
+    (0x2D72FA0, 0x2D731F5, '445859C5F6E56B6F1C0987ABEABED40E5AF217F7FE42353A95DA117D4FB2B2E2'),
+    (0x2D7F770, 0x2D7F914, 'DAE488218AC934D0C9CF68F33BAAB9B1659D3F57DA158D7A0834A6B1F7BE810B'),
+    (0x2D7AE60, 0x2D7AF28, 'CF2651FC76E186FE5D6DF8E34163A75EC3A3F37ED40560B3F2324E60059A41A2'),
+    (0x2D7F920, 0x2D7FE68, 'D6A7ABB1AE1DCCFA30BA942968FC9E89671FB36578BAABDB0E347753D565E6E0'),
+    (0x2D7DBF0, 0x2D7E3BC, 'BD887872DEB0E1D5939A3ECDB53DB9059E0AF27AE072B1A8F72311EE8800C150'),
+    (0x2D7E480, 0x2D7E6C8, 'C5A0B6BAA857B336A99B7BEF8A5B59D62CD8776A651F11C718A40122493385E8'),
     (0x2FCA460, 0x2FCA768, 'A8F70CDC62487F47713F7540310DF6F3D6F388D0B9289C13C4B98ABFF3D82CD7'),
     (0x3AFCB00, 0x3AFCC8E, '1AE31F3A846C775B877BC41FC7D0DFDE947C52AA726F5EF559C4E7B5FF7DD885'),
     (0x318BC00, 0x318BD14, '8AD4D7E061F64FA7627B5A55141CE2094E3D75116A467637D3C36F43A19C28D9'),
@@ -115,7 +164,7 @@ CONSUMER_WINDOWS = (
     (0x37DE060, 0x37DE0BB, '0926899BA44C601CEBAC2B4E70580B397CDDAB4FC60060C1E8DC0EF99A2555FB'),
     (0x37DE9C5, 0x37DEB23, 'C6A761532672A5700D9FEEB980F66BAF88B6F1F2CEAC48688680CF4158C1F285'),
     (0x37DE884, 0x37DE9C5, '853722D03CBFE915CFB92DD372A7C85BE072576C8FEB4CB35912E766BBDE9BCA'),
-    (0x41260, 0x4127B, 'DD4C21E4DCAA9ED293D62B4817726DDA64F2BCAFA8C2AFEFFF299EC039CE3F0B'),
+    (0x41260, 0x4138C, '910E29E41F01BE05DE60EF70F0D95CA521E103889A596DA577F10AF50840B2F2'),
     (0x4127B, 0x412D2, 'EC737048F208A7BF568C342D1630E506203A591F88E5497D2D93A9DD31B04D06'),
     (0x412D2, 0x412E0, '65F69D9450DCBB01DF08A592D62CFD560557C9B84E8662F49E421AEC07C15E91'),
     (0x2D8D10, 0x2D8D6A, '1D69558B9C9CBC2E7868E2A5895269966FB40E86B3E36B7B020BCC5C948ED5AC'),
@@ -302,6 +351,582 @@ def reader_cursor_consumers(pe, *, source):
             'nestedRead':{'rva':0x381F8F0,'readerRegister':'R15',
                           'boundary':'Entry RCX is saved in R15 and passed to dispatch as R8; the local output is returned after formatter dispatch. This body is another provider/dispatch layer, not the list count or element consumer. Its cold cache paths, live MethodInfo and selected list formatter are unresolved.'},
             'boundary':'No authenticated logical-file allocation, initial descriptor, complete helper ABI, final cursor or EOF join. Keep both terminal candidates.'}
+
+
+def buff_tag76_read_order(pe,md,reg,table,modules,image_owners,*,source):
+    """Current anonymous tag-76 profile; no live list formatter or field names."""
+    wrapper='Beyond.MemoryPack.Beyond_Gameplay_Core_Conditions_CheckSkillId_DataForMemoryPack'
+    element='Beyond.MemoryPack.Beyond_Blackboard_BlackboardStringForMemoryPack'
+    methods=module_methods(pe,md,modules,image_owners,
+        [(124595,wrapper,'Deserialize',0x3F7FD80),
+         (124596,wrapper+'+Beyond_Gameplay_Core_Conditions_CheckSkillId_DataForMemoryPackFormatter','Deserialize',0x3F7FD20),
+         (162686,element,'Deserialize',0x3D9BB50),
+         (162687,element+'+Beyond_Blackboard_BlackboardStringForMemoryPackFormatter','Deserialize',0x3D9BAF0)],
+        source=source,expected_image='MemoryPack.Beyond.dll')
+    windows=[]
+    for at,expected in (
+        (0x3F7FD49,'4533C0488BD3488BCF488B5C24304883C4205FE91F000000'),
+        (0x3F7FE00,'4080FE050F85635BFD00'),
+        (0x3D9BB19,'4533C0488BD3488BCF488B5C24304883C4205FE91F000000'),
+        (0x3D9BBD5,'4080FD030F85E0621701'),
+        (0x2CA8729,'488B43504863388B733083EE040F885C8CE30148834350048343400483434404897330'),
+        (0x2CA874C,'48634344488B4B18482BC8483BCF0F8C528CE30183FFFF743785FF7517'),
+        (0x2CA8780,'4533C08BD7488BCB488B5C2430488B7424384883C4205FE974020000'),
+        (0x2CA8A97,'4533C9448BC7488BD5488BCEE878F8FFFF488BE885FF7418'),
+        (0x2CA8AAF,'8B73302BF70F88B0A4F70148017B50017B40017B44897330')):
+        raw=bytes.fromhex(expected);require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    calls=[]
+    for at,target in ((0x3F7FDB6,0x2CA8860),(0x3F7FE10,0x2CA88C0),
+        (0x3F7FE39,0x2CA86B0),(0x3F7FE5A,0x2CA86B0),(0x3F7FE7B,0x2CA86B0),
+        (0x3F7FEA3,0x381F8F0),(0x3D9BBE5,0x2CA8700),
+        (0x3D9BC13,0x2CA88C0),(0x3D9BC37,0x2CA8700)):
+        raw=pe.bytes_at_va(pe.image_base+at,5);require(raw[:1],b'\xe8',source,at)
+        require(relative_branch_target(raw,pe.image_base+at,source=source),pe.image_base+target,source,at)
+        calls.append({'rva':at,'targetRva':target})
+    at=pe.image_base+0x3F7FE96
+    cell=rip_qword_load_target(pe.bytes_at_va(at,7),at,source=source)
+    require(cell,pe.image_base+0xD039688,source,at)
+    usage=pe.bytes_at_va(cell,8)
+    require(method_spec_usage_index(usage,reg['methodSpecsCount'],source=source,offset=cell),610878,source,cell)
+    va=int(reg['methodSpecs'],16)+610878*12;raw=pe.bytes_at_va(va,12)
+    require(method_spec_record(raw,len(md.methods),reg['genericInstsCount'],source=source,offset=va),(428462,-1,62664),source,va)
+    instance=table.resolve(62664)
+    require(len(instance.arguments),1,source)
+    arg=instance.arguments[0];tr=bytes.fromhex(arg.raw_type_record_hex)
+    require(tr,bytes.fromhex('A834258D010000000000150000000000'),source)
+    cp=struct.unpack_from('<Q',tr)[0];cr=pe.bytes_at_va(cp,32)
+    require(len(cr),32,source,cp)
+    bp=struct.unpack_from('<Q',cr)[0]
+    require(bp!=0,True,source,cp)
+    carrier=generic_type_carrier(tr,cr,pe.bytes_at_va(bp,16),type_pointer=arg.type_pointer_va,type_count=len(md.types),source=source)
+    require(carrier['baseDefinitionIndex'],37521,source,bp)
+    require(md.type_full_name(md.types[37521]),'System.Collections.Generic.List`1',source)
+    nested=table.resolve_pointer(carrier['classInstantiationPointerVa'])
+    require(nested.index,17007,source)
+    require([a.raw_type_record_hex for a in nested.arguments],['B1000000000000000000120000000000'],source)
+    require(md.type_full_name(md.types[177]),'Beyond.Blackboard+BlackboardString',source)
+    return {'methods':methods,'windows':windows,'orderedCalls':calls,
+        'nestedUsageCellVa':cell,'nestedUsageRawHex':usage.hex().upper(),
+        'nestedMethodSpecIndex':610878,'nestedMethodSpecRawHex':raw.hex().upper(),
+        'methodInstantiation':instance.as_dict(),'listCarrier':carrier,'elementInstantiation':nested.as_dict(),
+        'level':'direct conditional consumer order; exact static nested type identity',
+        'boundary':'Tag 76 routes to the current wrapper in selectedBuffUnionRoutes. Its member-five path reads one nonzero-normalized byte and three DWORDs before ReadPackable with List<BlackboardString>. The independently joined element reader takes member three, length-prefixed bytes, one normalized byte, then length-prefixed bytes. The length helper reads a signed DWORD: -1 returns null, zero takes an empty path, and positive length is forwarded unchanged to the byte consumer, which advances source/counters by that length after its decoder call. Payload bytes remain anonymous: encoding/cache contents, complete decoder parity, negative values below -1, live list formatter, concrete source carrier and final cursor/EOF are not proven. The maintained finite list profile is structural-only; neither managed names nor output-slot widths establish serialized order or gameplay meaning.'}
+
+
+def buff_action_read_order(pe,md,reg,table,modules,image_owners,*,source,contract_path):
+    """Selected action profile under audit()'s explicit native hash gate."""
+    path=Path(contract_path)
+    contract=json.loads(path.read_bytes())
+    require(contract['schemaVersion'],1,path)
+    methods=module_methods(pe,md,modules,image_owners,contract['methods'],
+        source=source,expected_image='MemoryPack.Beyond.dll')
+    for group in contract.get('methodGroups',[]):
+        methods.extend(module_methods(pe,md,modules,image_owners,group['methods'],
+            source=source,expected_image=group['image']))
+    for row in contract['codeWindows']+contract.get('dataWindows',[]):
+        start,end=row['startRva'],row['endRva']
+        require(0<=start<end,True,path,start)
+        raw=pe.bytes_at_va(pe.image_base+start,end-start)
+        require(len(raw),end-start,source,start)
+        require(hashlib.sha256(raw).hexdigest().upper(),row['sha256'],source,start)
+    for row in contract['nestedContexts']:
+        at=pe.image_base+row['instructionRva']
+        ins=pe.bytes_at_va(at,7)
+        require(ins,bytes.fromhex(row['instructionHex']),source,at)
+        cell=rip_qword_load_target(ins,at,source=source)
+        require(cell,row['cellVa'],source,at)
+        usage=pe.bytes_at_va(cell,8)
+        require(usage,bytes.fromhex(row['usageRawHex']),source,cell)
+        index=method_spec_usage_index(usage,reg['methodSpecsCount'],source=source,offset=cell)
+        require(index,row['methodSpecIndex'],source,cell)
+        va=int(reg['methodSpecs'],16)+index*12
+        spec=method_spec_record(pe.bytes_at_va(va,12),len(md.methods),reg['genericInstsCount'],source=source,offset=va)
+        require(spec,tuple(row['methodSpec']),source,va)
+        instance=table.resolve(spec[2])
+        require([a.raw_type_record_hex for a in instance.arguments],[row['argumentRawHex']],source,va)
+        argument=bytes.fromhex(row['argumentRawHex'])
+        if row.get('generic') is not None:
+            require(argument[10],0x15,source,va)
+            cp=struct.unpack_from('<Q',argument)[0]
+            cr=pe.bytes_at_va(cp,32)
+            require(cr,bytes.fromhex(row['generic']['carrierRawHex']),source,cp)
+            bp=struct.unpack_from('<Q',cr)[0];br=pe.bytes_at_va(bp,16)
+            require(br,bytes.fromhex(row['generic']['baseRawHex']),source,bp)
+            carrier=generic_type_carrier(argument,cr,br,type_pointer=instance.arguments[0].type_pointer_va,
+                type_count=len(md.types),source=source)
+            require(carrier['baseDefinitionIndex'],row['typeDefinition'],source,bp)
+            nested=table.resolve_pointer(carrier['classInstantiationPointerVa'])
+            require(nested.index,row['generic']['elementInstantiationIndex'],source,cp)
+            require([a.raw_type_record_hex for a in nested.arguments],row['generic']['elementArguments'],source,cp)
+        else:
+            kind=row.get('typeKind',0x12)
+            require(kind in (0x11,0x12),True,path,va)
+            require(argument[10],kind,source,va)
+            require(struct.unpack_from('<Q',argument)[0],row['typeDefinition'],source,va)
+        require(0<=row['typeDefinition']<len(md.types),True,source,va)
+        require(md.type_full_name(md.types[row['typeDefinition']]),row['typeName'],source,va)
+    return {'contractPath':str(path),'contractSha256':sha(path),'methods':methods,
+        'codeWindows':contract['codeWindows'],'dataWindows':contract.get('dataWindows',[]),'nestedContexts':contract['nestedContexts'],
+        'anonymousReadOrder':contract['anonymousReadOrder'],
+        'level':'direct selected consumer order; exact static nested type joins; structural-only parser profile',
+        'boundary':contract['boundary']}
+
+
+def buff_sequence_read_order(pe,md,modules,image_owners,*,source):
+    """Selected member-three sequence: count, indirect elements, two bytes."""
+    name='Beyond.MemoryPack.Beyond_Gameplay_Core_SequenceActionDataForMemoryPack'
+    methods=module_methods(pe,md,modules,image_owners,
+        [(104346,name,'Deserialize',0x39C6AA0),
+         (104347,name+'+Beyond_Gameplay_Core_SequenceActionDataForMemoryPackFormatter','Deserialize',0x39C6A40)],
+        source=source,expected_image='MemoryPack.Beyond.dll')
+    windows=[]
+    for at,expected in (
+        (0x39C6A69,'4533C0488BD3488BCF488B5C24304883C4205FE91F000000'),
+        (0x39C6B06,'488B43500FB6308B7B3083EF017911BA01000000488BCBE81EB6100284C0750D48FF4350FF4340FF4344897B304080FEFF7516'),
+        (0x39C6B82,'4080FE030F85DD030000'),
+        (0x39C6BF8,'488B43508B28448B73304183EE047911BA04000000488BCBE82BB5100284C07511488343500483434004834344044489733048634344488B4B18482BC84863C5483BC80F8C78030000'),
+        (0x39C6D4D,'488B4738488B4818E806D53DFF4C8BF085ED0F8EB6000000'),
+        (0x39C6D98,'4D8B16488BD34863C6498BCE4883C0044D8B8A980100004C8D04C741FF9290010000FFC63BF57CB0EB59'),
+        (0x39C6EA2,'488B43500FB6288B7B3083EF017911BA01000000488BCBE882B2100284C0750D48FF4350FF4340FF4344897B30'),
+        (0x39C6EE5,'4084ED0F95C0884119'),
+        (0x39C6F07,'488B43500FB6288B7B3083EF017911BA01000000488BCBE81DB2100284C0750D48FF4350FF4340FF4344897B30'),
+        (0x39C6F47,'4084ED4C8B6C2428488B6C24680F95C04C8B742420884118')):
+        raw=bytes.fromhex(expected);require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    return {'methods':methods,'windows':windows,'level':'direct conditional selected-consumer structure',
+        'boundary':'Header FF clears the output; header 3 takes a signed DWORD count after the one-byte header. The fast count path compares total-minus-consumed with the count, not count times an element width. Count -1 skips elements; zero uses a separate empty-array helper. Positive counts call a provider-selected class+0x190 target with the same reader, an eight-byte array output slot and class+0x198 companion. Output-slot width is not serialized element width. Then two bytes are consumed and nonzero-normalized, writing object offsets 0x19 then 0x18. No semantic field names, live provider identity, negative-count allocation behavior, nested extent, authenticated source cursor or EOF are promoted. Maintained framing rejects counts below -1 conservatively.'}
+
+
+def buff_ifelse_read_order(pe,md,reg,table,modules,image_owners,*,source):
+    """Selected reader's member-eight fast path; no live dispatch or EOF claim."""
+    name='Beyond.MemoryPack.Beyond_Gameplay_Core_IfElseAction_IfElseActionDataForMemoryPack'
+    methods=module_methods(pe,md,modules,image_owners,
+        [(120613,name,'Deserialize',0x3774060),
+         (120614,name+'+Beyond_Gameplay_Core_IfElseAction_IfElseActionDataForMemoryPackFormatter','Deserialize',0x3773670)],
+        source=source,expected_image='MemoryPack.Beyond.dll')
+    windows=[]
+    for at,expected in (
+        (0x3773699,'4533C0488BD3488BCF488B5C24304883C4205FE9AF090000'),
+        (0x3774093,'837B30010F8C089A6B01488B43500FB6288B733083EE010F880B9A6B0148FF4350FF4340FF43448973304080FDFF0F8482010000'),
+        (0x37740FA,'4080FD080F85D1996B01'),
+        (0x2CA88CF,'83793001488BD90F8CBCA5F701488B43500FB6308B7B3083EF010F88BCA5F70148FF4350FF4340FF4344897B30'),
+        (0x2CA8901,'4084F6488B7424380F95C04883C4205FC3'),
+        (0x2CA86BF,'83793004488BD90F8C9EA7F701488B43508B308B7B3083EF040F889FA7F70148834350048343400483434404897B30')):
+        raw=bytes.fromhex(expected);require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    calls=[]
+    for at,target,width in ((0x377410A,0x2CA88C0,1),(0x3774135,0x2CA86B0,4),
+        (0x3774159,0x2CA86B0,4),(0x377417D,0x2CA86B0,4),(0x37741A1,0x2CA88C0,1),
+        (0x37741CA,0x2DA5C90,None),(0x37741F3,0x2DA5C90,None),(0x377421C,0x2DA5C90,None)):
+        raw=pe.bytes_at_va(pe.image_base+at,5);require(raw[:1],b'\xe8',source,at)
+        require(relative_branch_target(raw,pe.image_base+at,source=source),pe.image_base+target,source,at)
+        calls.append({'rva':at,'targetRva':target,'fastSerializedWidth':width})
+    operands=[]
+    for at in (0x37741BD,0x37741E6,0x377420F):
+        cell=rip_qword_load_target(pe.bytes_at_va(pe.image_base+at,7),pe.image_base+at,source=source)
+        require(cell,pe.image_base+0xCFF4E68,source,at)
+        raw=pe.bytes_at_va(cell,8)
+        require(method_spec_usage_index(raw,reg['methodSpecsCount'],source=source,offset=cell),619962,source,cell)
+        operands.append({'rva':at,'cellVa':cell,'usageRawHex':raw.hex().upper()})
+    va=int(reg['methodSpecs'],16)+619962*12;raw=pe.bytes_at_va(va,12)
+    require(method_spec_record(raw,len(md.methods),reg['genericInstsCount'],source=source,offset=va),
+            (428464,-1,16408),source,va)
+    instance=table.resolve(16408)
+    require([a.raw_type_record_hex for a in instance.arguments],['F2230000000000000000120000000000'],source)
+    require(9202<len(md.types),True,source)
+    require(md.type_full_name(md.types[9202]),'Beyond.Gameplay.Core.SequenceActionData',source)
+    return {'methods':methods,'windows':windows,'orderedCalls':calls,'nestedOperands':operands,
+        'nestedMethodSpecIndex':619962,'nestedMethodSpecRawHex':raw.hex().upper(),'nestedInstantiation':instance.as_dict(),
+        'level':'direct selected-consumer order and fast widths; exact nested static type argument',
+        'boundary':'The token/module-joined formatter forwards RDX reader and R8 output to the static reader. After a one-byte member header, its header-eight branch passes the same reader to byte/nonzero normalization, three raw DWORD reads, a second byte/nonzero normalization, then three nested helper calls. The fast scalar prefix is 14 bytes after the header; no signedness or gameplay names are assigned. All three nested callsites use one MethodSpec with SequenceActionData as its type argument, not a proven live formatter. Header FF, reused-object preprocessing, allocation/init, other header values and segment-replacement paths are outside this fast-path claim. No nested serialized widths, complete record extent, concrete source cursor or EOF are established.'}
+
+
+def buff_ifelse_forwarding(pe,md,reg,table,*,source):
+    """Exact thunk contexts and conditional reuse flow, not nested field grammar."""
+    windows=[]
+    for at,expected in (
+        (0x30E2DC,'488B15D530DD0CE908165103'),
+        (0xA1EA7C,'4C8B053D296C0CE974AC7C08'),
+        (0x4E67AA1,'4C8B0518992708488BD3E8CC6FBBFB90E9345FAAFE'),
+        (0x91E96FC,'48895C24084889742410574883EC204983783800498BD8488BFA488BF17508488BCBE86D58E6F64C8B4338488BD7488BCE4D8B00488B5C2430488B7424384883C4205FE93C6812F7'),
+        (0x30FF80,'E90BFFA303'),
+        (0x3D4FE90,'48895C24084889742410574883EC204983783800498BD8488BFA488BF17444488B0D3AF7390983B9E0000000007451488B4338488B08E8954305FF4885C07413B9050000004C8BCF4C8BC6488BD0E81DF42EFC488B5C2430488B7424384883C4205FC3488D0DF6F63909E861132FFC48837B380075A9488BCBE882F02FFCEB9FE8AB632DFCEBA8')):
+        raw=bytes.fromhex(expected);require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    rows=[]
+    for at,index,definition,target in ((0x30E2DC,614208,428462,0x381F8F0),
+                                     (0xA1EA7C,618298,428461,0x91E96FC)):
+        cell=rip_qword_load_target(pe.bytes_at_va(pe.image_base+at,7),pe.image_base+at,source=source)
+        usage=pe.bytes_at_va(cell,8)
+        require(method_spec_usage_index(usage,reg['methodSpecsCount'],source=source,offset=cell),index,source,cell)
+        va=int(reg['methodSpecs'],16)+index*12;raw=pe.bytes_at_va(va,12)
+        require(method_spec_record(raw,len(md.methods),reg['genericInstsCount'],source=source,offset=va),
+                (definition,-1,24608),source,va)
+        rows.append({'thunkRva':at,'tailTargetRva':target,'usageCellVa':cell,'usageRawHex':usage.hex().upper(),
+                     'methodSpecIndex':index,'methodSpecRawHex':raw.hex().upper(),'methodDefinition':definition})
+    instance=table.resolve(24608)
+    require([a.raw_type_record_hex for a in instance.arguments],['233F0000000000000000120000000000'],source)
+    return {'windows':windows,'contexts':rows,'methodInstantiation':instance.as_dict(),
+        'level':'direct conditional register flow; exact static MethodSpec/type argument identity',
+        'boundary':'Both C9 branch thunks replace the callsite companion before tail transfer. Their different MethodSpecs have the same single IfElse wrapper argument, independently identified in selectedBuffUnionRoutes. Creation preserves RCX reader and replaces RDX; its target body is not promoted here. Reuse preserves RCX reader and RDX output-slot address, replaces R8, ensures companion+0x38 and forwards its first slot through a tail thunk. The next body takes that companion first slot to the separately reviewed provider, then, only for a non-null result, passes selector 5, provider object, unchanged reader and output slot to 0x3F300. These bodies do not directly read serialized fields. Live provider/formatter and concrete nested consumer ABI remain unresolved; no record length, field order, authenticated source cursor or EOF follows.'}
+
+
+def buff_union_routes(pe,md,reg,modules,image_owners,*,source):
+    """Selected current tag routes, not a replacement serialization schema."""
+    name='Beyond.MemoryPack.Beyond_Gameplay_Core_AbilityAction_AbilityActionDataForMemoryPack+Beyond_Gameplay_Core_AbilityAction_AbilityActionDataForMemoryPackFormatter'
+    methods=module_methods(pe,md,modules,image_owners,[(107657,name,'Deserialize',0x390D950),
+        (107659,name,'.cctor',0x417AC00)],source=source,expected_image='MemoryPack.Beyond.dll')
+    windows=[]
+    for at,expected in (
+        (0x390D974,'488D5424384533C06689742438488BCFE8F7FEFFFF84C00F8422BD55010FB774243881FE9F0100000F87E0BC5501488D1557266FFC8B8CB2185391034803CAFFE1'),
+        (0x390D8D2,'4080FEFA731C66418936B001'),
+        (0x390D8F4,'754B837B30020F8C208A5501488B43500FB700664189068B7B3083EF020F881F8A550148834350028343400283434402897B30EBB3'),
+        (0x390D941,'33C066418906EB95'),
+        (0x4E66320,'4533C0BA02000000488BCBE82C2E8A0490E9CE75AAFE'),
+        (0x4E696B3,'48893333D2E92543AAFE'),
+        (0x417E68A,'488B0DE70FF20833D2E85872C2FE488BCF488BD8E87D4DE8FB4C8B0D9E87E70841B8C9000000488BD3488BCFE8B1EE18FC'),
+        (0x417E4D1,'488B0D3018F20833D2E81174C2FE488BCF488BD8E8364FE8FB4C8B0D5789E70841B8C0000000488BD3488BCFE86AF018FC'),
+        (0x390E160,'488B1529B57209488B0BE8B1566FFC488BCF4885C00F852F905501488B1576357D09E8690111FD488903488BD0E950F8FFFF'),
+        (0x390DA8A,'488B15FF1B7909488B0BE8875D6FFC488BCF4885C00F85FC9F5501488B150C397D09E82B08A0FC488903488BD0E926FFFFFF'),
+        (0x3910A00,'488B1509F37809488B0BE8112E6FFC488BCF4885C00F859B6F5501488B153E097D09E865DF10FD488903488BD0E9B0CFFFFF'),
+        (0x39149EA,'488B150F5A7209488B0BE827EE6EFC488BCF4885C00F856B215501488B1554D17C09E8C39310FD488903488BD0E9C68FFFFF'),
+        (0x390DCB0,'488B15B1936F09488B0BE8615B6FFC488BCF4885C00F8595A35501488B15E6307D09E8451011FD488903488BD0E900FDFFFF'),
+        (0x390DC1A,'488B1527307309488B0BE8F75B6FFC488BCF4885C00F8571915501488B1514387D09E8130311FD488903488BD0E996FDFFFF'),
+        (0x390DED6,'488B1563997009488B0BE83B596FFC488BCF4885C00F85F4A75501488B1588297D09E8CF1211FD488903488BD0E9DAFAFFFF'),
+        (0x390DC4C,'488B15C5287909488B0BE8C55B6FFC488BCF4885C00F85539C5501488B15AA357D09E8050C11FD488903488BD0E964FDFFFF'),
+        (0x390E354,'488B15E5C97209488B0BE8BD546FFC488BCF4885C00F85E38A5501488B1572317D09E881FC10FD488903488BD0E95CF6FFFF'),
+        (0x390DA58,'488B1541B77809488B0BE8B95D6FFC488BCF4885C00F853B9A5501488B15A6357D09E86908A0FC488903488BD0E958FFFFFF'),
+        (0x390E1C4,'488B159DC67209488B0BE84D566FFC488BCF4885C00F85888C5501488B1512337D09E8F9FD10FD488903488BD0E9ECF7FFFF'),
+        (0x390E0FC,'488B158DC67209488B0BE815576FFC488BCF4885C00F85A48D5501488B158A337D09E839FF10FD488903488BD0E9B4F8FFFF')):
+        raw=bytes.fromhex(expected);require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    table_va=pe.image_base+0x3915318;raw=pe.bytes_at_va(table_va,416*4)
+    require(len(raw),416*4,source,table_va)
+    targets=[r[0] for r in struct.iter_unpack('<I',raw)]
+    rows=[]
+    for tag,target,index,definition,suffix,init in (
+        (0xC9,0x390DA8A,106672,16163,'IfElseAction_IfElseActionData',0x417E68A),
+        (0xC0,0x3910A00,106641,16145,'GainCostAction_Data',0x417E4D1),
+        (0x40,0x39149EA,106441,16615,'CheckDamageTag_Data',None),
+        (0x76,0x390E160,106507,16683,'Conditions_CheckSkillId_Data',None),
+        (0xEC,0x390DCB0,106853,16241,'ModifyDynamicBlackboard_Data',None),
+        (0x50,0x390DC1A,106467,16717,'CompareFloat_Data',None),
+        (0x11F,0x390DED6,106969,16341,'RaiseTrainLevelEvent_Data',None),
+        (0xB4,0x390DC4C,106625,16117,'FinishBuffAdvanced_Data',None),
+        (0x56,0x390E354,106476,16593,'Conditions_CheckBuffIdInContext_Data',None),
+        (0x92,0x390DA58,106537,16047,'CreateBuffAction_Data',None),
+        (0x57,0x390E1C4,106475,16595,'Conditions_CheckBuffIdInContextAdvanced_Data',None),
+        (0x5B,0x390E0FC,106480,16611,'Conditions_CheckDamageDecorateMask_Data',None)):
+        require(targets[tag],target,source,table_va+tag*4)
+        operands=[]
+        for at,usage_tag in ((target,1),)+(((init,2),) if init is not None else ()):
+            ins=pe.bytes_at_va(pe.image_base+at,7)
+            cell=pe.image_base+at+7+struct.unpack_from('<i',ins,3)[0]
+            usage=pe.bytes_at_va(cell,8)
+            found=unresolved_usage_index(usage,reg['typesCount'],tag=usage_tag,source=source,offset=cell)
+            require(found,index,source,cell)
+            pointer=pe.u64_at_va(int(reg['types'],16)+index*8)
+            record=pe.bytes_at_va(pointer,16);require(len(record),16,source,pointer)
+            require(record[10],0x12,source,pointer+10)
+            require(struct.unpack_from('<Q',record)[0],definition,source,pointer)
+            require(definition<len(md.types),True,source,pointer)
+            expected_name='Beyond.MemoryPack.Beyond_Gameplay_Core_'+suffix+'ForMemoryPack'
+            require(md.type_full_name(md.types[definition]),expected_name,source,pointer)
+            operands.append({'instructionRva':at,'cellVa':cell,'usageRawHex':usage.hex().upper(),
+                'usageTag':usage_tag,'registeredTypeIndex':index,'typePointerVa':pointer,'typeRawHex':record.hex().upper()})
+        if len(operands)==2:require(operands[0]['typePointerVa'],operands[1]['typePointerVa'],source)
+        rows.append({'tag':tag,'switchTargetRva':target,'typeDefinition':definition,'wrapperName':expected_name,'operands':operands})
+    return {'methods':methods,'windows':windows,'switchTableRva':0x3915318,'switchEntryCount':416,
+        'switchTableSha256':hashlib.sha256(raw).hexdigest().upper(),'rows':rows,
+        'level':'direct current native tag-to-wrapper routing; exact metadata identity',
+        'boundary':'The token/module-joined reader calls the bounded tag helper then uses its ushort output in an unsigned <=0x19F switch. The helper fast path consumes one byte and directly returns tags below 0xFA. FA consumes two more bytes as a little-endian ushort with no lower-value restriction; its short-input path calls an external refill helper, not an in-body zero-result failure. FB..FF return false with zero tag output, skipping the AL=1 instruction; the dispatcher false path clears its output. The maintained finite parser retains FF null and leaves FB..FE unsupported. Segment replacement is not certified. Selected table entries reach exact type-usage operands. For C9 and C0, separate cctor callsites pass those literal tags alongside a helper result derived from the same registered type pointer (usage kind two versus branch kind one). Current C9 describes the IfElse wrapper; C0 describes GainCost, contradicting the legacy Buff reader C0 name. Tag 40 describes CheckDamageTag. This is not a blanket tag renumbering rule or proof of nested fields, actual object allocation, formatter execution, record extent or EOF. Do not alias C9 to the legacy C0 parser or promote existing labels for current bytes without the concrete nested consumer ABI.'}
+
+
+def element_provider_state_flow(pe,*,source):
+    """Selected state-dependent lookup path; enclosing bodies are gated by audit."""
+    windows=[]
+    for at,expected in (
+        (0xF8040,'F68138010000017405488BC1EB05E9ED93F4FFC3'),
+        (0x2DA427F,'488B5D38488B1B'),
+        (0x2DA42B0,'B201488BCBE8462826FD4C8D6020'),
+        (0x2DA439A,'488B4A10488B43704C8B34C8'),
+        (0x2DA43E9,'498BCEE87F030000488BD8488B4538488B4008'),
+        (0x2DA4412,'488BD0488B0BE833F425FD84C00F842AD0D401'),
+        (0x2DA4592,'498B47704C8934F8'),
+        (0x2DA482E,'488B80B8000000488B6818'),
+        (0x2DA4970,'443B7B28754E488B75184C8B7310'),
+        (0x2DA49A7,'33C948897C24204D8BCE4C8BC6488BD0E8745D29FD84C00F8516010000'),
+        (0x2DA4ADA,'833D2BA70F0B00488B43184889442468'),
+        (0x2DA4C7F,'4C8B0D52032A0A4C8BC3488BD7E80F44E000'),
+        (0x2DA4C91,'488B442468'),
+        (0x4AF1447,'4533F6E9652F2BFE')):
+        raw=bytes.fromhex(expected)
+        require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    return {'windows':windows,'level':'direct conditional state/return flow',
+        'boundary':'The short class helper returns its input unchanged when bit zero at +0x138 is set; otherwise it tail-jumps to initialization, whose return cannot be replaced by the fast-path identity. The provider receives a companion, not a serialized reader. Companion method-context slot zero feeds a helper and its result+0x20 becomes a lookup key. A successful first-table lookup uses a 24-byte row index to load a qword carrier from a separate vector; a miss may construct and insert a carrier. A null context element can instead forward a null carrier to the next helper. That helper consults static-carrier+0x18 state, compares a hash and invokes a separate equality target before returning a matched node+0x18 value. Miss branches include conditional helper calls, allocations and publication through another helper; they are not equivalent to selecting the static registered candidate. The common return comes from the writable local slot. The caller checks the returned object against companion method-context slot one before returning it or entering an error path. These branches establish state dependence, not cache contents, helper success, concrete formatter identity, execution, serialized bytes or EOF. Hash/equality algorithms, all initialization and generation helper implementations, and live mutation ordering remain unresolved.'}
+
+
+def adapter_conversion_context(pe,md,reg,table,entries,*,source):
+    """Static interface carrier and slot identity; not a live conversion target."""
+    require(len(entries),13,source)
+    entry=entries[8]
+    require((entry['relativeIndex'],entry['kindRaw']),(8,2),source,entry['entryVa'])
+    index=pe.u32_at_va(entry['dataPointerVa'])
+    require(index,45287,source,entry['dataPointerVa'])
+    require(index<reg['typesCount'],True,source,entry['dataPointerVa'])
+    pointer=pe.u64_at_va(int(reg['types'],16)+index*8)
+    require(pointer!=0,True,source)
+    raw=pe.bytes_at_va(pointer,16);require(len(raw),16,source,pointer)
+    require(raw[10],0x15,source,pointer+10)
+    cp=struct.unpack_from('<Q',raw)[0];require(cp!=0,True,source,pointer)
+    cr=pe.bytes_at_va(cp,32);require(len(cr),32,source,cp)
+    bp=struct.unpack_from('<Q',cr)[0];require(bp!=0,True,source,cp)
+    carrier=generic_type_carrier(raw,cr,pe.bytes_at_va(bp,16),type_pointer=pointer,
+        type_count=len(md.types),source=source)
+    require(carrier['baseDefinitionIndex'],32173,source,bp)
+    interface=md.types[32173]
+    require(md.type_full_name(interface),'Beyond.MemoryPack.IMemoryPackDeSerializeWrapper`1',source)
+    inst=table.resolve_pointer(carrier['classInstantiationPointerVa'])
+    require(inst.index,12827,source,inst.record_va)
+    require(len(inst.arguments),1,source,inst.record_va)
+    arg=bytes.fromhex(inst.arguments[0].raw_type_record_hex)
+    require(arg,bytes.fromhex('F2020000000000000000130000000000'),source,inst.record_va)
+    owner=type_parameter_owner(md.buf,struct.unpack_from('<Q',arg)[0],
+        [t.generic_container_index for t in md.types],source=source)
+    require((owner['typeIndex'],owner['ordinal']),(13633,0),source,owner['containerOffset'])
+    method_entry=entries[9]
+    require((method_entry['relativeIndex'],method_entry['kindRaw']),(9,3),source,method_entry['entryVa'])
+    spec=pe.u32_at_va(method_entry['dataPointerVa'])
+    require(spec,173212,source,method_entry['dataPointerVa'])
+    require(spec<reg['methodSpecsCount'],True,source,method_entry['dataPointerVa'])
+    spec_va=int(reg['methodSpecs'],16)+spec*12
+    spec_raw=pe.bytes_at_va(spec_va,12)
+    definition,ci,mi=method_spec_record(spec_raw,len(md.methods),reg['genericInstsCount'],source=source,offset=spec_va)
+    require((definition,ci,mi),(249850,inst.index,-1),source,spec_va)
+    require((interface.method_start,interface.method_count),(definition,1),source)
+    method=md.methods[definition]
+    require((method.declaring_type,method.slot,method.parameter_count,method.token),
+        (32173,0,0,0x06001747),source)
+    require(md.string(method.name_index),'GetValue',source)
+    return {'carrier':carrier,'interfaceEntry':entry,'methodEntry':method_entry,
+        'instantiation':inst.as_dict(),'argumentOwner':owner,'methodSpecIndex':spec,
+        'methodSpecRawHex':spec_raw.hex().upper(),'methodDefinition':definition,'methodSlot':method.slot,
+        'level':'exact static carrier/VAR/MethodSpec and metadata slot identity',
+        'boundary':'Adapter relative class slot eight describes IMemoryPackDeSerializeWrapper with the reciprocal adapter ordinal-zero VAR. Slot nine describes GetValue with the identical class-instantiation index; its independently decoded metadata slot is zero and it has no explicit parameters. This distinguishes the conversion interface argument T0 from the existing slot-four formatter query for T1; it does not by itself decode the method return type or implementation. The native helper requests interface slot zero, but does not read RGCTX slot nine directly. The static relationship does not prove inflated interface pointers, a live implementation, method body semantics, serialized order, source consumption or EOF. Do not substitute the shared-code Object candidate for the original companion context.'}
+
+
+def list_element_value_flow(pe,*,source):
+    """Ref-object dispatch followed by object conversion; not a DWORD byte read."""
+    windows=[]
+    for at,expected in (
+        (0x3B1373A,'4C89442418'),(0x3B1374B,'498BF9488BF2488BD9'),
+        (0x3B1376E,'488B4F20E8C9485EFC488B88C0000000488B4920E8D90A29FF'),
+        (0x3B1378C,'B9050000004C8D4C24404C8BC3488BD0E85FBB52FC'),
+        (0x3B137A1,'488B5C24404885DB7460'),
+        (0x3B137AB,'488B4F20E88C485EFC488B88C0000000488B4940E87C485EFC'),
+        (0x3B137C4,'33C94C8BC3488BD0E82F3058FC'),(0x3B137D6,'8906'),(0x3B1380B,'33C0EBC2'),
+        (0x96814,'498B38498BF00FB7E9488BDA'),
+        (0x96828,'440FB7873001000033C066413BC0731C'),
+        (0x96838,'488B97B00000000FB7C84803C948391CCA741A'),
+        (0x96865,'0FB7D0488B87B00000004803D28B44D00803C548984883C01448C1E0044803C7'),
+        (0x96885,'4C8B00488BCE488B5008'),(0x968A3,'49FFE0')):
+        raw=bytes.fromhex(expected)
+        require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    bodies=[]
+    for start,end,expected in (
+        (0x3B13730,0x3B1380F,'8F484C44B26A8E791ED7FA7470F1ACEA2C46391E6869DE64D9B206FC6ECB05C7'),
+        (0x96800,0x968A6,'C9595BDA4FE4DBC11FC0B54731878C8F1305752C0DE7BA35104FE8DC134F8743')):
+        raw=pe.bytes_at_va(pe.image_base+start,end-start)
+        require(len(raw),end-start,source,start)
+        digest=hashlib.sha256(raw).hexdigest().upper();require(digest,expected,source,start)
+        bodies.append({'rva':start,'byteLength':len(raw),'sha256':digest})
+    return {'windows':windows,'bodies':bodies,'outputByteLength':4,
+            'level':'direct conditional ref-object/output and interface-dispatch flow',
+            'boundary':'The non-FF helper retains reader RCX, output RDX and companion R9, and saves incoming R8 in the stack qword later passed by address to formatter dispatch. Companion-derived class slots supply the provider query and conversion interface carrier. Dispatch receives the original reader plus that initialized writable object slot. A null resulting object yields EAX=0; otherwise the conversion helper receives slot number zero, a separately derived interface carrier and the resulting object. Its hit path compares exact pointers in 16-byte class interface records, adds the requested ushort slot to a record DWORD offset, sign-extends the 32-bit sum and addresses a target/companion pair at class+(sum+0x14)*16. Its miss path delegates pair resolution to another helper. The common path tail-jumps with RCX=object and RDX=the loaded companion; it does not pass the original reader to this conversion target. The outer helper writes returned EAX to its four-byte output. That width is therefore a converted result width, not proof of a serialized DWORD load or four-byte cursor advance. Pair bounds, interface/class initialization, provider and conversion identities, actual target selection, delegated byte consumption and EOF remain unresolved.'}
+
+
+def list_element_shared_context(pe,table,reg,code,spec_records,methods_raw,*,source):
+    """Selected code-context candidate; never overwrite a live companion context."""
+    inst=table.resolve(5059)
+    require([a.raw_type_record_hex for a in inst.arguments],
+            ['A22D0000000000000000118000000000','068E00000000000000001C0000000000'],source,inst.record_va)
+    require(len(spec_records),reg['methodSpecsCount'],source)
+    selected={i for i,row in enumerate(spec_records) if row==(102199,5059,-1)}
+    require(sorted(selected),[165248],source)
+    rows=generic_method_candidates(methods_raw,reg['genericMethodTableCount'],len(spec_records),selected,
+        code['genericMethodPointersCount'],code['invokerPointersCount'],source=source,
+        offset=int(reg['genericMethodTable'],16))
+    for row in rows:
+        slot=int(code['genericMethodPointers'],16)+row['indices'][0]*8
+        row['methodPointerSlotVa']=slot;row['methodPointerVa']=pe.u64_at_va(slot)
+    require([(r['methodSpecIndex'],r['methodPointerVa']) for r in rows],[(165248,pe.image_base+0x40BB390)],source)
+    return {'classInstantiation':inst.as_dict(),'methodDefinition':102199,'methodSpecIndices':sorted(selected),
+            'codeCandidates':rows,'level':'exact selected static MethodSpec/code-context relation',
+            'boundary':'The selected MethodSpec of the previously module/token-joined GenericMemoryPackFormatter Deserialize definition has ordered GameplayTag-record and Object-record arguments and no method instantiation. Its bounded generic-method table entry joins the dispatcher comparison target. This is a shared-code candidate context, not the actual object class or loaded companion context. The companion class supplies the specialized branch RGCTX slots independently; substituting the shared Object argument into that context is invalid without separate evidence. Actual provider selection, companion inflation, element payload and EOF remain unresolved.'}
+
+
+def list_element_null_probe(pe,*,source):
+    """Conditional FF peek and one-byte consumption, not a terminal grammar."""
+    windows=[]
+    for at,rawhex in (
+        (0x3EDF9A0,'40534883EC20488BD9C644243000E87D8EDCFE84C00F8537F8CC004883C4205BC3'),
+        (0x4BAF1F2,'488D542430488BCBE861960FFEB001E9B50733FF'),
+        (0x2CA8830,'40534883EC2083793001488BD90F8CBD8BE301488B43508038FF0F94C04883C4205BC3'),
+        (0x2CA8860,'48895C24084889742410574883EC2083793001488BF2488BD90F8C958BE301488B43500FB608880E8B7B3083EF010F88938BE30148FF4350FF4340FF4344897B30803EFF488B5C2430488B7424380F95C04883C4205FC3'),
+        (0x4AE1400,'4533C0BA01000000E84F7DC20490E930741CFE'),
+        (0x4AE1414,'4533C0BA01000000E83B7DC20490E958741CFEBA01000000488BCBE80C0DFF0084C00F8565741CFEE953741CFE')):
+        raw=bytes.fromhex(rawhex)
+        require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'byteLength':len(raw),'rawHex':rawhex,'sha256':hashlib.sha256(raw).hexdigest().upper()})
+    return {'windows':windows,'markerByte':255,'fastConsumedBytesOnMatch':1,
+            'level':'direct conditional marker-peek and consumed-counter flow',
+            'boundary':'The selected helper calls a peek routine that ensures one readable byte if needed, compares cursor[0] with 0xFF and returns the comparison without directly advancing cursor or counters. A false result returns immediately. A true result calls a byte consumer with the same reader and a local byte output, then returns true regardless of that consumer AL result. The consumer copies one byte out; its fast path advances cursor, local and consumed counters by one and decrements remaining by one. It returns byte!=0xFF, so the wrapper does not simply forward that boolean. Cold paths use the already reviewed ensure/advance routines; ensure may replace the segment, so absence of fast pointer increment does not imply unchanged allocation. The dispatcher true branch clears its DWORD output. This conditional FF handling does not identify a serialized union, prove the non-FF element width, guarantee source validity, or establish source/terminal/EOF consumption. The shared target identity does not prove this branch executes.'}
+
+
+def list_element_dispatch(pe,*,source):
+    """Object-selected target/companion ABI, not a selected element reader."""
+    bodies=[]
+    for start,end,expected in (
+        (0x98CD0,0x98DF1,'1BF6036D17FE88296002DAF06C93284CA14CA2C7117C2E89240F7FAF2D1D61FE'),
+        (0x2FCA38,0x2FCA56,'F223AF3B187BBB846AD744B4553E69B70D6BBBB616C49CB208C55A3CB2E3D9B9')):
+        raw=pe.bytes_at_va(pe.image_base+start,end-start)
+        require(len(raw),end-start,source,start)
+        digest=hashlib.sha256(raw).hexdigest().upper()
+        require(digest,expected,source,start)
+        bodies.append({'rva':start,'byteLength':len(raw),'sha256':digest})
+    # Decode the actual RIP operand rather than infer a target from nearby names.
+    at=0x98CF9;raw=pe.bytes_at_va(pe.image_base+at,7)
+    require(raw[:3],bytes.fromhex('488D0D'),source,at)
+    require(len(raw),7,source,at)
+    target=at+7+struct.unpack_from('<i',raw,3)[0]
+    require(target,0x40BB390,source,at)
+    return {'bodies':bodies,'targetPairOffsets':[0x190,0x198],'specializedTargetRva':target,
+            'fallbackCallRva':0x2FCA4E,'level':'direct conditional object-target/companion ABI',
+            'boundary':'Entry RDX is retained as the formatter object, R8 as the reader and R9 as the output pointer; incoming RCX is overwritten by the object class before the initialization helper call. The class is then reloaded and its +0x190 target and +0x198 companion are loaded as a pair. If the target differs from the exact RIP-derived comparison address, the cold branch performs an ordinary indirect CALL with RCX=object, RDX=reader, R8=output and R9=the loaded companion, then rejoins cleanup. It is not a tail jump, nor a companion inferred from declaration order. The equal-target path instead reads the loaded companion class RGCTX slots and calls another helper with the retained reader. A nonzero AL clears the output DWORD; the other path eventually forwards the retained reader/output, a helper-derived value and class slot three to another reader helper. These distinct branches do not certify which target the live object selects. Class initialization, actual target/companion identity and inflation, all delegated read widths/cursor changes and final EOF remain unresolved. No constant element byte width or terminal-candidate elimination follows.'}
+
+
+def list_formatter_candidate(pe,md,modules,image_owners,reg,code,table,spec_records,methods_raw,*,source):
+    """Concrete registered candidate, separate from active provider dispatch."""
+    identities=module_methods(pe,md,modules,image_owners,
+        [(428795,'MemoryPack.Formatters.ListFormatter`1','Deserialize',None)],source=source)
+    require(identities[0]['token'],0x060001C0,source)
+    index=209879
+    require(index<reg['typesCount'],True,source)
+    pointer=pe.u64_at_va(int(reg['types'],16)+index*8)
+    require(pointer!=0,True,source,int(reg['types'],16)+index*8)
+    raw=pe.bytes_at_va(pointer,16);require(len(raw),16,source,pointer)
+    require(raw[10],0x15,source,pointer)
+    carrier_pointer=struct.unpack_from('<Q',raw)[0]
+    require(carrier_pointer!=0,True,source,pointer)
+    carrier_raw=pe.bytes_at_va(carrier_pointer,32);require(len(carrier_raw),32,source,carrier_pointer)
+    base_pointer=struct.unpack_from('<Q',carrier_raw)[0]
+    require(base_pointer!=0,True,source,carrier_pointer)
+    base_raw=pe.bytes_at_va(base_pointer,16)
+    carrier=generic_type_carrier(raw,carrier_raw,base_raw,type_pointer=pointer,type_count=len(md.types),source=source)
+    require(carrier['baseDefinitionIndex'],54057,source,base_pointer)
+    require(md.methods[428795].declaring_type,54057,source)
+    inst=table.resolve_pointer(carrier['classInstantiationPointerVa'])
+    require(inst.index,816,source,inst.record_va)
+    require(len(inst.arguments),1,source,inst.record_va)
+    require(inst.arguments[0].raw_type_record_hex,'A22D0000000000000000118000000000',source,inst.record_va)
+    # spec_records is the already bounded complete MethodSpec inventory from audit().
+    require(len(spec_records),reg['methodSpecsCount'],source)
+    selected={i for i,row in enumerate(spec_records) if row==(428795,816,-1)}
+    require(sorted(selected),[215461],source)
+    candidates=generic_method_candidates(methods_raw,reg['genericMethodTableCount'],len(spec_records),selected,
+        code['genericMethodPointersCount'],code['invokerPointersCount'],source=source,
+        offset=int(reg['genericMethodTable'],16))
+    for row in candidates:
+        slot=int(code['genericMethodPointers'],16)+row['indices'][0]*8
+        row['methodPointerSlotVa']=slot;row['methodPointerVa']=pe.u64_at_va(slot)
+    require([(r['methodSpecIndex'],r['methodPointerVa']) for r in candidates],
+            [(215461,pe.image_base+0x3BA40F0)],source)
+    windows=[]
+    for at,expected in ((0x3BA410E,'488B47508B30'),
+        (0x3BA4120,'48834750048347400483474404895F30'),
+        (0x3BA4130,'48634744488B4F18482BC84863C6483BC8'),
+        (0x3BA4147,'83FEFF0F842F010000'),(0x3BA415F,'49833E00488B4520488B88C00000000F8518653201'),
+        (0x3BA41C1,'85F60F881F653201'),(0x3BA4282,'49C70600000000'),
+        (0x4ECA6AB,'FF431CC7431800000000E9799BCDFE'),
+        (0x3BA4261,'85F67F4D'),(0x3BA42C3,'4C8D4C24584C8BC7498BD7E8FD494FFC'),
+        (0x3BA4312,'41FFC4443BE60F8D47FFFFFFEB92')):
+        chunk=bytes.fromhex(expected)
+        require(pe.bytes_at_va(pe.image_base+at,len(chunk)),chunk,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    return {'methodIdentities':identities,'registeredTypeIndex':index,'typeCarrier':carrier,
+            'classInstantiation':inst.as_dict(),'methodSpecIndices':sorted(selected),'codeCandidates':candidates,
+            'windows':windows,'level':'exact static candidate identity; direct conditional header and loop flow',
+            'boundary':'The registered ListFormatter type and Deserialize MethodSpec share the same one-argument instantiation as the previously joined List carrier. The complete selected MethodSpec/code-table join yields one static code candidate, not proof of provider selection. This body receives the reader in RDX, output-slot pointer in R8 and companion in R9. Its fast header path reads a signed DWORD, advances cursor and both counters by four, and compares total-minus-consumed with the sign-extended count without multiplying by an element width. Header -1 clears the output. With a null output, other negative counts reach a helper followed by INT3; with an existing output, the reviewed reuse branch instead increments object+0x1C, clears object+0x18 and reaches a loop guarded by count>0. Thus this body does not universally reject all counts below -1. Each positive iteration passes the same reader and a zeroed four-byte output slot to element dispatch, then forwards the output word to another helper and increments its loop index. A four-byte output slot does not prove four serialized bytes per element. Cold header paths call the separately reviewed ensure/advance helpers. Element formatter identity, helper effects, successful allocation/reuse, actual MethodInfo/provider selection, authenticated source span and final cursor/EOF remain unresolved. Keep both terminal grammars.'}
+
+
+def nested_reader_context(pe, md, modules, image_owners, reg, table, *, source, metadata_source):
+    """Slot-zero context chain: reciprocal parameters, never live substitution."""
+    methods=module_methods(pe,md,modules,image_owners,
+        [(428462,'MemoryPack.MemoryPackReader','ReadPackable',None),
+         (428464,'MemoryPack.MemoryPackReader','ReadValue',None),
+         (428394,'MemoryPack.MemoryPackFormatterProvider','GetFormatter',None)],source=source,
+        expected_image='MemoryPack.dll')
+    module=modules['MemoryPack.dll']
+    require(pe.u32_at_va(module+0x40),120,source,module+0x40)
+    require(pe.u32_at_va(module+0x50),691,source,module+0x50)
+    range_va=pe.u64_at_va(module+0x48);entry_va=pe.u64_at_va(module+0x58)
+    ranges=pe.bytes_at_va(range_va,120*12)
+    require(len(ranges),120*12,source,range_va)
+    containers=[m.generic_container_index for m in md.methods]
+    rows=[]
+    for definition,token,start,count,kind,index,next_definition,inst_index in (
+        (428462,0x06000073,36,1,3,517554,428464,54984),
+        (428464,0x06000075,40,3,3,516756,428394,41928),
+        (428394,0x0600002F,13,2,1,2190,None,None)):
+        require(md.methods[definition].token,token,metadata_source,definition)
+        require(select_rgctx_range(ranges,691,token,source=source,offset=range_va),(start,count),source,range_va)
+        at=entry_va+start*16;raw=pe.bytes_at_va(at,16)
+        require(len(raw),16,source,at)
+        require(struct.unpack_from('<I',raw)[0],kind,source,at)
+        payload=struct.unpack_from('<Q',raw,8)[0]
+        encoded=pe.bytes_at_va(payload,4)
+        require(encoded,struct.pack('<I',index),source,payload)
+        row={'methodDefinition':definition,'token':token,'relativeSlot':0,'moduleEntryIndex':start,
+             'entryVa':at,'entryRawHex':raw.hex().upper(),'index':index,'kind':kind}
+        if kind==3:
+            require(index<reg['methodSpecsCount'],True,source,payload)
+            spec_at=int(reg['methodSpecs'],16)+index*12
+            spec=pe.bytes_at_va(spec_at,12)
+            parsed=method_spec_record(spec,len(md.methods),reg['genericInstsCount'],source=source,offset=spec_at)
+            require(parsed,(next_definition,-1,inst_index),source,spec_at)
+            inst=table.resolve(inst_index)
+            require(len(inst.arguments),1,source,inst.record_va)
+            argument=inst.arguments[0];type_at=argument.type_pointer_va
+            type_raw=bytes.fromhex(argument.raw_type_record_hex)
+            row.update({'methodSpecVa':spec_at,'methodSpecRawHex':spec.hex().upper(),
+                        'nextMethodDefinition':next_definition,'methodInstantiation':inst.as_dict()})
+        else:
+            require(index<reg['typesCount'],True,source,payload)
+            slot=int(reg['types'],16)+index*8
+            pointer=pe.bytes_at_va(slot,8)
+            require(len(pointer),8,source,slot)
+            type_at=struct.unpack('<Q',pointer)[0]
+            require(type_at!=0,True,source,slot)
+            type_raw=pe.bytes_at_va(type_at,16)
+        require(len(type_raw),16,source,type_at)
+        require(type_raw[10],0x1E,source,type_at)
+        owner=method_parameter_owner(md.buf,struct.unpack_from('<Q',type_raw)[0],containers,source=metadata_source)
+        require((owner['methodIndex'],owner['ordinal']),(definition,0),metadata_source,owner['containerOffset'])
+        row.update({'typePointerVa':type_at,'typeRawHex':type_raw.hex().upper(),'parameterOwner':owner})
+        rows.append(row)
+    windows=[]
+    for at,expected in ((0x381F904,'488BDA4C8BF9'),(0x381F915,'488B4338488B18'),
+                        (0x381F944,'488B4338488B30'),(0x381F956,'488B5E38488B1B'),
+                        (0x381FB0D,'B9050000004C8D4C24204D8BC7488BD3E8DEF781FC')):
+        raw=bytes.fromhex(expected)
+        require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
+        windows.append({'rva':at,'rawHex':expected})
+    return {'methods':methods,'rows':rows,'windows':windows,
+            'level':'exact static token/MethodSpec/MVAR joins; direct conditional nested context reads',
+            'boundary':'The selected nested body retains its incoming reader and follows MethodInfo+0x38 slot zero three times before deriving a provider key. The corresponding independently image/token-joined ranges identify ReadPackable to ReadValue, ReadValue to GetFormatter, then the GetFormatter MVAR type. Each method edge has one open method argument whose reciprocal owner is the preceding method and whose ordinal is zero; the final type is a distinct ordinal-zero parameter owned by GetFormatter itself. These are three different parameter records, not interchangeable raw identities. Conditional on ordinary context inflation from the previously authenticated ReadPackable<List<...>> call, this chain carries that same concrete argument through the intermediate contexts. All three generic definition ordinary-pointer slots are null; static ranges do not select a shared body. The body passes the retained reader and separate output slot to dispatch, but actual initialized MethodInfos, substitution, provider key/cache contents, list formatter, source length and final cursor remain unobserved. No list framing, element meaning or terminal uniqueness follows.'}
 
 
 def wrapper_consumer(pe, md, reg, table, *, source):
@@ -955,16 +1580,481 @@ def native_file_read(pe,md,modules,image_owners,*,source):
             'boundary':'The reviewed FileStream array overload checks negative offset/count and offset against array length minus count before its normal buffered path. Buffered and direct reads call the same MonoIO helper. That helper extracts a handle carrier at +0x10, compares the 32-bit offset-plus-count against array length, then passes handle, array+0x20+sign-extended offset, count, address of a zeroed out DWORD and a zero fifth argument to the static ReadFile import slot. A zero API return calls the static GetLastError slot and stores its result through the supplied error pointer. The helper returns the out DWORD when that error word is zero, otherwise -1; it does not derive the count from the API boolean return. The direct FileStream branch records that count, tests its error and -1 paths, updates state position and adds already-buffered bytes for its normal return. This distinguishes API boolean, out-byte count, error and accumulated read count. Only two name thunks and their descriptor are joined, not the entire import directory; live IAT contents, imported function behavior, handle provenance, full buffered-state invariants, alternate async/error/cleanup paths and runtime execution remain unresolved. No authenticated-file receipt, unconditional full-read guarantee or serialized EOF follows.'}
 
 
+def vfs_path_carrier(pe,md,modules,image_owners,*,source):
+    """Four-slot path carrier construction/consumption, not concrete root identity."""
+    methods=module_methods(pe,md,modules,image_owners,
+        [(247308,'Beyond.VFS.UnityPersistFileHelper','GetPersistAssetFilePath',0x2D7F920),
+         (247322,'Beyond.VFS.UnityStreamingFileHelper','GetStreamAssetFilePath',0x2D7DBF0),
+         (247278,'Beyond.VFS.UnityFileLoaderHelper','get_persistentDataPath',0x2D7FE70),
+         (247272,'Beyond.VFS.UnityFileLoaderHelper','get_streamingAssetsPath',0x2F46C10)],
+        source=source,expected_image='Common.Beyond.dll')
+    methods+=module_methods(pe,md,modules,image_owners,
+        [(452858,'Beyond.VFS.ThreadUnsafeStringUtils','AppendPathInfo',0x2D7E480)],
+        source=source,expected_image='Unsafe.VFS.dll')
+    edges=[]
+    for rva,target in ((0x318BFFA,0x2D7F770),(0x318C12E,0x2D7AE60),
+        (0x2D7F7CB,0x2D7F920),(0x2D7AEC6,0x2D7DBF0),
+        (0x2D7FB68,0x2D7FE70),(0x2D7FD10,0x2D7FE70),
+        (0x2D7DF60,0x2F46C10),(0x2D7E0CC,0x2F46C10),(0x2D7E210,0x2F46C10),
+        (0x318C03E,0x2D7E480),(0x318C15D,0x2D7E480),
+        (0x2D7E601,0x2DF2AA0),(0x2D7E636,0x2D72FA0)):
+        raw=pe.bytes_at_va(pe.image_base+rva,5)
+        require(relative_branch_target(raw,pe.image_base+rva,source=source),pe.image_base+target,source,rva)
+        require(raw[0],0xE8,source,rva)
+        edges.append({'rva':rva,'targetRva':target,'rawHex':raw.hex().upper()})
+    windows=[]
+    for rva,hex_bytes in (
+        (0x2D7F7D3,'0F10000F1048100F11030F114B10'),
+        (0x2D7AECE,'0F10000F1048100F11030F114B10'),
+        (0x2D7FB6D,'4889442438'),(0x2D7FBCF,'4889742440'),(0x2D7FC2F,'4C897C2448'),
+        (0x2D7FD15,'4889442438'),(0x2D7FD70,'4C897C2440'),
+        (0x2D7FDE3,'498BC6410F1106410F114E10'),
+        (0x2D7DF65,'488945C8'),(0x2D7DFBF,'4C8975D0'),(0x2D7E00F,'488975D8'),
+        (0x2D7E215,'488945C8'),(0x2D7E26F,'488975D0'),
+        (0x2D7E2D9,'410F1107410F114F10'),
+        (0x2D7E58A,'488B7E08'),(0x2D7E5A4,'4C8B7610'),(0x2D7E5B7,'4C8B3E488B7618'),
+        (0x2D7E5EE,'48897424204D8BCE4C8BC7498BD7488D4C2438'),
+        (0x2D7E61E,'488D5020'),(0x2D7E62B,'4533C9448B442440488BCB')):
+        raw=pe.bytes_at_va(pe.image_base+rva,len(bytes.fromhex(hex_bytes)))
+        require(raw,bytes.fromhex(hex_bytes),source,rva)
+        windows.append({'rva':rva,'rawHex':raw.hex().upper()})
+    return {'methods':methods,'edges':edges,'windows':windows,'carrierByteLength':32,
+            'level':'exact static identities; direct conditional four-slot carrier flow',
+            'boundary':'The file-helper checks call two distinct builders and copy both 16-byte halves of their results into the caller-supplied 32-byte carrier. On the non-replacement builder paths, slot +0 comes from branch-selected static storage and slot +8 from the respective path getter. Nonempty first input normally fills +0x10 with that input and +0x18 with the second candidate; the empty/null first-input branch instead fills +0x10 with the second candidate and leaves +0x18 zero. Streaming can transform the second candidate before these stores; its helper behavior and predicate semantics remain unresolved. AppendPathInfo receives that carrier, skips work when slot +0 is null/empty, substitutes a shared static value for null slots +8/+0x10/+0x18, and forwards +0,+8,+0x10,+0x18 in that order to another helper with a separate stack companion. Its resulting temporary array+0x20 and temporary DWORD length are passed to the append consumer. The copy width and argument order do not establish formatting syntax, separators, string contents, final output length, concrete root, overlay selection or file/hash identity. Static values, getter initialization, formatting/append ABI and helper internals, replacements and runtime execution remain unresolved.'}
+
+
+def vfs_path_format_context(pe,md,modules,image_owners,reg,table,*,source):
+    """Original generic arguments and append units, not complete format grammar."""
+    methods=module_methods(pe,md,modules,image_owners,
+        [(443949,'Cysharp.Text.Utf16ValueStringBuilder','AppendFormat',None),
+         (443868,'Beyond.UnSafeString','Append',0x2D72FA0)],source=source,expected_image='ZString.dll')
+    rva=0x2D7E5E2
+    cell=rip_qword_load_target(pe.bytes_at_va(pe.image_base+rva,7),pe.image_base+rva,source=source)
+    require(cell,pe.image_base+0xD06A7F8,source,rva)
+    raw=pe.bytes_at_va(cell,8)
+    index=unresolved_usage_index(raw,reg['methodSpecsCount'],tag=6,source=source,offset=cell)
+    require(index,627375,source,cell)
+    va=int(reg['methodSpecs'],16)+index*12
+    spec=pe.bytes_at_va(va,12)
+    require(method_spec_record(spec,len(md.methods),reg['genericInstsCount'],source=source,offset=va),
+            (443949,-1,8335),source,va)
+    instance=table.resolve(8335)
+    require([a.raw_type_record_hex for a in instance.arguments],
+            ['C78C00000000000000000E0000000000']*3,source)
+    windows=[]
+    for at,hex_bytes in (
+        (0x2D7E5E9,'4889442428'),(0x2DF2AC1,'4C8B757F488BFA4C8BE1'),
+        (0x2DF2B28,'4863C30FB74C47146683F97B'),
+        (0x2DF2D9E,'488B457F488B556F488B4038488B4808'),
+        (0x2DF2E0C,'488B457F488B5567488B4038488B08'),
+        (0x2DF2E94,'488B457F488B5577488B4038488B4810'),
+        (0x2DF2D43,'45017C2408'),
+        (0x2D72FAD,'4C8BFA418BF0418BD0488BD9'),
+        (0x2D73006,'488B43208B088D04364863E84863C14C8D3447'),
+        (0x2D73029,'4C8BC5498BD7498BCEFFD0'),
+        (0x2D73065,'488B43208B0003F0'),(0x2D73097,'488B43208930'),
+        (0x2D730CE,'488B43208B003B43287D38'),
+        (0x2D73103,'488B43208B00489833C966890C47')):
+        chunk=pe.bytes_at_va(pe.image_base+at,len(bytes.fromhex(hex_bytes)))
+        require(chunk,bytes.fromhex(hex_bytes),source,at)
+        windows.append({'rva':at,'rawHex':chunk.hex().upper()})
+    return {'methods':methods,'usageCellVa':cell,'usageRawHex':raw.hex().upper(),
+            'methodSpecIndex':index,'methodSpecRawHex':spec.hex().upper(),
+            'methodInstantiation':instance.as_dict(),'windows':windows,
+            'level':'exact static original MethodSpec; direct conditional 16-bit-unit consumption',
+            'boundary':'The AppendPathInfo call supplies an original AppendFormat MethodSpec with three ordered string-tag arguments, stored as its stack companion. Do not replace that context with arguments inferred from the shared code body. The reviewed body reads the companion at its sixth ABI position; numeric selector branches use the first/second/third value alongside companion+0x38 slots 0/8/16. Actual RGCTX inflation and nested formatter execution are not established. Input scanning reads 16-bit elements at string+0x14+index*2; literal copying advances the temporary cursor by element count. The downstream UnSafeString.Append receives pointer and count, calls a capacity helper, computes signed-extended 32-bit count*2 for an indirect copy target, and advances its stored cursor by the original count. A zero 16-bit terminator is written only if the updated signed cursor is below capacity. Hence the forwarded count is a two-byte-unit count on this path, not a byte length or an unconditional terminator guarantee. Capacity/copy resolver internals, replacement paths, complete format grammar, actual generic dispatch, output validity/length, concrete path and source identity remain unresolved.'}
+
+
+def resolver_key_comparison(pe,*,source):
+    """Bounded-prefix lexicographic comparison and caller length tie-breaks."""
+    windows=[]
+    for at,expected in (
+        (0x2DF760,'482BD14983F808'),(0x2DF790,'8A013A0411750C'),
+        (0x2DF79F,'4833C0C31BC083D8FFC3'),
+        (0x2DF814,'488B0C0A480FC8480FC9483BC11BC083D8FFC3'),
+        (0x1F21F,'4C8BC7483BF74C0F42C6E832052C00'),
+        (0x1F29C,'483BFE7293'),
+        (0x1F264,'4C8BC6483BDE4C0F42C3E8ED042C00'),
+        (0x1F42E,'483BF30F8349FEFFFF'),
+        (0x1F36F,'4C8BC7483BF74C0F42C6E8E2032C00'),
+        (0x1F3D5,'483BFE72AA'),(0x1F43C,'483BF3738B')):
+        raw=pe.bytes_at_va(pe.image_base+at,len(bytes.fromhex(expected)))
+        require(raw,bytes.fromhex(expected),source,at)
+        windows.append({'rva':at,'rawHex':raw.hex().upper()})
+    return {'windows':windows,'level':'direct conditional byte-order comparison',
+            'boundary':'The complete comparator consumes the supplied byte count using alignment bytes, bounded qword groups and remaining bytes. Equal prefixes return zero. Byte mismatches return -1/+1 using unsigned comparison flags; qword mismatches byte-swap both operands before the same unsigned ordering, preserving first-byte lexicographic order. The resolver supplies the smaller key/query byte length, then uses length comparisons to order equal prefixes, for both original and transformed queries. Hence a matching prefix alone is not key equality. No character decoding, case folding or locale comparison occurs in this reviewed helper. Its count is not an independent allocation bound; valid pointer extents and string construction/copy, tree invariants, actual keys and execution remain prerequisites. This does not establish a live lookup result, formatter selection or file identity.'}
+
+
+def resolver_prefix_query(pe,*,source):
+    """Conditional prefix extent, not live key equality or lookup success."""
+    windows=[]
+    for at,expected in (
+        (0x1F2D6,'BA28000000488BCBE85D052C00'),
+        (0x1F2EC,'482BC34883F8FF'),
+        (0x1F2F9,'4C8BC84533C0488D542440488D4C2420E892FDFFFF'),
+        (0x1F30E,'488BD0488D4C2420E855460000'),
+        (0x1F0BD,'4C3941100F828F7A2C00488B4110492BC0493BC14C0F42C8'),
+        (0x1F0D5,'488379180F7603488B094A8D14014D8BC1488BCBE8E2570000'),
+        (0x2399C,'0F10070F11030F104F100F114B10'),
+        (0x24973,'4C8BC348894718488BD648895F10498BCEE897A32B00')):
+        raw=pe.bytes_at_va(pe.image_base+at,len(bytes.fromhex(expected)))
+        require(raw,bytes.fromhex(expected),source,at)
+        windows.append({'rva':at,'rawHex':raw.hex().upper()})
+    return {'windows':windows,'queryStart':0,'delimiterByte':40,
+            'level':'direct conditional prefix-range construction',
+            'boundary':'After a successful delimiter search the resolver subtracts the query data pointer from the result, supplies that difference as requested length and supplies start zero to the subrange helper. The helper unsigned-checks start<=length, clamps requested length to length-start, selects inline or pointer bytes by capacity>15 and forwards source+start with the bounded count to a constructor. Its result is moved as two 16-byte halves into the second query carrier. For a valid successful search of the first left parenthesis this requests exactly the bytes before that delimiter, excluding parentheses and their suffix; it does not simply remove two final bytes. The reviewed search uses scalar and SIMD matching; no arbitrary no-match return guarantee is promoted from undefined BSF-zero destination contents. Allocation/copy/comparison helper semantics, malformed carriers, actual cache/tree contents and successful lookup remain unresolved. This conditional extent does not establish live equivalence between the requested and registered names.'}
+
+
+def unity_loader_conversion(pe,*,source):
+    """Selected conversion counts and end pointer; no successful API receipt."""
+    bodies=[]
+    for start,end,expected in (
+        (0x22A130,0x22A235,'AEF375DB6CF045093078E4299BCCB8EF554CF3E39C8F1682350D542BCD7A539B'),
+        (0x22A090,0x22A0D5,'3B05F568B8ED9FA3D4F39B42D3765B62FF2DAD7A61D1B0425E1E8D57C411FF7F'),
+        (0xEDA2CA,0xEDA2DD,'CDFAA7C4BF101716557C796C22B29B593F21B1181CD5CA0670E9AE8AFCA6BB17'),
+        (0xEDA2F2,0xEDA305,'F141693EAD546988017B299AD444ECE651B9904562BE0654D0CEF9C165CDC250'),
+        (0x3CE6A0,0x3CE6B8,'90A3B5C1237913A161A55C77A96688A23E1FAD0DA89E369F0C9DC40BF754F202')):
+        raw=pe.bytes_at_va(pe.image_base+start,end-start)
+        require(len(raw),end-start,source,start)
+        digest=hashlib.sha256(raw).hexdigest().upper()
+        require(digest,expected,source,start)
+        bodies.append({'rva':start,'byteLength':len(raw),'sha256':digest})
+    caller=bytes.fromhex('E805BEF2FF488D9424A0000000488D4C2430E853BDF2FF')
+    require(pe.bytes_at_va(pe.image_base+0x2FE326,len(caller)),caller,source,0x2FE326)
+    return {'bodies':bodies,'callerRva':0x2FE326,'callerRawHex':caller.hex().upper(),
+            'codePageArgument':65001,'flagsArgument':0,'elementByteLength':2,
+            'level':'direct conditional count, terminator and end-pointer flow',
+            'boundary':'The converter receives a pointer-to-input-pointer, a 64-bit input count and an output representation. With nonzero count its first selected MultiByteToWideChar import call receives ECX=65001, EDX=0, R8=input data, R9D=low DWORD input count, a null output and zero output count. A nonpositive EAX goes to an unreviewed reset helper. A positive EAX is sign-extended and used for capacity selection, stored length (or inline 12-length WORD encoding), and a zero WORD at data+2*length before a second import call. The second call uses the same input bytes/count and a helper-derived output data/count; its EAX survives the epilogue but the module caller does not inspect it before calling the end-pointer helper. That helper selects inline/pointer data and writes data+2*representationLength into its output slot. Its length leaf returns QWORD +0x10 unless tag BYTE +0x20=1, when it returns 12-zero-extended WORD +0x18; it preserves the R8 data register used by the end-pointer caller. Tag-two cold branches call a capacity helper before rejoining. Capacity allocation, reset and tag mutation remain unresolved, so neither output bounds nor conversion success is asserted. Representation length and the subsequent slash-loop end are not validated against the second API return. This is not Unicode parity, an OS binding receipt, a loaded-image hash or a SkillData final cursor.'}
+
+
+def unity_loader_input(pe,*,source):
+    """Exact selected caller's fixed inline request, not loaded image identity."""
+    windows=[]
+    # These are selected path windows, not whole-function coverage. The helper's
+    # other branches cannot be selected by this caller's explicit tag=1/count=16.
+    for start,end,expected in (
+        (0x5579C0,0x557A20,'C8C0DCA5C01C98FA0E86CCCFB3563C582786D42C411A9BFDA6A16F1A8625DC7A'),
+        (0xF48826,0xF48830,'603B5330B684DA48E711384D93EC77A08D666CD2F2F778E33918B2CCF13A3B26'),
+        (0x74A60,0x74A99,'4AA8D511727CC6C391DE9337AE1A5E47AF18F4F3EF3F9D70D2C8649BAFBE47B9')):
+        raw=pe.bytes_at_va(pe.image_base+start,end-start)
+        require(len(raw),end-start,source,start)
+        digest=hashlib.sha256(raw).hexdigest().upper()
+        require(digest,expected,source,start)
+        windows.append({'rva':start,'byteLength':len(raw),'sha256':digest})
+    literal=b'GameAssembly.dll'
+    require(pe.bytes_at_va(pe.image_base+0x187F180,16),literal,source,0x187F180)
+    return {'windows':windows,'literalRva':0x187F180,'requestedModuleName':literal.decode('ascii'),
+            'requestByteLength':16,'loaderCallRva':0x557A1B,'loaderRva':0x31E6C0,
+            'level':'direct selected caller inline-byte construction and argument flow',
+            'boundary':'The caller initializes a stack representation with tag BYTE +0x20=1, then calls a helper with count 16. On these explicit inputs the reviewed helper path compares count against 24 and returns the original representation address without mutating it or invoking other callees. The caller copies the exact 16-byte GameAssembly.dll literal to that address and writes a separate zero byte at +16. Its tag-one cold branch sets BYTE +0x18=8, rejoins the hot path and passes the same representation address in RCX to the reviewed module loader. The previously verified length helper therefore computes 24-8=16 on this carrier. Other capacity/helper branches and the caller after the loader call are outside this claim. This proves a static basename request, not actual invocation, conversion correctness, the selected module-cache entry, Windows search-path resolution, loaded absolute path or loaded image hash. It cannot certify a current GameAssembly binding or any SkillData source/cursor.'}
+
+
+def unity_module_lookup(pe,*,source):
+    """Selected loader/lookup control flow and import identities, not live bindings."""
+    bodies=[]
+    # Include split hot fragments and their explicit cold branch destinations.
+    # Callees are not included in these extents or implicitly given semantics.
+    for start,end,expected in (
+        (0x2FE290,0x2FE40F,'F3362A1AE0D28E3F6EA2F4C0606C3FCE395EEE92AC7ED140172969691E5C3064'),
+        (0xEFE324,0xEFE37B,'7BCEC022B9ACAB3E5D1EACBF5F25CFEC4E492BB9BD213BF1596A6F12D2637756'),
+        (0x31E670,0x31E6B3,'20303ED34206BCD416A1CA61BCCE44C1022E929A69844EE7C5A5F9D730776624'),
+        (0xF00A86,0xF00AFF,'76809E14C42148522DF78F2C0594B126180942EBA7F4F23C4EF0F41BB38BCB78'),
+        (0x31E6C0,0x31E6DA,'CA1191138A5ECBDBA6B4E705D8C9FCB3C17F96B47989FCEAB060605A3EAA1DC1')):
+        raw=pe.bytes_at_va(pe.image_base+start,end-start)
+        require(len(raw),end-start,source,start)
+        digest=hashlib.sha256(raw).hexdigest().upper()
+        require(digest,expected,source,start)
+        bodies.append({'rva':start,'byteLength':len(raw),'sha256':digest})
+    optional=pe.u32_at_file(0x3C)+24
+    require(pe.u32_at_file(optional+120),0x1C3624C,source,optional+120)
+    require(pe.u32_at_file(optional+124),420,source,optional+124)
+    require(pe.bytes_at_va(pe.image_base+0x1C3624C,20),
+            struct.pack('<IIIII',0x1C36648,0,0,0x1C38088,0x185B258),source,0x1C3624C)
+    require(pe.bytes_at_va(pe.image_base+0x1C38088,13),b'KERNEL32.dll\0',source,0x1C38088)
+    imports=[]
+    for at,index,name_rva,hint,name in (
+        (0x2FE388,207,0x1C37618,0x3F7,b'LoadLibraryW'),
+        (0x31E689,211,0x1C375CE,0x2DD,b'GetProcAddress'),
+        (0x22A16A,216,0x1C3756A,0x423,b'MultiByteToWideChar'),
+        (0x22A1F5,216,0x1C3756A,0x423,b'MultiByteToWideChar')):
+        raw=pe.bytes_at_va(pe.image_base+at,6)
+        require(len(raw),6,source,at)
+        require(raw[:2],b'\xff\x15',source,at)
+        slot=at+6+struct.unpack_from('<i',raw,2)[0]
+        require(slot,0x185B258+index*8,source,at)
+        lookup=0x1C36648+index*8
+        require(pe.bytes_at_va(pe.image_base+lookup,8),struct.pack('<Q',name_rva),source,lookup)
+        require(pe.bytes_at_va(pe.image_base+name_rva,len(name)+3),
+                struct.pack('<H',hint)+name+b'\0',source,name_rva)
+        imports.append({'callRva':at,'iatSlotRva':slot,'lookupSlotRva':lookup,
+                        'nameRva':name_rva,'name':name.decode('ascii'),'dll':'KERNEL32.dll'})
+    return {'bodies':bodies,'selectedImports':imports,'moduleHandleCacheRva':0x1CF4C20,
+            'level':'exact selected import identities; direct conditional handle and lookup-result flow',
+            'boundary':'The loader entry forwards its incoming RCX to a module helper, stores the returned RAX in the shared module-handle cache and exits on zero before the export-request body. The helper has a runtime-cache branch that returns a qword supplied by another helper. Its other branch extracts input representation data/length, invokes conversion helpers, iterates two-byte elements up to a helper-supplied end pointer replacing 0x2F with 0x5C, selects inline or pointer storage and passes it as RCX to the selected static LoadLibraryW import slot. The imported return is preserved, optionally stored through a cache helper, and returned after cleanup. The export lookup helper preserves incoming module/name arguments for the selected GetProcAddress import, returns its nonzero result, or returns zero for a null module. On a zero imported result its cold branch calls diagnostic/cleanup helpers and rejoins the return of the saved zero, conditional on those calls returning normally. Only the first import descriptor and three selected name thunks are joined, including both conversion calls to MultiByteToWideChar, not complete import-table coverage or live IAT contents. Cache lookup/insertion and string conversion helper semantics, end-pointer validity, actual input module path, loaded image identity, successful binding and execution remain unresolved. No authenticated SkillData source, final cursor or terminal uniqueness follows.'}
+
+
+def unity_conversion_exports(pe,unity,*,source,unity_source):
+    """Two selected export chains and conditional output-slot write ABI."""
+    requests=[]
+    for at,rawhex,name_at,name,export_name_at,name_slot,ordinal_slot,function_slot,index,target in (
+        (0x3205CD,'488B0D4C469D01488D150D6D6601E890E0FFFF488905D14A9D01',0x19872E8,
+         'il2cpp_string_new_len',0xCF8DAF9,0xCF8BC5C,0xCF8C0EE,0xCF8B5E4,243,0x24AD0),
+        (0x31FA06,'488B0D13529D01488D1544636601E857ECFFFF48890538519D01',0x1985D58,
+         'il2cpp_gc_wbarrier_set_field',0xCF8D0D4,0xCF8BAD8,0xCF8C02C,0xCF8B460,146,0xE170)):
+        raw=bytes.fromhex(rawhex);literal=name.encode('ascii')+b'\0'
+        require(unity.bytes_at_va(unity.image_base+at,len(raw)),raw,unity_source,at)
+        require(unity.bytes_at_va(unity.image_base+name_at,len(literal)),literal,unity_source,name_at)
+        for slot,expected in ((name_slot,struct.pack('<I',export_name_at)),
+                              (ordinal_slot,struct.pack('<H',index)),(function_slot,struct.pack('<I',target))):
+            require(pe.bytes_at_va(pe.image_base+slot,len(expected)),expected,source,slot)
+        require(pe.bytes_at_va(pe.image_base+export_name_at,len(literal)),literal,source,export_name_at)
+        requests.append({'name':name,'loaderRva':at,'rawHex':rawhex,'exportTargetRva':target,'ordinal':index+1})
+    require(pe.bytes_at_va(pe.image_base+0xE177,6),bytes.fromhex('4C8BCA4C8902'),source,0xE177)
+    return {'requests':requests,'level':'exact selected export identities; direct conditional output-slot store',
+            'boundary':'Unity requests string_new_len into the first conversion cache and gc_wbarrier_set_field into the second. Selected GameAssembly export name/ordinal/function slots join the former to the previously reviewed byte-to-string constructor, and the latter to a leaf that writes R8 into [RDX] before optional atomic bitmap marking. The caller passes the first result in R8 and its separate output slot in RDX, then reads that slot. Conditional on these dynamic bindings and successful calls, the returned qword is the first constructor result, not a second newly constructed object. The barrier marking branch and constructor internal allocation helpers are not a live GC receipt. Loader module identity, actual cache bindings, lifecycle, input validity, query normalization and concrete directory remain unresolved. Only selected export chains are joined, not full export coverage.'}
+
+
+def unity_path_return(pe,*,source):
+    """Selected return-slot and string representation, not runtime path value."""
+    windows=[]
+    for rva,expected in (
+        (0x32BA24,'488D4C2420E822000000488BD0488D4C2460E88502FAFF'),
+        (0x32BA3B,'488D4C2420E8CB8ED4FF488B442460'),
+        (0x32BA63,'4C8D0596245401488BCB488D542420E819000000'),
+        (0x2CBCC6,'488BD94C8BCA488BCAE81C8FDAFF'),
+        (0x2CBCD4,'80792001751F448BC0488D4C2430498BD1E816000000'),
+        (0x2CBCEA,'488B08488BC348890B'),(0x2CBCF9,'4D8B09EBDC'),
+        (0x74BF0,'807920017405488B4110C3480FBE5118B818000000482BC2C3'),
+        (0x2CBD06,'488B05AB93A2014C8BCA488BD9418BD0498BC9FFD0'),
+        (0x2CBD1B,'4C8BC0488D54243033C9FF152D8EA201488B442430488903')):
+        raw=pe.bytes_at_va(pe.image_base+rva,len(bytes.fromhex(expected)))
+        require(raw,bytes.fromhex(expected),source,rva)
+        windows.append({'rva':rva,'rawHex':raw.hex().upper()})
+    literal=b'StreamingAssets\0'
+    require(pe.bytes_at_va(pe.image_base+0x186DF00,len(literal)),literal,source,0x186DF00)
+    return {'windows':windows,'literal':'StreamingAssets','representationTagOffset':32,
+            'level':'direct conditional return-slot flow',
+            'boundary':'The selected registered target builds a temporary representation, passes it to a converter with a separate output slot, cleans up the temporary and returns that output qword. A nested builder supplies the exact StreamingAssets literal to another helper, not proof of concatenation semantics or root value. The converter length helper returns QWORD +0x10 unless BYTE +0x20 equals one; on that branch it returns 24 minus sign-extended BYTE +0x18. The same tag chooses inline representation versus the pointer at +0. Only the low DWORD length reaches the next helper. That helper calls a dynamic function with data pointer and length, then forwards its result to a second dynamic function with a separate output slot and returns the slot qword. These calls are not yet verified managed-string constructors. Dynamic targets, allocation/cleanup and joining helpers, underlying path initialization, tag validity and actual execution remain unresolved; no authenticated file or runtime directory is asserted.'}
+
+
+def unity_registration_pair(pe,*,source):
+    """Shared native loop index proves static pairing, not active registration."""
+    body=pe.bytes_at_va(pe.image_base+0x3BF7C0,0x53)
+    require(hashlib.sha256(body).hexdigest().upper(),
+            'DAA468EB7D4B399BCE0FCEB29186340606D92272D61C56D5D08D4FC158888AB7',source,0x3BF7C0)
+    count=0xF7E;values_rva=0x19DD250;names_rva=0x19E4E40
+    values_raw=pe.bytes_at_va(pe.image_base+values_rva,count*8)
+    names_raw=pe.bytes_at_va(pe.image_base+names_rva,count*8)
+    require(len(values_raw),count*8,source,values_rva)
+    require(len(names_raw),count*8,source,names_rva)
+    rows=[]
+    for i,((value,),(name,)) in enumerate(zip(struct.iter_unpack('<Q',values_raw),struct.iter_unpack('<Q',names_raw))):
+        # Addressability only: not complete name strings or function bodies.
+        require(len(pe.bytes_at_va(value,1)),1,source,values_rva+i*8)
+        require(len(pe.bytes_at_va(name,1)),1,source,names_rva+i*8)
+        rows.append({'index':i,'nameVa':name,'valueVa':value})
+    selected=rows[299]
+    require(selected['nameVa'],pe.image_base+0x19F1D50,source,names_rva+299*8)
+    require(selected['valueVa'],pe.image_base+0x32BA20,source,values_rva+299*8)
+    literal=b'UnityEngine.Application::get_streamingAssetsPath\0'
+    require(pe.bytes_at_va(selected['nameVa'],len(literal)),literal,source,0x19F1D50)
+    return {'loopRva':0x3BF7C0,'loopSha256':hashlib.sha256(body).hexdigest().upper(),
+            'namesRva':names_rva,'valuesRva':values_rva,'slotByteLength':8,
+            'summary':{'success':count,'failed':0,'unsupported':0},'rows':rows,
+            'selected':dict(selected,name=literal[:-1].decode('ascii')),
+            'level':'direct static name/value argument pairing',
+            'boundary':'The complete loop starts at index zero, derives image base with RIP-relative LEA, loads RDX and RCX from separate arrays using the same byte offset, calls the reviewed forwarder and advances by eight until 0xF7E entries. Both complete pointer vectors are bounded and every target is checked for one-byte addressability only; this is not complete string/body decoding. Entry 299 independently pairs the selected interface name with RVA 0x32BA20. The registered name lacks the parentheses in the resolver request, so matching still depends on the unclosed query helper path. Loop invocation, callback effects, dynamic export resolution, tree insertion, duplicate registrations and the selected target body/return ABI remain unresolved. No current directory or authenticated-file identity is inferred.'}
+
+
+def unity_registration_forwarder(pe,*,source):
+    """Selected dynamic export request and forwarding, not live binding."""
+    raw=pe.bytes_at_va(pe.image_base+0x3BF270,0x6A)
+    require(hashlib.sha256(raw).hexdigest().upper(),
+            'B5EAB384DA5D794DB6D62A17D18789C09FB178E6BA346BB0EB3F12D1A739BCB3',source,0x3BF270)
+    windows=[]
+    for rva,value in ((0x31E8F9,'488B0D20639D01488D15F1536601E864FDFFFF488905AD669D01'),
+                      (0x3BF2D3,'48FF25E65C9301')):
+        chunk=pe.bytes_at_va(pe.image_base+rva,len(bytes.fromhex(value)))
+        require(chunk,bytes.fromhex(value),source,rva)
+        windows.append({'rva':rva,'rawHex':chunk.hex().upper()})
+    name=b'il2cpp_add_internal_call\0'
+    require(pe.bytes_at_va(pe.image_base+0x1983CF8,len(name)),name,source,0x1983CF8)
+    return {'windows':windows,'forwarderRva':0x3BF270,'forwarderByteLength':len(raw),
+            'forwarderSha256':hashlib.sha256(raw).hexdigest().upper(),
+            'requestedExport':name[:-1].decode('ascii'),'functionCacheRva':0x1CF4FC0,
+            'level':'exact static request; direct conditional two-argument forwarding',
+            'boundary':'A selected loader window supplies a module-handle carrier and the NUL-terminated export name to a dynamic lookup helper, then stores its result in the function cache. The full reviewed forwarding function preserves the two entry arguments, passes them to each selected callback in a separately stored pointer array when its count is positive, then tail-jumps through that same function cache with the original arguments. The zero-callback branch reaches the same tail jump. This connects requested export name to a conditional cache consumer, not the actual module handle, resolved function identity, successful initialization or runtime execution. Callback identities/state, lookup helper cold paths, registration callers and concrete interface-name/function-value pairs remain unresolved. The nearby interface-name pointer array is only a lead and is not joined by position or matching counts.'}
+
+
+def vfs_root_resolver(pe,*,source):
+    """Static requested interface and conditional cache flow, not actual root."""
+    windows=[]
+    for rva,expected in (
+        (0x2F46CD9,'E8325F9F00'),(0x2F46CE5,'488BD8'),
+        (0x2F46CFD,'488B89B800000048895908'),
+        (0x2F46CA7,'488B80B8000000488B4008'),
+        (0x393CC14,'488B052D12570A4885C07407'),
+        (0x393CC20,'4883C42848FFE0'),
+        (0x393CC27,'488D0D1A7BEF06E87D256EFC'),
+        (0x393CC3C,'4889050512570AEBDB'),
+        (0x1F1DC,'4C8B2D7515E90D498B5D084D8BFD'),
+        (0x1F293,'498B4740E957010000'),
+        (0x1F2D6,'BA28000000488BCBE85D052C00'),
+        (0x1F32A,'4C8B2D2714E90D498B5D084D8BFD'),
+        (0x1F3CC,'4D3BFD751133DBEB11'),
+        (0x1F3E2,'498B5F40'),(0x1F3F0,'488BC3'),
+        (0x2E6B64,'48C7C0FFFFFFFFE97F87D3FF'),
+        (0x2076F,'4889542410'),(0x2077D,'488BEC'),
+        (0x207E6,'4C8B256BFFE80D'),
+        (0x208BB,'488D1D96FEE80D'),
+        (0x208CA,'B948000000E848301700'),
+        (0x208DD,'0F1045D80F1140200F104DE80F114830'),
+        (0x20924,'E837FCFFFF4C8BE8488B453849894540'),
+        (0xF872C,'4889052580DB0D4889052680DB0D'),
+        (0xF873F,'488900488940084889401066C7401801014889050180DB0D'),
+        (0xCF8B1F0,'00000000FFFFFFFF0000000044C2F80C010000009E0100009E01000018B2F80C90B8F80C08BFF80C'),
+        (0xCF8B914,'EFC4F80C'),(0xCF8BF4A,'2100'),
+        (0xCF8B29C,'30050200'),(0x20530,'E92B020000')):
+        raw=pe.bytes_at_va(pe.image_base+rva,len(bytes.fromhex(expected)))
+        require(raw,bytes.fromhex(expected),source,rva)
+        windows.append({'rva':rva,'rawHex':raw.hex().upper()})
+    name=b'UnityEngine.Application::get_streamingAssetsPath()\0'
+    require(pe.bytes_at_va(pe.image_base+0xA834748,len(name)),name,source,0xA834748)
+    export_name=b'il2cpp_add_internal_call\0'
+    require(pe.bytes_at_va(pe.image_base+0xCF8C4EF,len(export_name)),export_name,source,0xCF8C4EF)
+    return {'windows':windows,'requestedInterface':name[:-1].decode('ascii'),
+            'nameRva':0xA834748,'functionCacheRva':0xDEADE48,
+            'lookupCarrierGlobalRva':0xDEB0758,'candidateValueOffset':64,
+            'registrationWriterRva':0x20760,'sentinelInitializerRva':0xF8718,
+            'selectedWriterExport':{'name':export_name[:-1].decode('ascii'),
+                                    'ordinal':34,'stubRva':0x20530},
+            'level':'exact static resolver name; direct conditional cache flow',
+            'boundary':'The normal non-replacement streaming-path getter initialization branch calls the wrapper, preserves RAX in RBX and stores it in static carrier+8; the normal return reads that slot. The wrapper loads a cached function pointer and tail-jumps to it when nonnull. On cache miss it passes the exact NUL-terminated interface name to the resolver, checks the result, stores that result in the same function-pointer cell and tail-jumps. The requested name is not a verified resolved function identity, ABI or actual directory. The resolver loads a runtime tree carrier from a static global, follows child pointers using comparison helper results and returns candidate node+0x40 after its first lookup. If that lookup chooses the sentinel, it constructs a second query through helpers (including a search passed byte 0x28) and traverses the same carrier again; a final sentinel yields zero, otherwise node+0x40 supplies the result. The independently reviewed writer scans the first argument to a NUL byte, prepares a 32-byte key carrier and searches the same global tree. Its insertion path requests 0x48 bytes, copies the key carrier into node+0x20 and calls an insertion helper; both existing-candidate and returned-node paths store the original second argument into node+0x40. A separate initializer zeroes two global slots, requests 0x48 bytes, writes self pointers at node+0/+8/+0x10 and marker WORD 0x0101 at +0x18, then stores that pointer in the lookup global. Neither function being present proves initialization, insertion success or actual selected name/value pairs. The selected PE export header, name-pointer slot, ordinal-index slot and function slot independently join il2cpp_add_internal_call (ordinal 34) to a five-byte tail-jump stub into this writer, preserving incoming arguments. Only this selected export chain is certified, not complete export-table coverage; the stub is not assigned to the preceding pdata entry. Export callers and their actual name/value arguments, insertion/allocator internals, string construction/comparison/search/subrange helper semantics and live contents, replacement/cold failure paths, class initialization, comparison predicate semantics, live cache contents and the final path/file/hash connection remain unresolved.'}
+
+
+def vfs_string_carrier(pe,*,source):
+    """Conditional literal conversion and character-reader carrier connection."""
+    windows=[]
+    for rva,expected in (
+        (0x2CB7624,'4C6341108BC2493BC07D0D4863C20FB7444114'),
+        (0x24AD6,'448BC2488BD1488D4C2420E87A000000'),
+        (0x24AE7,'488D4C242048837C243807480F474C24208B542430E86F0D0000'),
+        (0x24BB2,'0FB60A80F980730C440FB6C141B901000000'),
+        (0x24CC1,'0FB61E0FB60E80F9800F833C01000048FFC6'),
+        (0x24CED,'488D480148894F10488BCF48837F18077603488B0F66891C416644896C4102'),
+        (0x259DC,'897B10664489647B14'),
+        (0x259FB,'4C8BC7488D4B144D03C0498BD6E813932B00')):
+        raw=pe.bytes_at_va(pe.image_base+rva,len(bytes.fromhex(expected)))
+        require(raw,bytes.fromhex(expected),source,rva)
+        windows.append({'rva':rva,'rawHex':raw.hex().upper()})
+    return {'windows':windows,'lengthOffset':16,'elementDataOffset':20,'elementByteLength':2,
+            'level':'direct conditional native carrier flow; ASCII widening branch',
+            'boundary':'The format-item comma helper zero-extends the input DWORD index before comparing it with sign-extended carrier length at +0x10; for nonnegative length this rejects negative indices as well as indices at or above length. The accepted path returns the zero-extended WORD at carrier+0x14+index*2. Literal construction forwards its input pointer and zero-extended DWORD byte count into a temporary 32-byte conversion carrier. On the reviewed ASCII branch each byte below 0x80 becomes one 16-bit element, the temporary element count advances by one, and a following zero WORD is written. The wrapper chooses inline versus pointer storage by capacity>7 and forwards the low DWORD element count. The next helper writes result+0x10 length and a zero WORD at result+0x14+count*2 on its nonempty allocation path, then calls the copy helper with destination result+0x14, original element pointer and count*2. These offsets independently agree with the format-item reader. Allocation/capacity/copy helpers, empty singleton contents, non-ASCII cold/error branches, cache initialization and actual execution remain unresolved; this is not complete Unicode conversion parity or proof of a runtime output path.'}
+
+
+def vfs_format_item(pe,*,source):
+    """Local format-item return ABI; not whole-format or serialized EOF."""
+    windows=[]
+    for rva,expected in (
+        (0x2DF2D39,'488D4DC7448BC3488BD7'),
+        (0x2DF2D48,'E8131700000F10008B7018'),
+        (0x2DF4468,'418BD8488BFA488BF1'),
+        (0x2DF447F,'FFC348636A10'),
+        (0x2DF44AF,'0FB75442148D42D06683F809'),
+        (0x2DF4515,'4183FE10'),
+        (0x2DF4594,'44895E04FFC3'),
+        (0x2DF45AC,'448936'),
+        (0x2DF45B4,'44897E1C'),
+        (0x2DF45BD,'895E180F114608'),
+        (0x2DF4639,'488D4F1444895C242C4A8D0C61896C242848894C24200F28442420'),
+        (0x4C5DC40,'4183FE100F8C906819FE'),
+        (0x4C5DD0E,'41F7DF4533DB')):
+        raw=pe.bytes_at_va(pe.image_base+rva,len(bytes.fromhex(expected)))
+        require(raw,bytes.fromhex(expected),source,rva)
+        windows.append({'rva':rva,'rawHex':raw.hex().upper()})
+    return {'windows':windows,'resultByteLength':32,
+            'resultRanges':[
+                {'offset':0,'length':4,'role':'numeric selector'},
+                {'offset':4,'length':4,'role':'zero'},
+                {'offset':8,'length':16,'role':'zero or bounded colon-span pointer/count/padding'},
+                {'offset':24,'length':4,'role':'index after closing brace'},
+                {'offset':28,'length':4,'role':'zero or comma-derived signed numeric value'}],
+            'level':'direct conditional native return ABI',
+            'boundary':'The caller supplies RCX result storage, RDX format carrier and R8D opening-brace index; the helper returns the same storage in RAX. Main and separate cold fragments were reviewed together. Reads use carrier+0x14 and two-byte indices, with length at +0x10. The numeric selector is decimal accumulated and must be below 16 before proceeding. Normal return writes all 32 result bytes: selector, zero padding, a zero span or nonempty colon-span pointer with count and zero padding, index one past the closing brace, and a comma-derived numeric value (zero when absent). The nonempty span excludes colon and closing brace and checks start/count against carrier length. The caller copies both 16-byte halves and reads result+0x18; this is a local item cursor, not whole-format EOF. The character helper is separately joined in selectedVfsStringCarrier; error helper behavior, arbitrary-input validity, string-construction ABI, nested generic formatting and actual execution remain unresolved. No full grammar emulator or runtime output path is asserted.'}
+
+
+def vfs_path_literals(pe,md,*,source,metadata_source):
+    """Exact literal pool intervals plus selected native tag-5 consumers."""
+    require(len(md.buf)>=24,True,metadata_source,0)
+    row_start,row_size,pool_start,pool_size=struct.unpack_from('<iiii',md.buf,8)
+    if not (row_start>=24 and row_size>=0 and row_size%8==0 and row_start<=len(md.buf)
+            and row_size<=len(md.buf)-row_start):
+        raise ContextError(metadata_source,8,'bounded eight-byte literal row table after header',
+                           {'start':row_start,'size':row_size,'fileLength':len(md.buf)})
+    if not (pool_start>=row_start+row_size and pool_size>=0 and pool_start<=len(md.buf)
+            and pool_size<=len(md.buf)-pool_start):
+        raise ContextError(metadata_source,16,'bounded literal pool after row table',
+                           {'start':pool_start,'size':pool_size,'rowEnd':row_start+row_size,'fileLength':len(md.buf)})
+    count=row_size//8
+    require(count<=1_000_000,True,metadata_source,8)
+    rows=[literal_record(md.buf[at:at+8],pool_size,source=metadata_source,offset=at)
+          for at in range(row_start,row_start+row_size,8)]
+    require(pe.bytes_at_va(pe.image_base+0x4139C,4),struct.pack('<I',0x41331),source,0x4139C)
+    raw=pe.bytes_at_va(pe.image_base+0x41333,5)
+    require(raw,b'\xe8'+struct.pack('<i',0x2D8DE0-0x41333-5),source,0x41333)
+    windows=[]
+    for rva,expected in ((0x41280,'8BC1C1E81D8BF1D1EE81E6FFFFFF0FFFC8'),
+        (0x2D8E1D,'48635008486340104903D0'),
+        (0x2D8E2F,'4903C04A634C0204428B14024803C8')):
+        raw=pe.bytes_at_va(pe.image_base+rva,len(bytes.fromhex(expected)))
+        require(raw,bytes.fromhex(expected),source,rva)
+        windows.append({'rva':rva,'rawHex':raw.hex().upper()})
+    selected=[]
+    for rva,index,expected in ((0x2D7FAB2,48841,b'{0}/{1}/{2}'),
+        (0x2D7FB13,48957,b'{0}{1}{2}'),(0x2D7FC9C,48832,b'{0}/{1}'),
+        (0x2D7DEEA,48841,b'{0}/{1}/{2}'),(0x2D7E068,48849,b'{0}/{1}{2}'),
+        (0x2D7E188,48832,b'{0}/{1}')):
+        cell=rip_qword_load_target(pe.bytes_at_va(pe.image_base+rva,7),pe.image_base+rva,source=source)
+        usage=pe.bytes_at_va(cell,8)
+        actual=unresolved_usage_index(usage,count,tag=5,source=source,offset=cell)
+        require(actual,index,source,cell)
+        start,length=rows[actual]
+        value=md.buf[pool_start+start:pool_start+start+length]
+        require(value,expected,metadata_source,pool_start+start)
+        selected.append({'rva':rva,'cellVa':cell,'usageRawHex':usage.hex().upper(),
+                         'literalIndex':actual,'metadataOffset':pool_start+start,
+                         'byteLength':length,'rawHex':value.hex().upper(),'ascii':value.decode('ascii')})
+    return {'selected':selected,'windows':windows,
+            'literalSweep':{'success':count,'failed':0,'unsupported':0,'rowStart':row_start,
+                            'rowByteLength':row_size,'poolStart':pool_start,'poolByteLength':pool_size,
+                            'rowsStartLength':rows},
+            'level':'exact static literal bytes; direct conditional tag-5 pool-address connection',
+            'boundary':'The usage resolver extracts tag and index, and tag 5 selects the literal resolver. Its cache-miss path uses header offsets +8/+16, an eight-byte row stride, row+4 pool-relative offset and row+0 byte length to call the string constructor. All literal rows have bounded pool intervals; aliases and unreferenced pool bytes are allowed, not claimed as an exclusive file partition. Six reviewed path-builder loads join four exact ASCII byte sequences containing braces and slashes. The existing builder windows store these load results into slot zero. These are static format inputs, not demonstrated output paths: cache initialization, string-constructor encoding/ABI, format-item parsing, nested formatter execution, getter values, branch selection and runtime file identity remain unresolved.'}
+
+
 def audit():
     gate = native_gate()
     corpus_path = ROOT / 'reports/animestudio/skilldata_current_latest.json'
     require(sha(corpus_path), CORPUS_SHA, corpus_path)
     corpus = json.loads(corpus_path.read_text(encoding='utf-8'))
     verify_current_report_inputs(corpus)
+    buff_path=ROOT/'reports/animestudio/buffdata_current_latest.json'
+    buff_sha=sha(buff_path);buff_corpus=json.loads(buff_path.read_text(encoding='utf-8'))
+    verify_family_report_inputs(buff_corpus,expected_format='animestudio-buffdata-current-vfs-corpus',label='BuffData')
+    require(buff_corpus['inputSetSha256'],corpus['inputSetSha256'],buff_path)
+    require(buff_corpus['status'],'complete',buff_path)
     mapper_path = ROOT / 'tools/endfield-il2cpp/map_body_targets_to_gameassembly.py'
     catalog_path = ROOT / 'tools/endfield-il2cpp/catalog_option_flow_metadata.py'
     sources = [Path(__file__), Path(__file__).with_name('il2cpp_context.py'),
-               mapper_path, catalog_path, ROOT / 'scripts/common.py']
+               mapper_path, catalog_path, ROOT / 'scripts/common.py',
+               Path(__file__).with_name('buff_ec_native.json'),
+               Path(__file__).with_name('buff_50_native.json'),
+               Path(__file__).with_name('buff_11f_native.json'),
+               Path(__file__).with_name('buff_b4_native.json'),
+               Path(__file__).with_name('buff_56_native.json'),
+               Path(__file__).with_name('buff_92_native.json'),
+               Path(__file__).with_name('buff_57_native.json'),
+               Path(__file__).with_name('buff_5b_native.json')]
     source_hashes = {str(p): sha(p) for p in sources}
     mapper = load('context_audit_mapper', mapper_path)
     catalog = load('context_audit_catalog', catalog_path)
@@ -1126,6 +2216,7 @@ def audit():
     require((adapter_start,adapter_count),(4,13),gate.gameassembly,adapter_ranges)
     adapter_entries=rgctx_range_entries(adapter_entry_bytes,adapter_start,adapter_count,
                                         source=str(gate.gameassembly),offset=adapter_entry_base)
+    adapter_conversion=adapter_conversion_context(pe,md,reg,table,adapter_entries,source=str(gate.gameassembly))
     type_slot=adapter_entries[10]
     require(pe.bytes_at_va(pe.image_base+0x2DA8E66,15),bytes.fromhex('488B4320488B98C0000000488B5B50'),
             gate.gameassembly,0x2DA8E66)
@@ -1284,6 +2375,42 @@ def audit():
     construction_evidence=reader_construction(pe,md,modules,image_owners,source=str(gate.gameassembly))
     cursor_evidence=reader_cursor_consumers(pe,source=str(gate.gameassembly))
     wrapper_evidence=wrapper_consumer(pe,md,reg,table,source=str(gate.gameassembly))
+    nested_context=nested_reader_context(pe,md,modules,image_owners,reg,table,
+                                         source=str(gate.gameassembly),metadata_source=str(gate.metadata))
+    list_candidate=list_formatter_candidate(pe,md,modules,image_owners,reg,code,table,spec_records,methods_raw,
+                                            source=str(gate.gameassembly))
+    list_dispatch=list_element_dispatch(pe,source=str(gate.gameassembly))
+    list_shared=list_element_shared_context(pe,table,reg,code,spec_records,methods_raw,source=str(gate.gameassembly))
+    list_null_probe=list_element_null_probe(pe,source=str(gate.gameassembly))
+    list_value_flow=list_element_value_flow(pe,source=str(gate.gameassembly))
+    element_provider=element_provider_state_flow(pe,source=str(gate.gameassembly))
+    buff_routes=buff_union_routes(pe,md,reg,modules,image_owners,source=str(gate.gameassembly))
+    buff_forwarding=buff_ifelse_forwarding(pe,md,reg,table,source=str(gate.gameassembly))
+    buff_order=buff_ifelse_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly))
+    buff_sequence=buff_sequence_read_order(pe,md,modules,image_owners,source=str(gate.gameassembly))
+    buff_tag76=buff_tag76_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly))
+    buff_ec=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_ec_native.json'))
+    buff_50=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_50_native.json'))
+    buff_11f=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_11f_native.json'))
+    buff_b4=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_b4_native.json'))
+    buff_56=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_56_native.json'))
+    buff_92=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_92_native.json'))
+    buff_57=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_57_native.json'))
+    buff_5b=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_5b_native.json'))
+    list_candidate['bodyWindows']=[]
+    for start,end,digest in (
+        (0x3BA40F0,0x3BA4364,'6D15262413608863F8223A3A1F9465529CD29B6129E3B390D7DAC8179E77DEAA'),
+        (0x4ECA65C,0x4ECA705,'5B65758E858AF46037B7133644A3A9264E3FD4AA1D87B479B80A240EB0A31A90')):
+        require(hashlib.sha256(pe.bytes_at_va(pe.image_base+start,end-start)).hexdigest().upper(),digest,gate.gameassembly,start)
+        list_candidate['bodyWindows'].append({'rva':start,'byteLength':end-start,'sha256':digest})
     resource_evidence=skill_resource_context(pe,md,modules,image_owners,table,reg,code,
         spec_records,specs_raw,methods_raw,source=str(gate.gameassembly))
     carrier_evidence=resource_carrier_consumers(pe,source=str(gate.gameassembly))
@@ -1299,18 +2426,49 @@ def audit():
     block_transform=vfs_block_transform(pe,md,modules,image_owners,source=str(gate.gameassembly))
     block_file_source=vfs_block_file_source(pe,md,modules,image_owners,source=str(gate.gameassembly))
     file_read=native_file_read(pe,md,modules,image_owners,source=str(gate.gameassembly))
+    path_carrier=vfs_path_carrier(pe,md,modules,image_owners,source=str(gate.gameassembly))
+    path_format=vfs_path_format_context(pe,md,modules,image_owners,reg,table,source=str(gate.gameassembly))
+    path_literals=vfs_path_literals(pe,md,source=str(gate.gameassembly),metadata_source=str(gate.metadata))
+    format_item=vfs_format_item(pe,source=str(gate.gameassembly))
+    string_carrier=vfs_string_carrier(pe,source=str(gate.gameassembly))
+    root_resolver=vfs_root_resolver(pe,source=str(gate.gameassembly))
+    prefix_query=resolver_prefix_query(pe,source=str(gate.gameassembly))
+    key_comparison=resolver_key_comparison(pe,source=str(gate.gameassembly))
+    unity_path=gate.gameassembly.with_name('UnityPlayer.dll')
+    unity_pe=mapper.PeImage(unity_path)
+    require(hashlib.sha256(unity_pe.buf).hexdigest().upper(),UNITY_SHA,unity_path)
+    unity_forwarder=unity_registration_forwarder(unity_pe,source=str(unity_path))
+    unity_pair=unity_registration_pair(unity_pe,source=str(unity_path))
+    unity_path_evidence=unity_path_return(unity_pe,source=str(unity_path))
+    unity_exports=unity_conversion_exports(pe,unity_pe,source=str(gate.gameassembly),unity_source=str(unity_path))
+    unity_lookup=unity_module_lookup(unity_pe,source=str(unity_path))
+    unity_input=unity_loader_input(unity_pe,source=str(unity_path))
+    unity_conversion=unity_loader_conversion(unity_pe,source=str(unity_path))
+    for start,end,expected in (
+        (0x32BA20,0x32BA4F,'91C1865559D71D25761B6C551458A116EFF8627187BF5D956EE06A913D94859B'),
+        (0x32BA50,0x32BA8A,'D1A40F21F2A58620BC46D667AF2C16770354F1A5B4E2D9578ACB07AD10BAC48F'),
+        (0x2CBCC0,0x2CBCFE,'A4BF4C13EC67E4C0D35956DB7EE2B19AF80604A19E48664821050D8F2AB7D015'),
+        (0x2CBD00,0x2CBD3C,'EB78D7B88E5827D4DC6B440287BCE1AAC6C22D9550AA80B32E0163E96D2B02A0'),
+        (0x74BF0,0x74C09,'FAFE139CBBA402A8EA97D77D582388541E95BED7B63400896A7A053BB1D70C47')):
+        require(hashlib.sha256(unity_pe.bytes_at_va(unity_pe.image_base+start,end-start)).hexdigest().upper(),expected,unity_path,start)
+    require(sha(unity_path),UNITY_SHA,unity_path)
     native_gate()
     require(sha(corpus_path), CORPUS_SHA, corpus_path)
     verify_current_report_inputs(corpus)
+    require(sha(buff_path),buff_sha,buff_path)
+    verify_family_report_inputs(buff_corpus,expected_format='animestudio-buffdata-current-vfs-corpus',label='BuffData')
     for path, expected in source_hashes.items():
         require(sha(path), expected, path)
     return {
         'schemaVersion': 1, 'status': 'failed' if failures else 'structural-only',
         'inputSetSha256': corpus['inputSetSha256'],
+        'buffCorpusReference':{'path':str(buff_path),'sha256':buff_sha,'summary':buff_corpus['summary'],
+                               'inputSetSha256':buff_corpus['inputSetSha256']},
         'corpusReference': {'path': str(corpus_path), 'sha256': CORPUS_SHA,
                             'boundary': 'Authenticated corpus reference; this native audit does not restream VFS bytes.'},
         'nativeInputs': {'gameassembly': str(gate.gameassembly), 'gameassemblySha256': GA_SHA,
-                         'metadata': str(gate.metadata), 'metadataSha256': MD_SHA},
+                         'metadata': str(gate.metadata), 'metadataSha256': MD_SHA,
+                         'unityplayer':str(unity_path),'unityplayerSha256':UNITY_SHA},
         'sourceHashes': source_hashes, 'registration': reg,
         'methodSpecSweep':{'success':len(spec_records),'failed':0,'unsupported':0,
                            'sourceVa':specs_base,'byteLength':len(specs_raw),
@@ -1331,9 +2489,45 @@ def audit():
         'selectedVfsBlockTransform':block_transform,
         'selectedVfsBlockFileSource':block_file_source,
         'selectedNativeFileRead':file_read,
+        'selectedVfsPathCarrier':path_carrier,
+        'selectedVfsPathFormatContext':path_format,
+        'selectedVfsPathLiterals':path_literals,
+        'selectedVfsFormatItem':format_item,
+        'selectedVfsStringCarrier':string_carrier,
+        'selectedVfsRootResolver':root_resolver,
+        'selectedResolverPrefixQuery':prefix_query,
+        'selectedResolverKeyComparison':key_comparison,
+        'selectedUnityRegistrationForwarder':unity_forwarder,
+        'selectedUnityRegistrationPair':unity_pair,
+        'selectedUnityPathReturn':unity_path_evidence,
+        'selectedUnityConversionExports':unity_exports,
+        'selectedUnityModuleLookup':unity_lookup,
+        'selectedUnityLoaderInput':unity_input,
+        'selectedUnityLoaderConversion':unity_conversion,
         'selectedReaderConstruction':construction_evidence,
         'selectedReaderCursorConsumers':cursor_evidence,
         'selectedWrapperConsumer':wrapper_evidence,
+        'selectedNestedReaderContext':nested_context,
+        'selectedListFormatterCandidate':list_candidate,
+        'selectedListElementDispatch':list_dispatch,
+        'selectedListElementSharedContext':list_shared,
+        'selectedListElementNullProbe':list_null_probe,
+        'selectedListElementValueFlow':list_value_flow,
+        'selectedAdapterConversionContext':adapter_conversion,
+        'selectedElementProviderStateFlow':element_provider,
+        'selectedBuffUnionRoutes':buff_routes,
+        'selectedBuffIfElseForwarding':buff_forwarding,
+        'selectedBuffIfElseReadOrder':buff_order,
+        'selectedBuffSequenceReadOrder':buff_sequence,
+        'selectedBuffTag76ReadOrder':buff_tag76,
+        'selectedBuffEcReadOrder':buff_ec,
+        'selectedBuff50ReadOrder':buff_50,
+        'selectedBuff11fReadOrder':buff_11f,
+        'selectedBuffB4ReadOrder':buff_b4,
+        'selectedBuff56ReadOrder':buff_56,
+        'selectedBuff92ReadOrder':buff_92,
+        'selectedBuff57ReadOrder':buff_57,
+        'selectedBuff5bReadOrder':buff_5b,
         'selectedNestedAdapterSlots':{'rows':nested_slots,'level':'exact static MethodSpec/VAR relation',
                                       'boundary':'Relative slots 3, 4 and 11 independently join DeserializeNotNull<T0,T1>, GetFormatter<T1> and CreateInstance<T1>. Every VAR reciprocally belongs to the adapter type; conditional concrete arguments come from the separately authenticated immediate registration. Method names do not establish serialization order, actual nested dispatch or source cursor.'},
         'selectedMethodCompanionConstruction': {'lookupRva':0x8D20,'constructorRva':0x84B0,

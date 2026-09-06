@@ -3,7 +3,6 @@ import io
 import json
 from contextlib import redirect_stderr
 import unittest
-from unittest.mock import patch
 from types import SimpleNamespace
 
 from scripts.game_data.il2cpp_context import ContextError, GenericInstantiationTable, method_parameter_owner, type_image_owners, match_image_modules, method_spec_usage_index, generic_type_carrier, select_rgctx_range
@@ -23,6 +22,1209 @@ from scripts.game_data.il2cpp_context import method_spec_record, usage_method_sp
 from scripts.game_data.il2cpp_context_audit import vfs_block_transform
 from scripts.game_data.il2cpp_context_audit import vfs_block_file_source
 from scripts.game_data.il2cpp_context_audit import native_file_read
+from scripts.game_data.il2cpp_context_audit import vfs_path_carrier
+from scripts.game_data.il2cpp_context_audit import vfs_path_format_context
+from scripts.game_data.il2cpp_context import literal_record
+from scripts.game_data.il2cpp_context_audit import vfs_path_literals
+from scripts.game_data.il2cpp_context_audit import vfs_format_item
+from scripts.game_data.il2cpp_context_audit import vfs_string_carrier
+from scripts.game_data.il2cpp_context_audit import vfs_root_resolver
+from scripts.game_data.il2cpp_context_audit import unity_registration_forwarder
+from scripts.game_data.il2cpp_context_audit import unity_registration_pair
+from scripts.game_data.il2cpp_context_audit import unity_path_return
+from scripts.game_data.il2cpp_context_audit import unity_conversion_exports
+from scripts.game_data.il2cpp_context_audit import resolver_prefix_query
+from scripts.game_data.il2cpp_context_audit import resolver_key_comparison
+from scripts.game_data.il2cpp_context_audit import unity_module_lookup
+from scripts.game_data.il2cpp_context_audit import unity_loader_input
+from scripts.game_data.il2cpp_context_audit import unity_loader_conversion
+from scripts.game_data.il2cpp_context_audit import nested_reader_context
+from scripts.game_data.il2cpp_context_audit import list_formatter_candidate
+from scripts.game_data.il2cpp_context_audit import list_element_dispatch
+from scripts.game_data.il2cpp_context_audit import list_element_shared_context, list_element_null_probe
+from scripts.game_data.il2cpp_context_audit import list_element_value_flow
+from scripts.game_data.il2cpp_context_audit import adapter_conversion_context
+from scripts.game_data.il2cpp_context_audit import element_provider_state_flow
+from scripts.game_data.il2cpp_context_audit import buff_union_routes
+from scripts.game_data.il2cpp_context_audit import buff_ifelse_forwarding
+from scripts.game_data.il2cpp_context_audit import buff_ifelse_read_order
+from scripts.game_data.il2cpp_context_audit import buff_sequence_read_order
+from scripts.game_data.il2cpp_context_audit import buff_tag76_read_order
+from unittest.mock import patch
+
+
+class BuffTag76ReadOrderTests(unittest.TestCase):
+    def setUp(self):
+        self.base=0x180000000
+        self.parts={self.base+at:bytes.fromhex(raw) for at,raw in (
+            (0x3F7FD49,'4533C0488BD3488BCF488B5C24304883C4205FE91F000000'),
+            (0x3F7FE00,'4080FE050F85635BFD00'),
+            (0x3D9BB19,'4533C0488BD3488BCF488B5C24304883C4205FE91F000000'),
+            (0x3D9BBD5,'4080FD030F85E0621701'),
+            (0x2CA8729,'488B43504863388B733083EE040F885C8CE30148834350048343400483434404897330'),
+            (0x2CA874C,'48634344488B4B18482BC8483BCF0F8C528CE30183FFFF743785FF7517'),
+            (0x2CA8780,'4533C08BD7488BCB488B5C2430488B7424384883C4205FE974020000'),
+            (0x2CA8A97,'4533C9448BC7488BD5488BCEE878F8FFFF488BE885FF7418'),
+            (0x2CA8AAF,'8B73302BF70F88B0A4F70148017B50017B40017B44897330'))}
+        for at,target in ((0x3F7FDB6,0x2CA8860),(0x3F7FE10,0x2CA88C0),
+            (0x3F7FE39,0x2CA86B0),(0x3F7FE5A,0x2CA86B0),(0x3F7FE7B,0x2CA86B0),
+            (0x3F7FEA3,0x381F8F0),(0x3D9BBE5,0x2CA8700),
+            (0x3D9BC13,0x2CA88C0),(0x3D9BC37,0x2CA8700)):
+            self.parts[self.base+at]=b'\xe8'+struct.pack('<i',target-at-5)
+        self.parts[self.base+0x3F7FE96]=bytes.fromhex('488B15EB970B09')
+        self.parts[self.base+0xD039688]=struct.pack('<Q',(6<<29)|(610878<<1)|1)
+        self.parts[0x1000+610878*12]=struct.pack('<iii',428462,-1,62664)
+        self.parts[0x18D2534A8]=struct.pack('<QQ',0x2000,0x3000)+bytes(16)
+        self.parts[0x2000]=bytes.fromhex('91920000000000000000120000000000')
+        self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=lambda va,n:self.parts[va])
+        self.md=SimpleNamespace(methods=[None]*428463,types=list(range(37522)),
+            type_full_name=lambda t:{37521:'System.Collections.Generic.List`1',177:'Beyond.Blackboard+BlackboardString'}[t])
+        self.reg={'methodSpecs':'0x1000','methodSpecsCount':627868,'genericInstsCount':73902}
+        self.arg=SimpleNamespace(raw_type_record_hex='A834258D010000000000150000000000',type_pointer_va=0x18C3B11D8)
+        self.element=SimpleNamespace(raw_type_record_hex='B1000000000000000000120000000000')
+        self.inst=SimpleNamespace(arguments=[self.arg],as_dict=lambda:{'index':62664})
+        self.nested=SimpleNamespace(index=17007,arguments=[self.element],as_dict=lambda:{'index':17007})
+        self.table=SimpleNamespace(resolve=lambda i:self.inst if i==62664 else None,
+            resolve_pointer=lambda p:self.nested if p==0x3000 else None)
+
+    def decode(self):
+        with patch('scripts.game_data.il2cpp_context_audit.module_methods',return_value=[]):
+            return buff_tag76_read_order(self.pe,self.md,self.reg,self.table,{},[],source='fixture.dll')
+
+    def test_order_context_and_encoding_boundary(self):
+        row=self.decode()
+        self.assertEqual(row['listCarrier']['baseDefinitionIndex'],37521)
+        self.assertEqual(row['elementInstantiation']['index'],17007)
+        self.assertEqual([r['targetRva'] for r in row['orderedCalls'][-3:]],[0x2CA8700,0x2CA88C0,0x2CA8700])
+        self.assertIn('structural-only',row['boundary'])
+
+    def test_truncated_trailing_and_mutated_windows_records(self):
+        for va,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[va]=bad
+                with self.subTest(va=va,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[va]=good
+
+    def test_bad_count_wrong_element_and_ambiguous_pointer(self):
+        self.reg['methodSpecsCount']=610878
+        with self.assertRaises(ContextError):self.decode()
+        self.reg['methodSpecsCount']=627868
+        self.element.raw_type_record_hex='00'*16
+        with self.assertRaises(ContextError):self.decode()
+        self.element.raw_type_record_hex='B1000000000000000000120000000000'
+        # The real registered-pointer join must reject duplicate matches;
+        # its exact ambiguity diagnostics are covered by GenericInstantiation tests.
+        def ambiguous(p):raise ContextError('fixture.dll',p,'unique pointer',[1,2])
+        self.table.resolve_pointer=ambiguous
+        with self.assertRaises(ContextError):self.decode()
+
+
+class BuffSequenceReadOrderTests(unittest.TestCase):
+    def setUp(self):
+        self.base=0x180000000
+        self.parts={self.base+at:bytes.fromhex(raw) for at,raw in (
+            (0x39C6A69,'4533C0488BD3488BCF488B5C24304883C4205FE91F000000'),
+            (0x39C6B06,'488B43500FB6308B7B3083EF017911BA01000000488BCBE81EB6100284C0750D48FF4350FF4340FF4344897B304080FEFF7516'),
+            (0x39C6B82,'4080FE030F85DD030000'),
+            (0x39C6BF8,'488B43508B28448B73304183EE047911BA04000000488BCBE82BB5100284C07511488343500483434004834344044489733048634344488B4B18482BC84863C5483BC80F8C78030000'),
+            (0x39C6D4D,'488B4738488B4818E806D53DFF4C8BF085ED0F8EB6000000'),
+            (0x39C6D98,'4D8B16488BD34863C6498BCE4883C0044D8B8A980100004C8D04C741FF9290010000FFC63BF57CB0EB59'),
+            (0x39C6EA2,'488B43500FB6288B7B3083EF017911BA01000000488BCBE882B2100284C0750D48FF4350FF4340FF4344897B30'),
+            (0x39C6EE5,'4084ED0F95C0884119'),
+            (0x39C6F07,'488B43500FB6288B7B3083EF017911BA01000000488BCBE81DB2100284C0750D48FF4350FF4340FF4344897B30'),
+            (0x39C6F47,'4084ED4C8B6C2428488B6C24680F95C04C8B742420884118'))}
+        self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=lambda va,n:self.parts[va])
+
+    def decode(self):
+        with patch('scripts.game_data.il2cpp_context_audit.module_methods',return_value=[]):
+            return buff_sequence_read_order(self.pe,None,{},[],source='fixture.dll')
+
+    def test_conditional_structure_retains_unknown_elements(self):
+        self.assertIn('not serialized element width',self.decode()['boundary'])
+
+    def test_truncated_trailing_and_mutated_windows(self):
+        for va,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[va]=bad
+                with self.subTest(va=va,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[va]=good
+
+
+class BuffIfElseReadOrderTests(unittest.TestCase):
+    def setUp(self):
+        self.base=0x180000000
+        self.parts={self.base+at:bytes.fromhex(raw) for at,raw in (
+            (0x3773699,'4533C0488BD3488BCF488B5C24304883C4205FE9AF090000'),
+            (0x3774093,'837B30010F8C089A6B01488B43500FB6288B733083EE010F880B9A6B0148FF4350FF4340FF43448973304080FDFF0F8482010000'),
+            (0x37740FA,'4080FD080F85D1996B01'),
+            (0x2CA88CF,'83793001488BD90F8CBCA5F701488B43500FB6308B7B3083EF010F88BCA5F70148FF4350FF4340FF4344897B30'),
+            (0x2CA8901,'4084F6488B7424380F95C04883C4205FC3'),
+            (0x2CA86BF,'83793004488BD90F8C9EA7F701488B43508B308B7B3083EF040F889FA7F70148834350048343400483434404897B30'))}
+        for at,target in ((0x377410A,0x2CA88C0),(0x3774135,0x2CA86B0),(0x3774159,0x2CA86B0),
+            (0x377417D,0x2CA86B0),(0x37741A1,0x2CA88C0),(0x37741CA,0x2DA5C90),
+            (0x37741F3,0x2DA5C90),(0x377421C,0x2DA5C90)):
+            self.parts[self.base+at]=b'\xe8'+struct.pack('<i',target-at-5)
+        for at in (0x37741BD,0x37741E6,0x377420F):
+            self.parts[self.base+at]=b'\x48\x8b\x15'+struct.pack('<i',0xCFF4E68-at-7)
+        self.parts[self.base+0xCFF4E68]=struct.pack('<Q',(6<<29)|(619962<<1)|1)
+        self.parts[0x1000+619962*12]=struct.pack('<iii',428464,-1,16408)
+        self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=lambda va,n:self.parts[va])
+        self.md=SimpleNamespace(methods=[None]*428465,types=[None]*9203,type_full_name=lambda t:'Beyond.Gameplay.Core.SequenceActionData')
+        self.reg={'methodSpecs':'0x1000','methodSpecsCount':627868,'genericInstsCount':73902}
+        self.arg=SimpleNamespace(raw_type_record_hex='F2230000000000000000120000000000')
+        self.instance=SimpleNamespace(arguments=[self.arg],as_dict=lambda:{'index':16408})
+        self.table=SimpleNamespace(resolve=lambda i:self.instance if i==16408 else None)
+
+    def decode(self):
+        with patch('scripts.game_data.il2cpp_context_audit.module_methods',return_value=[]):
+            return buff_ifelse_read_order(self.pe,self.md,self.reg,self.table,{},[],source='fixture.dll')
+
+    def test_order_and_nested_widths_stay_unknown(self):
+        row=self.decode()
+        self.assertEqual([r['fastSerializedWidth'] for r in row['orderedCalls']],[1,4,4,4,1,None,None,None])
+        self.assertEqual(len({r['cellVa'] for r in row['nestedOperands']}),1)
+
+    def test_truncated_trailing_and_corrupted_evidence(self):
+        for va,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[va]=bad
+                with self.subTest(va=va,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[va]=good
+
+    def test_wrong_nested_type_and_table_bounds(self):
+        self.md.types=[]
+        with self.assertRaises(ContextError):self.decode()
+        self.md.types=[None]*9203
+        self.arg.raw_type_record_hex='00'*16
+        with self.assertRaises(ContextError):self.decode()
+        self.arg.raw_type_record_hex='F2230000000000000000120000000000'
+        self.reg['methodSpecsCount']=619962
+        with self.assertRaises(ContextError):self.decode()
+
+
+class BuffIfElseForwardingTests(unittest.TestCase):
+    def setUp(self):
+        self.base=0x180000000
+        self.parts={self.base+at:bytes.fromhex(raw) for at,raw in (
+            (0x30E2DC,'488B15D530DD0CE908165103'),
+            (0xA1EA7C,'4C8B053D296C0CE974AC7C08'),
+            (0x4E67AA1,'4C8B0518992708488BD3E8CC6FBBFB90E9345FAAFE'),
+            (0x91E96FC,'48895C24084889742410574883EC204983783800498BD8488BFA488BF17508488BCBE86D58E6F64C8B4338488BD7488BCE4D8B00488B5C2430488B7424384883C4205FE93C6812F7'),
+            (0x30FF80,'E90BFFA303'),
+            (0x3D4FE90,'48895C24084889742410574883EC204983783800498BD8488BFA488BF17444488B0D3AF7390983B9E0000000007451488B4338488B08E8954305FF4885C07413B9050000004C8BCF4C8BC6488BD0E81DF42EFC488B5C2430488B7424384883C4205FC3488D0DF6F63909E861132FFC48837B380075A9488BCBE882F02FFCEB9FE8AB632DFCEBA8'))}
+        for at,index,definition in ((0x30E2DC,614208,428462),(0xA1EA7C,618298,428461)):
+            cell=self.base+at+7+struct.unpack_from('<i',self.parts[self.base+at],3)[0]
+            self.parts[cell]=struct.pack('<Q',(6<<29)|(index<<1)|1)
+            self.parts[0x1000+index*12]=struct.pack('<iii',definition,-1,24608)
+        self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=lambda va,n:self.parts[va][:7] if n==7 else self.parts[va])
+        self.md=SimpleNamespace(methods=[None]*428463)
+        self.reg={'methodSpecs':'0x1000','methodSpecsCount':627868,'genericInstsCount':73902}
+        self.argument=SimpleNamespace(raw_type_record_hex='233F0000000000000000120000000000')
+        self.instance=SimpleNamespace(arguments=[self.argument],as_dict=lambda:{'index':24608})
+        self.table=SimpleNamespace(resolve=lambda index:self.instance if index==24608 else None)
+
+    def decode(self):
+        return buff_ifelse_forwarding(self.pe,self.md,self.reg,self.table,source='fixture.dll')
+
+    def test_distinct_contexts_shared_argument_and_no_eof_claim(self):
+        row=self.decode()
+        self.assertEqual([r['methodDefinition'] for r in row['contexts']],[428462,428461])
+        self.assertIn('remain unresolved',row['boundary'])
+
+    def test_truncated_trailing_and_corrupted_evidence(self):
+        for va,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[va]=bad
+                with self.subTest(va=va,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[va]=good
+
+    def test_bounds_and_wrong_type_argument(self):
+        self.reg['methodSpecsCount']=614208
+        with self.assertRaises(ContextError):self.decode()
+        self.reg['methodSpecsCount']=627868
+        self.argument.raw_type_record_hex='00'*16
+        with self.assertRaises(ContextError):self.decode()
+
+
+class BuffUnionRouteTests(unittest.TestCase):
+    def setUp(self):
+        self.base=0x180000000
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x390D974,'488D5424384533C06689742438488BCFE8F7FEFFFF84C00F8422BD55010FB774243881FE9F0100000F87E0BC5501488D1557266FFC8B8CB2185391034803CAFFE1'),
+            (0x390D8D2,'4080FEFA731C66418936B001'),
+            (0x390D8F4,'754B837B30020F8C208A5501488B43500FB700664189068B7B3083EF020F881F8A550148834350028343400283434402897B30EBB3'),
+            (0x390D941,'33C066418906EB95'),
+            (0x4E66320,'4533C0BA02000000488BCBE82C2E8A0490E9CE75AAFE'),
+            (0x4E696B3,'48893333D2E92543AAFE'),
+            (0x417E68A,'488B0DE70FF20833D2E85872C2FE488BCF488BD8E87D4DE8FB4C8B0D9E87E70841B8C9000000488BD3488BCFE8B1EE18FC'),
+            (0x417E4D1,'488B0D3018F20833D2E81174C2FE488BCF488BD8E8364FE8FB4C8B0D5789E70841B8C0000000488BD3488BCFE86AF018FC'),
+            (0x390E160,'488B1529B57209488B0BE8B1566FFC488BCF4885C00F852F905501488B1576357D09E8690111FD488903488BD0E950F8FFFF'),
+            (0x390DA8A,'488B15FF1B7909488B0BE8875D6FFC488BCF4885C00F85FC9F5501488B150C397D09E82B08A0FC488903488BD0E926FFFFFF'),
+            (0x3910A00,'488B1509F37809488B0BE8112E6FFC488BCF4885C00F859B6F5501488B153E097D09E865DF10FD488903488BD0E9B0CFFFFF'),
+            (0x39149EA,'488B150F5A7209488B0BE827EE6EFC488BCF4885C00F856B215501488B1554D17C09E8C39310FD488903488BD0E9C68FFFFF'),
+            (0x390DCB0,'488B15B1936F09488B0BE8615B6FFC488BCF4885C00F8595A35501488B15E6307D09E8451011FD488903488BD0E900FDFFFF'),
+            (0x390DC1A,'488B1527307309488B0BE8F75B6FFC488BCF4885C00F8571915501488B1514387D09E8130311FD488903488BD0E996FDFFFF'),
+            (0x390DED6,'488B1563997009488B0BE83B596FFC488BCF4885C00F85F4A75501488B1588297D09E8CF1211FD488903488BD0E9DAFAFFFF'),
+            (0x390DC4C,'488B15C5287909488B0BE8C55B6FFC488BCF4885C00F85539C5501488B15AA357D09E8050C11FD488903488BD0E964FDFFFF'),
+            (0x390E354,'488B15E5C97209488B0BE8BD546FFC488BCF4885C00F85E38A5501488B1572317D09E881FC10FD488903488BD0E95CF6FFFF'),
+            (0x390DA58,'488B1541B77809488B0BE8B95D6FFC488BCF4885C00F853B9A5501488B15A6357D09E86908A0FC488903488BD0E958FFFFFF'),
+            (0x390E1C4,'488B159DC67209488B0BE84D566FFC488BCF4885C00F85888C5501488B1512337D09E8F9FD10FD488903488BD0E9ECF7FFFF'),
+            (0x390E0FC,'488B158DC67209488B0BE815576FFC488BCF4885C00F85A48D5501488B158A337D09E839FF10FD488903488BD0E9B4F8FFFF'))}
+        targets=[0]*416
+        types=[None]*16718;self.ptrs={}
+        for tag,target,index,definition,suffix,init in (
+            (0xC9,0x390DA8A,106672,16163,'IfElseAction_IfElseActionData',0x417E68A),
+            (0xC0,0x3910A00,106641,16145,'GainCostAction_Data',0x417E4D1),
+            (0x40,0x39149EA,106441,16615,'CheckDamageTag_Data',None),
+            (0x76,0x390E160,106507,16683,'Conditions_CheckSkillId_Data',None),
+            (0xEC,0x390DCB0,106853,16241,'ModifyDynamicBlackboard_Data',None),
+            (0x50,0x390DC1A,106467,16717,'CompareFloat_Data',None),
+            (0x11F,0x390DED6,106969,16341,'RaiseTrainLevelEvent_Data',None),
+            (0xB4,0x390DC4C,106625,16117,'FinishBuffAdvanced_Data',None),
+            (0x56,0x390E354,106476,16593,'Conditions_CheckBuffIdInContext_Data',None),
+            (0x92,0x390DA58,106537,16047,'CreateBuffAction_Data',None),
+            (0x57,0x390E1C4,106475,16595,'Conditions_CheckBuffIdInContextAdvanced_Data',None),
+            (0x5B,0x390E0FC,106480,16611,'Conditions_CheckDamageDecorateMask_Data',None)):
+            targets[tag]=target;types[definition]='Beyond.MemoryPack.Beyond_Gameplay_Core_'+suffix+'ForMemoryPack'
+            pointer=self.base+index*16
+            self.parts[index*16]=struct.pack('<QII',definition,0x120000,0)
+            self.ptrs[0x1000+index*8]=pointer
+            for at,kind in ((target,1),)+(((init,2),) if init else ()):
+                cell=at+7+struct.unpack_from('<i',self.parts[at],3)[0]
+                self.parts[cell]=struct.pack('<Q',(kind<<29)|(index<<1)|1)
+        self.parts[0x3915318]=struct.pack('<416I',*targets)
+        def read(va,size):
+            raw=self.parts[va-self.base]
+            return raw[:7] if size==7 else raw
+        self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=read,u64_at_va=lambda va:self.ptrs[va])
+        self.md=SimpleNamespace(types=types,type_full_name=lambda t:t)
+        self.reg={'types':'0x1000','typesCount':200000}
+
+    def decode(self):
+        with patch('scripts.game_data.il2cpp_context_audit.module_methods',return_value=[]):
+            return buff_union_routes(self.pe,self.md,self.reg,{},[],source='fixture.dll')
+
+    def test_current_tag_routes_do_not_alias_old_names(self):
+        row=self.decode();self.assertEqual([r['tag'] for r in row['rows']],[201,192,64,118,236,80,287,180,86,146,87,91])
+        self.assertIn('IfElse',row['rows'][0]['wrapperName'])
+        self.assertIn('GainCost',row['rows'][1]['wrapperName'])
+
+    def test_truncated_trailing_corrupt_table_and_operands(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[at]=good
+
+    def test_wrong_type_identity_and_registered_bounds(self):
+        self.md.types[16163]=self.md.types[16145]
+        with self.assertRaises(ContextError):self.decode()
+        self.reg['typesCount']=106441
+        with self.assertRaises(ContextError):self.decode()
+
+
+class ElementProviderStateFlowTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0xF8040,'F68138010000017405488BC1EB05E9ED93F4FFC3'),
+            (0x2DA427F,'488B5D38488B1B'),
+            (0x2DA42B0,'B201488BCBE8462826FD4C8D6020'),
+            (0x2DA439A,'488B4A10488B43704C8B34C8'),
+            (0x2DA43E9,'498BCEE87F030000488BD8488B4538488B4008'),
+            (0x2DA4412,'488BD0488B0BE833F425FD84C00F842AD0D401'),
+            (0x2DA4592,'498B47704C8934F8'),
+            (0x2DA482E,'488B80B8000000488B6818'),
+            (0x2DA4970,'443B7B28754E488B75184C8B7310'),
+            (0x2DA49A7,'33C948897C24204D8BCE4C8BC6488BD0E8745D29FD84C00F8516010000'),
+            (0x2DA4ADA,'833D2BA70F0B00488B43184889442468'),
+            (0x2DA4C7F,'4C8B0D52032A0A4C8BC3488BD7E80F44E000'),
+            (0x2DA4C91,'488B442468'),
+            (0x4AF1447,'4533F6E9652F2BFE'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_state_lookup_and_distinct_return_context(self):
+        row=element_provider_state_flow(self.pe,source='fixture.dll')
+        self.assertEqual(len(row['windows']),14)
+        self.assertIn('not a serialized reader',row['boundary'])
+        self.assertIn('cannot be replaced by the fast-path identity',row['boundary'])
+
+    def test_truncated_trailing_and_changed_state_offset_or_branch(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at,length=len(bad)),self.assertRaises(ContextError):
+                    element_provider_state_flow(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class AdapterConversionContextTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={0x100:struct.pack('<QII',0x200,0x150000,0),
+            0x200:struct.pack('<QQQQ',0x300,0x400,0,0),
+            0x300:struct.pack('<QII',32173,0x120000,0),
+            0x100000+173212*12:struct.pack('<iii',249850,12827,-1)}
+        self.words={0x500:45287,0x504:173212}
+        self.pe=SimpleNamespace(bytes_at_va=lambda va,size:self.parts[va],
+            u32_at_va=lambda va:self.words[va],u64_at_va=lambda va:0x100)
+        self.reg={'types':'0x200000','typesCount':50000,'methodSpecs':'0x100000',
+            'methodSpecsCount':200000,'genericInstsCount':20000}
+        self.entries=[{} for _ in range(13)]
+        for rel,kind,ptr in ((8,2,0x500),(9,3,0x504)):
+            self.entries[rel]={'relativeIndex':rel,'kindRaw':kind,'dataPointerVa':ptr,'entryVa':0x600+rel*16}
+        self.inst=SimpleNamespace(index=12827,record_va=0x400,
+            arguments=[SimpleNamespace(raw_type_record_hex='F2020000000000000000130000000000')],
+            as_dict=lambda:{'index':12827})
+        self.table=SimpleNamespace(resolve_pointer=lambda va:self.inst)
+        buf=bytearray(0x3400)
+        struct.pack_into('<II',buf,8+12*8,0x200,755*16)
+        struct.pack_into('<II',buf,8+14*8,0x3200,16)
+        struct.pack_into('<iihhHH',buf,0x200+754*16,0,0,0,0,0,0)
+        struct.pack_into('<iiii',buf,0x3200,13633,1,0,754)
+        types=[SimpleNamespace(generic_container_index=-1)]*32174
+        types[13633]=SimpleNamespace(generic_container_index=0)
+        types[32173]=SimpleNamespace(generic_container_index=-1,method_start=249850,method_count=1)
+        self.method=SimpleNamespace(declaring_type=32173,slot=0,parameter_count=0,token=0x06001747,name_index=0)
+        self.md=SimpleNamespace(buf=buf,types=types,methods=[None]*249850+[self.method],
+            type_full_name=lambda t:'Beyond.MemoryPack.IMemoryPackDeSerializeWrapper`1',string=lambda i:'GetValue')
+
+    def decode(self):
+        return adapter_conversion_context(self.pe,self.md,self.reg,self.table,self.entries,source='fixture.dll')
+
+    def test_reciprocal_ordinal_zero_interface_and_explicit_slot(self):
+        row=self.decode()
+        self.assertEqual((row['argumentOwner']['typeIndex'],row['argumentOwner']['ordinal']),(13633,0))
+        self.assertEqual(row['methodSlot'],0)
+
+    def test_truncated_trailing_and_malformed_carrier_or_spec(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[at]=good
+
+    def test_wrong_context_owner_slot_and_bounds(self):
+        self.method.slot=1
+        with self.assertRaises(ContextError):self.decode()
+        self.method.slot=0
+        struct.pack_into('<i',self.md.buf,0x3200,13632)
+        with self.assertRaises(ContextError):self.decode()
+        struct.pack_into('<i',self.md.buf,0x3200,13633)
+        self.reg['typesCount']=45287
+        with self.assertRaises(ContextError):self.decode()
+
+
+class ListElementValueFlowTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x3B13730,'48895C240848897424104C89442418574883EC20803D8143390A00498BF9488BF2488BD90F8489000000488B0D8FBE5D0983B9E0000000000F848D000000488B4F20E8C9485EFC488B88C0000000488B4920E8D90A29FF4885C07479B9050000004C8D4C24404C8BC3488BD0E85FBB52FC488B5C24404885DB7460488B4F20E88C485EFC488B88C0000000488B4940E87C485EFC33C94C8BC3488BD0E82F3058FC488B5C24308906488B7424384883C4205FC3488D0D06BE5D09E871DA52FCC605D642390A01E95FFFFFFFE8C02A51FCE969FFFFFFE80AACF9FCCC33C0EBC2'),
+            (0x96800,'48895C240848896C24104889742418574883EC20498B38498BF00FB7E9488BDA488BCFE868E3F6FF440FB7873001000033C066413BC0731C488B97B00000000FB7C84803C948391CCA741A66FFC066413BC072EB440FB7C5488BD3488BCEE81DA3F7FFEB200FB7D0488B87B00000004803D28B44D00803C548984883C01448C1E0044803C74C8B00488BCE488B5008488B5C2430488B6C2438488B7424404883C4205F49FFE0'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=self.read)
+
+    def read(self,va,size):
+        at=va-self.pe.image_base
+        # Full-body requests expose truncated/trailing fixtures unchanged.
+        if at in self.parts:return self.parts[at]
+        for start,raw in self.parts.items():
+            if start<=at<start+len(raw):return raw[at-start:at-start+size]
+        raise ContextError('fixture.dll',at,'mapped range','missing')
+
+    def test_initialized_object_slot_conversion_not_serialized_width(self):
+        row=list_element_value_flow(self.pe,source='fixture.dll')
+        self.assertEqual(row['outputByteLength'],4)
+        self.assertEqual(len(row['bodies']),2)
+        self.assertIn('initialized writable object slot',row['boundary'])
+        self.assertIn('not proof of a serialized DWORD',row['boundary'])
+
+    def test_truncated_trailing_and_corrupt_bodies(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at,length=len(bad)),self.assertRaises(ContextError):
+                    list_element_value_flow(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+    def test_changed_record_offset_or_tail_call_fails_closed(self):
+        at=0x96800;good=self.parts[at]
+        for offset in (0x74,0x7D,0xA4):
+            bad=bytearray(good);bad[offset]^=1;self.parts[at]=bytes(bad)
+            with self.subTest(offset=offset),self.assertRaisesRegex(ContextError,'fixture.dll'):
+                list_element_value_flow(self.pe,source='fixture.dll')
+        self.parts[at]=good
+
+
+class ListElementSharedContextTests(unittest.TestCase):
+    def setUp(self):
+        self.args=['A22D0000000000000000118000000000','068E00000000000000001C0000000000']
+        self.specs=[(0,-1,-1)]*165249;self.specs[165248]=(102199,5059,-1)
+        self.raw=struct.pack('<iiii',165248,0,0,-1)
+        self.reg={'methodSpecsCount':len(self.specs),'genericMethodTableCount':1,'genericMethodTable':'0x1000'}
+        self.code={'genericMethodPointersCount':1,'invokerPointersCount':1,'genericMethodPointers':'0x2000'}
+        self.pe=SimpleNamespace(image_base=0x180000000,u64_at_va=lambda va:0x1840BB390)
+
+    def decode(self):
+        table=SimpleNamespace(resolve=lambda index:SimpleNamespace(record_va=0x3000,
+            arguments=[SimpleNamespace(raw_type_record_hex=a) for a in self.args],as_dict=lambda:{'index':5059}))
+        return list_element_shared_context(self.pe,table,self.reg,self.code,self.specs,self.raw,source='fixture.dll')
+
+    def test_selected_shared_candidate_not_companion(self):
+        row=self.decode()
+        self.assertEqual(row['methodSpecIndices'],[165248])
+        self.assertIn('shared-code candidate context',row['boundary'])
+
+    def test_wrong_order_context_truncated_trailing_and_ambiguous(self):
+        self.args.reverse()
+        with self.assertRaises(ContextError):self.decode()
+        self.args.reverse();good=self.raw
+        for bad in (good[:-1],good+b'!',struct.pack('<iiii',165248,1,0,-1)):
+            self.raw=bad
+            with self.assertRaises(ContextError):self.decode()
+        self.raw=good;self.specs[0]=self.specs[165248]
+        with self.assertRaises(ContextError):self.decode()
+
+
+class ListElementNullProbeTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x3EDF9A0,'40534883EC20488BD9C644243000E87D8EDCFE84C00F8537F8CC004883C4205BC3'),
+            (0x4BAF1F2,'488D542430488BCBE861960FFEB001E9B50733FF'),
+            (0x2CA8830,'40534883EC2083793001488BD90F8CBD8BE301488B43508038FF0F94C04883C4205BC3'),
+            (0x2CA8860,'48895C24084889742410574883EC2083793001488BF2488BD90F8C958BE301488B43500FB608880E8B7B3083EF010F88938BE30148FF4350FF4340FF4344897B30803EFF488B5C2430488B7424380F95C04883C4205FC3'),
+            (0x4AE1400,'4533C0BA01000000E84F7DC20490E930741CFE'),
+            (0x4AE1414,'4533C0BA01000000E83B7DC20490E958741CFEBA01000000488BCBE80C0DFF0084C00F8565741CFEE953741CFE'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_peek_marker_and_conditional_consumption(self):
+        row=list_element_null_probe(self.pe,source='fixture.dll')
+        self.assertEqual((row['markerByte'],row['fastConsumedBytesOnMatch']),(255,1))
+
+    def test_truncated_trailing_corrupt_peek_branch_advance_or_boolean(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):list_element_null_probe(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class ListElementDispatchTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={0x98CD0:bytes.fromhex(
+            '48895C2408488974241048897C241841564883EC20488B0A4D8BF1498BF0488BDAE89ABEF6FF488B3B488D0D90260204488B8790010000488BBF98010000483BC10F852B3D2600803DAFEDE00D000F84A1000000488B4720488B88C0000000488B11488BCEE8666CE40384C00F85F63C2600488B4720488B0D23D4000D488B98C000000083B9E000000000488B5B50747C33D2488BCBE885CBD0024885C0747733D2488BC8E876EDD00284C0756F488B4720488B88C0000000488B4958E89EEDD002488B4F204C8BC0498BD64C8B89C0000000488BCE4D8B4918E881A9A703488B5C2430488B742438488B7C24404883C420415EC3488D0DA4D3000DE88F84FAFFC605F5ECE00D01E947FFFFFFE8DED4F8FFE97AFFFFFFE82856A100CC33C0EBA1'),
+            0x2FCA38:bytes.fromhex('33C0418906E96DC3D9FF4C8BCF4D8BC6488BD6488BCBFFD090E959C3D9FF'),
+            0x98CF9:bytes.fromhex('488D0D90260204')}
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_fixed_pair_and_rip_derived_special_target(self):
+        row=list_element_dispatch(self.pe,source='fixture.dll')
+        self.assertEqual(row['targetPairOffsets'],[0x190,0x198])
+        self.assertEqual(row['specializedTargetRva'],0x40BB390)
+        self.assertIn('ordinary indirect CALL',row['boundary'])
+
+    def test_truncated_trailing_changed_body_or_operand(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    list_element_dispatch(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class ListFormatterCandidateTests(unittest.TestCase):
+    def setUp(self):
+        self.base=0x180000000
+        self.parts={0x100:struct.pack('<QII',self.base+0x200,0x150000,0),
+            0x200:struct.pack('<QQQQ',self.base+0x300,self.base+0x400,0,0),
+            0x300:struct.pack('<QII',54057,0x120000,0)}
+        for at,raw in ((0x3BA410E,'488B47508B30'),(0x3BA4120,'48834750048347400483474404895F30'),
+            (0x3BA4130,'48634744488B4F18482BC84863C6483BC8'),(0x3BA4147,'83FEFF0F842F010000'),
+            (0x3BA415F,'49833E00488B4520488B88C00000000F8518653201'),(0x3BA41C1,'85F60F881F653201'),
+            (0x3BA4282,'49C70600000000'),(0x4ECA6AB,'FF431CC7431800000000E9799BCDFE'),
+            (0x3BA4261,'85F67F4D'),(0x3BA42C3,'4C8D4C24584C8BC7498BD7E8FD494FFC'),
+            (0x3BA4312,'41FFC4443BE60F8D47FFFFFFEB92')):self.parts[at]=bytes.fromhex(raw)
+        self.pointers={self.base+0x10000+209879*8:self.base+0x100,self.base+0x20000:self.base+0x3BA40F0}
+        def read(va,size):
+            if va-self.base not in self.parts:raise ContextError('fixture.dll',va,'mapped raw range',size)
+            return self.parts[va-self.base]
+        self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=read,
+                                u64_at_va=lambda va:self.pointers[va])
+        self.reg={'typesCount':209880,'types':hex(self.base+0x10000),'methodSpecsCount':215462,
+                  'genericMethodTableCount':1,'genericMethodTable':hex(self.base+0x30000)}
+        self.code={'genericMethodPointersCount':1,'invokerPointersCount':1,'genericMethodPointers':hex(self.base+0x20000)}
+        self.specs=[(0,-1,-1)]*215462;self.specs[215461]=(428795,816,-1)
+        self.raw=struct.pack('<iiii',215461,0,0,-1)
+        self.inst=SimpleNamespace(index=816,record_va=self.base+0x400,
+            arguments=[SimpleNamespace(raw_type_record_hex='A22D0000000000000000118000000000')],as_dict=lambda:{'index':816})
+        def resolve(pointer):
+            if pointer!=self.base+0x400:raise ContextError('fixture',pointer,'registered pointer',pointer)
+            return self.inst
+        self.table=SimpleNamespace(resolve_pointer=resolve)
+        self.md=SimpleNamespace(types=range(58110),methods={428795:SimpleNamespace(declaring_type=54057)})
+
+    def decode(self):
+        with patch('scripts.game_data.il2cpp_context_audit.module_methods',return_value=[{'token':0x060001C0}]):
+            return list_formatter_candidate(self.pe,self.md,{},[],self.reg,self.code,self.table,self.specs,self.raw,source='fixture.dll')
+
+    def test_candidate_and_nonuniform_negative_count_boundary(self):
+        row=self.decode()
+        self.assertEqual(row['methodSpecIndices'],[215461])
+        self.assertEqual(row['codeCandidates'][0]['methodPointerVa'],self.base+0x3BA40F0)
+        self.assertIn('does not universally reject',row['boundary'])
+        self.assertIn('does not prove four serialized bytes',row['boundary'])
+
+    def test_truncated_trailing_or_corrupt_carriers_and_windows(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):self.decode()
+            self.parts[at]=good
+
+    def test_bad_table_counts_indices_trailing_and_duplicate_candidates(self):
+        good=self.raw
+        for bad in (good[:-1],good+b'!',struct.pack('<iiii',215462,0,0,-1),struct.pack('<iiii',215461,1,0,-1)):
+            self.raw=bad
+            with self.assertRaises(ContextError):self.decode()
+        self.raw=good+good;self.reg['genericMethodTableCount']=2
+        with self.assertRaises(ContextError):self.decode()
+
+    def test_wrong_context_or_additional_matching_spec(self):
+        self.inst.index=817
+        with self.assertRaises(ContextError):self.decode()
+        self.inst.index=816;self.specs[0]=self.specs[215461]
+        with self.assertRaises(ContextError):self.decode()
+
+
+class NestedReaderContextTests(unittest.TestCase):
+    def setUp(self):
+        self.base=0x180000000;module=self.base+0x100
+        self.modules={'MemoryPack.dll':module}
+        self.words={module+8:678,module+0x40:120,module+0x50:691}
+        self.qwords={module+16:self.base+0x2000,module+0x48:self.base+0x4000,module+0x58:self.base+0x5000}
+        self.parts={self.base+0x2000:bytes(678*8)}
+        ranges=bytearray(120*12)
+        for i,(token,start,count) in enumerate(((0x06000073,36,1),(0x06000075,40,3),(0x0600002F,13,2))):
+            struct.pack_into('<III',ranges,i*12,token,start,count)
+        self.parts[self.base+0x4000]=bytes(ranges)
+        self.reg={'methodSpecsCount':520000,'methodSpecs':hex(self.base+0x100000),
+                  'genericInstsCount':60000,'typesCount':3000,'types':hex(self.base+0x200000)}
+        for start,kind,index in ((36,3,517554),(40,3,516756),(13,1,2190)):
+            payload=self.base+0x8000+start*4
+            self.parts[self.base+0x5000+start*16]=struct.pack('<IIQ',kind,0,payload)
+            self.parts[payload]=struct.pack('<I',index)
+        self.parts[self.base+0x100000+517554*12]=struct.pack('<iii',428464,-1,54984)
+        self.parts[self.base+0x100000+516756*12]=struct.pack('<iii',428394,-1,41928)
+        self.parts[self.base+0x200000+2190*8]=struct.pack('<Q',self.base+0x9000)
+        self.parts[self.base+0x9000]=struct.pack('<QII',2,0x1E0000,0)
+        for at,raw in ((0x381F904,'488BDA4C8BF9'),(0x381F915,'488B4338488B18'),
+                       (0x381F944,'488B4338488B30'),(0x381F956,'488B5E38488B1B'),
+                       (0x381FB0D,'B9050000004C8D4C24204D8BC7488BD3E8DEF781FC')):
+            self.parts[self.base+at]=bytes.fromhex(raw)
+        self.args={54984:struct.pack('<QII',0,0x1E0000,0),41928:struct.pack('<QII',1,0x1E0000,0)}
+        def resolve(index):
+            return SimpleNamespace(record_va=0xA000,arguments=[SimpleNamespace(type_pointer_va=0xB000,
+                raw_type_record_hex=self.args[index].hex().upper())],as_dict=lambda:{'index':index})
+        self.table=SimpleNamespace(resolve=resolve)
+        self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=lambda va,size:self.parts[va],
+                                u32_at_va=lambda va:self.words[va],u64_at_va=lambda va:self.qwords[va])
+        self.buf=bytearray(0x300)
+        struct.pack_into('<II',self.buf,8+12*8,0x200,48)
+        struct.pack_into('<II',self.buf,8+14*8,0x240,48)
+        methods=[SimpleNamespace(generic_container_index=-1)]*428465
+        names={0:'MemoryPack.dll',1:'ReadPackable',2:'ReadValue',3:'GetFormatter'}
+        for i,(definition,token) in enumerate(((428462,0x06000073),(428464,0x06000075),(428394,0x0600002F))):
+            struct.pack_into('<iihhHH',self.buf,0x200+i*16,i,0,0,0,0,0)
+            struct.pack_into('<iiii',self.buf,0x240+i*16,definition,1,1,i)
+            methods[definition]=SimpleNamespace(generic_container_index=i,token=token,declaring_type=int(i==2),name_index=i+1)
+        self.md=SimpleNamespace(buf=self.buf,methods=methods,
+            types=['MemoryPack.MemoryPackReader','MemoryPack.MemoryPackFormatterProvider'],
+            type_full_name=lambda name:name,string=lambda index:names[index],images=[SimpleNamespace(name_index=0)])
+
+    def decode(self):
+        return nested_reader_context(self.pe,self.md,self.modules,[0,0],self.reg,self.table,
+                                     source='fixture.dll',metadata_source='fixture.dat')
+
+    def test_distinct_reciprocal_parameters_and_module_slots(self):
+        row=self.decode()
+        self.assertEqual([r['moduleEntryIndex'] for r in row['rows']],[36,40,13])
+        self.assertEqual([r['parameterOwner']['methodIndex'] for r in row['rows']],[428462,428464,428394])
+        self.assertEqual([r['parameterOwner']['ordinal'] for r in row['rows']],[0,0,0])
+        self.assertTrue(all(r['pointerVa']==0 for r in row['methods']))
+
+    def test_same_ordinal_but_wrong_parameter_owner_is_rejected(self):
+        self.args[54984]=self.args[41928]
+        with self.assertRaises(ContextError):self.decode()
+
+    def test_truncated_trailing_and_malformed_records_and_instructions(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                if at==self.base+0x2000 and bad==good:continue
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):self.decode()
+            self.parts[at]=good
+
+    def test_ambiguous_range_count_and_nonnull_generic_definition(self):
+        at=self.base+0x4000;good=self.parts[at]
+        for raw in (good[:36]+good[:12]+good[48:],good[:4]+struct.pack('<II',690,2)+good[12:]):
+            self.parts[at]=raw
+            with self.assertRaises(ContextError):self.decode()
+        self.parts[at]=good
+        pointers=bytearray(self.parts[self.base+0x2000]);struct.pack_into('<Q',pointers,(0x73-1)*8,self.base+0x1234)
+        self.parts[self.base+0x2000]=bytes(pointers)
+        with self.assertRaises(ContextError):self.decode()
+
+    def test_out_of_bounds_spec_and_broken_reciprocal_container(self):
+        self.reg['methodSpecsCount']=517554
+        with self.assertRaises(ContextError):self.decode()
+        self.reg['methodSpecsCount']=520000
+        struct.pack_into('<i',self.buf,0x240,428464)
+        with self.assertRaises(ContextError):self.decode()
+
+
+class UnityLoaderConversionTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x22A130,
+             '48895C241856415641574883EC30498BD8488BF24C8BF14885D20F84D20000004C8B014533FF44897C2428448BCE33D24C897C2420B9E9FD0000FF15A817630185C00F8EAA000000807B200148896C2450BD0C00000048897C24584863F80F85980000008BC5483BF8760B488BD7488BCBE8CA431A00807B2001746848897B10807B20017467488B036644893C78488BCB498B3EE8D7441A00807B2002488BE80F841C01CB00807B20017403488B1B896C2428448BCE4C8BC748895C242033D2B9E9FD0000FF151D176301488B7C2458488B6C2450488B5C24604883C430415F415E5EC3662BEF66896B18EB93488BC3EB97488BCBE896441A00EBD9488B4308E961FFFFFF'),
+            (0x22A090,'48895C2408574883EC2080792002488BFA488BD90F842002CB00807B200174204C8B03488BCBE8E5451A00488B5C2430498D0C40488BC748890F4883C4205FC34C8BC3EBDE'),
+            (0xEDA2CA,'E8D1434FFF488BD0E899424FFF90E9CDFD34FF'),
+            (0xEDA2F2,'E8A9434FFF488BD0E871424FFF90E9D1FE34FF'),
+            (0x3CE6A0,'807920017405488B4110C30FB75118B80C000000482BC2C3'),
+            (0x2FE326,'E805BEF2FF488D9424A0000000488D4C2430E853BDF2FF'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_arguments_and_two_byte_end_pointer(self):
+        row=unity_loader_conversion(self.pe,source='fixture.UnityPlayer.dll')
+        self.assertEqual((row['codePageArgument'],row['flagsArgument']),(65001,0))
+        self.assertEqual(row['elementByteLength'],2)
+        self.assertEqual(len(row['bodies']),5)
+
+    def test_truncated_trailing_or_changed_count_result_and_end_pointer(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    unity_loader_conversion(self.pe,source='fixture.UnityPlayer.dll')
+            self.parts[at]=good
+
+
+class UnityLoaderInputTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x5579C0,'48895C2408574881EC800000008B0561504901488BF9488D4C243089442454BA10000000C644243000C644244818C644245001E868D0B1FF0F1005817732010F1100C6401000807C2450010F84150E9F00E91A0E9F00488D4C2430E8A06CDCFF'),
+            (0xF48826,'C644244808E9E6F160FF'),
+            (0x74A60,'405355564883EC4080792001488BF2488BD9BD180000000F85BE0000008BC5483BF07715807920010F85B6000000488BC34883C4405E5D5BC3'))}
+        self.parts[0x187F180]=b'GameAssembly.dll'
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_inline_literal_and_loader_argument(self):
+        row=unity_loader_input(self.pe,source='fixture.UnityPlayer.dll')
+        self.assertEqual(row['requestedModuleName'],'GameAssembly.dll')
+        self.assertEqual(row['requestByteLength'],16)
+        self.assertEqual(row['loaderRva'],0x31E6C0)
+
+    def test_truncated_trailing_or_changed_literal_tag_count_branch_and_call(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    unity_loader_input(self.pe,source='fixture.UnityPlayer.dll')
+            self.parts[at]=good
+
+
+class UnityModuleLookupTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x2FE290,
+             '40564881EC80000000488BF1488B0D9DFDA5014885C90F847800C0004C8BC6488D542420E857010000488B0D80FDA5018B51084883C2084C6BC2074'
+             'C03014C3B000F857100C00033C048899C24900000006689442430488BCEB80C000000C7442454010000006689442448C644245001E8EB68D7FF807E20017403488B0'
+             'E48898C24A00000004C8D442430488D8C24A0000000488BD0E805BEF2FF488D9424A0000000488D4C2430E853BDF2FF0FB64C2450488B1880F9020F840A00C00080F'
+             '901488D442430480F454424300F1F4000483BC374136683382F74064883C002EBEF66C7005C00EBF3807C2450010F84EEFFBF00488B4C2430FF1542D55501488BD84'
+             '885C07443448B059B0A7A01488D4C24584889BC2498000000488BD6488B3D8CFCA501E837B29200488BD0488BCFE80C010000488D4C2458488918E83F65D7FF488BB'
+             'C2498000000807C245000751B8B5424544C8D056F6D5601488B4C243041B90D020000E815AE2800488BC3488B9C24900000004881C4800000005EC3'),
+            (0xEFE324,'4C8D05E55B2EFFBA20000000488D0D09FDE500E8C4ADD9FF488B0DFDFCE500E964FF3FFF488BD6E8800140FF488B00E9AE0040FF488B542440488D4C2430E809024DFF0FB64C2450E9DDFF3FFF488D4C2430E90D0040FF'),
+            (0x31E670,'40574881EC90000000488BFA4885C9742E48899C24A0000000FF1561D25301488BD84885C00F84EB23BE00488BC3488B9C24A00000004881C4900000005FC333C0EBF3'),
+            (0xF00A86,'FF15DCAE95008BD0488D4C2468E8881CE3FF807820017403488B004C8BC8488D153597BC004C8BC7488D4C2440E8887217FF488BC8488D159846960033C041B9FFFFFFFF8944243041B8E000000089442428C744242001000000E80BD541FF488D4C2440E8213E17FF488D4C2468E8173E17FF90E99CDB41FF'),
+            (0x31E6C0,'4883EC28E8C7FBFDFF48890550659D014885C075054883C428C3'),
+            (0x2FE388,'FF1542D55501'),(0x31E689,'FF1561D25301'),
+            (0x22A16A,'FF15A8176301'),(0x22A1F5,'FF151D176301'))}
+        self.parts.update({0x1C3624C:struct.pack('<IIIII',0x1C36648,0,0,0x1C38088,0x185B258),
+                           0x1C38088:b'KERNEL32.dll\0',
+                           0x1C36CC0:struct.pack('<Q',0x1C37618),
+                           0x1C36CE0:struct.pack('<Q',0x1C375CE),
+                           0x1C37618:b'\xf7\x03LoadLibraryW\0',
+                           0x1C375CE:b'\xdd\x02GetProcAddress\0',
+                           0x1C36D08:struct.pack('<Q',0x1C3756A),
+                           0x1C3756A:b'\x23\x04MultiByteToWideChar\0'})
+        self.header={0x3C:0x100,0x190:0x1C3624C,0x194:420}
+        self.pe=SimpleNamespace(image_base=0x180000000,
+            bytes_at_va=lambda va,size:self.parts[va-0x180000000],
+            u32_at_file=lambda at:self.header[at])
+
+    def test_selected_imports_and_handle_cache(self):
+        row=unity_module_lookup(self.pe,source='fixture.UnityPlayer.dll')
+        self.assertEqual([r['name'] for r in row['selectedImports']],
+                         ['LoadLibraryW','GetProcAddress','MultiByteToWideChar','MultiByteToWideChar'])
+        self.assertEqual(row['moduleHandleCacheRva'],0x1CF4C20)
+        self.assertEqual(len(row['bodies']),5)
+
+    def test_truncated_trailing_and_malformed_body_descriptor_thunk_or_name(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError) as raised:
+                    unity_module_lookup(self.pe,source='fixture.UnityPlayer.dll')
+                self.assertIn('fixture.UnityPlayer.dll',str(raised.exception))
+            self.parts[at]=good
+
+    def test_wrong_directory_offset_or_size(self):
+        for at in (0x190,0x194):
+            good=self.header[at]
+            for bad in (0,good-1,good+1,0xFFFFFFFF):
+                self.header[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    unity_module_lookup(self.pe,source='fixture.UnityPlayer.dll')
+            self.header[at]=good
+
+
+class ResolverKeyComparisonTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x2DF760,'482BD14983F808'),(0x2DF790,'8A013A0411750C'),
+            (0x2DF79F,'4833C0C31BC083D8FFC3'),
+            (0x2DF814,'488B0C0A480FC8480FC9483BC11BC083D8FFC3'),
+            (0x1F21F,'4C8BC7483BF74C0F42C6E832052C00'),(0x1F29C,'483BFE7293'),
+            (0x1F264,'4C8BC6483BDE4C0F42C3E8ED042C00'),(0x1F42E,'483BF30F8349FEFFFF'),
+            (0x1F36F,'4C8BC7483BF74C0F42C6E8E2032C00'),
+            (0x1F3D5,'483BFE72AA'),(0x1F43C,'483BF3738B'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_complete_selected_windows(self):
+        self.assertEqual(len(resolver_key_comparison(self.pe,source='fixture.dll')['windows']),11)
+
+    def test_changed_truncated_trailing_compare_or_tie_break(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    resolver_key_comparison(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class ResolverPrefixQueryTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x1F2D6,'BA28000000488BCBE85D052C00'),(0x1F2EC,'482BC34883F8FF'),
+            (0x1F2F9,'4C8BC84533C0488D542440488D4C2420E892FDFFFF'),
+            (0x1F30E,'488BD0488D4C2420E855460000'),
+            (0x1F0BD,'4C3941100F828F7A2C00488B4110492BC0493BC14C0F42C8'),
+            (0x1F0D5,'488379180F7603488B094A8D14014D8BC1488BCBE8E2570000'),
+            (0x2399C,'0F10070F11030F104F100F114B10'),
+            (0x24973,'4C8BC348894718488BD648895F10498BCEE897A32B00'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_start_and_delimiter(self):
+        row=resolver_prefix_query(self.pe,source='fixture.dll')
+        self.assertEqual((row['queryStart'],row['delimiterByte']),(0,40))
+
+    def test_bounds_call_and_move_windows_fail_closed(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    resolver_prefix_query(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class UnityConversionExportsTests(unittest.TestCase):
+    def setUp(self):
+        self.ga={0xE177:bytes.fromhex('4C8BCA4C8902')};self.unity={}
+        for at,hexraw,name_at,name,en,ns,os,fs,index,target in (
+            (0x3205CD,'488B0D4C469D01488D150D6D6601E890E0FFFF488905D14A9D01',0x19872E8,
+             'il2cpp_string_new_len',0xCF8DAF9,0xCF8BC5C,0xCF8C0EE,0xCF8B5E4,243,0x24AD0),
+            (0x31FA06,'488B0D13529D01488D1544636601E857ECFFFF48890538519D01',0x1985D58,
+             'il2cpp_gc_wbarrier_set_field',0xCF8D0D4,0xCF8BAD8,0xCF8C02C,0xCF8B460,146,0xE170)):
+            literal=name.encode()+b'\0';self.unity[at]=bytes.fromhex(hexraw);self.unity[name_at]=literal
+            self.ga.update({en:literal,ns:struct.pack('<I',en),os:struct.pack('<H',index),fs:struct.pack('<I',target)})
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.ga[va-0x180000000])
+        self.up=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.unity[va-0x180000000])
+
+    def decode(self):
+        return unity_conversion_exports(self.pe,self.up,source='ga.dll',unity_source='unity.dll')
+
+    def test_selected_export_targets(self):
+        self.assertEqual([r['exportTargetRva'] for r in self.decode()['requests']],[0x24AD0,0xE170])
+
+    def test_truncated_trailing_and_wrong_names_slots_and_abi(self):
+        for parts in (self.ga,self.unity):
+            for at,good in list(parts.items()):
+                for bad in (good[:-1],good+b'!',bytes(len(good))):
+                    parts[at]=bad
+                    with self.subTest(at=at),self.assertRaises(ContextError):self.decode()
+                parts[at]=good
+
+
+class UnityPathReturnTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={rva:bytes.fromhex(value) for rva,value in (
+            (0x32BA24,'488D4C2420E822000000488BD0488D4C2460E88502FAFF'),
+            (0x32BA3B,'488D4C2420E8CB8ED4FF488B442460'),
+            (0x32BA63,'4C8D0596245401488BCB488D542420E819000000'),
+            (0x2CBCC6,'488BD94C8BCA488BCAE81C8FDAFF'),
+            (0x2CBCD4,'80792001751F448BC0488D4C2430498BD1E816000000'),
+            (0x2CBCEA,'488B08488BC348890B'),(0x2CBCF9,'4D8B09EBDC'),
+            (0x74BF0,'807920017405488B4110C3480FBE5118B818000000482BC2C3'),
+            (0x2CBD06,'488B05AB93A2014C8BCA488BD9418BD0498BC9FFD0'),
+            (0x2CBD1B,'4C8BC0488D54243033C9FF152D8EA201488B442430488903'))}
+        self.parts[0x186DF00]=b'StreamingAssets\0'
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_return_and_representation(self):
+        row=unity_path_return(self.pe,source='fixture.dll')
+        self.assertEqual(row['representationTagOffset'],32)
+        self.assertEqual(row['literal'],'StreamingAssets')
+
+    def test_changed_truncated_or_trailing_windows(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    unity_path_return(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class UnityRegistrationPairTests(unittest.TestCase):
+    def setUp(self):
+        base=0x180000000
+        self.parts={0x3BF7C0:bytes.fromhex('48895C24084889742410574883EC2033FF488D352808C4FF8BDF660F1F440000488B943350D29D01488B8C33404E9E01E87BFAFFFFFFC7488D5B0881FF7E0F000072DD488B5C2430488B7424384883C4205FC3'),
+            0x19DD250:struct.pack('<Q',base+0x32BA20)*0xF7E,
+            0x19E4E40:struct.pack('<Q',base+0x19F1D50)*0xF7E,
+            0x19F1D50:b'UnityEngine.Application::get_streamingAssetsPath\0',0x32BA20:b'!'}
+        self.pe=SimpleNamespace(image_base=base,bytes_at_va=self.read)
+
+    def read(self,va,size):
+        if va-self.pe.image_base not in self.parts:
+            raise ContextError('fixture.dll',va,'mapped target',va)
+        raw=self.parts[va-self.pe.image_base]
+        return raw[:1] if size==1 else raw
+
+    def test_whole_slot_sweep_and_selected_pair(self):
+        row=unity_registration_pair(self.pe,source='fixture.dll')
+        self.assertEqual(row['summary']['success'],3966)
+        self.assertEqual(row['selected']['index'],299)
+
+    def test_truncated_trailing_changed_count_or_target(self):
+        for at,good in list(self.parts.items()):
+            if at==0x32BA20:continue
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    unity_registration_pair(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class UnityRegistrationForwarderTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={0x3BF270:bytes.fromhex('48895C241048896C2418564883EC2033DB488BF248391D85EC8A01488BE9762E48897C24308BFB488B0562EC8A01488BD6488BCDFF1407FFC3488D7F084863C3483B0559EC8A0172DE488B7C2430488BD6488BCD488B5C2438488B6C24404883C4205E48FF25E65C9301'),
+            0x31E8F9:bytes.fromhex('488B0D20639D01488D15F1536601E864FDFFFF488905AD669D01'),
+            0x3BF2D3:bytes.fromhex('48FF25E65C9301'),0x1983CF8:b'il2cpp_add_internal_call\0'}
+        self.pe=SimpleNamespace(image_base=0x180000000,
+            bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_full_forwarder_and_request(self):
+        row=unity_registration_forwarder(self.pe,source='fixture.UnityPlayer.dll')
+        self.assertEqual(row['requestedExport'],'il2cpp_add_internal_call')
+        self.assertEqual(row['forwarderByteLength'],106)
+
+    def test_bad_request_cache_and_terminator(self):
+        for at in (0x31E8F9,0x3BF2D3,0x1983CF8):
+            good=self.parts[at]
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    unity_registration_forwarder(self.pe,source='fixture.UnityPlayer.dll')
+            self.parts[at]=good
+
+    def test_missing_or_wrong_body_fails_closed(self):
+        for raw in (b'',bytes(0x69),bytes(0x6A),bytes(0x6B)):
+            pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:raw)
+            with self.subTest(size=len(raw)),self.assertRaises(ContextError):
+                unity_registration_forwarder(pe,source='fixture.UnityPlayer.dll')
+
+
+class VfsRootResolverTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x2F46CD9,'E8325F9F00'),(0x2F46CE5,'488BD8'),
+            (0x2F46CFD,'488B89B800000048895908'),(0x2F46CA7,'488B80B8000000488B4008'),
+            (0x393CC14,'488B052D12570A4885C07407'),(0x393CC20,'4883C42848FFE0'),
+            (0x393CC27,'488D0D1A7BEF06E87D256EFC'),(0x393CC3C,'4889050512570AEBDB'),
+            (0x1F1DC,'4C8B2D7515E90D498B5D084D8BFD'),(0x1F293,'498B4740E957010000'),
+            (0x1F2D6,'BA28000000488BCBE85D052C00'),(0x1F32A,'4C8B2D2714E90D498B5D084D8BFD'),
+            (0x1F3CC,'4D3BFD751133DBEB11'),(0x1F3E2,'498B5F40'),(0x1F3F0,'488BC3'),
+            (0x2E6B64,'48C7C0FFFFFFFFE97F87D3FF'),
+            (0x2076F,'4889542410'),(0x2077D,'488BEC'),(0x207E6,'4C8B256BFFE80D'),
+            (0x208BB,'488D1D96FEE80D'),(0x208CA,'B948000000E848301700'),
+            (0x208DD,'0F1045D80F1140200F104DE80F114830'),
+            (0x20924,'E837FCFFFF4C8BE8488B453849894540'),
+            (0xF872C,'4889052580DB0D4889052680DB0D'),
+            (0xF873F,'488900488940084889401066C7401801014889050180DB0D'),
+            (0xCF8B1F0,'00000000FFFFFFFF0000000044C2F80C010000009E0100009E01000018B2F80C90B8F80C08BFF80C'),
+            (0xCF8B914,'EFC4F80C'),(0xCF8BF4A,'2100'),
+            (0xCF8B29C,'30050200'),(0x20530,'E92B020000'))}
+        self.parts[0xCF8C4EF]=b'il2cpp_add_internal_call\0'
+        self.parts[0xA834748]=b'UnityEngine.Application::get_streamingAssetsPath()\0'
+        self.pe=SimpleNamespace(image_base=0x180000000,
+            bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_static_requested_interface(self):
+        row=vfs_root_resolver(self.pe,source='fixture.dll')
+        self.assertEqual(row['requestedInterface'],'UnityEngine.Application::get_streamingAssetsPath()')
+
+    def test_runtime_lookup_carrier_not_fixed_callee(self):
+        row=vfs_root_resolver(self.pe,source='fixture.dll')
+        self.assertEqual(row['candidateValueOffset'],64)
+        self.assertNotEqual(row['lookupCarrierGlobalRva'],row['functionCacheRva'])
+
+    def test_separate_writer_and_initializer(self):
+        row=vfs_root_resolver(self.pe,source='fixture.dll')
+        self.assertEqual(row['registrationWriterRva'],0x20760)
+        self.assertEqual(row['sentinelInitializerRva'],0xF8718)
+
+    def test_selected_export_to_tail_stub(self):
+        row=vfs_root_resolver(self.pe,source='fixture.dll')
+        self.assertEqual(row['selectedWriterExport'],
+            {'name':'il2cpp_add_internal_call','ordinal':34,'stubRva':0x20530})
+
+    def test_bad_target_name_terminator_and_window_lengths(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!',good[:-1]+bytes([good[-1]^1])):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    vfs_root_resolver(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class VfsStringCarrierTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x2CB7624,'4C6341108BC2493BC07D0D4863C20FB7444114'),
+            (0x24AD6,'448BC2488BD1488D4C2420E87A000000'),
+            (0x24AE7,'488D4C242048837C243807480F474C24208B542430E86F0D0000'),
+            (0x24BB2,'0FB60A80F980730C440FB6C141B901000000'),
+            (0x24CC1,'0FB61E0FB60E80F9800F833C01000048FFC6'),
+            (0x24CED,'488D480148894F10488BCF48837F18077603488B0F66891C416644896C4102'),
+            (0x259DC,'897B10664489647B14'),
+            (0x259FB,'4C8BC7488D4B144D03C0498BD6E813932B00'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,
+            bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_reader_and_constructor_offsets(self):
+        row=vfs_string_carrier(self.pe,source='fixture.dll')
+        self.assertEqual((row['lengthOffset'],row['elementDataOffset'],row['elementByteLength']),(16,20,2))
+
+    def test_truncated_and_trailing_windows(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!'):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    vfs_string_carrier(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+    def test_changed_bounds_width_and_copy_target_fail(self):
+        for at in (0x2CB7624,0x24CED,0x259DC,0x259FB):
+            good=self.parts[at];self.parts[at]=good[:-1]+bytes([good[-1]^1])
+            with self.subTest(at=at),self.assertRaises(ContextError):
+                vfs_string_carrier(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class VfsFormatItemTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x2DF2D39,'488D4DC7448BC3488BD7'),(0x2DF2D48,'E8131700000F10008B7018'),
+            (0x2DF4468,'418BD8488BFA488BF1'),(0x2DF447F,'FFC348636A10'),
+            (0x2DF44AF,'0FB75442148D42D06683F809'),(0x2DF4515,'4183FE10'),
+            (0x2DF4594,'44895E04FFC3'),(0x2DF45AC,'448936'),(0x2DF45B4,'44897E1C'),
+            (0x2DF45BD,'895E180F114608'),
+            (0x2DF4639,'488D4F1444895C242C4A8D0C61896C242848894C24200F28442420'),
+            (0x4C5DC40,'4183FE100F8C906819FE'),(0x4C5DD0E,'41F7DF4533DB'))}
+        self.pe=SimpleNamespace(image_base=0x180000000,
+            bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def test_return_ranges_tile_exact_result(self):
+        row=vfs_format_item(self.pe,source='fixture.dll')
+        cursor=0
+        for part in row['resultRanges']:
+            self.assertEqual(part['offset'],cursor)
+            cursor+=part['length']
+        self.assertEqual(cursor,row['resultByteLength'])
+
+    def test_truncated_and_trailing_instruction_windows(self):
+        for at,good in list(self.parts.items()):
+            for bad in (good[:-1],good+b'!'):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):
+                    vfs_format_item(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+    def test_wrong_call_count_or_output_offset_fails(self):
+        for at in (0x2DF2D48,0x2DF4515,0x2DF45BD,0x4C5DC40):
+            good=self.parts[at];self.parts[at]=good[:-1]+bytes([good[-1]^1])
+            with self.subTest(at=at),self.assertRaises(ContextError):
+                vfs_format_item(self.pe,source='fixture.dll')
+            self.parts[at]=good
+
+
+class LiteralRecordTests(unittest.TestCase):
+    def test_bounded_and_empty_interval(self):
+        self.assertEqual(literal_record(struct.pack('<ii',3,2),5,source='meta',offset=8),(2,3))
+        self.assertEqual(literal_record(struct.pack('<ii',0,5),5,source='meta',offset=8),(5,0))
+
+    def test_truncated_trailing_negative_and_out_of_bounds(self):
+        for raw in (b'',bytes(7),bytes(9),struct.pack('<ii',-1,0),struct.pack('<ii',1,-1),
+                    struct.pack('<ii',6,0),struct.pack('<ii',1,5)):
+            with self.subTest(raw=raw),self.assertRaises(ContextError):
+                literal_record(raw,5,source='meta',offset=8)
+
+
+class VfsPathLiteralTests(unittest.TestCase):
+    def setUp(self):
+        count=48958;pool_start=24+count*8
+        self.buf=bytearray(pool_start)
+        pool=bytearray()
+        for index,value in ((48841,b'{0}/{1}/{2}'),(48957,b'{0}{1}{2}'),
+                            (48832,b'{0}/{1}'),(48849,b'{0}/{1}{2}')):
+            struct.pack_into('<ii',self.buf,24+index*8,len(value),len(pool));pool.extend(value)
+        struct.pack_into('<iiii',self.buf,8,24,count*8,pool_start,len(pool))
+        self.buf.extend(pool)
+        self.parts={0x4139C:struct.pack('<I',0x41331),
+                    0x41333:b'\xe8'+struct.pack('<i',0x2D8DE0-0x41333-5)}
+        self.parts.update({at:bytes.fromhex(raw) for at,raw in (
+            (0x41280,'8BC1C1E81D8BF1D1EE81E6FFFFFF0FFFC8'),
+            (0x2D8E1D,'48635008486340104903D0'),(0x2D8E2F,'4903C04A634C0204428B14024803C8'))})
+        for n,(rva,index) in enumerate(((0x2D7FAB2,48841),(0x2D7FB13,48957),(0x2D7FC9C,48832),
+                                       (0x2D7DEEA,48841),(0x2D7E068,48849),(0x2D7E188,48832))):
+            cell=0x1000+n*8
+            self.parts[rva]=b'\x48\x8b\x05'+struct.pack('<i',cell-rva-7)
+            self.parts[cell]=struct.pack('<Q',(5<<29)|(index<<1)|1)
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def decode(self):
+        return vfs_path_literals(self.pe,SimpleNamespace(buf=self.buf),source='fixture.dll',metadata_source='fixture.dat')
+
+    def test_complete_row_sweep_and_four_literal_values(self):
+        row=self.decode()
+        self.assertEqual(row['literalSweep']['success'],48958)
+        self.assertEqual(len({x['ascii'] for x in row['selected']}),4)
+
+    def test_bad_header_pool_and_unselected_record_fail(self):
+        good=self.buf[:]
+        for offset,value in ((12,7),(16,0),(20,999999),(24,-1)):
+            struct.pack_into('<i',self.buf,offset,value)
+            with self.subTest(offset=offset),self.assertRaises(ContextError):self.decode()
+            self.buf=good[:]
+        self.buf.pop()
+        with self.assertRaises(ContextError):self.decode()
+
+    def test_bad_switch_or_usage_is_not_a_literal(self):
+        for at in (0x4139C,0x1000):
+            good=self.parts[at]
+            for bad in (good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at),self.assertRaises(ContextError):self.decode()
+            self.parts[at]=good
+
+
+class VfsPathFormatContextTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={at:bytes.fromhex(raw) for at,raw in (
+            (0x2D7E5E2,'488B050FC22E0A'),(0xD06A7F8,'5F2513C000000000'),
+            (0x2D7E5E9,'4889442428'),(0x2DF2AC1,'4C8B757F488BFA4C8BE1'),
+            (0x2DF2B28,'4863C30FB74C47146683F97B'),
+            (0x2DF2D9E,'488B457F488B556F488B4038488B4808'),
+            (0x2DF2E0C,'488B457F488B5567488B4038488B08'),
+            (0x2DF2E94,'488B457F488B5577488B4038488B4810'),(0x2DF2D43,'45017C2408'),
+            (0x2D72FAD,'4C8BFA418BF0418BD0488BD9'),
+            (0x2D73006,'488B43208B088D04364863E84863C14C8D3447'),
+            (0x2D73029,'4C8BC5498BD7498BCEFFD0'),(0x2D73065,'488B43208B0003F0'),
+            (0x2D73097,'488B43208930'),(0x2D730CE,'488B43208B003B43287D38'),
+            (0x2D73103,'488B43208B00489833C966890C47'))}
+        self.spec_at=0x1000+627375*12
+        self.parts[self.spec_at]=struct.pack('<iii',443949,-1,8335)
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+        self.reg={'methodSpecsCount':627868,'genericInstsCount':73902,'methodSpecs':'0x180001000'}
+        self.instance=SimpleNamespace(arguments=[SimpleNamespace(raw_type_record_hex='C78C00000000000000000E0000000000') for _ in range(3)],as_dict=lambda:{'index':8335})
+        self.table=SimpleNamespace(resolve=lambda index:self.instance)
+
+    def decode(self):
+        with patch('scripts.game_data.il2cpp_context_audit.module_methods',return_value=[]):
+            return vfs_path_format_context(self.pe,SimpleNamespace(methods=range(500000)),{},[],self.reg,self.table,source='fixture.dll')
+
+    def test_original_context_and_element_units(self):
+        row=self.decode()
+        self.assertEqual(row['methodSpecIndex'],627375)
+        self.assertIn('not a byte length',row['boundary'])
+        self.assertIn('only if the updated signed cursor is below capacity',row['boundary'])
+
+    def test_all_selected_bytes_fail_closed(self):
+        for at,good in list(self.parts.items()):
+            for bad in (b'',good[:-1],good+b'!',bytes(len(good))):
+                self.parts[at]=bad
+                with self.subTest(at=at,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[at]=good
+
+    def test_wrong_context_or_argument_count(self):
+        self.parts[self.spec_at]=struct.pack('<iii',443949,-1,5586)
+        with self.assertRaises(ContextError):self.decode()
+        self.parts[self.spec_at]=struct.pack('<iii',443949,-1,8335)
+        self.instance.arguments.pop()
+        with self.assertRaises(ContextError):self.decode()
+
+    def test_shared_object_argument_cannot_replace_string(self):
+        self.instance.arguments[1].raw_type_record_hex='068E00000000000000001C0000000000'
+        with self.assertRaises(ContextError):self.decode()
+
+
+class VfsPathCarrierTests(unittest.TestCase):
+    def setUp(self):
+        self.parts={rva:b'\xe8'+struct.pack('<i',target-rva-5) for rva,target in (
+            (0x318BFFA,0x2D7F770),(0x318C12E,0x2D7AE60),
+            (0x2D7F7CB,0x2D7F920),(0x2D7AEC6,0x2D7DBF0),
+            (0x2D7FB68,0x2D7FE70),(0x2D7FD10,0x2D7FE70),
+            (0x2D7DF60,0x2F46C10),(0x2D7E0CC,0x2F46C10),(0x2D7E210,0x2F46C10),
+            (0x318C03E,0x2D7E480),(0x318C15D,0x2D7E480),
+            (0x2D7E601,0x2DF2AA0),(0x2D7E636,0x2D72FA0))}
+        self.parts.update({rva:bytes.fromhex(raw) for rva,raw in (
+            (0x2D7F7D3,'0F10000F1048100F11030F114B10'),(0x2D7AECE,'0F10000F1048100F11030F114B10'),
+            (0x2D7FB6D,'4889442438'),(0x2D7FBCF,'4889742440'),(0x2D7FC2F,'4C897C2448'),
+            (0x2D7FD15,'4889442438'),(0x2D7FD70,'4C897C2440'),(0x2D7FDE3,'498BC6410F1106410F114E10'),
+            (0x2D7DF65,'488945C8'),(0x2D7DFBF,'4C8975D0'),(0x2D7E00F,'488975D8'),
+            (0x2D7E215,'488945C8'),(0x2D7E26F,'488975D0'),(0x2D7E2D9,'410F1107410F114F10'),
+            (0x2D7E58A,'488B7E08'),(0x2D7E5A4,'4C8B7610'),(0x2D7E5B7,'4C8B3E488B7618'),
+            (0x2D7E5EE,'48897424204D8BCE4C8BC7498BD7488D4C2438'),
+            (0x2D7E61E,'488D5020'),(0x2D7E62B,'4533C9448B442440488BCB'))})
+        self.pe=SimpleNamespace(image_base=0x180000000,bytes_at_va=lambda va,size:self.parts[va-0x180000000])
+
+    def decode(self):
+        with patch('scripts.game_data.il2cpp_context_audit.module_methods',return_value=[]):
+            return vfs_path_carrier(self.pe,None,{},[],source='fixture.dll')
+
+    def test_four_slots_without_root_semantics(self):
+        row=self.decode()
+        self.assertEqual(row['carrierByteLength'],32)
+        self.assertIn('leaves +0x18 zero',row['boundary'])
+        self.assertIn('do not establish formatting syntax',row['boundary'])
+
+    def test_truncated_trailing_and_mutated_evidence(self):
+        for rva,good in list(self.parts.items()):
+            for bad in (b'',good[:-1],good+b'!',bytes(len(good))):
+                self.parts[rva]=bad
+                with self.subTest(rva=rva,length=len(bad)),self.assertRaises(ContextError):self.decode()
+            self.parts[rva]=good
+
+    def test_swapped_getter_fails(self):
+        rva=0x2D7FB68
+        self.parts[rva]=b'\xe8'+struct.pack('<i',0x2F46C10-rva-5)
+        with self.assertRaises(ContextError) as caught:self.decode()
+        self.assertIn('fixture.dll',str(caught.exception))
 
 
 class NativeFileReadTests(unittest.TestCase):
@@ -1219,12 +2421,12 @@ class UnresolvedUsageTests(unittest.TestCase):
         return unresolved_usage_index(raw,count,tag=tag,source='fixture.dll',offset=0x30)
 
     def test_each_supported_tag_exact_index(self):
-        for tag in (1,2,3,6):
+        for tag in (1,2,3,5,6):
             with self.subTest(tag=tag):
                 self.assertEqual(self.decode(struct.pack('<Q',(tag<<29)|7),tag=tag),3)
 
     def test_zero_and_maximum_legal_index(self):
-        for tag in (1,2,3,6):
+        for tag in (1,2,3,5,6):
             with self.subTest(tag=tag):
                 self.assertEqual(self.decode(struct.pack('<Q',(tag<<29)|1),count=1,tag=tag),0)
                 self.assertEqual(self.decode(struct.pack('<Q',(tag<<29)|(999_999<<1)|1),
@@ -1249,7 +2451,7 @@ class UnresolvedUsageTests(unittest.TestCase):
         for count in (-1,True,1_000_001):
             with self.subTest(count=count), self.assertRaises(ContextError):
                 self.decode(struct.pack('<Q',0x40000001),count=count)
-        for tag in (0,4,5,7,True):
+        for tag in (0,4,7,True):
             with self.subTest(tag=tag), self.assertRaises(ContextError):
                 self.decode(struct.pack('<Q',0x40000001),tag=tag)
 
