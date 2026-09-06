@@ -150,6 +150,43 @@ only.
   authored override. Trigger selection, active volumes and weights remain
   necessary; constructor defaults and captured constants do not establish them. See
   `reports/assets/character_recovery/shadow_simulation_native_ownership.json`.
+- Screen-shadow scene and character passes require separate CSM algorithms:
+  the character pass uses weighted cascade selection and four tent-filtered
+  comparisons, while the scene pass uses Poisson gathers. Both gathers bind
+  linear/clamp; depth binds point/clamp, while scene contact displacement binds
+  linear/clamp. Sampler names from decompilation do not prove bound state.
+  A 1x1 fallback atlas can hide incorrect addressing, so exercise atlas edges
+  with nontrivial data. The character helper and actual Unity
+  pass have a native-oracle GPU fixture under `tools/character_csm_differential/`
+  in the lab; live producer/publication authority remains separate.
+- Both screen-shadow variants modulate the composed scene shadow with the
+  recovered two-scale cloud sample before simulation blending and light
+  strength. CSM distance fade does not remove that cloud contribution. The
+  shared helper and actual Unity passes have original-bytecode GPU oracles;
+  selected environment texture/parameters/time remain an independent live
+  input gate. See lab `tools/cloud_shadow_differential/README.md` and the cloud
+  equation validation report under `reports/assets/character_recovery/`.
+  Current ordinary native constant publication checks the two cloud flags;
+  managed texture publication also checks the cloud feature's CPU-command state
+  and Unity texture validity. Keep these conditions separate and do not infer
+  the final GPU binding without the live phase and later-publisher joins. The
+  current source audit is `cloud_shadow_native_publishers.json`. Separately,
+  `cloud_draw_inputs.json` proves neutral cloud modulation for the retained
+  current-build shadow draws; it does not generalize to unsampled frames or
+  establish live environment ownership.
+  The bounded environment observer retains selected cloud configuration,
+  exact managed texture-publisher getter routes, the feature getter's actual
+  return and the constant method's before/after bytes. Keep these CPU-side
+  observations separate from texture validity, later overwrites and final draw
+  consumption. Its module README owns the receipt contract and capture boundary.
+- The shared character PreG surface records source-enabled `DepthOnlyOutline`
+  after body prepasses and before scene HGBuffer. Keep it distinct from the
+  later ZWrite-off color outline. Material pass flags and shader keywords select
+  the recovered cutoff/stencil variant; unknown enabled variants fail closed.
+  The hair branch preserves CharacterBit through its write mask and rejects
+  stored CharacterBit through its comparison. Depth writes and other stencil
+  bits must not be inferred from the later color pass. See lab PROGRESS findings
+  142-143 and `reports/assets/character_recovery/depth_only_outline_validation.json`.
 - ContactShadow captured-input replay needs repeat controls: original dispatches
   can differ at pixels with overlapping recovered output writes. Preserve the
   original dot-product instructions through distance quantization; scalar
@@ -232,6 +269,15 @@ only.
   its late pulse. This identifies curve-value phases, not body-pose phases or
   EffectInstance clock ownership. See the generated
   `post_dlaa_uber_producer_review.json` and parameter audit.
+  Exact replay additionally requires the consumer's fresh t0 contents, t1/t2,
+  ranged VS b0 and PS b0/b1, and actual pipeline state. Capture v4 retains those
+  inputs; v3 cannot establish them from resource identity alone. Initial
+  destination/depth dependence remains a separate replay gate. Follow the
+  capture README and lab progress log for validation and collection.
+  Original Uber bytecode omits RDEF resource metadata; bound-input requirements
+  come from executable declarations, not a zero reflection resource count.
+  Isolated replay must also prove full target coverage before a cleared target
+  can replace unavailable initial destination contents.
   Native-resolution lab stage captures already show the authored radial echoes
   appearing in final Uber from comparatively clean after-temporal input. Keep
   body-pose/camera alignment separate from the now-authenticated retail consumer
@@ -250,12 +296,45 @@ only.
   `_ContactShadow` UAV output, also sampled by the scene producer at t5.
   The legacy cross-backend screen-mask name is disproven. Dispatch-local
   constant-buffer slices and output bytes are authenticated in the combined
-  two-entry evidence package. Bounded isolated GPU
-  comparisons support the recovered arithmetic, but current native publishers
+  two-entry evidence package. Replay still needs the dispatch-local compute
+  sampler: Contact capture v2 now retains the bound s0 descriptor, while
+  legacy receipts explicitly leave
+  sampler evidence incomplete. New runtime data is required to replace the
+  earlier assumed replay sampler.
+  Bounded isolated GPU comparisons support the recovered arithmetic, but
+  current native publishers
   read interpolated environment settings and a camera frame counter; constructor
   defaults do not validate those live values. Exact t7 uses the completed
   resolve, and t11 uses same-camera/frame contact output with separate content
   gates. Legacy HLSL bindings remain a different contract.
+  The exact retained Default variant consumes only red from t7 and t11,
+  confirmed by fresh DXBC disassembly and independent channel interventions.
+  Contact red remains nonneutral; green independence here does not apply to
+  other consumers or close whole-texture publication. Prioritize the two live
+  red producers and stencil population for this deferred path. See
+  `deferred_shadow_channel_dependency.json` and the lab's maintained replay.
+  The base native camera lifecycle resets its counter to zero and increments
+  on camera Update, independently of contact dispatch readiness. The lab now
+  owns that counter in pipeline camera state and passes it to contact; producer
+  recreation, disabled passes, and setup failures cannot reset or pause it.
+  This does not establish the retail camera's initial phase or an IFix override.
+  Contact settings now import the selected authored phase with independent
+  provenance, native percent conversions and ignore-edge lane; the installed
+  base feature getter gates intensity. Unknown settings fail closed. This does
+  not validate runtime blend/IFix state or refresh the legacy light/exposure
+  snapshot's identity. Current authored exposure metadata is retained separately.
+  The reusable shadow visibility interpolator now preserves inactive configs,
+  copies active endpoints and applies the native scalar/boolean rules. Ordered
+  retained-volume replay matches the selected visibility subset; an inactive
+  higher-priority shadow config preserves the preceding active phase. This
+  does not identify that phase's runtime source asset or close native upload
+  ownership. The authored CharInfo prefab contains both the legacy shadow phase
+  and an active migrated phase with the observed simulation values. Exact
+  serialized references and ancestor flags establish that authored population;
+  equal-priority native sorting does not guarantee hierarchy precedence. Source
+  values alone cannot identify a live instance. See
+  `reports/assets/character_recovery/charinfo_authored_shadow_volumes.json`.
+  See `contact_shadow_authored_feature_source.json` in the same report directory.
   The combined capture needs no repeat for those graphics inputs. The optional
   environment-shadow extension observes selected phases, ordered applied
   volumes/factors and camera/shadow-manager state within the same two entries.
@@ -275,7 +354,26 @@ only.
   code pins. Publication requires the unique camera-frame join, coherent pointer
   rereads and the native branch. Matching owned producer-vector bytes still
   does not identify the actual pooled upload resource and binding range;
-  that missing runtime lineage keeps publication closed.
+  that missing runtime lineage keeps publication closed. The intervening graph
+  handle is a logical resource record, not a D3D buffer identity. The pool's
+  staging branch copies heap bytes through map/copy/unmap; map references can
+  share a backend mapping. Native differential tests show the reference-policy
+  words decrement and reset and can retain a mapping across wrapper releases;
+  they are not generation IDs. Upload observation must follow backend mapping
+  lifetime from installation, preserving unknown initial mappings across windows.
+  See `cpp_map_reference_native_differential.json` for the conditional model.
+  The native D3D11 binder's range conversion is now
+  recovered, but a causal upload generation must still connect the allocation
+  to the draw. See `cpp_shadow_publication_native.json` for the exact contract.
+  The copy routine produces distinct packed-constant and secondary allocations.
+  Its authenticated hot/cold boundary and tested reader keep those identities
+  separate and ignore undefined descriptor padding. The bounded runtime hook
+  now records that CPU copy with explicit window, loss and integrity gates;
+  the enclosing native render-bridge scope now links that copy to its render
+  and before-culling requests. The validator can correlate that scope with a
+  unique camera/frame interval while rejecting competing owners and changed
+  source bytes. This remains state correlation: request/allocation lifetime
+  and allocation-to-D3D joins are open. See `cpp_bridge_camera_state_validation.json`.
   Per-window completeness and exact camera bytes must validate before using
   a runtime phase to explain a captured draw; raw instance IDs are not source
   asset names. Follow the EndfieldCapture README's opt-in procedure and retain
@@ -301,8 +399,13 @@ only.
   DSV is its t1 depth resource; t0 is the binning buffer. Native draw failure
   cannot certify content merely because the metadata shell produced finite pixels.
   Foreground HG geometry replaces classification only after passing shared
-  depth. This does not establish every retail stencil writer. Generic depth
-  overrides must honor source `DepthOnly` membership: Endminf's authored crystal
+  depth. This does not establish every retail stencil writer. The shared surface
+  now includes the floor's separate source-owned distance-field HGBuffer pass:
+  it writes class 5 and fixed unlit GBuffer lanes before its later ForwardOnly
+  color. Its motion uses current/previous nonjittered camera and rigid-object
+  transforms. Dense retained draw metadata and material parameters identify
+  this writer; later Default per-pixel attribution remains a separate gate.
+  Generic depth overrides must honor source `DepthOnly` membership: Endminf's authored crystal
   materials disable that pass, and the importer preserves this selection.
   Opaque render queue alone does not authorize an earlier replacement draw.
   Keep the captured output-merger blend: shader-side equivalent arithmetic
@@ -454,6 +557,12 @@ artifact hashing bound must accommodate the observer's permitted payload size.
   actor's serialized camera entry state; capture-specific input endpoints or
   trajectories remain external reference evidence and never become actor or
   runtime constants.
+- The optional environment observer also samples gyroscope Tick state before
+  and after the original call within its two capture windows. Missing nested
+  objects and failed reads remain distinct. Candidate driver/tween identities
+  do not establish actor ownership or actual tween-advance timing; join those
+  separately before changing the lab camera scheduler. See the capture README
+  for collection and validation; this scope omits Streamline surfaces.
 - Report spatial, temporal, silhouette, effect, and color errors separately.
   One aggregate score can hide a regression in a critical layer.
 - Captured resources and replayed lab outputs keep their color space, format,

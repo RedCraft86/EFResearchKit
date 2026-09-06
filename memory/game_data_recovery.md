@@ -246,30 +246,101 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   member-8 and member-3 nested profiles, then a byte, length-prefixed bytes,
   scalar32 and a member-three scalar payload. Independent native read order
   supports these boundaries; raw zero DWORDs in the action prefix are not a
-  nested object or collection count. The finite profile admits only null
-  recursive targets and empty selector collections; the finder admits null
-  or the independently joined zero-member union profile. Other
-  shapes remain unsupported without scanning for a later marker. The final
+  nested object or collection count. The member-eighteen action expands the
+  finite selector profiles through concrete finder, validator and postprocessor
+  readers pinned in `scripts/game_data/buff_b2_native.json`. Counted shape,
+  validator, postprocessor and selection elements retain their own headers.
+  A vector contains three variable-width scalar payloads, not twelve raw bytes.
+  List count/null/loop framing remains conditional on the shared reference-list
+  consumer; a provider bridge alone proves neither width nor runtime selection.
+  Direction targets remain null-only; a postprocessor may expand one target,
+  with a second non-null instance stopped before its header. Unknown nested
+  tags stop in place without scanning for a later marker. The final
   payload reader consumes four scalar bytes despite its managed Double name.
   Keep those bits anonymous, including non-finite values. Byte decoding, live
   provider selection and whole-BuffData EOF remain unresolved; selected native
   pins and read order are owned by `scripts/game_data/buff_ec_native.json`.
+  A distinct member-five action reads a byte, three scalar32 values and the
+  same variable-width target profile. `scripts/game_data/buff_68_native.json`
+  pins its own normal/null paths and exact target context; its equal member
+  count does not select the earlier member-five counted-payload layout.
+  `scripts/game_data/buff_10f_native.json` pins a fixed member-five reader:
+  byte, three scalar32 values, then a final byte, with no nested provider.
+  Its byte helpers establish nonzero normalization, not gameplay meaning;
+  equal member counts cannot substitute a target or payload for that final byte.
+  The member-six reader in `scripts/game_data/buff_69_native.json` adds a
+  fourth scalar32 before the target. Its later destination-object offset does
+  not move that scalar after the target on the wire. The ObjectType enum
+  context adds no nested record, and the target ends the action with no final
+  source byte; the managed condition name remains separate from this framing.
+  `scripts/game_data/buff_44_native.json` pins another member-six layout with
+  a signed-length byte payload before the target instead of that fourth scalar.
+  Preserve its variable extent and null/empty distinction; the payload's later
+  object offset does not move it after the target in source order. Timer names
+  and equal member counts establish neither runtime behavior nor wire grammar.
   The selected member-seven child reuses that scalar-payload profile twice,
   after one byte and four scalar32 reads. The fourth scalar is serialized
   before both nested records despite its later destination-object offset;
   memory layout must not substitute for consumer order. Its selected native
   contract is `scripts/game_data/buff_50_native.json`; the two identical static
   type arguments do not certify live formatter selection or comparison meaning.
+  `scripts/game_data/buff_163_native.json` pins a member-eight reader that
+  places a byte payload and scalar32 between the common prefix and two scalar
+  payloads. Each nested instance has its own header and variable byte span;
+  the second ends the record without a final byte. The scalar enum context
+  does not establish an operation's meaning or add a nested source member.
+  The separate member-seven reader in `scripts/game_data/buff_7b_native.json`
+  instead places a target, scalar32 and scalar payload after the common prefix.
+  Its interposed scalar remains in source order; the final payload consumes
+  four raw scalar bytes despite its managed Double name, with no trailing byte.
+  `scripts/game_data/buff_65_native.json` pins a distinct member-eight order:
+  byte, four scalar32 values, target, byte and scalar payload. Its interleaved
+  output setters consume no source bytes; distinguish their receiver from the
+  reader before counting serialized members. The two exact nested contexts
+  reuse existing finite profiles without promoting the managed condition name.
+  The independently pinned `scripts/game_data/buff_6e_native.json` has that
+  same source order and nested contexts. Both tags may share the finite parser
+  branch while retaining distinct record tags and native identities; this
+  structural equivalence does not establish equal gameplay conditions.
+  The extended member-eleven action in `scripts/game_data/buff_157_native.json`
+  adds a byte/payload/scalar32 segment before the target in that scalar-prefix
+  family, then reads a byte and scalar payload. Equal nested type arguments
+  permit profile reuse, not omission or reordering of intervening source reads.
   Extended unions consume FA followed by a little-endian unsigned tag; record
-  reports retain that decoded tag rather than the escape byte. Unknown tags
-  stop at the original start. The selected extended member-eight child reads
+  reports retain that decoded tag rather than the escape byte. Supporting a
+  decoded tag does not automatically admit its reserved single-byte encoding:
+  `scripts/game_data/buff_fe_native.json` pins the member-twenty reader reached
+  by the authenticated FA FE 00 records, while physical FE remains unsupported.
+  Its value-class helper reads one DWORD; distinguish this source operation
+  from the interleaved scalar-payload and target providers. The member-four
+  reader in `scripts/game_data/buff_fd_native.json` ends immediately after the
+  common byte/three-DWORD prefix, with no nested provider; its managed
+  control-flow name does not prove branch suppression or execution order.
+  Physical FD likewise stays unsupported independently of decoded tag FD. Unknown tags
+  stop at the original start. `scripts/game_data/buff_119_native.json` pins a
+  member-twenty-two action with inline DWORD advances among scalar helpers,
+  a byte payload and target; two scalar32 values end the record. Output-side
+  cast/cache branches add no source fields. Its required finder-three extension
+  reads raw12, raw16, a scalar payload and a byte, each with an independent
+  source boundary. Raw widths and managed names establish neither spatial
+  meanings nor audio-event identity, ownership or actual playback.
+  The selected extended member-eight child reads
   one byte, three scalar32 values, paired payload, scalar payload, one byte and
   paired payload. Its normal reader crosses chained unwind regions: the first
   `.pdata` end is not a record or function end. The selected read/null paths
   live in `scripts/game_data/buff_11f_native.json`; names and runtime use remain
   unresolved independently of this structural closure. Paired and scalar
   payloads can have identical extents; select their profiles from independent
-  nested-consumer evidence, not byte length alone.
+  nested-consumer evidence, not byte length alone. The member-nine reader in
+  `scripts/game_data/buff_96_native.json` places scalar and paired payloads
+  consecutively before a target: their shared member-three header cannot choose
+  a grammar, while the distinct exact type contexts support that source order.
+  The extended member-38 action in `scripts/game_data/buff_169_native.json`
+  combines two targets, direction, assignment and byte-payload lists with raw
+  spans and scalar payloads. Its Vector3-context helper consumes twelve raw
+  bytes, while a separate inline operation consumes sixteen; neither is the
+  variable-width blackboard vector profile. Preserve all source operations,
+  and reuse list element contracts only after exact instantiation joins.
   The selected member-thirteen child closes three target profiles, a finder
   profile and a scalar payload in native read order. The finder contains a
   counted byte-payload list, scalar32 and a member-two query whose selected
@@ -278,6 +349,25 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   an explicit limitation: List<string> has a static type join but no separate
   formatter MethodSpec; the shared List<Object> count/loop and String element
   reader support a finite structural profile, not actual provider selection.
+  `scripts/game_data/buff_7c_native.json` places this variable query after a
+  target; its sixteen-byte output store does not establish wire extent. The
+  target's finder18 extension selects a distinct member-16 ColliderShapeData,
+  not the member-18 HitBoxFinder ShapeData. Its three vector-context helpers
+  each advance twelve raw bytes, separately from variable byte payloads;
+  neither similar names nor destination layout selects the shape grammar.
+  The distinct member-six reader in `scripts/game_data/buff_b6_native.json`
+  instead follows the common scalar prefix with a target and one byte. Its
+  output-side construction adds no source member; the managed action name
+  establishes neither an owner relationship nor a runtime completion effect.
+  `scripts/game_data/buff_80_native.json` pins another member-six layout with
+  two successive targets after that prefix and no final byte. Their shared
+  type context does not merge the two serialized instances or prove comparison
+  semantics; each instance retains its own bounded nested grammar.
+  The member-thirteen order in `scripts/game_data/buff_16e_native.json`
+  interleaves extra bytes, scalar32 values and a variable byte payload before
+  two targets, then reads a final byte. Its necessary finder5 extension has
+  a zero-member reader: construction adds no serialized fields. Scalar-helper
+  enum contexts likewise do not add nested members or establish effect meaning.
   Related member-eight children have a byte payload, counted nested records,
   scalar32 and the same query profile after their common scalar prefix.
   `scripts/game_data/buff_56_native.json` pins the member-one value-type list;
@@ -287,10 +377,90 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   consumes its own header; a managed name or output-slot width cannot replace
   the concrete nested reader. The reference-list loop remains conditional on
   the shared consumer, and active formatter selection stays open for both.
+  `scripts/game_data/buff_58_native.json` selects a different member-eight
+  order: common scalar prefix, one member-one value, target, scalar32 and
+  scalar payload. Its BuffId context is a value type, not a list: no collection
+  count precedes that nested header. Reuse the pinned element reader directly;
+  a shared element type does not establish a shared collection shape. The final
+  scalar payload still consumes four raw scalar bytes despite its managed name.
+  The member-twelve action in `scripts/game_data/buff_02_native.json` instead
+  reads a counted member-one value list, two targets, byte, scalar payload,
+  third target and two bytes after the common prefix. Its list consumer and
+  element instantiation match the existing value-list proof; a single-value
+  reader cannot replace the collection count. Repeated target type arguments
+  represent separate serialized instances, each with its own bounded profile.
+  `scripts/game_data/buff_9a_native.json` closes a member-eleven action through
+  counted member-33 units, member-85 effect configurations and selected
+  calculation unions. Inline scalar/vector advances and helper reads must both
+  appear in source order; an output-store inventory misses serialized members.
+  The nested vector contains three variable-width scalar payloads, distinct
+  from an inline twelve-byte span. Three unit lists and the effect array remain
+  null/empty-only; positive counts stop explicitly until element readers close.
+  A normal exit may tail-jump to the write barrier: pin the entire instruction
+  and the separate null rejoin, not an assumed RET or partial JMP byte.
+  The member-eighteen action in `scripts/game_data/buff_a2_native.json` reads
+  two byte payloads, four separate targets and one effect configuration among
+  its scalar members. Reuse the pinned member-85 configuration and finite
+  target profiles, preserving each instance's own unsupported boundary.
+  Cached output casts and stores rejoin the source reads; they add no wire
+  members and cannot substitute for the source cursor order.
   A member-six child contains only a byte, four scalar32 values and scalar64.
   Its final helper reads and advances eight source bytes; that cursor evidence,
   pinned in `scripts/game_data/buff_5b_native.json`, establishes wire width.
   Preserve the raw bits: a mask-like managed name does not prove flag meanings.
+  The separate member-six reader in `scripts/game_data/buff_6d_native.json`
+  ends with a signed-length byte payload after a byte and four scalar32 values.
+  Its final helper consumes variable bytes, not the preceding reader's scalar64;
+  equal member counts and null samples cannot establish a fixed record width.
+  Scalar enum contexts add no nested records, and output setters add no source
+  reads. Keep null and empty payloads distinct and their contents anonymous.
+  `scripts/game_data/buff_7a_native.json` pins another member-six order:
+  common byte/three-scalar prefix, scalar32 and byte payload. It has no extra
+  byte before that payload. Both enum contexts consume four bytes without a
+  nested header; equal member counts cannot select this reader or the distinct
+  byte/scalar/payload order above. Infliction meaning remains unresolved.
+  Another member-ten child reads the common byte/three-scalar prefix, finder,
+  scalar32, target, scalar32, byte and scalar payload. Its three static type
+  contexts reuse the existing finder/target/scalar readers; equal outer member
+  counts do not select a layout. `scripts/game_data/buff_3c_native.json` pins
+  that distinct order through normal return and the separate null path.
+  Intermediate setters do not establish wire order or gameplay conditions.
+  `scripts/game_data/buff_136_native.json` pins a member-nine order with the
+  same finder/scalar32/target segment followed by a byte payload and final byte.
+  Its interposed scalar enum context adds no nested member. Preserve the final
+  byte after the variable payload; a shared finder/target pair does not choose
+  the surrounding action grammar or prove the managed action's runtime effect.
+  Member-nine actions have distinct orders: `scripts/game_data/buff_78_native.json`
+  adds scalar32, two bytes, target and counted scalar32 values to the common
+  prefix; `scripts/game_data/buff_81_native.json` instead adds a length-prefixed
+  byte payload, target, another byte payload and two bytes. Equal headers do not
+  select either layout. The former pins an independent four-byte element reader;
+  its shared list count/null/loop remains conditional on provider selection.
+  The latter reuses the byte-payload helper's length/advance proof, not the
+  single-byte helper's width. Preserve unknown enum bits and byte contents.
+  `scripts/game_data/buff_9b_native.json` pins another member-nine order:
+  two byte payloads separated by sixteen inline source bytes, then scalar32
+  and target after the common prefix. The explicit sixteen-byte advance proves
+  the raw extent independently of output stores; log and color meanings remain
+  unresolved. Its scalar enum context adds no nested serialized member.
+  `scripts/game_data/buff_c5_native.json` pins a member-sixteen action with
+  separate effect configuration, calculation union, tag list and target reads,
+  including the extra byte after its common prefix and the final byte. The tag
+  list wrapper has one member; its separately pinned element has one scalar32
+  member. Keep list count/loop framing conditional on the registered formatter
+  candidate, preserve null/empty states, and retain unknown calculation unions.
+  This bounded forward profile neither selects a live provider nor resolves
+  Skill's independent terminal candidates or establishes healing/tag meanings.
+  `scripts/game_data/buff_0a_native.json` pins a member-seven action adding a
+  byte payload, scalar payload and target to the common prefix. The two static
+  nested contexts match the existing finite readers; their order comes from
+  source calls, not output fields. Preserve null/empty payloads and the scalar
+  payload's four-byte raw value. Timer meaning and live provider choice remain
+  unresolved; exact forward ranges do not establish whole-BuffData EOF.
+  `scripts/game_data/buff_88_native.json` pins a member-five action whose final
+  member is the same finite scalar payload. Its raw value occupies four bytes
+  despite the managed type name; neither that name nor the action identity
+  proves probability meaning. There is no source member after the nested read.
   The member-nineteen child adds counted input profiles containing counted
   assignment profiles, a scalar/byte-payload pair, and the existing scalar,
   byte-payload-list and target profiles. Preserve the native read order rather
