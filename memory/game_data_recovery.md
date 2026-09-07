@@ -408,6 +408,10 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   Its final helper reads and advances eight source bytes; that cursor evidence,
   pinned in `scripts/game_data/buff_5b_native.json`, establishes wire width.
   Preserve the raw bits: a mask-like managed name does not prove flag meanings.
+  `scripts/game_data/buff_5c_native.json` independently selects this same fixed
+  source order and reuses the QWORD reader. Its Priority context belongs to
+  the first DWORD and CheckType to the fourth; neither enum identity changes
+  the wire width or establishes damage/immunity meaning. There is no extra tail.
   The separate member-six reader in `scripts/game_data/buff_6d_native.json`
   ends with a signed-length byte payload after a byte and four scalar32 values.
   Its final helper consumes variable bytes, not the preceding reader's scalar64;
@@ -494,6 +498,11 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   An unknown child stops inside the sequence and leaves the enclosing action
   incomplete; sequence termination alone does not consume the final target.
   The managed iteration name does not establish runtime execution semantics.
+  `scripts/game_data/buff_2f_native.json` separately pins sequence, byte,
+  DWORD, target and two raw four-byte values after the common prefix. Its
+  inlined header read preserves the same one-byte/FF boundary. Neither null
+  nested profile removes later fields; preserve completed sequence evidence
+  when target or tail consumption fails. Channeling/timing meaning stays open.
   `scripts/game_data/buff_6a_native.json` pins a member-eight reader with
   two bytes and two distinct counted scalar32 lists after the common prefix.
   A separately joined consumer passes each exact list element type to the
@@ -588,10 +597,14 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   with three independent scalar payloads, a separate byte payload and target
   followed by a required byte. Exact BlackboardDouble contexts reuse the
   four-byte scalar reader; attribute ownership and arithmetic remain unresolved.
-  `scripts/game_data/buff_132_native.json` pins an extended member-six
-  action ending in two independent byte payloads. Preserve both signed lengths
+  `scripts/game_data/buff_132_native.json` and `buff_13a_native.json` pin
+  separate extended member-six actions ending in two independent byte payloads.
+  Their shared parser retains distinct union identities. Preserve both signed lengths
   and null/empty states; the parent completes only after the second payload.
-  Payload encoding and ATB-value ownership remain unresolved.
+  Payload encoding, ATB-value and collected-value ownership remain unresolved.
+  `scripts/game_data/buff_6b_native.json` instead ends a member-seven action
+  with three independent byte payloads. The third signed length is mandatory;
+  completed earlier payloads remain recorded when a later payload is incomplete.
   `scripts/game_data/buff_d4_native.json` pins a member-eight action
   with two independent target profiles followed by two four-byte scalars.
   Preserve raw scalar bits and keep the parent incomplete until both tails
@@ -624,6 +637,14 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   ending with two independent BlackboardString profiles. Preserve both object
   null states and each payload length; a failed second profile leaves the parent
   incomplete. String decoding and comparison behavior remain unresolved.
+  `scripts/game_data/buff_188_native.json` pins paired and scalar profiles
+  followed by two independent targets. Equal member-three headers do not make
+  the first two profiles interchangeable: exact contexts select their distinct
+  payload tails. The second target is mandatory; custom-event behavior remains unresolved.
+  `scripts/game_data/buff_187_native.json` instead consumes an AssignPair
+  list, byte and three targets. Its list reuses the member-six assignment reader;
+  reserve the byte and three minimum target headers when checking the count.
+  Each target is independent, and combo-skill meaning remains unresolved.
   `scripts/game_data/buff_5e_native.json` pins a member-five action
   ending with a required DWORD under the exact DamageTypeMask context.
   Preserve arbitrary raw bits and reject incomplete scalars; mask meaning
@@ -644,16 +665,120 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   ending with a byte payload and GameplayTagQuery. Its explicit output-pointer
   ABI and sixteen-byte result do not establish wire width; preserve bounded
   query counts. Damage transfer meaning and tag interpretation remain unresolved.
+  `scripts/game_data/buff_63_native.json` uses that same bounded query directly
+  after the common prefix in a member-five action. Its output copy adds no wire
+  fields; preserve distinct null-query, null-array and empty-array states.
+  `scripts/game_data/buff_77_native.json` pins a terminal counted-DWORD list.
+  Its enum element width is supported by explicit unmanaged-formatter registration,
+  underlying-type normalization, a generic lookup retry and the canonical Int32
+  source reader. Absence of an enum-specific MethodSpec does not justify selecting
+  a shared reader without that chain; live provider selection remains conditional.
   `scripts/game_data/buff_a9_native.json` pins a member-28 action with
   independently nullable targets, curve, direction and scalar profiles. Its
   BlackboardImpactValue reader reuses the member-four payload/byte/DWORD/byte
   grammar; the dedicated enum helper consumes one byte. Hurt behavior remains unresolved.
+  `scripts/game_data/buff_62_native.json` and `buff_13c_native.json` pin distinct
+  member-four actions ending immediately after their common byte and three DWORDs.
+  Preserve the latter's extended union encoding. Do not append a nested
+  payload from the type name; damage skill-cast identity meaning remains unresolved.
+  `scripts/game_data/buff_90_native.json` pins two independent BlackboardInt
+  profiles before a byte and final target. Their payload/byte/DWORD grammar
+  reuses the concrete Int reader; shield counts and UI behavior remain unresolved.
+  `scripts/game_data/buff_bb_native.json` pins two independent targets after
+  the common fields, without an intervening byte or extra tail. A failed second
+  target preserves the first completed target; combat forcing remains unresolved.
+  `scripts/game_data/buff_0b_native.json` distinguishes a direct GameplayTag
+  list from the GameplayTagList wrapper. Its counted FF/member-one elements
+  follow a string profile and target; reserve the required final byte before
+  accepting the count. Tag meaning and runtime selection remain unresolved.
+  `scripts/game_data/buff_40_native.json` ends a member-six action with a
+  DWORD and that same direct element list. Preserve each element header; the
+  QueryType context belongs to the preceding DWORD, not an extra query wrapper.
+  Null list, empty list and null elements remain distinct; tag meaning is unresolved.
+  `scripts/game_data/buff_2b_native.json` pins a member-five action ending
+  immediately after one BlackboardDouble profile. Reuse the independently
+  authenticated payload/byte/four-byte reader; its managed name does not
+  establish an eight-byte value or energy semantics.
+  `scripts/game_data/buff_115_native.json` pins a member-sixteen action whose
+  nested sequence is followed by two four-byte values, payload and final byte.
+  Keep that outer tail mandatory after a null or complete sequence; unknown
+  children leave the outer action incomplete and retain their original offset.
+  `scripts/game_data/buff_151_native.json` pins a member-eight action with a
+  sequence, two independently bounded scalar profiles and final byte. Retain
+  completed children when a later profile fails; neither a null sequence nor
+  a null first profile permits omitting the remaining members.
+  `scripts/game_data/buff_13f_native.json` pins payload, target and a final
+  DWORD after the common fields. Its ValueType context belongs to that DWORD
+  helper; it adds no nested header and does not establish a one-byte enum.
+  Preserve a completed target when the final four bytes are truncated.
+  `scripts/game_data/buff_139_native.json` ends immediately after payload
+  and target, with no scalar tail. Preserve their independent null states and
+  completed payload evidence when the target fails; character-type meaning is unresolved.
+  `scripts/game_data/buff_135_native.json` places one BuffId profile before
+  target and a final byte payload. Its exact value-type context reuses the
+  member-one payload reader without a list count or implied raw value width.
+  Preserve each null state and completed child on later failure; no source
+  tail follows the last payload. Stack-count ownership remains unresolved.
+  `scripts/game_data/buff_122_native.json` closes a nullable list after the
+  common fields. Each member-four element reads scalar profile, payload,
+  target and payload, with no element or outer tail. Bound the count using
+  the null element's one-byte minimum; retain completed elements when a later
+  element fails. The concrete element reader establishes source order, while
+  shared list dispatch and skill-setting ownership remain unresolved.
+  `scripts/game_data/buff_140_native.json` pins a payload followed by two
+  independent targets with no extra tail. A completed first target remains
+  evidence when the second fails; either null target still consumes its own
+  marker and does not eliminate the other member.
+  `scripts/game_data/buff_18a_native.json` places a DWORD before two
+  independently nullable scalar profiles. Both exact Double contexts reuse the
+  payload/byte/four-byte reader; their shared context does not merge instances.
+  Preserve the second profile boundary and leave UI-event meaning unresolved.
+  `scripts/game_data/buff_98_native.json` pins payload, curve, scalar profile,
+  payload and final byte after the common fields. A null curve differs from a
+  null key list; bound the key count before reading raw keys, and retain the
+  mandatory outer payload/byte after the nested profiles complete.
+  `scripts/game_data/buff_183_native.json` has two independent target lists
+  separated by a byte, with a scalar profile before the first and after the
+  second. Reserve the remaining minimum tail before either count-driven loop.
+  Three DWORDs follow the second scalar, then a curve and two required bytes;
+  the two GameplayTag reads use raw DWORD source advances without headers.
+  Preserve null lists, completed targets and all terminal bytes. Time-dilation
+  ownership remains unresolved despite the selected reader's exact identity.
+  `scripts/game_data/buff_176_native.json` closes a direct nullable list of
+  member-two sequence/scalar profiles after the action's extra byte and scalar
+  profile. The list has no additional object header; each non-null element
+  consumes its sequence before its scalar profile. Null elements, null lists
+  and null nested sequences remain distinct. Bound counts and recursive depth
+  before consumption, preserve completed children on later failure, and never
+  mark the incomplete option or action complete. The selected native reader
+  proves this structure; live provider choice and switch meaning remain open.
+  `scripts/game_data/buff_175_native.json` instead closes a member-five action
+  with a terminal byte payload after the common scalar prefix. Its reader has
+  no nested provider or further tail. Keep null and empty payloads distinct;
+  a managed storage-oriented name does not establish text or enum semantics.
+  `scripts/game_data/buff_fc_native.json` closes an extended-only member-six
+  action with target then scalar profile. Accept its full extended union
+  encoding while keeping the one-byte reserved marker unsupported. A completed
+  target never makes the independently nullable final scalar optional.
+  `scripts/game_data/buff_83_native.json` adds a DWORD and byte before that
+  target/scalar pair. Its CompareType context is consumed by the DWORD helper;
+  preserve the full raw width instead of inferring an enum byte or validating
+  gameplay values from the managed type name.
+  `scripts/game_data/buff_86_native.json` pins three independent scalar
+  profiles with a byte payload between the first two and a mandatory final
+  byte. Identical generic arguments do not merge serialized instances; each
+  profile retains its own null state, length bounds and four-byte value.
   The member-nineteen child adds counted input profiles containing counted
   assignment profiles, a scalar/byte-payload pair, and the existing scalar,
   byte-payload-list and target profiles. Preserve the native read order rather
   than destination offsets: helper calls also consume scalar and byte members.
   `scripts/game_data/buff_92_native.json` pins these readers, nested contexts,
   the assignment-list candidate and the selector finder's zero-member route.
+  `scripts/game_data/buff_93_native.json` independently joins another action to
+  the same source order and nested type arguments, allowing one shared parser
+  branch while retaining separate union identities. Its ActionTargetType is a
+  DWORD helper read, not a nested object. Both lists must reserve later fields,
+  and completed input profiles never make a missing final target acceptable.
   Shared reference-list and provider dispatch remain conditional; a concrete
   static reader is structural evidence, not proof of live formatter execution.
   Next close the most frequent unsupported child consumers before extending

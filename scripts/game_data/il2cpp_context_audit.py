@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GA_SHA = 'C24495E51B406F03B03890C4788EE618AE022C991405BE5D5B8B787CB775AE89'
 MD_SHA = '0076743397ACADF03D3B0064343A963C7C88863B8160526D397E4B3EFB96F02E'
 UNITY_SHA = 'BEE7BE52370ADDDD67BA61E4937CA51B7F272656841D187E95E505496DA798D1'
-CORPUS_SHA = '061EB1DC07B32D35B101B3BCAFBABE74103DD5524680D57DDCD2457ACF27F40A'
+CORPUS_SHA = 'C751E44F683F2B6AA93078CB00B7623F61324E378F85DE29C836C3BAD7591CAA'
 CONSUMER_WINDOWS = (
     (0x3F7FD20,0x3F7FD7D,'B5AB987DB105917F14B247D7B4448C44A4408CC6DB8280D221EBB21FC67D413B'),
     (0x3F7FD80,0x3F7FF19,'632D05A4F810BF260BFED357E3E80375DD943FFD926FC514382054E0DF2AFCEF'),
@@ -671,6 +671,36 @@ def buff_union_routes(pe,md,reg,modules,image_owners,*,source):
         (0x3910D84,'488B1565627109488B0BE88D2A6FFC488BCF4885C00F857B835501488B15A2F77C09E8B9EB10FD488903488BD0E92CCCFFFF'),
         (0x390F740,'488B1561AD7209488B0BE8D1406FFC488BCF4885C00F852A745501488B15EE237D09E885E610FD488903488BD0E970E2FFFF'),
         (0x390E002,'488B15B7A07809488B0BE80F586FFC488BCF4885C00F852C975501488B159C317D09E85F0711FD488903488BD0E9AEF9FFFF'),
+        (0x390FEDE,'488B15E39F7209488B0BE833396FFC488BCF4885C00F8555705501488B1538167D09E80BE210FD488903488BD0E9D2DAFFFF'),
+        (0x391000A,'488B158F4A7009488B0BE807386FFC488BCF4885C00F85638A5501488B15840A7D09E853F410FD488903488BD0E9A6D9FFFF'),
+        (0x390EF0C,'488B1575A97809488B0BE805496FFC488BCF4885C00F855D855501488B1512217D09E82DF610FD488903488BD0E9A4EAFFFF'),
+        (0x390FA60,'488B1559067909488B0BE8B13D6FFC488BCF4885C00F85D27E5501488B151E187D09E8A5EE10FD488903488BD0E950DFFFFF'),
+        (0x390E386,'488B15DBB57709488B0BE88B546FFC488BCF4885C00F85C4805501488B15683A7D09E83BF510FD488903488BD0E92AF6FFFF'),
+        (0x39107DA,'488B15EFFE7709488B0BE837306FFC488BCF4885C00F8552605501488B15AC117D09E8E7D310FD488903488BD0E9D6D1FFFF'),
+        (0x390DAEE,'488B152B736F09488B0BE8235D6FFC488BCF4885C00F85AEAA5501488B15082D7D09E8AF07A0FC488903488BD0E9C2FEFFFF'),
+        (0x39100A0,'488B1579267009488B0BE871376FFC488BCF4885C00F856C8C5501488B15A60A7D09E89DF510FD488903488BD0E910D9FFFF'),
+        (0x39150C0,'488B1511F26F09488B0BE851E76EFC488BCF4885C00F85483A5501488B159EB97C09E8E5A310FD488903488BD0E9F088FFFF'),
+        (0x390EEDA,'488B15B7537009488B0BE837496FFC488BCF4885C00F85439C5501488B157C1B7D09E8D70511FD488903488BD0E9D6EAFFFF'),
+        (0x390ECB4,'488B1535A37809488B0BE85D4B6FFC488BCF4885C00F855D885501488B15F2237D09E82DF910FD488903488BD0E9FCECFFFF'),
+        (0x390E89A,'488B15F78A7109488B0BE8774F6FFC488BCF4885C00F858FA85501488B156C1C7D09E8D31011FD488903488BD0E916F1FFFF'),
+        (0x391038E,'488B15B3907809488B0BE883346FFC488BCF4885C00F851A715501488B15680C7D09E8DBE110FD488903488BD0E922D6FFFF'),
+        (0x3915250,'488B1509207109488B0BE8C1E56EFC488BCF4885C00F85C43E5501488B15C6B27C09E805A710FD488903488BD0E96087FFFF'),
+        (0x390F0CE,'488B15536E6F09488B0BE843476FFC488BCF4885C00F8509925501488B15B81D7D09E8BFFD10FD488903488BD0E9E2E8FFFF'),
+        (0x390FF42,'488B15970B7309488B0BE8CF386FFC488BCF4885C00F85BA735501488B15CC177D09E8B3E410FD488903488BD0E96EDAFFFF'),
+        (0x391508E,'488B1543F76F09488B0BE883E76EFC488BCF4885C00F85B5395501488B1528B97C09E893A310FD488903488BD0E92289FFFF'),
+        (0x390F326,'488B15E3157309488B0BE8EB446FFC488BCF4885C00F8515805501488B15B0247D09E823F110FD488903488BD0E98AE6FFFF'),
+        (0x39102C6,'488B155B9C7209488B0BE84B356FFC488BCF4885C00F85826C5501488B1548127D09E82FDE10FD488903488BD0E9EAD6FFFF'),
+        (0x39102F8,'488B1501967209488B0BE819356FFC488BCF4885C00F85546D5501488B1596127D09E8BDDE10FD488903488BD0E9B8D6FFFF'),
+        (0x3914B48,'488B15B94B7209488B0BE8C9EC6EFC488BCF4885C00F855C265501488B1586CB7C09E88D9710FD488903488BD0E9688EFFFF'),
+        (0x390FB5A,'488B15875D7109488B0BE8B73C6FFC488BCF4885C00F85A5975501488B158C0B7D09E8C3FF10FD488903488BD0E956DEFFFF'),
+        (0x3910712,'488B15BF507109488B0BE8FF306FFC488BCF4885C00F85D88B5501488B15E4FF7C09E8F3F310FD488903488BD0E99ED2FFFF'),
+        (0x391505C,'488B15ED027009488B0BE8B5E76EFC488BCF4885C00F85D2395501488B156AB97C09E8ADA310FD488903488BD0E95489FFFF'),
+        (0x390F89E,'488B152B597109488B0BE8733F6FFC488BCF4885C00F85B99A5501488B15200E7D09E8BB0211FD488903488BD0E912E1FFFF'),
+        (0x3910B90,'488B1589427009488B0BE8812C6FFC488BCF4885C00F85EE7D5501488B1556FE7C09E849E810FD488903488BD0E920CEFFFF'),
+        (0x390ED18,'488B1591817009488B0BE8F94A6FFC488BCF4885C00F85F1995501488B150E1B7D09E8D50411FD488903488BD0E998ECFFFF'),
+        (0x3914A80,'488B15D1587209488B0BE891ED6EFC488BCF4885C00F8535245501488B15F6C97C09E8CD9510FD488903488BD0E9308FFFFF'),
+        (0x390E2BE,'488B15637C7109488B0BE853556FFC488BCF4885C00F85AAAF5501488B1570237D09E8F31711FD488903488BD0E9F2F6FFFF'),
+        (0x390DC7E,'488B15E3277809488B0BE8935B6FFC488BCF4885C00F85308C5501488B15C03D7D09E8AFFF10FD488903488BD0E932FDFFFF'),
         (0x390DD14,'488B15651E7809488B0BE8FD5A6FFC488BCF4885C00F85A28C5501488B15D23D7D09E89DFF10FD488903488BD0E99CFCFFFF')):
         raw=bytes.fromhex(expected);require(pe.bytes_at_va(pe.image_base+at,len(raw)),raw,source,at)
         windows.append({'rva':at,'rawHex':expected})
@@ -763,7 +793,37 @@ def buff_union_routes(pe,md,reg,modules,image_owners,*,source):
         (0x84,0x390F614,106521,16713,'Conditions_CheckWeaponTypeCondition_Data',None),
         (0x174,0x3910D84,107160,16505,'StoreEntityProperty_Data',None),
         (0x41,0x390F740,106442,16617,'CheckDamageTransferredSource_Data',None),
-        (0xA9,0x390E002,106594,16095,'EnemyHurtAnimAction_Data',None)):
+        (0xA9,0x390E002,106594,16095,'EnemyHurtAnimAction_Data',None),
+        (0x62,0x390FEDE,106487,16635,'Conditions_CheckHasDamageSkillCastId_Data',None),
+        (0x13C,0x391000A,107012,16399,'SaveDamageSkillCastId_Data',None),
+        (0x90,0x390EF0C,106534,16043,'CountShieldUIAction_Data',None),
+        (0xBB,0x390FA60,106636,16135,'ForceTargetInFightAction_Data',None),
+        (0x0B,0x390E386,106285,15905,'AddTagAction_Data',None),
+        (0x2B,0x39107DA,106366,15985,'ChangeSeasonTowerEnergyAction_Data',None),
+        (0x115,0x390DAEE,106937,16321,'PlayAnimationAction_PlayAnimationActionData',None),
+        (0x151,0x39100A0,107091,16441,'SetHpFloor_Data',None),
+        (0x13F,0x39150C0,107015,16405,'SaveShieldValueToBB_Data',None),
+        (0x140,0x390EEDA,107016,16407,'SaveTargetDistanceAction_Data',None),
+        (0x98,0x390ECB4,106543,16059,'CurveEvaluateFloat_Data',None),
+        (0x176,0x390E89A,107166,16509,'SwitchAction_Data',None),
+        (0x93,0x391038E,106538,16049,'CreateBuffAttachingSkill_Data',None),
+        (0x175,0x3915250,107161,16507,'StoreSkillDamageType_Data',None),
+        (0xFC,0x390F0CE,106886,16273,'NotifyCharPassiveUIAction_Data',None),
+        (0x83,0x390FF42,106520,16711,'Conditions_CheckUsp_Data',None),
+        (0x13A,0x391508E,107010,16395,'SaveCollectedBuffBbValue_Data',None),
+        (0x86,0x390F326,106523,16721,'Conditions_ModifyCollectedBuffBbValue_Data',None),
+        (0x63,0x39102C6,106488,16637,'Conditions_CheckHealTag_Data',None),
+        (0x6B,0x39102F8,106496,16659,'Conditions_CheckOverHeal_Data',None),
+        (0x77,0x3914B48,106508,16685,'Conditions_CheckSkillInterruptReason_Data',None),
+        (0x188,0x390FB5A,107209,16545,'TriggerCustomAbilityEvent_Data',None),
+        (0x187,0x3910712,107207,16543,'TriggerComboSkillAction_Data',None),
+        (0x139,0x391505C,107009,16393,'SaveCharTypeId_Data',None),
+        (0x18A,0x390F89E,107211,16549,'TriggerLiinoUIEvent_Data',None),
+        (0x135,0x3910B90,107007,16385,'SaveBuffStackNum_Data',None),
+        (0x122,0x390ED18,106976,16347,'ReadSkillSettingData_Data',None),
+        (0x5C,0x3914A80,106481,16613,'Conditions_CheckDamageIgnoreImmuneLevel_Data',None),
+        (0x183,0x390E2BE,107194,16535,'TimeDilationAction_Data',None),
+        (0x2F,0x390DC7E,106371,15993,'ChannelingAction_Data',None)):
         require(targets[tag],target,source,table_va+tag*4)
         operands=[]
         for at,usage_tag in ((target,1),)+(((init,2),) if init is not None else ()):
@@ -2273,7 +2333,38 @@ def audit():
                Path(__file__).with_name('buff_84_native.json'),
                Path(__file__).with_name('buff_174_native.json'),
                Path(__file__).with_name('buff_41_native.json'),
-               Path(__file__).with_name('buff_a9_native.json')]
+               Path(__file__).with_name('buff_a9_native.json'),
+               Path(__file__).with_name('buff_62_native.json'),
+               Path(__file__).with_name('buff_13c_native.json'),
+               Path(__file__).with_name('buff_90_native.json'),
+               Path(__file__).with_name('buff_bb_native.json'),
+               Path(__file__).with_name('buff_0b_native.json'),
+               Path(__file__).with_name('buff_2b_native.json'),
+               Path(__file__).with_name('buff_115_native.json'),
+               Path(__file__).with_name('buff_151_native.json'),
+               Path(__file__).with_name('buff_13f_native.json'),
+               Path(__file__).with_name('buff_140_native.json'),
+               Path(__file__).with_name('buff_98_native.json'),
+               Path(__file__).with_name('buff_176_native.json'),
+               Path(__file__).with_name('buff_93_native.json'),
+               Path(__file__).with_name('buff_175_native.json'),
+               Path(__file__).with_name('buff_fc_native.json'),
+               Path(__file__).with_name('buff_83_native.json'),
+               Path(__file__).with_name('buff_13a_native.json'),
+               Path(__file__).with_name('buff_86_native.json'),
+               Path(__file__).with_name('buff_63_native.json'),
+               Path(__file__).with_name('buff_6b_native.json'),
+               Path(__file__).with_name('buff_77_native.json'),
+               Path(__file__).with_name('buff_188_native.json'),
+               Path(__file__).with_name('buff_40_native.json'),
+               Path(__file__).with_name('buff_187_native.json'),
+               Path(__file__).with_name('buff_139_native.json'),
+               Path(__file__).with_name('buff_18a_native.json'),
+               Path(__file__).with_name('buff_135_native.json'),
+               Path(__file__).with_name('buff_122_native.json'),
+               Path(__file__).with_name('buff_5c_native.json'),
+               Path(__file__).with_name('buff_183_native.json'),
+               Path(__file__).with_name('buff_2f_native.json')]
     source_hashes = {str(p): sha(p) for p in sources}
     mapper = load('context_audit_mapper', mapper_path)
     catalog = load('context_audit_catalog', catalog_path)
@@ -2722,6 +2813,68 @@ def audit():
         contract_path=Path(__file__).with_name('buff_41_native.json'))
     buff_a9=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
         contract_path=Path(__file__).with_name('buff_a9_native.json'))
+    buff_62=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_62_native.json'))
+    buff_13c=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_13c_native.json'))
+    buff_90=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_90_native.json'))
+    buff_bb=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_bb_native.json'))
+    buff_0b=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_0b_native.json'))
+    buff_2b=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_2b_native.json'))
+    buff_115=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_115_native.json'))
+    buff_151=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_151_native.json'))
+    buff_13f=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_13f_native.json'))
+    buff_140=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_140_native.json'))
+    buff_98=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_98_native.json'))
+    buff_176=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_176_native.json'))
+    buff_93=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_93_native.json'))
+    buff_175=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_175_native.json'))
+    buff_fc=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_fc_native.json'))
+    buff_83=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_83_native.json'))
+    buff_13a=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_13a_native.json'))
+    buff_86=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_86_native.json'))
+    buff_63=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_63_native.json'))
+    buff_6b=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_6b_native.json'))
+    buff_77=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_77_native.json'))
+    buff_188=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_188_native.json'))
+    buff_40=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_40_native.json'))
+    buff_187=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_187_native.json'))
+    buff_139=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_139_native.json'))
+    buff_18a=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_18a_native.json'))
+    buff_135=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_135_native.json'))
+    buff_122=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_122_native.json'))
+    buff_5c=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_5c_native.json'))
+    buff_183=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_183_native.json'))
+    buff_2f=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
+        contract_path=Path(__file__).with_name('buff_2f_native.json'))
     buff_16b=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
         contract_path=Path(__file__).with_name('buff_16b_native.json'))
     buff_24=buff_action_read_order(pe,md,reg,table,modules,image_owners,source=str(gate.gameassembly),
@@ -2966,6 +3119,37 @@ def audit():
         'selectedBuff174ReadOrder':buff_174,
         'selectedBuff41ReadOrder':buff_41,
         'selectedBuffA9ReadOrder':buff_a9,
+        'selectedBuff62ReadOrder':buff_62,
+        'selectedBuff13CReadOrder':buff_13c,
+        'selectedBuff90ReadOrder':buff_90,
+        'selectedBuffBBReadOrder':buff_bb,
+        'selectedBuff0BReadOrder':buff_0b,
+        'selectedBuff2BReadOrder':buff_2b,
+        'selectedBuff115ReadOrder':buff_115,
+        'selectedBuff151ReadOrder':buff_151,
+        'selectedBuff13FReadOrder':buff_13f,
+        'selectedBuff140ReadOrder':buff_140,
+        'selectedBuff98ReadOrder':buff_98,
+        'selectedBuff176ReadOrder':buff_176,
+        'selectedBuff93ReadOrder':buff_93,
+        'selectedBuff175ReadOrder':buff_175,
+        'selectedBuffFCReadOrder':buff_fc,
+        'selectedBuff83ReadOrder':buff_83,
+        'selectedBuff13AReadOrder':buff_13a,
+        'selectedBuff86ReadOrder':buff_86,
+        'selectedBuff63ReadOrder':buff_63,
+        'selectedBuff6BReadOrder':buff_6b,
+        'selectedBuff77ReadOrder':buff_77,
+        'selectedBuff188ReadOrder':buff_188,
+        'selectedBuff40ReadOrder':buff_40,
+        'selectedBuff187ReadOrder':buff_187,
+        'selectedBuff139ReadOrder':buff_139,
+        'selectedBuff18AReadOrder':buff_18a,
+        'selectedBuff135ReadOrder':buff_135,
+        'selectedBuff122ReadOrder':buff_122,
+        'selectedBuff5CReadOrder':buff_5c,
+        'selectedBuff183ReadOrder':buff_183,
+        'selectedBuff2FReadOrder':buff_2f,
         'selectedNestedAdapterSlots':{'rows':nested_slots,'level':'exact static MethodSpec/VAR relation',
                                       'boundary':'Relative slots 3, 4 and 11 independently join DeserializeNotNull<T0,T1>, GetFormatter<T1> and CreateInstance<T1>. Every VAR reciprocally belongs to the adapter type; conditional concrete arguments come from the separately authenticated immediate registration. Method names do not establish serialization order, actual nested dispatch or source cursor.'},
         'selectedMethodCompanionConstruction': {'lookupRva':0x8D20,'constructorRva':0x84B0,

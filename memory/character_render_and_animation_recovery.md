@@ -361,6 +361,42 @@ only.
   words decrement and reset and can retain a mapping across wrapper releases;
   they are not generation IDs. Upload observation must follow backend mapping
   lifetime from installation, preserving unknown initial mappings across windows.
+  The backend Map ledger covers all D3D11 buffers because native staging copies
+  are not restricted to constant buffers; textures remain outside its range
+  model. An unknown mapping cannot classify the destination or prove copy loss.
+  Draw-local CB Map timestamps are taken before the original D3D draw and can
+  order native command construction against that snapshot. They do not prove
+  the command executed or exclude intervening texture bindings.
+  Native graph execution resolves texture handles into property/texture pairs,
+  batches them through a device callback, and updates renderer property state.
+  The property setter is a useful execution observation point, but it is not the
+  final D3D slot binding. Direct and queued device routes both exist; an observed
+  wrapper vtable alone cannot select between them. The observer now records
+  bounded callback/setter pairs with exact loaded-code and patch checks, and
+  submissions retain their enclosing render bridge and full texture-pair bytes
+  for callback candidate matching. Repeated identical submissions remain
+  ambiguous; pointer/byte equality does not establish allocation continuity or
+  prepared graph-command ownership. Final resource binding remains unproven.
+  Callback snapshots now distinguish the global renderer from the TLS device
+  used for native texture-pointer lookup and require its table to match actual
+  setters. The internal descriptor-dispatch alternative resolves OpenGL-named
+  binding functions; it cannot establish the captured D3D11 route. Binary
+  alternatives alone cannot identify the active backend. The new authenticated
+  environment capture retains complete submission/execution streams: the
+  callback renderer differs from the submission device, and the selected byte
+  candidate executes outside the submission interval. Use those observed
+  renderer identities to trace binding; neither equality nor chronology closes
+  allocation or draw-consumption ownership.
+  The selector-compatible D3D11 initializer is now traced through descriptor
+  submission, execution-state updates, pixel-shader SRV assembly and the native
+  draw callback. Its packed shader metadata maps descriptor sets to actual PS
+  slots. This is the next observation path; static calls and a matching selector
+  still do not prove live dispatch targets or exclude intervening bindings. See
+  `cpp_d3d11_descriptor_binding_path.json` for the pinned native and SDK evidence.
+  Callback-owned allocation bytes are read before the
+  native callback frees them; completion cannot establish allocation lifetime.
+  See
+  `cpp_cloud_command_execution.json` for the pinned path and remaining joins.
   See `cpp_map_reference_native_differential.json` for the conditional model.
   The native D3D11 binder's range conversion is now
   recovered, but a causal upload generation must still connect the allocation
@@ -544,6 +580,12 @@ authenticated source inputs for deferred recovery; capture completeness does
 not establish final rendering or cloth parity. Collection must validate the
 individual producer/consumer owners within a joined packet, and its streamed
 artifact hashing bound must accommodate the observer's permitted payload size.
+Live completion and shutdown must apply the same combined CPU limit, including
+graphics retention and both native observer reservations. ECS call snapshots
+use a preallocated shared raw-record pool with disjoint, never-recycled spans;
+pool exhaustion remains failed evidence. See the capture ECS guide for capacity
+and receipt contracts. A completed live graphics schedule alone is insufficient
+for sessions made before aggregate budget checks were shared.
 
 ## Reference and comparison policy
 
