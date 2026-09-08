@@ -171,6 +171,19 @@ only.
   and Unity texture validity. Keep these conditions separate and do not infer
   the final GPU binding without the live phase and later-publisher joins. The
   current source audit is `cloud_shadow_native_publishers.json`. Separately,
+  the CPP descriptor's enabled four-vector arithmetic now has a reusable pure
+  packer in the lab, with CPU checks for branch, range, projection and invalid
+  inputs. Cloud light selection now preserves the computed direct quaternion or
+  converts custom pitch/yaw through Unity Euler conversion. Runtime direct-light
+  state, texture/time ownership and integration remain separate; this is not an
+  original-binary numeric or publication proof.
+  The current ordinary VFX writer derives the cloud clock with
+  `fmodf(_Time.y, 1024)`. Its reusable conversion accepts that global time lane;
+  animation elapsed time is not a proven substitute. The ordinary render-time
+  manager caches UnityEngine.Time.time, and camera packing places that render
+  time in _Time.y while gameplay time occupies _Time.w. Selected manager/update
+  history, override state and upload chronology remain separate from this static
+  chain and the finite native arithmetic checks.
   `cloud_draw_inputs.json` proves neutral cloud modulation for the retained
   current-build shadow draws; it does not generalize to unsampled frames or
   establish live environment ownership.
@@ -231,9 +244,35 @@ only.
   Its blend-as-alpha mode uses neutral white for the scene RGB multiplier and
   the texture's red channel for alpha. It does not invert texture RGB; that
   mistranscription produces dark refractive mesh fragments.
-  Offline hardware replay of the retained original first draw reproduces its
-  complete RT0 exactly. This proves packet sufficiency for that color output,
+  Offline hardware replays of both retained original opening draws reproduce
+  their complete RT0 outputs exactly. This proves packet sufficiency for those color outputs,
   not reconstructed Unity fidelity or RT1 parity; preserve those boundaries.
+  Extracted lab RB pixel-function bodies also reproduce both opening RT0
+  outputs with native constants and VS varyings. The active RT1 output and blend
+  also agree under independent initial-state probes: R/G/A are preserved and
+  covered blue becomes one. The saved Unity draw uses the same RT1 state. This
+  isolates active arithmetic/state, not upstream RT1 history, particle phase,
+  inactive shader branches, or complete Unity image parity.
+  The retained corrected Unity draw matches active material values and screen-UV
+  transport but differs in global mip bias from the native opening packets.
+  Isolated native replay confirms that scalar affects their pixels. The CPP
+  request independently computes `min(log2(renderingScale)-1, materialMipBias)`
+  under its TAAU/DLSS/FSR3 gates and the engine writes that otherData value into
+  globals. This differs from the managed post-phase material-bias writer and
+  HGCamera's own global field. Join selected CPP inputs and upload generation
+  before replacing the fallback; another camera's receipt is insufficient.
+  GetRenderingScale is render-path dependent: the unpatched UI/UI3D paths use
+  one, while Forward/Deferred use the settings/display calculation, including
+  even-pixel quantization at lower display resolutions. Camera-buffer dimensions
+  alone do not identify this input; effective getters and IFix remain relevant.
+  Environment snapshots retain material/global mip bits, additional-data identity
+  and raw AA flags at each native endpoint. Their draw diagnostic compares global
+  bits without promoting a match to writer execution or GPU publication proof;
+  a mismatch may reflect the independent CPP override rather than timing drift.
+  Render-bridge snapshots additionally retain CPP otherData identity and bias
+  before/after the engine call, reject read/change failures, and compare nested
+  global-copy endpoints. Retail execution of this extension remains unobserved;
+  endpoint equality cannot close allocation lifetime or draw consumption.
   Public Unity particle instance records require their own stream-layout
   contract. Refract selects its Custom1 record; BaseV2 selects Custom1 or
   Custom1+Custom2 and loads Custom1 from the procedural buffer. Both select
@@ -288,11 +327,20 @@ only.
   authored profile. Post construction consumes component references cached
   from the camera's volume stack; join the actual cache getter, scoped activity
   and settings returns, and render consumption before changing lab gates.
-  The post observer's shutdown must close new admissions while retaining nested
-  callback routing until accepted camera scopes drain. Patch drift or a drain
-  timeout retains the provider and fails evidence; it must not seal partial
-  scopes as successful. Native body pins alone do not prove an unpatched IFix
-  path, object lifetime, or consumption of the recorded CPU payload by a draw.
+  Post receipts retain raw constructor/cache component pointers and producer
+  bytes so offline validation can replay the joins and conditional call order.
+  The environment combined launcher arms two bounded post-observation windows
+  from its overview-entry triggers and waits for window closure before the
+  saved-entry prompts. Collection joins their triggers and memory charge to
+  the exact session; Python independently replays the raw window membership.
+  Payload summaries distinguish effective activity from retained intensity.
+  Mode comparison assumes stable repeated intensity getters: the producer
+  reads the parameter again for its threshold, separately from the packed value.
+  Shutdown closes new admissions while retaining nested callbacks until accepted
+  camera scopes drain. Patch drift or timeout retains the provider and fails
+  evidence; callback code is pinned through process exit for late pass-through.
+  Native body pins and consistent CPU scopes do not prove an unpatched IFix
+  path, object lifetime, or consumption of the recorded payload by a draw.
   Exact replay additionally requires the consumer's fresh t0 contents, t1/t2,
   ranged VS b0 and PS b0/b1, and actual pipeline state. Capture v4 retains those
   inputs; v3 cannot establish them from resource identity alone. Initial
@@ -344,8 +392,12 @@ only.
   This does not establish the retail camera's initial phase or an IFix override.
   Contact settings now import the selected authored phase with independent
   provenance, native percent conversions and ignore-edge lane; the installed
-  base feature getter gates intensity. Unknown settings fail closed. This does
-  not validate runtime blend/IFix state or refresh the legacy light/exposure
+  base feature getter gates intensity. Unknown settings fail closed.
+  The screen-shadow diagnostic joins attenuation/blend to that same phase by
+  source path, PathID and raw hash, then uses the native manual-override policy;
+  missing visibility rejects publication; inactive phases require stack resolution.
+  This replaces the diagnostic constant without selecting the migrated phase.
+  This does not validate runtime blend/IFix state or refresh the legacy light/exposure
   snapshot's identity. Current authored exposure metadata is retained separately.
   The reusable shadow visibility interpolator now preserves inactive configs,
   copies active endpoints and applies the native scalar/boolean rules. Ordered
@@ -362,6 +414,10 @@ only.
   The combined capture needs no repeat for those graphics inputs. The optional
   environment-shadow extension observes selected phases, ordered applied
   volumes/factors and camera/shadow-manager state within the same two entries.
+  It also samples the full registered list at the first selected getter in each
+  entry, with bounded capacity and header/element/key consistency checks. Only
+  complete samples linked to validated records support a current-order claim;
+  they do not establish earlier registration chronology or phase asset identity.
   It uses guarded reads and original-call forwarding without Unity API calls.
   FrameSetup may have no observed calls during these entries. Pinned deferred
   and contact-parameter getter callers supply independent observation routes;
@@ -490,16 +546,37 @@ only.
   in the same report directory.
   The diagnostic now records CharacterPrePass and HGBuffer on one five-MRT/
   D32S8 surface, using the same character draw collector as canonical PreG.
+  Sphere's raster projection and motion history are separate: use the current
+  camera projection for raster coverage and nonjittered current/previous
+  projections for motion. Jitter must not enter history or manufacture motion.
+  This transport contract does not authenticate the retail jitter sequence.
   Punctual shadows belong to the camera's forward light loop even when no
   LitEffect particle is alive. Update the atlas and packed light-to-shadow map
   under the producer's own rig gate; a particle-dependent skip leaves stale
   indices when light packing changes and can reject whole light contributions.
   The matched GPU diagnosis is in `endminf_shadow_schedule_287_validation.json`.
   Contact, low-resolution directional, VisibilitySH, and screen-shadow producers
-  consume that post-HG surface and its R32 depth copy. An active HG owner failure
-  cannot fall back to the independent character diagnostic. Default's paired
-  DSV is its t1 depth resource; t0 is the binning buffer. Native draw failure
+  consume that post-HG surface and its R32 depth copy. The shared D32S8 allocation
+  explicitly requests an R8_UInt stencil shader view, and ContactShadow rejects
+  its absence before dispatch. An active HG owner failure
+  cannot fall back to the independent character diagnostic. Default t1 need not
+  be the paired DSV resource: retained early packets copy its depth SRV into
+  a separate R32 texture before lighting; t0 is the binning buffer. The native
+  copy uses SampleLevel with explicit UV transform, mip and sampler. The lab's
+  integer texel copy requires those values to establish equivalence; endpoint
+  identity alone does not prove payload continuity. The exact Unity bridge
+  retains the sampled R32 copy and D32S8 attachment separately through native
+  submission completion; sampling must not determine which surface supplies
+  stencil rejection. Validate the R32 float SRV and its resource together:
+  Unity may use an R32 typeless backing for an R32_SFloat texture. Native draw failure
   cannot certify content merely because the metadata shell produced finite pixels.
+  The diagnostic HLSL comparator now shares the read-only depth/stencil test,
+  verified by GPU visibility probes. Its legacy Ruri shadow/resource layout still
+  differs from the current DXBC; pixel differences do not isolate arithmetic.
+  Combined diagnostics must explicitly request the live SphereOutside producer
+  (`ENDFIELD_RECOVERED_DEFERRED_GBUFFER_FRAME`) alongside LitEffect. The standalone
+  SphereOutside GPU-test flag does not populate the live shared surface; use
+  `tools/render_endminf_deferred_diagnostic.ps1` to preserve that distinction.
   Foreground HG geometry replaces classification only after passing shared
   depth. This does not establish every retail stencil writer. The shared surface
   now includes the floor's separate source-owned distance-field HGBuffer pass:

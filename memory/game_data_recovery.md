@@ -233,6 +233,12 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   on malformed prefixes even when the legacy suffix reader succeeds. Current
   Sequence consumer evidence places the counted indirect child array before
   two nonzero-normalized bytes; child output-slot width does not bound payloads.
+  `scripts/game_data/buff_184_native.json` joins TogglableAction to header6:
+  the common prefix followed by two independent SequenceActionData records.
+  Null or empty first sequences retain the second, and each count reserves
+  its own two terminal bytes. Only Sequence-to-action entry increments depth;
+  no extra outer byte follows the second sequence. The shared type argument
+  proves neither activation/deactivation roles nor runtime execution order.
   The member-five child closes a 13-byte anonymous scalar prefix followed by
   a counted member-three record collection. Each record contains two signed-
   length-prefixed byte spans separated by one nonzero-normalized byte. The
@@ -371,6 +377,12 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   not the member-18 HitBoxFinder ShapeData. Its three vector-context helpers
   each advance twelve raw bytes, separately from variable byte payloads;
   neither similar names nor destination layout selects the shape grammar.
+  `scripts/game_data/buff_91_native.json` reuses that ColliderShapeData before
+  a required TargetSettings in CreateAdditionalBattleShape. Its header10
+  consumes the common prefix, raw float32 bits, three bytes and both nested
+  records. Each child may be null independently; the target is terminal.
+  Short91 and FA9100 select the same union. Static identity and source order
+  do not establish battle-shape creation behavior or anonymous field meaning.
   The distinct member-six reader in `scripts/game_data/buff_b6_native.json`
   instead follows the common scalar prefix with a target and one byte. Its
   output-side construction adds no source member; the managed action name
@@ -432,6 +444,116 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   target profiles, preserving each instance's own unsupported boundary.
   Cached output casts and stores rejoin the source reads; they add no wire
   members and cannot substitute for the source cursor order.
+  `scripts/game_data/buff_df_native.json` joins LaunchUpwardAction to header15:
+  common prefix, effect, DWORD, direction, two Double profiles, raw4, DWORD,
+  target, raw4, target and a required terminal byte. Enum contexts select the
+  DWORD helpers, not the following nested calls. Preserve both Double/Target
+  instances and both raw float spans even when adjacent profiles are null;
+  upward-launch behavior, numerical units and target roles remain unresolved.
+  `scripts/game_data/buff_1f_native.json` independently joins BombTouchLayerAction
+  to three sequence instances, two effect configurations and one target among
+  scalar members. Its LayerMask helper consumes one DWORD without a nested
+  header; both mask reads remain required, including the terminal DWORD after
+  the second effect. Preserve each sequence's count, depth and two tail bytes.
+  Repeated type contexts do not merge source spans or establish activation
+  roles; collision behavior, layer-bit meanings and effect ownership remain
+  unresolved independently of the exact static identity and direct read order.
+  `scripts/game_data/buff_b7_native.json` joins FlowTextAction to header nine:
+  common prefix, raw16, byte, DWORD, target and terminal byte payload. Its
+  inline sixteen-byte copy and Advance call share an explicit remaining-byte
+  guard; pin the separate ensure-input rejoin without claiming refill parity.
+  MountPoint selects the DWORD helper. A null target does not remove the final
+  length word, and FF bytes inside raw16 are ordinary data. Raw16 meaning,
+  payload encoding, text rendering and target ownership remain unresolved.
+  `scripts/game_data/buff_f0_native.json` independently pins a member-five
+  scalar-ending action. Its BlackboardDouble context reuses the bounded
+  payload/byte/raw4 profile, not an eight-byte scalar. Null and empty payloads
+  retain both tail fields; null scalar, null wrapper and null union differ.
+  Equal source order permits parser reuse while preserving separate union
+  identities. Resilience behavior, numeric interpretation and units remain
+  unresolved; no extra outer payload follows the output setter.
+  `scripts/game_data/buff_55_native.json` pins a member-nine condition with
+  one BuffId value, two independent TargetSettings instances, a byte and a
+  terminal scalar profile after the common prefix. BuffId uses its own
+  nullable member-one payload wrapper; its output carrier width does not
+  establish wire width. Equal target contexts preserve separate byte ranges.
+  Null preceding profiles retain the byte and final scalar. Source/target
+  ownership and condition behavior remain unresolved.
+  `scripts/game_data/buff_36_native.json` pins three independent
+  AnimatorParamAction instances around an outer raw4/byte span and a terminal
+  DWORD. Each nullable child reuses the member-five fixed profile in
+  `buff_14a_native.json`; identical contexts do not merge source ranges or
+  remove intervening fields. Preserve all floating bits and the final DWORD
+  even with null children. Weapon animation and parameter roles remain unresolved.
+  `scripts/game_data/buff_20_native.json` pins BreakoutAction to a member-six
+  order: common prefix, signed-length byte payload and terminal DWORD. Null
+  and empty payloads retain that DWORD; neither output setter adds a nested
+  record. The final static context joins AbnormalState without proving its
+  value meanings or runtime effect. Keep payload encoding and breakout behavior
+  unresolved, and preserve the opaque physical remainder after root framing.
+  `scripts/game_data/buff_a8_native.json` pins a nullable ShapeEdit list before
+  TargetSettings and a terminal DWORD. Its independent element union accepts
+  tag zero as a nullable member-three Sector wrapper: DWORD, scalar payload,
+  scalar payload. The two Double contexts establish separate variable-width
+  profiles; the generic helper alone cannot identify either as a target.
+  Reserve the following target and DWORD when bounding the list, and stop
+  unknown element tags at their first byte. Aim geometry and units remain unresolved.
+  `scripts/game_data/buff_23_native.json` joins BroadcastAlertToCharactersAction
+  to a member-eleven order: common prefix, SkillAlertData, two DWORDs, byte
+  payload, DWORD, raw4 and TargetSettings. SkillAlertData is FF or header9
+  followed by raw4 three times, DWORD, raw4 four times and DWORD. Preserve
+  nine separate four-byte spans; AlertMoveType and AlertShape contexts identify
+  the DWORD carriers, not their value meanings. Null alert/payload values do
+  not remove the final target. Alert geometry, units and broadcast behavior
+  remain unresolved; exact static identity does not prove runtime selection.
+  `scripts/game_data/buff_16a_native.json` pins SpawnEnemyAction to three
+  independent targets around raw12, DWORD, raw16, a nullable CreateBuffActionInput
+  list, two byte payloads, byte, scalar payload, raw4 and byte. Vector3 and
+  Quaternion helpers prove their separate source guards and advances; output
+  sizes alone are insufficient. List elements reuse the member-five input
+  profile and its nested AssignPair list from `buff_92_native.json`, with
+  distinct null/empty states and terminal reserves at both list levels.
+  Spawning behavior, target ownership and coordinate/rotation conventions remain
+  unresolved; the final target is required even when preceding lists are null.
+  `scripts/game_data/buff_6f_native.json` joins CheckProfession to a member-six
+  order: common prefix, TargetSettings and a terminal DWORD. Reuse the bounded
+  target profile; a null target does not remove the final four source bytes.
+  The last static context identifies ProfessionCategoryMask, but its bit
+  meanings and runtime profession checks remain unresolved.
+  `scripts/game_data/buff_161_native.json` joins ShowSquadTipsAction to a
+  member-five reader: common prefix and one signed-length byte payload.
+  Null and empty payloads stay distinct; no terminal scalar follows them.
+  The extended union identity remains separate from the short low-byte tag.
+  Payload encoding, text/identifier role and actual tip behavior remain unresolved.
+  `scripts/game_data/buff_c0_native.json` extends the existing GainCost identity
+  join to header7: common prefix, CastData.CostData and two terminal DWORDs.
+  CostData is FF or header3 followed by raw4, DWORD and raw4. Its exact generic
+  context selects this child despite sharing a helper address with TargetSettings.
+  CostType and the two separate ActionTargetType contexts add no nested headers.
+  Preserve raw bits and both terminal DWORDs when CostData is null; cost units,
+  enum meanings and runtime effects remain unresolved.
+  `scripts/game_data/buff_11c_native.json` pins PullAction's member19 order,
+  including a nullable PullAttenuationValueConfig list, two independent targets
+  and a required final byte. Each list element is FF or header2 with raw4 and
+  BlackboardSuperArmorValue, whose member4 payload/byte/DWORD/byte profile
+  reuses `buff_159_native.json`. Reserve the outer tail when bounding the list.
+  Its large inline initialization and jump-table data remain distinct from
+  source reads; output getters/setters add no wire members. Pull behavior,
+  attenuation units and live list-provider selection remain unresolved.
+  `scripts/game_data/buff_8c_native.json` pins ConvertToTargetContext's member12
+  order: common prefix, Vector3, TargetSettings, two DWORDs, byte payload,
+  DWORD, raw4 and final DWORD. Vector3 retains three independently nullable
+  scalar profiles from `buff_b2_native.json`; it is not a raw coordinate triple.
+  Null vector, target or payload never removes the twelve-byte terminal region.
+  Operation enum contexts consume DWORDs without additional object headers.
+  Coordinate conventions, target roles and conversion behavior remain unresolved.
+  `scripts/game_data/buff_4e_native.json` pins ComboCacheAction's member5
+  terminal list of BattleCmdMappingModifierData. Each element is FF or member6:
+  byte, scalar payload, byte, DWORD, byte and an independent byte payload.
+  Bound the list with a one-byte minimum element; it has no outer tail.
+  A null scalar does not remove the element's final payload, and a null list
+  is distinct from an empty list. Command mapping behavior and payload roles
+  remain unresolved; the list provider bridge stays conditional.
   A member-six child contains only a byte, four scalar32 values and scalar64.
   Its final helper reads and advances eight source bytes; that cursor evidence,
   pinned in `scripts/game_data/buff_5b_native.json`, establishes wire width.
@@ -623,11 +745,68 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   with a required byte between the common prefix and terminal scalar payload.
   The byte remains required when the scalar is null; dash-energy recovery
   semantics remain unresolved.
+  `scripts/game_data/buff_14b_native.json` joins SetAnimTimeScaleAction to
+  header6, the common prefix, TargetSettings and terminal BlackboardDouble.
+  The scalar wrapper is required even when the target is null; no further
+  byte or DWORD follows it. Time-scale behavior and target ownership remain
+  unresolved.
   `scripts/game_data/buff_8a_native.json` joins ContinuousFindTargetAction to
   its header19 direction, scalar, payload and selector read order. Two final
   bytes and a required raw float32 field close the record; null nested profiles
   do not remove that tail. Short and extended union encodings share this order.
   Continuous targeting behavior and payload ownership remain unresolved.
+  `scripts/game_data/buff_197_native.json` joins VoiceInterruptAction to a
+  fixed header6 profile: common prefix, required DWORD and terminal BYTE.
+  All bit patterns remain anonymous; neither an all-zero nor an all-FF scalar
+  removes the terminal byte. Short97 is not the FA9701 union. Runtime voice
+  interruption and scalar/flag meaning remain unresolved.
+  `scripts/game_data/buff_198_native.json` joins VoiceTriggerAction to header11:
+  the common prefix, two DWORDs, a nullable payload, two DWORDs, another nullable
+  payload and terminal TargetSettings. Both length markers and the final target
+  remain required for null/empty payloads. VoSpeakerType identifies a context,
+  while voice behavior, payload encoding and speaker/target ownership remain
+  unresolved. Short98 is a distinct union, not an alias for FA9801.
+  `scripts/game_data/buff_ad_native.json` joins EventListenerAction to header5,
+  the common prefix and a nullable AbilityActionMap list. Each FF/header2 map
+  places its DWORD before the nullable Sequence array; no field follows that
+  array or the outer list. Nested sequences retain the action recursion depth
+  and their two required tail bytes. Framing remains structural-only; the Event
+  type context does not establish trigger ownership or runtime listener behavior.
+  `scripts/game_data/buff_17_native.json` joins BindBountyEnemyAction to
+  header5, the common prefix and terminal BlackboardString. Its paired profile
+  retains both nullable payload lengths and the intervening byte; null/empty
+  payloads do not remove later fields. Enemy binding, payload encoding and
+  reference ownership remain unresolved.
+  `scripts/game_data/buff_ce_native.json` joins IgniteAction to header8:
+  the common prefix, TargetSettings, a DWORD, a nullable byte payload and
+  terminal TargetSettings. Null/empty payloads retain the final target wrapper.
+  The exact IgniteType context does not narrow allowed DWORD bits; ignition
+  behavior and payload/target ownership remain unresolved.
+  `scripts/game_data/buff_18e_native.json` joins TyphoeaArcheryChipDataAction
+  to header18: the common prefix, four nullable byte payloads, five bytes,
+  two payloads, one byte and two terminal payloads. Every payload retains its
+  own required signed nullable length; null or empty values do not remove later
+  fields. Payload encoding, reference ownership and archery behavior remain unresolved.
+  `scripts/game_data/buff_102_native.json` joins OnSpellInflictionStart to
+  header5, the common prefix and a required terminal DWORD. The exact final
+  context identifies EnergyShardType, while its source width remains four
+  bytes with arbitrary bits retained. Spell-infliction behavior, enum meaning
+  and field ownership remain unresolved.
+  `scripts/game_data/buff_28_native.json` joins ChangeGeneralAbilityButton
+  to header7, the common prefix, one BuffId profile, a nullable byte payload
+  and a required terminal DWORD. BuffId reuses the pinned header1 payload
+  reader; its provider output carrier does not establish wire width. Button
+  behavior, enum meaning and identifier/field ownership remain unresolved.
+  `scripts/game_data/buff_172_native.json` joins StoreBuffCount to header8,
+  the common prefix, two nullable byte payloads, TargetSettings and one
+  required terminal byte. Null and empty payloads remain distinct; a null
+  target does not remove the terminal byte. Count-storage behavior and
+  payload/target ownership remain unresolved.
+  `scripts/game_data/buff_166_native.json` independently joins SlowAction to
+  the header13 paired/scalar/keyword-list/byte/scalar/two-target order. Its
+  list reserves four bytes for the required remaining fields, including both
+  nullable target wrappers; the second target ends the record. Slow-action
+  behavior and keyword/target ownership remain unresolved.
   `scripts/game_data/buff_19c_native.json` independently joins WeakAction to
   the header13 paired/scalar/list/byte/scalar/two-target order shared with
   ShelterAction. The list reserves four bytes for later fields, and the second
