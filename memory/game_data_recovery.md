@@ -264,6 +264,22 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   same variable-width target profile. `scripts/game_data/buff_68_native.json`
   pins its own normal/null paths and exact target context; its equal member
   count does not select the earlier member-five counted-payload layout.
+  The extended union in `scripts/game_data/buff_15c_native.json` independently
+  selects this target-ending order. Preserve null target versus null wrapper
+  and stop unknown nested shapes in place; its UI name does not establish
+  shield ownership or add a source tail.
+  `scripts/game_data/buff_05_native.json` independently pins another
+  target-ending action, including its lazy initialization and null rejoin.
+  Short and extended union encodings preserve their distinct widths; the
+  registered interruption name does not establish live skill behavior.
+  `scripts/game_data/buff_4c_native.json` pins two independent targets with a
+  nullable byte-payload list between them. Its list count reserves the terminal
+  target minimum before iteration; null lists, null elements and target nulls
+  remain distinct. Projectile clearing behavior and string decoding are unproven.
+  `scripts/game_data/buff_16f_native.json` separately establishes a byte before
+  the target and a terminal BlackboardDouble profile after it. The scalar
+  profile ends in four raw bytes; keep both nested null states independent and
+  do not infer ATB spending or ownership from the action name.
   `scripts/game_data/buff_10f_native.json` pins a fixed member-five reader:
   byte, three scalar32 values, then a final byte, with no nested provider.
   Its byte helpers establish nonzero normalization, not gameplay meaning;
@@ -521,6 +537,187 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   authenticated reader proving payload/byte/DWORD source order; equal headers
   and managed names alone do not justify profile reuse. An unknown target
   keeps the enclosing action incomplete. Spawning behavior remains unresolved.
+  `scripts/game_data/buff_3a_native.json` independently selects that same Int
+  profile after an extra DWORD and before a terminal byte payload. Preserve
+  independent null states and reject an incomplete terminal payload even after
+  the nested profile completes; comparison names do not establish layer meaning.
+  `scripts/game_data/buff_150_native.json` independently places a terminal
+  byte after a BlackboardDouble profile. A null profile still requires that
+  byte; a null wrapper ends separately. This source order does not prove a
+  cooldown unit, operation, or runtime effect.
+  `scripts/game_data/buff_a7_native.json` closes two independently nullable
+  profiles repeated around a direct query. The member-one profile contains a
+  byte; the member-six profile interleaves two DWORD/scalar-payload pairs before
+  two terminal bytes. The parent still requires its own final byte. Preserve
+  separate nested boundaries; part identity and modification meaning remain
+  unresolved despite the exact selected type contexts.
+  `scripts/game_data/buff_19e_native.json` independently joins a View wrapper
+  with two curve profiles and a nullable byte-payload list before six terminal
+  bytes. Reserve those six bytes while bounding the list; neither a null list
+  nor a completed element completes the parent. Preserve raw four-byte values
+  and independent curve nulls without promoting camera or blend meaning.
+  `scripts/game_data/buff_08_native.json` closes two levels of nullable lists:
+  each member-one element owns a list of member-five records containing a byte,
+  byte payload, two DWORDs and raw4. Their exact contexts remain distinct from
+  the action's vector, scalar and curve profiles. Both outer lists reserve the
+  minimum remaining parent bytes; thirteen terminal bytes are independently
+  required. Null lists, empty lists and null elements remain separate, while
+  camera state and condition meanings stay unresolved.
+  `scripts/game_data/buff_120_native.json` selects two independent scalar
+  payload profiles followed by a DWORD and a terminal byte payload. The shared
+  scalar context proves profile reuse, not shared null state or a fixed parent
+  width. Both profiles may complete while the parent remains truncated; require
+  the final DWORD and full signed-length payload. Random algorithm, distribution
+  and payload ownership remain unresolved.
+  `scripts/game_data/buff_9f_native.json` places an extra byte and DWORD before
+  two independent target profiles and a final direct query. Matching target
+  contexts do not merge their null states; completed targets do not replace
+  the final query header, count or elements. Unknown target children leave the
+  parent incomplete. Dispel behavior and query-tag meanings remain unresolved.
+  `scripts/game_data/buff_1b_native.json` interleaves two target profiles,
+  six scalar payloads and a direct direction profile with bytes and a DWORD.
+  Repeated scalar contexts select independent variable-width instances; require
+  the final scalar after the last byte. Direction's nested target children
+  retain their explicit unsupported boundary. Blow-off behavior, units and
+  direction conventions remain unresolved.
+  `scripts/game_data/buff_87_native.json` closes a terminal nullable list of
+  sequence profiles. Each element owns its header, action count and two final
+  bytes; there is no additional parent tail. Preserve null/empty lists and
+  null/empty sequences separately. Propagate recursive depth limits and unknown
+  child unions without completing the parent. Boolean evaluation, execution
+  order and short-circuit behavior remain unresolved.
+  The EC native contract pins both direction-to-target calls and the reverse
+  target-to-direction call. Direction now admits the existing finite target
+  profile, with at most 64 active non-null target instances across recursive
+  paths. Reject deeper targets before their header; unwind depth on failure,
+  retain completed children and leave incomplete parents unrecorded.
+  `scripts/game_data/buff_70_native.json` pins member-six framing: one byte
+  and five DWORDs, including two required terminal DWORDs. Its three scalar
+  generic contexts add no headers. Preserve raw values without promoting
+  enum labels to projectile immunity behavior.
+  `scripts/game_data/buff_71_native.json` independently pins the same member-five
+  byte/three-DWORD/byte shape for short and extended union encodings. Its final
+  byte is mandatory; equal layout does not establish a shared runtime purpose
+  or projectile/dodge condition semantics.
+  `scripts/game_data/buff_14f_native.json` pins a member-five body of one
+  byte, three DWORDs and a required terminal byte. Its Priority context adds
+  no header. Preserve terminal byte values without boolean or dash semantics;
+  parent completion requires the final byte.
+  `scripts/game_data/buff_124_native.json` pins a fixed member-five body:
+  one byte and four DWORDs. Priority and RecordType contexts add no nested
+  headers; the final DWORD is required for every non-null wrapper. Raw values
+  remain structural evidence without battle-record semantics.
+  `scripts/game_data/buff_125_native.json` pins an extended member-six action
+  with a required byte between the common prefix and terminal scalar payload.
+  The byte remains required when the scalar is null; dash-energy recovery
+  semantics remain unresolved.
+  `scripts/game_data/validator_01_native.json` pins validator 1 independently
+  of finder 1: member two consumes BuffFindSettings then a required DWORD.
+  Reuse the bounded payload-list/query reader and preserve its null states;
+  ValidateMode adds no header and does not establish runtime validation rules.
+  `scripts/game_data/buff_root_prefix_native.json` pins root members 2-4 after
+  the supported first collection: scalar payload, directly counted raw DWORD
+  array, then a member-two collection profile. The array helper copies four
+  bytes per entry without an element header; the GameplayTag type name does
+  not select the separate tag-list wrapper grammar. The collection consumes a
+  nullable reference array followed by a required byte; its selected member-four
+  elements contain three DWORDs and a scalar payload. FF wrappers and null/empty
+  arrays are distinct, and only a non-null collection has the terminal byte.
+  Preserve conditional provider selection and structural-only field meanings.
+  `scripts/game_data/buff_root_fifth_native.json` pins the next root collection
+  to a List<DataPair> context. Its selected member-four elements read a byte,
+  signed nullable byte payload, eight raw bytes and another nullable payload.
+  The eight-byte load/advance is independently pinned; do not reuse the scalar
+  profile's four-byte raw value or interpret the leading byte as a union tag.
+  Null elements and null/empty collections remain distinct.
+  `scripts/game_data/buff_root_sixth_native.json` pins the following
+  List<BuffActionMap>: FF or member two, a nullable Sequence array, then a
+  required inline DWORD. This reverses the first collection's scalar/array
+  order; equal member counts do not make the maps interchangeable. Null map
+  elements end immediately, while a null/empty array still needs the DWORD.
+  Reuse the separately pinned Sequence/action grammar, keeping unknown actions
+  at their first byte and preserving completed predecessors. The recovery queue
+  now includes unsupported actions reached inside this collection; close those
+  before treating all sixth-member endpoints as known. Retain conditional
+  provider selection, the independent suffix anchor and the physical opaque range.
+  `scripts/game_data/buff_159_native.json` independently pins the reached
+  action and both BlackboardImpactValue/BlackboardSuperArmorValue wrappers.
+  The header-seven action reads the common byte/three DWORD prefix, two
+  `scalar_flag_payload` profiles, then TargetSettings. Each nested wrapper
+  reads FF or header four, nullable byte payload, byte, DWORD and required
+  final byte; do not substitute the header-three scalar profile. Exact type
+  identity does not establish gameplay effects, numeric units or boolean
+  meanings. Keep the existing TargetSettings depth/unknown-profile boundary.
+  `scripts/game_data/buff_16_native.json` pins the header-thirty AuraAction
+  and its distinct BuffInput and TargetFilter wrappers. BuffInput is FF or
+  header three, byte, nullable AssignPair list and raw byte payload; neither
+  CreateBuffInput nor GlobalBuffInput has this complete shape. TargetFilter
+  is FF or header ten, byte/enum fields, GameplayTagQuery and a required final
+  DWORD, distinct from BuffFilterSettings. The query helper has an output
+  carrier, not a fixed sixteen-byte wire value. Preserve nested Sequence
+  unknown stops, independent list null states and the minimum required tail.
+  `scripts/game_data/buff_178_native.json` pins the header-eight SwitchMode
+  action: common byte/three DWORDs, two bytes, nullable byte payload and a
+  required final byte. There are no nested objects or list elements. Keep
+  FF wrapper, null/empty payload and arbitrary terminal byte values distinct;
+  the static type name does not prove mode behavior or payload meaning.
+  `scripts/game_data/buff_c1_native.json` pins header-six GetAITransData:
+  common byte/three DWORDs followed by two independently nullable byte
+  payloads. Both length words are required even when the first is null/empty;
+  keep payload encoding, cross-file identity and AI behavior unresolved.
+  `scripts/game_data/buff_101_native.json` pins header-six
+  OnSpellAbnormalStartFinish: common byte/three DWORDs, another DWORD and a
+  required byte. Priority and SpellAbnormalType contexts add no wire headers;
+  arbitrary values remain valid structural bytes, without boolean or spell
+  behavior claims. Preserve the complete extended union identity.
+  `scripts/game_data/buff_c7_native.json` pins header-twelve HitStop:
+  common prefix, DWORD, target, payload, curve, raw4, target, raw GameplayTag
+  DWORD and byte. GameplayTag has no object header at this call. Curve header3
+  owns raw8 and a nullable raw28-element array; keep independent null states,
+  target unknown stops and required tail, without hit-stop behavior claims.
+  `scripts/game_data/buff_19b_native.json` pins header-fourteen Vulnerable
+  and its KeywordEnhanceEdit list. Each header-three element owns a nullable
+  byte-payload list, DWORD and scalar profile. Reserve at least eight bytes
+  after the outer list and five after the inner list; null wrappers, null/empty
+  lists and null payloads remain distinct. The post-list scalar precedes two
+  targets and the required DWORD; keyword and vulnerability meanings remain
+  unresolved independently of these structural boundaries.
+  `scripts/game_data/buff_128_native.json` pins header-eleven RecoverPoise:
+  common prefix, byte, EffectActionCfg, DWORD, byte, DWORD, CalculationBase
+  and target. Reuse the bounded member85 configuration and calculation union
+  profiles; unknown calculation variants stop before their tag, and the final
+  target remains required after both children complete. Poise and calculation
+  meanings stay unresolved independently of this framing.
+  `scripts/game_data/finder_01_native.json` pins finder 1 to a zero-member
+  wrapper. Its constructor consumes no source fields; short/extended tags,
+  member-zero wrappers and FF nulls remain distinct. AllEnemyFinder identity
+  does not prove runtime enemy ownership or selection.
+  `scripts/game_data/finder_10_native.json` pins finder 16 and its nested
+  Vector2 reader. Member nine consumes scalar, Vector2, Vector3, three scalars,
+  DWORD and two bytes; Vector2 independently contains two scalar payloads.
+  Nulls and lengths remain independent, and both terminal bytes are required.
+  Static type identity does not prove coordinates or runtime random selection.
+  `scripts/game_data/finder_0e_native.json` pins selector-finder union 14 to
+  a member-two PointFinder reader with two independent vector payloads. Shared
+  type context does not merge their null states or length boundaries. The
+  second vector ends the record; position/direction meanings remain unresolved.
+  `scripts/game_data/finder_15_native.json` independently joins selector-finder
+  union 21 to a member-zero SourceFinder reader. It has no serialized members
+  or nested providers; runtime source-entity selection remains unresolved.
+  `scripts/game_data/finder_0a_native.json` independently pins selector-finder
+  union 10 to a member-zero reader. It consumes no fields after its header;
+  constructor initialization adds no source bytes. Keep finder, validator and
+  action tag spaces distinct. Main-target runtime selection remains unresolved.
+  `scripts/game_data/buff_8e_native.json` pins a member-five body ending
+  in an independent BlackboardDouble profile after the common byte and three
+  DWORDs. Its null state and payload length remain local; the parent completes
+  only after the profile's final four bytes. ATB cost and cooldown selection
+  remain unresolved runtime meanings.
+  `scripts/game_data/buff_52_native.json` pins a fixed member-five body:
+  byte, three DWORDs and a final byte. It has no nested provider or variable
+  count. The final byte remains required for every non-null wrapper, regardless
+  of its value; raw scalar bits do not become counts or lengths. Squad combat
+  state and runtime condition evaluation remain unresolved.
   `scripts/game_data/buff_7e_native.json` pins a member-six reader ending
   in two target profiles. Both exact contexts select the same finite profile,
   but their null states, nested counts and source boundaries stay independent.

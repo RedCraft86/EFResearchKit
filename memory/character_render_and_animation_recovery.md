@@ -228,15 +228,28 @@ only.
   Recover names from the original compressed program's referenced parameter
   record when exported metadata omits fields. Exact RB, RGB/blend, and dissolve
   variants establish this contract; see the CharEffect RB parameter audit.
+  Its blend-as-alpha mode uses neutral white for the scene RGB multiplier and
+  the texture's red channel for alpha. It does not invert texture RGB; that
+  mistranscription produces dark refractive mesh fragments.
   Offline hardware replay of the retained original first draw reproduces its
   complete RT0 exactly. This proves packet sufficiency for that color output,
   not reconstructed Unity fidelity or RT1 parity; preserve those boundaries.
   Public Unity particle instance records require their own stream-layout
-  contract. The recovered refraction path selects its Custom1 record variant
-  from the renderer's mesh/GPU/active-stream settings and isolates that choice
+  contract. Refract selects its Custom1 record; BaseV2 selects Custom1 or
+  Custom1+Custom2 and loads Custom1 from the procedural buffer. Both select
+  from the renderer's mesh/GPU/active-stream settings and isolate that choice
   from shared billboard materials. A native matrix-bank declaration does not
   establish Unity's procedural buffer stride; validate the bound descriptor,
   shader loads, and actual post-VS positions together.
+  Four-texture BaseV2 masking accumulates authored Sample1/2/3 weights
+  for both RGB and alpha from 1-UseMask. Preserve those source weights in
+  material import; texture ordinal alone does not establish its mask role.
+  Validate sampler descriptors independently of shader sampler names and
+  imported texture defaults. The observed polar+screen variant uses Clamp
+  for Main and bilinear Repeat for its four samples; static ordinal-based
+  Mirror/MirrorOnce/PointClamp assumptions did not match its native bindings.
+  The observed non-polar four-texture tuple instead uses Repeat for Main
+  and Samples 0/1/3, with Clamp for Sample2 and the same bilinear filtering.
 - A component-complete current-build Streamline capture retains two consecutive
   native-resolution DLAA input/output/depth/motion transactions and a complete
   selected-actor Animator timeline. Its direct
@@ -361,12 +374,45 @@ only.
   words decrement and reset and can retain a mapping across wrapper releases;
   they are not generation IDs. Upload observation must follow backend mapping
   lifetime from installation, preserving unknown initial mappings across windows.
+  The native observer now records the enclosing pool flush and links each upload
+  to its thread-local parent; packed allocations and uploads retain actual pool
+  owner/epoch endpoint reads. These observations have separately charged bounded
+  storage and strict receipt validation. Reset admission/exit is now recorded
+  across observer windows; epoch reads sit inside their recorded intervals.
+  Staging candidates require the same completed observed reset for allocation
+  and upload, rejecting overlaps even when an epoch value repeats. Calls already
+  in flight before installation, suballocation continuity and intervening writes
+  remain open, so reset chronology alone cannot promote lifetime or GPU ownership.
+  Global constants now retain their constructor's actual pool context and owner.
+  The global copy must match its render bridge, pinned stack-copy destination
+  and full descriptor bytes; upload candidates must share its observed reset.
+  This association is independently observed rather than borrowed from the
+  packed shader allocation, whose pool need not be the same.
   The backend Map ledger covers all D3D11 buffers because native staging copies
   are not restricted to constant buffers; textures remain outside its range
   model. An unknown mapping cannot classify the destination or prove copy loss.
   Draw-local CB Map timestamps are taken before the original D3D draw and can
   order native command construction against that snapshot. They do not prove
   the command executed or exclude intervening texture bindings.
+  A hooked WARP counterexample overwrites and restores a constant buffer by GPU
+  copy without changing its draw-time Map generation. Matching endpoint bytes
+  and Map generations cannot close intervening writes; resource lifetime and
+  coverage of GPU writers remain separate requirements.
+  The memory interface uses a Vulkan-compatible ABI across backend implementations.
+  Its D3D11 initializer installs local Map/Unmap shims and success-returning
+  no-ops for flush/invalidate. The shims unwrap the memory handle before calling
+  the D3D context. Authenticate the selected runtime table and unwrapped resource;
+  ABI layout alone neither selects the backend nor proves GPU writer coverage.
+  The observer now links each upload to the pinned Map call inside its flush,
+  retains the checked backend and unwrapped D3D candidate, and compares it with
+  both Map endpoints. Duplicate or leftover tickets and changed identities fail
+  collection. Runtime exercise of this join is still required before treating
+  it as retained retail evidence; lifetime and intervening writes remain open.
+  Allocation adjustment also depends on the metadata class: one getter reads
+  the handle's first word, another decodes a numeric offset-plus-one handle,
+  and standalone allocations use zero. The offline reader distinguishes these
+  cases and tests their range comparison against hooked Map metadata; production
+  validation against the Map byte offset remains pending.
   Native graph execution resolves texture handles into property/texture pairs,
   batches them through a device callback, and updates renderer property state.
   The property setter is a useful execution observation point, but it is not the
@@ -429,6 +475,11 @@ only.
   in the same report directory.
   The diagnostic now records CharacterPrePass and HGBuffer on one five-MRT/
   D32S8 surface, using the same character draw collector as canonical PreG.
+  Punctual shadows belong to the camera's forward light loop even when no
+  LitEffect particle is alive. Update the atlas and packed light-to-shadow map
+  under the producer's own rig gate; a particle-dependent skip leaves stale
+  indices when light packing changes and can reject whole light contributions.
+  The matched GPU diagnosis is in `endminf_shadow_schedule_287_validation.json`.
   Contact, low-resolution directional, VisibilitySH, and screen-shadow producers
   consume that post-HG surface and its R32 depth copy. An active HG owner failure
   cannot fall back to the independent character diagnostic. Default's paired
@@ -601,7 +652,10 @@ for sessions made before aggregate budget checks were shared.
   runtime constants.
 - The optional environment observer also samples gyroscope Tick state before
   and after the original call within its two capture windows. Missing nested
-  objects and failed reads remain distinct. Candidate driver/tween identities
+  objects and failed reads remain distinct. Metadata and native registration
+  establish Frame/Tick (8); PreLate is 256. The lab adapter uses Update for
+  polling and tween advancement. Validate enum names as well as return values.
+  Candidate driver/tween identities
   do not establish actor ownership or actual tween-advance timing; join those
   separately before changing the lab camera scheduler. See the capture README
   for collection and validation; this scope omits Streamline surfaces.

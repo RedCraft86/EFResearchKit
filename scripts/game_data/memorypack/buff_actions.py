@@ -15,7 +15,7 @@ class Unsupported(FrameError):
 class Reader:
     def __init__(self,data,source,limit=None):
         self.data=data;self.source=source;self.pos=0;self.ranges=[];self.records=[]
-        self.postprocessor_depth=0
+        self.postprocessor_depth=0;self.target_depth=0
         self.limit=len(data) if limit is None else limit
         if type(self.limit) is not int or not 0<=self.limit<=len(data):
             raise FrameError(source,0,'limit within file',self.limit)
@@ -72,12 +72,116 @@ class Reader:
         # Keep unknown tags at their first byte; never search for a later tag.
         if tag==255 and width==1:self.take(1,'null-union');return
         # FC/FD/FE are authenticated only in their extended encodings.
-        if (width==1 and tag>=251) or tag not in (201,118,236,80,287,180,86,146,87,91,60,120,178,104,129,88,2,154,162,101,361,343,110,254,150,253,124,182,128,366,123,109,310,355,105,68,271,155,197,281,10,122,136,72,90,196,325,222,189,106,36,363,126,53,234,97,63,333,115,93,66,39,149,116,365,352,137,369,306,212,96,294,28,6,322,3,81,94,315,132,372,65,169,98,316,144,187,11,43,277,337,319,320,152,374,147,373,252,131,314,134,99,107,119,392,64,391,313,394,309,290,92,387,47):raise Unsupported(self.source,self.pos,'supported current union tag',tag,'union-tag')
+        if (width==1 and tag>=251) or tag not in (201,118,236,80,287,180,86,146,87,91,60,120,178,104,129,88,2,154,162,101,361,343,110,254,150,253,124,182,128,366,123,109,310,355,105,68,271,155,197,281,10,122,136,72,90,196,325,222,189,106,36,363,126,53,234,97,63,333,115,93,66,39,149,116,365,352,137,369,306,212,96,294,28,6,322,3,81,94,315,132,372,65,169,98,316,144,187,11,43,277,337,319,320,152,374,147,373,252,131,314,134,99,107,119,392,64,391,313,394,309,290,92,387,47,348,367,5,58,76,336,167,414,8,288,159,27,135,82,142,293,292,335,113,112,345,22,376,193,257,199,411,296):raise Unsupported(self.source,self.pos,'supported current union tag',tag,'union-tag')
         self.take(width,'union-tag')
         if self.peek()==255:self.take(1,'null-wrapper');return
-        self.header({201:8,118:5,236:10,80:7,287:8,180:13,86:8,146:19,87:8,91:6,60:10,120:9,178:18,104:5,129:9,88:8,2:12,154:11,162:18,101:8,361:38,343:11,110:8,254:20,150:9,253:4,124:6,182:6,128:6,366:13,123:7,109:6,310:9,355:8,105:6,68:6,271:5,155:9,197:16,281:22,10:7,122:6,136:5,72:6,90:6,196:8,325:6,222:37,189:6,106:8,36:12,363:6,126:6,53:15,234:7,97:10,63:7,333:9,115:4,93:5,66:10,39:10,149:8,116:5,365:8,352:10,137:6,369:13,306:6,212:8,96:6,294:5,28:15,6:5,322:11,3:9,81:6,94:5,315:6,132:6,372:11,65:6,169:28,98:4,316:4,144:8,187:6,11:8,43:5,277:16,337:8,319:7,320:7,152:9,374:7,147:19,373:5,252:6,131:8,314:6,134:9,99:5,107:7,119:5,392:8,64:6,391:9,313:6,394:7,309:7,290:5,92:6,387:16,47:10}[tag])
+        self.header({201:8,118:5,236:10,80:7,287:8,180:13,86:8,146:19,87:8,91:6,60:10,120:9,178:18,104:5,129:9,88:8,2:12,154:11,162:18,101:8,361:38,343:11,110:8,254:20,150:9,253:4,124:6,182:6,128:6,366:13,123:7,109:6,310:9,355:8,105:6,68:6,271:5,155:9,197:16,281:22,10:7,122:6,136:5,72:6,90:6,196:8,325:6,222:37,189:6,106:8,36:12,363:6,126:6,53:15,234:7,97:10,63:7,333:9,115:4,93:5,66:10,39:10,149:8,116:5,365:8,352:10,137:6,369:13,306:6,212:8,96:6,294:5,28:15,6:5,322:11,3:9,81:6,94:5,315:6,132:6,372:11,65:6,169:28,98:4,316:4,144:8,187:6,11:8,43:5,277:16,337:8,319:7,320:7,152:9,374:7,147:19,373:5,252:6,131:8,314:6,134:9,99:5,107:7,119:5,392:8,64:6,391:9,313:6,394:7,309:7,290:5,92:6,387:16,47:10,348:5,367:7,5:5,58:7,76:12,336:6,167:11,414:23,8:50,288:8,159:9,27:17,135:5,82:5,142:5,293:6,292:5,335:5,113:5,112:6,345:7,22:30,376:8,193:6,257:6,199:12,411:14,296:11}[tag])
         self.take(1,'anonymous-nonzero-byte')
         for _ in range(3):self.take(4,'anonymous-scalar32')
+        if tag==296:
+            self.take(1,'anonymous-nonzero-byte');self.effect_configuration_profile()
+            self.take(4,'anonymous-scalar32');self.take(1,'anonymous-nonzero-byte');self.take(4,'anonymous-scalar32')
+            self.calculation_profile();self.target_profile();return
+        if tag==411:
+            for _ in range(2):self.take(1,'anonymous-nonzero-byte')
+            self.paired_payload();self.scalar_payload()
+            for _ in range(max(0,self.count(1,reserve=8,nullable=True))):self.keyword_edit_profile()
+            self.take(1,'anonymous-nonzero-byte');self.scalar_payload();self.target_profile();self.target_profile()
+            self.take(4,'anonymous-scalar32');return
+        if tag==199:
+            self.take(4,'anonymous-scalar32');self.target_profile();self.byte_payload();self.curve_profile()
+            self.take(4,'anonymous-scalar32');self.target_profile()
+            self.take(4,'anonymous-scalar32');self.take(1,'anonymous-nonzero-byte');return
+        if tag==257:
+            self.take(4,'anonymous-scalar32');self.take(1,'anonymous-nonzero-byte');return
+        if tag==193:
+            self.byte_payload();self.byte_payload();return
+        if tag==376:
+            for _ in range(2):self.take(1,'anonymous-nonzero-byte')
+            self.byte_payload();self.take(1,'anonymous-nonzero-byte');return
+        if tag==22:
+            self.sequence(depth);self.sequence(depth);self.byte_payload();self.target_profile()
+            self.take(4,'anonymous-scalar32');self.scalar_bytes_profile()
+            for _ in range(max(0,self.count(1,reserve=31,nullable=True))):self.buff_input_profile()
+            for _ in range(2):self.take(4,'anonymous-scalar32')
+            self.take(1,'anonymous-nonzero-byte');self.target_profile()
+            for _ in range(2):self.take(1,'anonymous-nonzero-byte')
+            self.scalar_payload();self.direction_profile();self.scalar_payload()
+            for _ in range(4):self.take(1,'anonymous-nonzero-byte')
+            self.take(4,'anonymous-scalar32');self.scalar_payload();self.take(1,'anonymous-nonzero-byte')
+            self.collider_shape_profile();self.target_filter_profile();self.take(4,'anonymous-scalar32');return
+        if tag==345:
+            self.scalar_flag_payload();self.scalar_flag_payload();self.target_profile();return
+        if tag==112:
+            for _ in range(2):self.take(4,'anonymous-scalar32')
+            return
+        if tag in (335,113):
+            self.take(1,'anonymous-byte');return
+        if tag==292:
+            self.take(4,'anonymous-scalar32');return
+        if tag==293:
+            self.take(1,'anonymous-nonzero-byte');self.scalar_payload();return
+        if tag==142:
+            self.scalar_payload();return
+        if tag==82:
+            self.take(1,'anonymous-nonzero-byte');return
+        if tag==135:
+            for _ in range(max(0,self.count(1,nullable=True))):self.sequence(depth+1)
+            return
+        if tag==27:
+            self.target_profile();self.scalar_payload();self.scalar_payload()
+            self.take(4,'anonymous-scalar32');self.scalar_payload();self.direction_profile();self.scalar_payload()
+            self.take(1,'anonymous-nonzero-byte');self.scalar_payload()
+            self.take(1,'anonymous-nonzero-byte');self.target_profile()
+            self.take(1,'anonymous-nonzero-byte');self.scalar_payload();return
+        if tag==159:
+            self.take(1,'anonymous-nonzero-byte');self.take(4,'anonymous-scalar32')
+            self.target_profile();self.target_profile();self.query_profile();return
+        if tag==288:
+            self.scalar_payload();self.scalar_payload()
+            self.take(4,'anonymous-scalar32');self.byte_payload();return
+        if tag==8:
+            for _ in range(2):self.vector_payload()
+            for _ in range(4):self.scalar_payload()
+            for _ in range(2):
+                self.curve_profile();self.take(4,'anonymous-scalar32');self.scalar_payload()
+            self.take(4,'anonymous-raw4');self.scalar_payload()
+            self.take(1,'anonymous-nonzero-byte');self.byte_payload();self.take(1,'anonymous-nonzero-byte')
+            for _ in range(max(0,self.count(1,reserve=31,nullable=True))):self.counted_payload_scalars_profile()
+            self.curve_profile();self.take(1,'anonymous-nonzero-byte')
+            for _ in range(max(0,self.count(1,reserve=25,nullable=True))):self.counted_payload_scalars_profile()
+            self.vector_payload()
+            for _ in range(6):self.scalar_payload()
+            for _ in range(3):self.take(1,'anonymous-nonzero-byte')
+            self.curve_profile();self.vector_payload()
+            for _ in range(13):self.take(1,'anonymous-nonzero-byte')
+            return
+        if tag==414:
+            self.curve_profile();self.take(4,'anonymous-scalar32');self.take(4,'anonymous-raw4')
+            self.curve_profile();self.take(4,'anonymous-scalar32')
+            for _ in range(3):self.take(4,'anonymous-raw4')
+            self.byte_payload()
+            for _ in range(2):self.take(1,'anonymous-nonzero-byte')
+            self.byte_payload()
+            for _ in range(max(0,self.count(4,reserve=6,nullable=True))):self.byte_payload()
+            for _ in range(6):self.take(1,'anonymous-nonzero-byte')
+            return
+        if tag==167:
+            self.take(1,'anonymous-nonzero-byte')
+            self.byte_profile();self.scalar_pair_flags_profile();self.query_profile()
+            self.byte_profile();self.scalar_pair_flags_profile()
+            self.take(1,'anonymous-nonzero-byte');return
+        if tag==336:
+            self.scalar_payload();self.take(1,'anonymous-nonzero-byte');return
+        if tag==76:
+            self.scalar_payload();self.target_profile()
+            for _ in range(2):self.take(1,'anonymous-nonzero-byte')
+            self.take(4,'anonymous-scalar32');self.take(1,'anonymous-nonzero-byte')
+            for _ in range(max(0,self.count(4,reserve=1,nullable=True))):self.byte_payload()
+            self.target_profile();return
+        if tag==367:
+            self.take(1,'anonymous-nonzero-byte');self.target_profile();self.scalar_payload()
+            return
         if tag==47:
             self.sequence(depth);self.take(1,'anonymous-nonzero-byte');self.take(4,'anonymous-scalar32')
             self.target_profile();self.take(4,'anonymous-scalar32');self.take(4,'anonymous-scalar32');return
@@ -236,7 +340,7 @@ class Reader:
             self.finder_profile();self.take(1,'anonymous-nonzero-byte')
             self.take(4,'anonymous-scalar32');self.target_profile();self.scalar_payload()
             return
-        if tag==63:
+        if tag in (63,58):
             self.take(4,'anonymous-scalar32');self.scalar_payload();self.byte_payload()
             return
         if tag==97:
@@ -402,7 +506,7 @@ class Reader:
             self.byte_payload();self.target_profile();self.byte_payload()
             for _ in range(2):self.take(1,'anonymous-nonzero-byte')
             return
-        if tag==104:
+        if tag in (104,348,5):
             self.target_profile()
             return
         if tag==178:
@@ -633,6 +737,36 @@ class Reader:
             self.single_payload()
         self.records.append(dict(start=start,end=self.pos,kind='anonymous-global-input-profile'))
 
+    def keyword_edit_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-keyword-edit-profile')
+        else:
+            self.header(3)
+            for _ in range(max(0,self.count(4,reserve=5,nullable=True))):self.byte_payload()
+            self.take(4,'anonymous-scalar32');self.scalar_payload()
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-keyword-edit-profile'))
+
+    def buff_input_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-buff-input-profile')
+        else:
+            self.header(3);self.take(1,'anonymous-nonzero-byte')
+            for _ in range(max(0,self.count(1,reserve=4,nullable=True))):self.assignment_profile()
+            self.byte_payload()
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-buff-input-profile'))
+
+    def target_filter_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-target-filter-profile')
+        else:
+            self.header(10)
+            for _ in range(2):self.take(1,'anonymous-nonzero-byte')
+            self.take(4,'anonymous-scalar32')
+            for _ in range(3):self.take(1,'anonymous-nonzero-byte')
+            for _ in range(2):self.take(4,'anonymous-scalar32')
+            self.query_profile();self.take(4,'anonymous-scalar32')
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-target-filter-profile'))
+
     def input_profile(self):
         start=self.pos
         if self.peek()==255:self.take(1,'null-input-profile')
@@ -658,6 +792,40 @@ class Reader:
             self.take(12,'anonymous-raw12');self.take(4,'anonymous-scalar32')
             for _ in range(2):self.take(1,'anonymous-nonzero-byte')
         self.records.append(dict(start=start,end=self.pos,kind='anonymous-collider-shape-profile'))
+
+    def counted_payload_scalars_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-counted-payload-scalars-profile')
+        else:
+            self.header(1)
+            for _ in range(max(0,self.count(1,nullable=True))):self.byte_payload_scalars_profile()
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-counted-payload-scalars-profile'))
+
+    def byte_payload_scalars_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-byte-payload-scalars-profile')
+        else:
+            self.header(5);self.take(1,'anonymous-byte');self.byte_payload()
+            for _ in range(2):self.take(4,'anonymous-scalar32')
+            self.take(4,'anonymous-raw4')
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-byte-payload-scalars-profile'))
+
+    def byte_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-byte-profile')
+        else:
+            self.header(1);self.take(1,'anonymous-nonzero-byte')
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-byte-profile'))
+
+    def scalar_pair_flags_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-scalar-pair-flags-profile')
+        else:
+            self.header(6)
+            for _ in range(2):
+                self.take(4,'anonymous-scalar32');self.scalar_payload()
+            for _ in range(2):self.take(1,'anonymous-nonzero-byte')
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-scalar-pair-flags-profile'))
 
     def query_profile(self):
         start=self.pos
@@ -745,7 +913,8 @@ class Reader:
             self.take(4,'anonymous-scalar32')
             self.take(1,'anonymous-nonzero-byte')
             for _ in range(2):
-                self.null_profile('nested-target')
+                if self.peek()==255:self.null_profile('nested-target')
+                else:self.target_profile()
                 self.take(4,'anonymous-scalar32')
         self.records.append(dict(start=start,end=self.pos,kind='anonymous-direction-profile'))
 
@@ -761,11 +930,11 @@ class Reader:
 
     def selector_finder_profile(self):
         start=self.pos
-        tag=self.nested_union_tag((2,3,5,7,8,12,13,18,19),'finder')
+        tag=self.nested_union_tag((1,2,3,5,7,8,10,12,13,14,16,18,19,21),'finder')
         if tag is None:pass
         elif self.peek()==255:self.take(1,'null-nested-finder-wrapper')
         else:
-            self.header({2:0,3:4,5:0,7:8,8:0,12:1,13:1,18:11,19:4}[tag])
+            self.header({1:0,2:0,3:4,5:0,7:8,8:0,10:0,12:1,13:1,14:2,16:9,18:11,19:4,21:0}[tag])
             if tag==3:
                 self.take(12,'anonymous-raw12');self.take(16,'anonymous-raw16')
                 self.scalar_payload();self.take(1,'anonymous-nonzero-byte')
@@ -777,6 +946,13 @@ class Reader:
                 self.take(4,'anonymous-scalar32')
             elif tag==12:self.query_profile()
             elif tag==13:self.take(4,'anonymous-scalar32')
+            elif tag==14:
+                self.vector_payload();self.vector_payload()
+            elif tag==16:
+                self.scalar_payload();self.vector2_payload();self.vector_payload()
+                for _ in range(3):self.scalar_payload()
+                self.take(4,'anonymous-scalar32')
+                for _ in range(2):self.take(1,'anonymous-byte')
             elif tag==18:
                 for _ in range(3):self.take(1,'anonymous-nonzero-byte')
                 for _ in range(3):self.take(4,'anonymous-scalar32')
@@ -800,12 +976,14 @@ class Reader:
         self.take(width,'nested-'+kind+'-union-tag');return tag
 
     def selector_validator_profile(self):
-        start=self.pos;tag=self.nested_union_tag((4,5,9,10,11),'validator')
+        start=self.pos;tag=self.nested_union_tag((1,4,5,9,10,11),'validator')
         if tag is None:pass
         elif self.peek()==255:self.take(1,'null-nested-validator-wrapper')
         else:
-            self.header(3 if tag==4 else 1 if tag==11 else 0)
-            if tag==4:
+            self.header(2 if tag==1 else 3 if tag==4 else 1 if tag==11 else 0)
+            if tag==1:
+                self.finder_profile();self.take(4,'anonymous-scalar32')
+            elif tag==4:
                 self.take(1,'anonymous-nonzero-byte');self.take(4,'anonymous-scalar32');self.scalar_payload()
             elif tag==11:self.query_profile()
         self.records.append(dict(start=start,end=self.pos,kind='anonymous-selector-validator-profile'))
@@ -836,6 +1014,14 @@ class Reader:
         else:
             self.header(2);self.finder_profile();self.take(4,'anonymous-scalar32')
         self.records.append(dict(start=start,end=self.pos,kind='anonymous-filter-profile'))
+
+    def vector2_payload(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-vector2-payload')
+        else:
+            self.header(2)
+            for _ in range(2):self.scalar_payload()
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-vector2-payload'))
 
     def vector_payload(self):
         start=self.pos
@@ -877,6 +1063,63 @@ class Reader:
             if self.peek()==255:self.take(1,'null-tag-element')
             else:self.header(1);self.take(4,'anonymous-scalar32')
             self.records.append(dict(start=element,end=self.pos,kind='anonymous-tag-element'))
+
+    def raw_dword_array(self):
+        # The selected root helper copies count*4 bytes, without element headers.
+        start=self.pos
+        count=self.count(4,nullable=True)
+        self.take(max(0,count)*4,'anonymous-dword-array-body')
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-dword-array',count=count))
+
+    def data_pair_collection_profile(self):
+        start=self.pos
+        count=self.count(1,nullable=True)
+        for _ in range(max(0,count)):
+            element=self.pos
+            if self.peek()==255:self.take(1,'null-data-pair-profile')
+            else:
+                self.header(4)
+                self.take(1,'anonymous-byte')
+                self.byte_payload()
+                # This selected helper advances eight source bytes; it is not
+                # the four-byte raw value inside scalar_payload().
+                self.take(8,'anonymous-raw8')
+                self.byte_payload()
+            self.records.append(dict(start=element,end=self.pos,kind='anonymous-data-pair-profile'))
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-data-pair-collection-profile',count=count))
+
+    def buff_action_map_collection_profile(self):
+        start=self.pos
+        count=self.count(1,nullable=True)
+        for _ in range(max(0,count)):
+            element=self.pos
+            if self.peek()==255:self.take(1,'null-buff-action-map-profile')
+            else:
+                self.header(2)
+                for _ in range(max(0,self.count(1,reserve=4,nullable=True))):self.sequence()
+                # This map reads its Sequence array before the scalar, unlike
+                # the separately pinned map in the first root collection.
+                self.take(4,'anonymous-scalar32')
+            self.records.append(dict(start=element,end=self.pos,kind='anonymous-buff-action-map-profile'))
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-buff-action-map-collection-profile',count=count))
+
+    def modifier_collection_profile(self):
+        start=self.pos
+        if self.peek()==255:self.take(1,'null-modifier-collection-profile')
+        else:
+            self.header(2)
+            count=self.count(1,reserve=1,nullable=True)
+            for _ in range(max(0,count)):
+                element=self.pos
+                if self.peek()==255:self.take(1,'null-modifier-element-profile')
+                else:
+                    self.header(4)
+                    for _ in range(3):self.take(4,'anonymous-scalar32')
+                    self.scalar_payload()
+                self.records.append(dict(start=element,end=self.pos,kind='anonymous-modifier-element-profile'))
+            # A null/empty array still has this independent root-member byte.
+            self.take(1,'anonymous-byte')
+        self.records.append(dict(start=start,end=self.pos,kind='anonymous-modifier-collection-profile'))
 
     def tag_list_profile(self):
         # Conditional list count/loop plus separately pinned member-one element;
@@ -967,8 +1210,15 @@ class Reader:
         self.records.append(dict(start=start,end=self.pos,kind='anonymous-effect-configuration-profile'))
 
     def target_profile(self):
-        # Selected finite profile. Direction targets remain null-only and
-        # postprocessor target expansion is explicitly bounded above.
+        # Count every active non-null target, including direction and selector paths.
+        if self.peek()==255:return self._target_profile()
+        if self.target_depth>=64:
+            raise Unsupported(self.source,self.pos,'target nesting <= 64',self.target_depth+1,'depth-limit')
+        self.target_depth+=1
+        try:self._target_profile()
+        finally:self.target_depth-=1
+
+    def _target_profile(self):
         start=self.pos
         if self.peek()==255:self.take(1,'null-target-profile')
         else:
@@ -1017,3 +1267,36 @@ def event_prefix(data,*,source,limit=None):
                 completedRecords=reader.records,
                 opaqueRemainderRange=[reader.pos,len(data)],wholeSchemaExact=False,
                 evidenceLevel='structural-only',boundary='Forward prefix profile only; no whole-object ownership, field meanings or EOF claim. Opaque remainder is bounded by the authenticated physical file, not a decoded record extent.')
+
+
+def root_continuation(data,*,source,start,limit=None):
+    """Members 2-6, called only after a supported first-collection endpoint.
+
+    The caller owns that prerequisite; this function does not authenticate an
+    arbitrary start offset or claim that a suffix candidate is a root field.
+    """
+    reader=Reader(data,source,limit)
+    if type(start) is not int or not 1<=start<=reader.limit:
+        raise FrameError(source,0,'first-collection endpoint within read limit',start,'start-bounds')
+    reader.pos=start;status='supported-prefix';diagnostic=None
+    try:
+        reader.scalar_payload()
+        reader.raw_dword_array()
+        reader.modifier_collection_profile()
+        reader.data_pair_collection_profile()
+        reader.buff_action_map_collection_profile()
+    except Unsupported as exc:status='unsupported';diagnostic=exc.diagnostic
+    except FrameError as exc:status='failed';diagnostic=exc.diagnostic
+    cursor=start
+    for span in reader.ranges:
+        if span['start']!=cursor or not cursor<span['end']<=reader.limit:
+            raise FrameError(source,cursor,'contiguous bounded scalar ranges',span,'internal-range')
+        cursor=span['end']
+    if cursor!=reader.pos:raise FrameError(source,cursor,reader.pos,cursor,'internal-range')
+    return dict(status=status,diagnostic=diagnostic,startOffset=start,consumedEnd=reader.pos,
+                readLimit=reader.limit,ranges=reader.ranges,completedRecords=reader.records,
+                opaqueRemainderRange=[reader.pos,len(data)],wholeSchemaExact=False,
+                evidenceLevel='structural-only',
+                boundary='Selected root members 2-6 after the independently supported first collection. '
+                'Together their atomic ranges and the physical-file opaque remainder tile EOF; '
+                'no field meanings, live provider selection or whole-BuffData EOF claim.')
