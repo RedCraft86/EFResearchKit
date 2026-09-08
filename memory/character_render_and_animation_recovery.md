@@ -282,6 +282,17 @@ only.
   its late pulse. This identifies curve-value phases, not body-pose phases or
   EffectInstance clock ownership. See the generated
   `post_dlaa_uber_producer_review.json` and parameter audit.
+  Stored chromatic intensity does not establish active chromatic rendering:
+  the native producer retains it independently of the volume/settings gates.
+  Effect controllers can enable their destination component despite a disabled
+  authored profile. Post construction consumes component references cached
+  from the camera's volume stack; join the actual cache getter, scoped activity
+  and settings returns, and render consumption before changing lab gates.
+  The post observer's shutdown must close new admissions while retaining nested
+  callback routing until accepted camera scopes drain. Patch drift or a drain
+  timeout retains the provider and fails evidence; it must not seal partial
+  scopes as successful. Native body pins alone do not prove an unpatched IFix
+  path, object lifetime, or consumption of the recorded CPU payload by a draw.
   Exact replay additionally requires the consumer's fresh t0 contents, t1/t2,
   ranged VS b0 and PS b0/b1, and actual pipeline state. Capture v4 retains those
   inputs; v3 cannot establish them from resource identity alone. Initial
@@ -410,9 +421,13 @@ only.
   it as retained retail evidence; lifetime and intervening writes remain open.
   Allocation adjustment also depends on the metadata class: one getter reads
   the handle's first word, another decodes a numeric offset-plus-one handle,
-  and standalone allocations use zero. The offline reader distinguishes these
-  cases and tests their range comparison against hooked Map metadata; production
-  validation against the Map byte offset remains pending.
+  and standalone allocations use zero. Production recording now pins both getter
+  bodies and relocated vtable slots and compares decoded offsets against both
+  upload Map endpoints. Receipts retain explicit decode/range failures and reject
+  missing feature scope. The optional bounded storage is charged separately;
+  the combined CPU limit is unchanged. Synthetic dispatch and Map-range tests
+  validate the implementation; new retail evidence is still required. Endpoint
+  equality does not establish allocation continuity or GPU consumption.
   Native graph execution resolves texture handles into property/texture pairs,
   batches them through a device callback, and updates renderer property state.
   The property setter is a useful execution observation point, but it is not the
@@ -697,12 +712,34 @@ build and collection procedure.
   a playback offset or establish the PlayerLoop/particle phase. Use the current
   Animator lifecycle report under `reports/assets/character_recovery/`; older
   build addresses cannot authenticate this ordering.
-- Join the early rigid pose and camera to source animation. EndfieldCapture's
+- Join the early rigid pose and camera to source animation. Reference-image
+  alignment and matched-clock camera comparisons isolate timing
+  and input-state differences; serialized entry offsets are not recorded input
+  history. Keep camera input replay separate from Animator clock recovery.
+  Compare actual simulation timestamps at the reference sampling rate, with
+  contiguous temporal holdouts and neighboring frames excluded from fitting.
+  Interleaved holdouts against sparsely saved renders can select one sampling
+  phase and misstate motion agreement. Image alignment remains separate from
+  authenticated runtime clock evidence.
+  CharInfo caches camera groups per character template while rebuilding model
+  items separately. Camera disable and explicit gyroscope release have distinct
+  native paths; join activation/release and tween identity before choosing
+  whether lab selection resets or preserves camera state. Visible actor-switch
+  gaps do not establish camera initialization timestamps.
+  The pose observer now retains bounded gyroscope lifecycle callbacks across
+  both visits, with before/after extension/tween state and QPC/Present clocks.
+  Use the complete raw receipt to test reuse; it does not establish allocation
+  lifetime or actor consumption by itself.
+  EndfieldCapture's
   dedicated pose-timing launcher preallocates a bounded dense palette sequence
   before readiness and arms on a new Animator/graphics trigger without waiting
   for Full mode's Streamline publication. Follow its README procedure. Retained
-  palettes remain frame-end samples; metadata clocks and VS resource aliases
-  do not establish same-draw consumption. The first validated retail pose
+  older palettes remain frame-end samples; metadata clocks and VS resource
+  aliases do not establish same-draw consumption. The current observer adds
+  an exact-prepass draw-copy receipt and deferred staging transfer, with native
+  call/resource joins checked by the collector. Its new route still needs a
+  retail capture; shader/geometry admission alone does not prove actor ownership
+  or the Animator sample consumed. The first validated retail pose
   session reaches the early entrance; use its phase-joined packets for an
   independent Unity palette comparison. See the lab progress log and generated
   pose-timing session review for the retained sample and startup-join gaps.
