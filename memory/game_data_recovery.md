@@ -190,6 +190,29 @@ its reader, fixtures, and generated corpus report. Durable current conclusions:
 - LipSync JsonData has an exact selected-build MemoryPack layout. Its float rows
   are native-proven Unity keyframe values. LipSync animation data remains
   distinct from language voice-audio availability.
+- SkillData's MemoryPack framing remains a structural prefix: the current
+  corpus report preserves all valid EOF-anchored terminal candidates. The
+  current IL2CPP context resolves the resource type as `Core.SkillData` rather
+  than the same-named AI nested type and establishes relative reader order, but
+  does not join an absolute cursor to a current VFS file. Available TypeTrees
+  do not cover these JsonData files. Static wrapper and adapter identities do
+  not establish which formatter consumed the payload or distinguish the
+  one-byte-shifted bool-versus-counted terminal candidates; neither candidate
+  is a proven record end. A bounded exact-build `skilldata-cursor` observer is
+  available, but no receipt has yet verified a candidate. Cleanup now requires
+  a post-disable thread-IP rendezvous over the detour and MinHook trampoline;
+  incomplete enumeration, context reads, or thread resumption leaves the
+  capture incomplete and transfers its owners to a cleanup worker that retries
+  until teardown is proven or the process exits; later cleanup cannot upgrade
+  the published receipt. Each cleanup attempt is bounded; a failed
+  `ResumeThread` keeps its handle for later worker retries rather than dropping
+  the cleanup responsibility.
+  Keep candidates ambiguous until a loss-accounted
+  receipt joins source bytes, start/end cursors, hard limit, and logical
+  identity/hash to the same inputSet. Counts,
+  hashes, and per-file ranges belong in
+  `reports/animestudio/skilldata_current_latest.*` and
+  `reports/animestudio/il2cpp_context_current_latest.*`.
 - Video has exact outer framing for the maintained corpus; codec/container
   validity does not prove narrative attachment or playback.
 
@@ -278,6 +301,45 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   target-ending action, including its lazy initialization and null rejoin.
   Short and extended union encodings preserve their distinct widths; the
   registered interruption name does not establish live skill behavior.
+  Extended tag `0x15A` has a separate header-six order: byte, three scalar32
+  values, the existing bounded paired-byte profile, then `TargetSettings`.
+  `scripts/game_data/buff_15a_native.json` pins its native route and nested
+  static types; remaining bytes stay opaque, and runtime provider selection or
+  field meaning is not inferred.
+  Extended tag `0x192` is another header-six reader: byte, three scalar32
+  values, then two independent bounded byte payloads. Its selected native
+  contract is `scripts/game_data/buff_192_native.json`; the Priority MethodSpec
+  identifies only one scalar's static context. Payload text, field meaning,
+  suffix ownership and whole-BuffData EOF remain unresolved.
+  Short tag `0xBC` uses a separate header-six order: byte, three scalar32
+  values, then two independently bounded `TargetSettings` profiles. Its native
+  contract is `scripts/game_data/buff_bc_native.json`; the Priority MethodSpec
+  identifies only the first scalar, while each target has its own exact static
+  type join. Preserve the nested profiles' null and unsupported states. The
+  observed suffix remains opaque; no field meaning or whole-BuffData EOF is
+  established.
+  Extended tag `0x14E` routes to `SetDamageTagImmuneRule_Data` and uses a
+  header-six order: byte, three scalar32 values, `GameplayTagQuery`, then
+  `TargetSettings`. Its native contract pins the outer route and contexts plus
+  a type-identified query reader with a nullable count and bounded count-times-
+  four-byte array. The array is raw fixed-width data; managed value semantics
+  and live provider selection are not inferred. Preserve query/target null and
+  failure boundaries, and leave following bytes opaque without suffix-ownership
+  or whole-BuffData EOF claims.
+  Short tag `0x0D` routes to `AirborneActionDataForMemoryPack` with a pinned
+  header-16 source order in `scripts/game_data/buff_0d_native.json`. Its
+  EffectActionCfg, DirectionSettings, BlackboardDouble and TargetSettings
+  instances reuse their bounded profiles; typed DWORDs, direct bytes and raw
+  four-byte reads retain only their observed source shapes. The selected reader
+  endpoint leaves following bytes opaque and establishes neither field meaning,
+  gameplay behavior, suffix ownership nor whole-BuffData EOF.
+  Short tag `0xE0` routes to `LockCameraAimActionData` and has a 54-member
+  source order pinned in `scripts/game_data/buff_e0_native.json`. Its nested
+  AnimationCurve, BlackboardDouble and TargetSettings values reuse the bounded
+  profiles above; raw vector copies and mount-point enum reads retain only their
+  observed widths and static contexts. Leave the remaining suffix opaque: this
+  contract does not assign gameplay meanings, suffix ownership or whole-BuffData
+  EOF.
   `scripts/game_data/buff_4c_native.json` pins two independent targets with a
   nullable byte-payload list between them. Its list count reserves the terminal
   target minimum before iteration; null lists, null elements and target nulls
@@ -971,6 +1033,46 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   lists and null payloads remain distinct. The post-list scalar precedes two
   targets and the required DWORD; keyword and vulnerability meanings remain
   unresolved independently of these structural boundaries.
+  `scripts/game_data/buff_16c_native.json` pins current union364 SpeedupAction:
+  header13, common byte/three DWORDs, byte/byte, paired payload, scalar
+  payload, nullable KeywordEnhanceEdit list, byte, scalar payload and two
+  terminal TargetSettings. The outer list reserves four trailing bytes and
+  permits one-byte elements; each nonnull element reuses the 19B header-three
+  reader and its nullable payload list, DWORD and scalar profile. The second
+  target ends this reader with no DWORD tail. Preserve null/empty states;
+  payload decoding, gameplay meaning, live generic-provider choice and full
+  BuffData EOF remain unresolved.
+  `scripts/game_data/buff_85_native.json` pins decimal union tag 133 (`0x85`)
+  to the `CompareDeckAttr` header10 reader. After the shared byte/three-DWORD
+  prefix, it reads two DWORDs, a scalar payload, a DWORD, another scalar
+  payload and a terminal `TargetSettings`. Exact MethodSpec joins identify
+  `Priority`, `CompareType`, `DeckAttrOperand`, `BlackboardDouble` and
+  `TargetSettings`; the context-free DWORDs remain raw, and enum values,
+  condition semantics, runtime provider selection and whole-BuffData EOF
+  remain unresolved. The scalar and target children reuse their existing
+  finite structural readers.
+  `scripts/game_data/buff_94_native.json` pins decimal union tag 148 (`0x94`)
+  to the header-seven CreateDynamicBattleShape reader. After the common
+  byte/three-DWORD prefix, it consumes two float32 reads and a terminal DWORD.
+  MethodSpec contexts identify Priority and DynamicBattleShapeType; remaining
+  scalar slots stay anonymous and float bits remain raw. No child profile or
+  gameplay meaning is inferred; provider selection, enclosing ownership, and
+  whole-file EOF remain unresolved.
+  `scripts/game_data/buff_158_native.json` pins decimal union tag 344
+  (`0x158`) to the header-ten SetStrafeModeAction reader. After the common
+  byte/three-DWORD prefix it consumes two bytes, two DWORDs, bounded
+  TargetSettings, and a required four-byte float read retained as raw bits.
+  MethodSpec contexts identify Priority, GroundedMoveGait twice, and
+  TargetSettings; the other scalar slots remain anonymous, without enum-value
+  or gameplay claims. Provider selection, enclosing ownership, and whole-file
+  EOF remain unresolved.
+  `scripts/game_data/buff_179_native.json` pins decimal union tag 377
+  (`0x179`) to the header-nine TagQueryListenerAction reader. After the common
+  byte/three-DWORD prefix, the selected reader consumes bounded
+  GameplayTagQuery and SequenceActionData profiles, then an anonymous byte and
+  two raw DWORDs. MethodSpec joins identify the nested types but do not establish
+  enum ordinal meanings, gameplay behavior, active generic-provider selection,
+  enclosing ownership, or whole-BuffData EOF.
   `scripts/game_data/buff_128_native.json` pins header-eleven RecoverPoise:
   common prefix, byte, EffectActionCfg, DWORD, byte, DWORD, CalculationBase
   and target. Reuse the bounded member85 configuration and calculation union
@@ -1200,6 +1302,25 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   list from the GameplayTagList wrapper. Its counted FF/member-one elements
   follow a string profile and target; reserve the required final byte before
   accepting the count. Tag meaning and runtime selection remain unresolved.
+  `scripts/game_data/buff_0c_native.json` independently pins short tag `0x0C`
+  to AddTagToEntities: header eight, common byte/three-DWORD prefix,
+  BlackboardString, TargetSettings, direct List<GameplayTag>, terminal byte.
+  Reuse the 0x0B list frame and conditional 0xC5 element reader; the distinct
+  route/type identity does not establish provider selection or field meaning.
+  Short tag `0x26` has a header-five order of byte, three anonymous scalar32
+  values and the bounded `TargetSettings` profile. Its native route and exact
+  nested type joins are pinned in `scripts/game_data/buff_26_native.json`;
+  the first scalar's `Priority` context does not assign a field meaning.
+  Runtime formatter/provider selection, suffix ownership and whole-BuffData
+  EOF remain unresolved.
+  Short tag `0x10C` has a header-six order of one byte, three anonymous
+  scalar32 values, a signed-i32 length-prefixed byte payload, and one 4-byte
+  Float32 bit pattern. Current VFS branch samples and the exact-build native
+  reader close this action at the same byte boundary. Bytes after the action
+  remain outside its frame and are accounted for only by independently bounded root
+  reads or opaque ranges. See the current corpus report for the input-bound
+  ranges; field meaning, suffix ownership and whole-BuffData EOF remain
+  unresolved.
   `scripts/game_data/buff_40_native.json` ends a member-six action with a
   DWORD and that same direct element list. Preserve each element header; the
   QueryType context belongs to the preceding DWORD, not an extra query wrapper.

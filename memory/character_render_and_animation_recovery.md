@@ -95,6 +95,15 @@ only.
 
 ## Animation boundary
 
+- Source-validated Overview Animator playback owns authored facial skeletal
+  channels as well as the body. The NPC neutral facial-pose fallback must yield
+  while that playback is active; otherwise LateUpdate erases authored jaw/lip
+  motion. Preserve the fallback when no validated Animator owns the pose.
+  Empty ordinary curves or mesh blend shapes do not imply absent facial
+  animation: the ACL tracks and weighted rig establish that source route.
+  Additional retail morph/blink behavior and face-draw GPU palette ownership
+  remain separate evidence requirements.
+
 - The playable Character Info scope uses the recovered humanoid Avatar and
   authored UI controller/clip relationships.
 - Endminf enters her start state and hands off to the loop through a generated
@@ -175,8 +184,10 @@ only.
   packer in the lab, with CPU checks for branch, range, projection and invalid
   inputs. Cloud light selection now preserves the computed direct quaternion or
   converts custom pitch/yaw through Unity Euler conversion. Runtime direct-light
-  state, texture/time ownership and integration remain separate; this is not an
-  original-binary numeric or publication proof.
+  state and texture/time ownership remain separate. The camera-local authored
+  cloud owner now joins the contact phase by source identity and supplies live
+  diagnostic constants. Shader readiness remains off pending runtime phase-stack
+  and input ownership; this integration is not a GPU publication proof.
   The current ordinary VFX writer derives the cloud clock with
   `fmodf(_Time.y, 1024)`. Its reusable conversion accepts that global time lane;
   animation elapsed time is not a proven substitute. The ordinary render-time
@@ -218,6 +229,16 @@ only.
   serialized prefab ownership, including fail-closed renderers, is the required
   shader-census starting point. The later overview_02 M27 and overview_02/03
   M28 owners remain separately gated.
+  Particle `moveWithTransform` is an integer simulation-space enum, not a
+  boolean. M27 preserves Local simulation; world-space expanded GPU vertices
+  do not imply world-space CPU particle positions. Apply the source parent
+  and mounting transforms before comparing those coordinate spaces.
+  Scalar particle rotation also needs `Particle.axisOfRotation` for mesh
+  expansion; treating `rotation3D.z` as a fixed Z-axis rotation loses the
+  authored-seed orientation. The isolated Unity probe records both. Compare
+  fingerprint-joined spacing and expanded mesh normals before changing emitter
+  timing or transforms; matching birth geometry does not authenticate the
+  runtime activation clock or renderer pointer.
 - Recovered LitEffect material handoff uses one character-neutral, fail-closed
   schema for the complete serialized texture, transform, color, and float
   surface shared by the compatibility and five-MRT shaders. Overview_01 now
@@ -273,6 +294,16 @@ only.
   before/after the engine call, reject read/change failures, and compare nested
   global-copy endpoints. Retail execution of this extension remains unobserved;
   endpoint equality cannot close allocation lifetime or draw consumption.
+  The retail CPP post path executes native preparation beneath the render
+  bridge while the managed post constructors remain uncalled. Environment
+  capture therefore uses an explicit CPP CPU receipt with two nonempty windows,
+  authenticated code, exact input/pointer/clock joins and conditional output
+  checks. Stored chromatic intensity alone does not mean chromatic activity.
+  This receipt does not prove final GPU consumption; legacy managed receipts
+  retain their original contract and earlier one-window runs remain diagnostic.
+  Palette capture assigns its owner before retaining the draw and derives final
+  locality after deferred mapping with the collector's copy/resource/draw checks.
+  Regression coverage must inspect the published packet, not just byte counts.
   Public Unity particle instance records require their own stream-layout
   contract. Refract selects its Custom1 record; BaseV2 selects Custom1 or
   Custom1+Custom2 and loads Custom1 from the procedural buffer. Both select
@@ -368,11 +399,9 @@ only.
   `_ContactShadow` UAV output, also sampled by the scene producer at t5.
   The legacy cross-backend screen-mask name is disproven. Dispatch-local
   constant-buffer slices and output bytes are authenticated in the combined
-  two-entry evidence package. Replay still needs the dispatch-local compute
-  sampler: Contact capture v2 now retains the bound s0 descriptor, while
-  legacy receipts explicitly leave
-  sampler evidence incomplete. New runtime data is required to replace the
-  earlier assumed replay sampler.
+  two-entry evidence package. Contact capture v2 retains the bound point/clamp
+  s0 descriptor, now reproduced by the lab and bounded original-kernel GPU
+  comparisons. Legacy receipts without that descriptor remain incomplete.
   Bounded isolated GPU comparisons support the recovered arithmetic, but
   current native publishers
   read interpolated environment settings and a camera frame counter; constructor
@@ -381,7 +410,7 @@ only.
   gates. Legacy HLSL bindings remain a different contract.
   The exact retained Default variant consumes only red from t7 and t11,
   confirmed by fresh DXBC disassembly and independent channel interventions.
-  Contact red remains nonneutral; green independence here does not apply to
+  Contact red is not universally neutral; green independence here does not apply to
   other consumers or close whole-texture publication. Prioritize the two live
   red producers and stencil population for this deferred path. See
   `deferred_shadow_channel_dependency.json` and the lab's maintained replay.
@@ -393,10 +422,11 @@ only.
   Contact settings now import the selected authored phase with independent
   provenance, native percent conversions and ignore-edge lane; the installed
   base feature getter gates intensity. Unknown settings fail closed.
-  The screen-shadow diagnostic joins attenuation/blend to that same phase by
+  The screen-shadow diagnostic sources directional visibility independently of
+  the retained contact/cloud defaults, joining its authored block by
   source path, PathID and raw hash, then uses the native manual-override policy;
   missing visibility rejects publication; inactive phases require stack resolution.
-  This replaces the diagnostic constant without selecting the migrated phase.
+  The selected authored migrated block reproduces the observed CharInfo bypass.
   This does not validate runtime blend/IFix state or refresh the legacy light/exposure
   snapshot's identity. Current authored exposure metadata is retained separately.
   The reusable shadow visibility interpolator now preserves inactive configs,
@@ -527,10 +557,27 @@ only.
   unique camera/frame interval while rejecting competing owners and changed
   source bytes. This remains state correlation: request/allocation lifetime
   and allocation-to-D3D joins are open. See `cpp_bridge_camera_state_validation.json`.
+  The CPP snapshot also observes the minimum-cascade integer, converted vector
+  and packed copy with double-read consistency checks. Historical receipts lack
+  these optional fields; CPU consistency does not prove selected settings or GPU
+  consumption. See `cpp_cascade_observation_372.json`.
+  The native minimum originates in the supplied managed settings object through
+  its CPP conversion; this static source chain does not choose the live setting.
+  See `cpp_cascade_settings_source_373.json`.
+  The map observer serializes ordinary concurrent access; reentry and missing
+  lifetime observations still invalidate evidence. Inspect its loss-reason
+  ledger before treating downstream staging/backend failures as native-layout
+  mismatches. Capture diagnostics now surface that causal failure explicitly.
   Per-window completeness and exact camera bytes must validate before using
   a runtime phase to explain a captured draw; raw instance IDs are not source
   asset names. Follow the EndfieldCapture README's opt-in procedure and retain
   any unresolved source identity explicitly.
+  CharInfo's sampled directional-visibility fields match the migrated authored
+  profile and select the shader's simulation bypass. Import that subset with
+  independent provenance rather than inheriting the contact/cloud phase identity.
+  This reproduces the observed constant-white R channel; it does not identify
+  the live asset instance or establish G, stencil coverage or upload ownership.
+  See `reports/assets/character_recovery/directional_profile_387.json`.
   See `reports/assets/character_recovery/contact_shadow_runtime_source_join.json`.
   Offline execution of the original Default shader with authenticated draw-local
   inputs and the captured blend reproduces the retained pass output byte-for-byte.
@@ -730,6 +777,16 @@ pool exhaustion remains failed evidence. See the capture ECS guide for capacity
 and receipt contracts. A completed live graphics schedule alone is insufficient
 for sessions made before aggregate budget checks were shared.
 
+Managed post callback absence must remain distinct from window rejection or
+disabled effects. The pinned CPP render-request producer inlines radial and
+chromatic parameter conversion; bridge snapshots retain those raw inputs with
+independent read/change failures. They do not establish native post execution,
+allocation continuity, or GPU consumption and cannot replace the post gate.
+The native Uber packet carries these pointers into a separate preparation
+function with additional settings gates and a conditional two-vector output.
+Its bounded bridge-scoped observation remains diagnostic until actual calls and
+outputs are verified. See the capture environment observer guide for contracts.
+
 ## Reference and comparison policy
 
 - Keep one named clean retail sequence as the primary visual reference and
@@ -780,6 +837,11 @@ For a focused change:
 The reconstruction lab README owns exact operator commands. The AnimeStudio
 workflow owns exporter build/test commands. EndfieldCapture's README owns its
 build and collection procedure.
+
+Character-wide texture repair applies only exact source texture-contract
+entries. Recursive scans also reach effects and other importer-owned assets;
+they must not guess material roles from filenames and overwrite those settings.
+Fallback texture setup belongs to an import with actual material-slot context.
 
 ## Remaining gaps
 

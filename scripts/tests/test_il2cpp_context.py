@@ -249,11 +249,21 @@ class BuffIfElseForwardingTests(unittest.TestCase):
 class BuffUnionRouteTests(unittest.TestCase):
     def setUp(self):
         self.base=0x180000000
+        self.instruction_targets={0x3910906,0x3910104,0x391096A,0x3910C8A,0x3910CBC,0x3910DB6,0x39109CE,0x3910618,0x390E7D2,0x3910168,0x390FDB2,0x3910776,0x39105B4}
         self.parts={at:bytes.fromhex(raw) for at,raw in (
             (0x390D974,'488D5424384533C06689742438488BCFE8F7FEFFFF84C00F8422BD55010FB774243881FE9F0100000F87E0BC5501488D1557266FFC8B8CB2185391034803CAFFE1'),
             (0x390D8D2,'4080FEFA731C66418936B001'),
             (0x390D8F4,'754B837B30020F8C208A5501488B43500FB700664189068B7B3083EF020F881F8A550148834350028343400283434402897B30EBB3'),
             (0x390D941,'33C066418906EB95'),
+            (0x3910906,'488B157B027309'),
+            (0x3910104,'488B150D6B7109'),
+            (0x3910C8A,'488B15DF8C7109'),
+            (0x3910CBC,'488B15B5827109'),
+            (0x39109CE,'488B15BBF67809'),
+            (0x3910618,'488B1589297009'),
+            (0x390E7D2,'488B1557277809'),
+            (0x3910168,'488B15519A7709'),
+            (0x39105B4,'488B150D4D6F09'),
             (0x4E66320,'4533C0BA02000000488BCBE82C2E8A0490E9CE75AAFE'),
             (0x4E696B3,'48893333D2E92543AAFE'),
             (0x417E68A,'488B0DE70FF20833D2E85872C2FE488BCF488BD8E87D4DE8FB4C8B0D9E87E70841B8C9000000488BD3488BCFE8B1EE18FC'),
@@ -261,6 +271,7 @@ class BuffUnionRouteTests(unittest.TestCase):
             (0x390E160,'488B1529B57209488B0BE8B1566FFC488BCF4885C00F852F905501488B1576357D09E8690111FD488903488BD0E950F8FFFF'),
             (0x390DA8A,'488B15FF1B7909488B0BE8875D6FFC488BCF4885C00F85FC9F5501488B150C397D09E82B08A0FC488903488BD0E926FFFFFF'),
             (0x3910A00,'488B1509F37809488B0BE8112E6FFC488BCF4885C00F859B6F5501488B153E097D09E865DF10FD488903488BD0E9B0CFFFFF'),
+            (0x3910D20,'488B15A1CA7809488B0BE8F12A6FFC488BCF4885C00F8537835501488B153EC9'),
             (0x39149EA,'488B150F5A7209488B0BE827EE6EFC488BCF4885C00F856B215501488B1554D17C09E8C39310FD488903488BD0E9C68FFFFF'),
             (0x390DCB0,'488B15B1936F09488B0BE8615B6FFC488BCF4885C00F8595A35501488B15E6307D09E8451011FD488903488BD0E900FDFFFF'),
             (0x390DC1A,'488B1527307309488B0BE8F75B6FFC488BCF4885C00F8571915501488B1514387D09E8130311FD488903488BD0E996FDFFFF'),
@@ -415,6 +426,7 @@ class BuffUnionRouteTests(unittest.TestCase):
             (0x390F4E8,'488B1589427009488B0BE829436FFC488BCF4885C00F8563975501488B15BE157D09E8C50011FD488903488BD0E9C8E4FFFF'),
             (0x390F6AA,'488B1537E17809488B0BE867416FFC488BCF4885C00F8516985501488B1574DF7809E847D910FD488903488BD0E906E3FFFF'),
             (0x390DF3A,'488B1587BE7809488B0BE8D7586FFC488BCF4885C00F85A68A5501488B15943B7D09E89BFD10FD488903488BD0E976FAFFFF'),
+            (0x3910DB6,'488B1501000000'),
             (0x390F808,'488B1529707009488B0BE809406FFC488BCF4885C00F85D78F5501488B15A6107D09E8A5FA10FD488903488BD0E9A8E1FFFF'),
             (0x390DABC,'488B15E5617009488B0BE8555D6FFC488BCF4885C00F85B5B05501488B1552307D09E8ED07A0FC488903488BD0E9F4FEFFFF'),
             (0x390E192,'488B1537AF7109488B0BE87F566FFC488BCF4885C00F8504AD5501488B15F4217D09E89B1511FD488903488BD0E91EF8FFFF'),
@@ -450,6 +462,9 @@ class BuffUnionRouteTests(unittest.TestCase):
             (0x390E066,'488B151B6D6F09488B0BE8AB576FFC488BCF4885C00F85F7A55501488B1528287D09E8F71011FD488903488BD0E94AF9FFFF'),
             (0x390E836,'488B15C3AD7809488B0BE8DB4F6FFC488BCF4885C00F85B18B5501488B15402F7D09E8A3FC10FD488903488BD0E97AF1FFFF'),
             (0x390E930,'488B15A9AF7809488B0BE8E14E6FFC488BCF4885C00F8531845501488B15262B7D09E8CDF510FD488903488BD0E980F0FFFF'),
+            (0x391096A,'488B15B78B7809'),
+            (0x390FDB2,'488B15279D7709'),
+            (0x3910776,'488B157B057809'),
             (0x390DD14,'488B15651E7809488B0BE8FD5A6FFC488BCF4885C00F85A28C5501488B15D23D7D09E89DFF10FD488903488BD0E99CFCFFFF'))}
         targets=[0]*416
         types=[None]*16728;self.ptrs={}
@@ -536,6 +551,7 @@ class BuffUnionRouteTests(unittest.TestCase):
             (0x5E,0x390EF70,106482,16621,'Conditions_CheckDamageTypeMask_Data',None),
             (0x13B,0x39105E6,107011,16397,'SaveDamageContext_Data',None),
             (0x84,0x390F614,106521,16713,'Conditions_CheckWeaponTypeCondition_Data',None),
+            (0x85,0x3910906,106522,16715,'Conditions_CompareDeckAttr_Data',None),
             (0x174,0x3910D84,107160,16505,'StoreEntityProperty_Data',None),
             (0x41,0x390F740,106442,16617,'CheckDamageTransferredSource_Data',None),
             (0xA9,0x390E002,106594,16095,'EnemyHurtAnimAction_Data',None),
@@ -544,6 +560,9 @@ class BuffUnionRouteTests(unittest.TestCase):
             (0x90,0x390EF0C,106534,16043,'CountShieldUIAction_Data',None),
             (0xBB,0x390FA60,106636,16135,'ForceTargetInFightAction_Data',None),
             (0x0B,0x390E386,106285,15905,'AddTagAction_Data',None),
+            (0x0C,0x390FDB2,106286,15907,'AddTagToEntities_Data',None),
+            (0x26,0x3910776,106361,15975,'CastPlungingAttack_Data',None),
+            (0x10C,0x39105B4,106924,16303,'PatrolTeleport_Data',None),
             (0x2B,0x39107DA,106366,15985,'ChangeSeasonTowerEnergyAction_Data',None),
             (0x115,0x390DAEE,106937,16321,'PlayAnimationAction_PlayAnimationActionData',None),
             (0x151,0x39100A0,107091,16441,'SetHpFloor_Data',None),
@@ -646,7 +665,17 @@ class BuffUnionRouteTests(unittest.TestCase):
             (353,0x3910CEE,107110,16471,'ShowSquadTipsAction_Data',None),
             (284,0x390E066,106956,16335,'PullAction_Data',None),
             (140,0x390E836,106530,16035,'ConvertToTargetContext_Data',None),
-            (78,0x390E930,106459,16027,'ComboCacheAction_Data',None)):
+            (78,0x390E930,106459,16027,'ComboCacheAction_Data',None),
+            (148,0x391096A,106539,16051,'CreateDynamicBattleShape_Data',None),
+            (344,0x3910C8A,107098,16455,'SetStrafeModeAction_Data',None),
+            (346,0x3910CBC,107100,16459,'SetWaterDroneItemModePersistLiquidIdAction_Data',None),
+            (364,0x3910D20,107147,16211,'SpeedupAction_Data',None),
+            (377,0x3910104,107177,16515,'TagQueryListenerAction_Data',None),
+            (402,0x3910DB6,107225,16565,'TyphoeaIsInShootingRangeAction_Data',None),
+            (0xBC,0x39109CE,106637,16137,'ForceTriggerWeakness_Data',None),
+            (334,0x3910618,107088,16435,'SetDamageTagImmuneRule_Data',None),
+            (224,0x390E7D2,106794,15961,'LockCameraAimAction_LockCameraAimActionData',None),
+            (13,0x3910168,106291,15909,'AirborneAction_AirborneActionData',None)):
             namespace='View' if tag==0x19E else 'Core'
             targets[tag]=target;types[definition]='Beyond.MemoryPack.Beyond_Gameplay_'+namespace+'_'+suffix+'ForMemoryPack'
             pointer=self.base+index*16
@@ -657,7 +686,7 @@ class BuffUnionRouteTests(unittest.TestCase):
                 self.parts[cell]=struct.pack('<Q',(kind<<29)|(index<<1)|1)
         self.parts[0x3915318]=struct.pack('<416I',*targets)
         def read(va,size):
-            raw=self.parts[va-self.base]
+            raw=self.parts.get(va-self.base,bytes(size))
             return raw[:7] if size==7 else raw
         self.pe=SimpleNamespace(image_base=self.base,bytes_at_va=read,u64_at_va=lambda va:self.ptrs[va])
         self.md=SimpleNamespace(types=types,type_full_name=lambda t:t)
@@ -668,14 +697,54 @@ class BuffUnionRouteTests(unittest.TestCase):
             return buff_union_routes(self.pe,self.md,self.reg,{},[],source='fixture.dll')
 
     def test_current_tag_routes_do_not_alias_old_names(self):
-        row=self.decode();self.assertEqual([r['tag'] for r in row['rows']],[201,192,64,118,236,80,287,180,86,146,87,91,60,120,178,104,129,88,2,154,162,101,361,343,110,254,150,253,124,182,128,366,123,109,310,355,105,68,271,155,197,281,10,122,136,72,90,196,325,222,189,106,36,363,126,53,234,97,63,333,115,93,66,39,149,116,365,352,137,369,306,212,96,294,28,6,322,3,81,94,315,132,372,65,169,98,316,144,187,11,43,277,337,319,320,152,374,147,373,252,131,314,134,99,107,119,392,391,313,394,309,290,92,387,47,348,367,5,58,76,336,167,414,8,288,159,27,135,82,142,293,292,335,113,112,345,22,376,193,257,199,411,296,356,207,299,44,295,171,246,380,390,185,244,307,330,349,55,298,324,347,7,395,412,138,331,358,370,40,258,398,206,23,173,408,407,145,388,223,31,183,240,85,54,32,168,35,362,111,353,284,140,78])
+        row=self.decode();self.assertEqual([r['tag'] for r in row['rows'] if r['tag'] not in (188,334,346,402,224,13)],[201,192,64,118,236,80,287,180,86,146,87,91,60,120,178,104,129,88,2,154,162,101,361,343,110,254,150,253,124,182,128,366,123,109,310,355,105,68,271,155,197,281,10,122,136,72,90,196,325,222,189,106,36,363,126,53,234,97,63,333,115,93,66,39,149,116,365,352,137,369,306,212,96,294,28,6,322,3,81,94,315,132,133,372,65,169,98,316,144,187,11,12,38,268,43,277,337,319,320,152,374,147,373,252,131,314,134,99,107,119,392,391,313,394,309,290,92,387,47,348,367,5,58,76,336,167,414,8,288,159,27,135,82,142,293,292,335,113,112,345,22,376,193,257,199,411,296,356,207,299,44,295,171,246,380,390,185,244,307,330,349,55,298,324,347,7,395,412,138,331,358,370,40,258,398,206,23,173,408,407,145,388,223,31,183,240,85,54,32,168,35,362,111,353,284,140,78,148,344,364,377])
+        route_tags=[r['tag'] for r in row['rows']]
+        self.assertEqual(route_tags.index(346),route_tags.index(344)+1)
         self.assertIn('IfElse',row['rows'][0]['wrapperName'])
         self.assertIn('GainCost',row['rows'][1]['wrapperName'])
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==364)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_SpeedupAction_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==12 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==12)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_AddTagToEntities_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==38 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==38)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_CastPlungingAttack_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==268 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==268)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_PatrolTeleport_DataForMemoryPack')
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==133)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_Conditions_CompareDeckAttr_DataForMemoryPack')
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==377)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_TagQueryListenerAction_DataForMemoryPack')
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==344)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_SetStrafeModeAction_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==346 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==346)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_SetWaterDroneItemModePersistLiquidIdAction_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==402 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==402)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_TyphoeaIsInShootingRangeAction_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==188 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==188)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_ForceTriggerWeakness_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==334 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==334)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_SetDamageTagImmuneRule_DataForMemoryPack')
+        self.assertEqual(sum(r['tag']==224 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==224)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_LockCameraAimAction_LockCameraAimActionDataForMemoryPack')
+        self.assertEqual(sum(r['tag']==13 for r in row['rows']),1)
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==13)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_AirborneAction_AirborneActionDataForMemoryPack')
+        self.assertEqual(next(r for r in row['rows'] if r['tag']==148)['wrapperName'],
+                         'Beyond.MemoryPack.Beyond_Gameplay_Core_CreateDynamicBattleShape_DataForMemoryPack')
         self.assertEqual(next(r for r in row['rows'] if r['tag']==0x19E)['wrapperName'],'Beyond.MemoryPack.Beyond_Gameplay_View_AddCameraControlStateAction_AddCameraControlStateActionDataForMemoryPack')
 
     def test_truncated_trailing_corrupt_table_and_operands(self):
         for at,good in list(self.parts.items()):
-            for bad in (good[:-1],good+b'!',bytes(len(good))):
+            bad_rows=(good[:-1],bytes(len(good))) if at in self.instruction_targets else (good[:-1],good+b'!',bytes(len(good)))
+            for bad in bad_rows:
                 self.parts[at]=bad
                 with self.subTest(at=at,length=len(bad)),self.assertRaises(ContextError):self.decode()
             self.parts[at]=good
