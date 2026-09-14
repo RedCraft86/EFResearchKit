@@ -543,6 +543,60 @@ reconciling every type `0x02` object count and its bounded source-prefix bytes
 plus opaque-tail bytes against package and bank body totals. The type `0x02`
 report leaves the opaque tail unparsed; neither report assigns Action operation
 names or runtime behavior.
+The same run writes
+`reports/animestudio/hirc_type04_u32_vector_current_latest.{json,md}` after
+reconciling type `0x04` candidate count-byte/32-bit-entry framing against
+declared bodies and bank/package totals. It keeps incomplete vectors and opaque
+tails explicit; the anonymous entries are not assigned field names or meanings.
+Before and after the audit, the gate hashes a sorted path/length/SHA-256 manifest
+of the CLI output directory and records it with the report. It hashes the exact
+intermediate JSON bytes it parses.
+The same run also writes
+`reports/animestudio/hirc_type02_body_current_latest.{json,md}`, which takes the
+type `0x02` lane past its opaque tail: after the bounded source prefix the reader
+consumes nine anonymous groups and must reach the declared object-body end.
+Its unresolved widths are reported rather than guessed, and any nonempty group B
+vector or ambiguous group E selector is held `unsupported` instead of parsed.
+The same nine groups are shared with numeric types `0x07`, `0x05` and `0x06`, whose
+lanes write `reports/animestudio/hirc_type07_body_current_latest.{json,md}` and
+`reports/animestudio/hirc_type05_body_current_latest.{json,md}`. Type `0x07`
+adds one terminal counted vector of four-byte anonymous references; type `0x05`
+adds a fixed 24-byte opaque block plus two independently counted vectors. Every
+lane enforces its own closure -- a failed, unsupported, or ambiguous body
+publishes `incomplete` and exits nonzero -- and every lane publishes the same
+shared-framer residual list. Adding another type on this frame means declaring
+one more lane and one more framer, not another copy of the census.
+The same run writes `reports/animestudio/hirc_reference_graph_current_latest.{json,md}`,
+which joins every four-byte value in those framed vectors to the object identities
+declared by the same bank. It reports resolution, self references, targets with
+more than one referrer, duplicate object ids and references into a duplicated id,
+and refuses to publish `complete` unless every reference names exactly one
+unambiguous same-bank object. Edges are numeric type pairs; the report names
+neither endpoint. The only direction it establishes is physical -- which object's
+body holds the value -- and that licenses no parenthood, containment, ordering or
+playback reading. Words framed beside a reference vector that do not all resolve
+are published as `candidateWords` rather than joined, so a partial match is
+never reported as a full one.
+
+```bat
+python -m scripts.audio_semantics.hirc_named_reach --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+```
+
+The `0x0E` lane is the one body lane that does not share the node frame, so it
+supplies its own residual list, its own unconditional selector families, and a
+closed-form byte identity (`24 * bodies + 12 * elements + 3 * entries + 20 *
+optionalBlocks`) that must hold as an equality. Its prefix length is read from a
+flag byte rather than searched for; a flag value outside the two observed ones
+fails closed rather than guessing a branch.
+
+`hirc_named_reach` is the one audio lane that carries a name. It hashes the exact
+audio-like `stringLiteral` rows from `global-metadata.dat` and joins them to HIRC
+object identities; every current match lands on numeric type `0x04`, which is what
+identifies that type as the object managed code addresses by name. It then walks
+reference vectors to the type `0x02` source ids a named object reaches, counting
+edges that leave the bank rather than following them. The gate refuses to publish
+if a match ever lands on another type. It claims no playback, ordering, selection
+or audibility, and names no object other than the entry point.
 Its v150 HIRC parser also publishes exact NodeBase effect slots and output-bus
 IDs. Effect definitions retain physical PCK/bank scope, built-in plug-in class
 identity, and parameter hashes. Fingerprinted shipped `SetParamsBlock` layouts

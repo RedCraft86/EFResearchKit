@@ -1504,6 +1504,269 @@ Stable conclusions:
   prefix-plus-opaque-tail body bytes per bank/package against the authenticated
   outer ledger. The remaining body stays opaque and has no full cursor claim.
   See [`reports/animestudio/hirc_type02_prefix_current_latest.md`](../reports/animestudio/hirc_type02_prefix_current_latest.md).
+- Numeric HIRC type `0x04` bodies have a third current-corpus structural gate.
+  It checks an anonymous one-byte-count/32-bit-entry candidate against declared
+  body lengths and bank/package totals, preserving short bodies and trailing
+  bytes as explicit failures or opaque tails. Its report binds the current CLI
+  output-directory manifest and the exact intermediate bytes it parsed,
+  separately from the outer audit's apphost fingerprint. Exact framing does not
+  identify entry values, fields, Action relationships, runtime execution,
+  selection, or audibility. Current corpus detail belongs in
+  [`reports/animestudio/hirc_type04_u32_vector_current_latest.md`](../reports/animestudio/hirc_type04_u32_vector_current_latest.md).
+- Numeric HIRC type `0x02` bodies are now consumed **whole** by a fourth
+  current-corpus gate, which supersedes the prefix lane's opaque-tail
+  statement without retracting it. After the bounded source prefix the
+  maintained reader frames nine anonymous groups: two flag/count slot
+  vectors, two parallel one-byte-key/value bundles (4- and 8-byte values), a
+  selector-directed vector pair, a selector-directed fixed block, a fixed
+  six-byte block, a nested property/group/state directory, and a counted
+  entry list with counted 12-byte points. Every current body reaches its
+  declared end with no trailing bytes. A one-dimension-at-a-time candidate
+  sweep pins twelve of fourteen widths uniquely against whole-corpus exact
+  closure; two stay unresolved and fail closed instead of guessing: group
+  B's element width (no current body carries a nonempty vector) and group
+  E's selector predicate (its two low bits never disagree, so bit0-only,
+  bit1-only, and both-bits cannot be separated). The group A split between
+  a shared mask byte plus 6-byte slots and no mask byte plus 7-byte slots
+  rests on one counterexample object plus non-boolean trailing bytes under
+  the rejected reading; treat it as the weakest link in the frame. Group
+  letters, selector bits, keys, and values stay anonymous: exact
+  consumption is not field ownership, source/effect/bus/parent identity,
+  cross-object relationships, runtime execution, event selection, or
+  audibility. Two things about this gate must not be over-read. The
+  constraining checks are that framed body bytes equal the declared object
+  bytes minus object ids and that every exact body ends at its declared
+  end; the `exactCursorBytes + nonExactBodyBytes = bodyBytes` identity is an
+  internal assert that cannot fail, because a short read is never labelled
+  exact. And `failed = 0` is partly upstream luck: a malformed source prefix
+  throws in the preceding prefix census and aborts the whole package, so it
+  never reaches this lane as a counted failure. The lane now enforces its
+  own result -- any failed, unsupported, or ambiguous body publishes
+  `incomplete` and exits nonzero -- so a future client update that
+  introduces a nonempty group B vector stops the gate instead of quietly
+  lowering the number. Current corpus detail belongs in
+  [`reports/animestudio/hirc_type02_body_current_latest.md`](../reports/animestudio/hirc_type02_body_current_latest.md).
+- Those nine groups are **not** type-`0x02`-specific. Numeric HIRC type `0x07`
+  reuses them with no source prefix and one terminal counted vector of
+  four-byte anonymous references, and all 48,740 current objects / 3,572,927
+  body bytes consume exactly. One maintained reader now frames both types, so
+  the guards and the fail-closed rules cannot drift apart. Type `0x07` also
+  corrected two things the type `0x02` corpus could not. The group I entry
+  carries a **variable-size** anonymous key, not a fixed byte: type `0x02`
+  bodies spend one byte on all 475 of theirs, so a fixed width survived that
+  corpus and would have silently mis-framed exactly the 90 type-`0x07` objects
+  that contain a wider key. And group E selector `0x01` appears with no
+  extension, which disproves a bit-0 branch predicate — though that rests on
+  4 objects out of 48,740, so treat it as thin. Selector `0x02` is still
+  unobserved everywhere, so bit-1-only and both-bits-set remain tied and fail
+  closed. Say the refactor result precisely: the type `0x02` **counts** are
+  unchanged and its report diffs clean, but two **behaviours** changed on paths
+  that corpus never exercises, so a fixture now pins a continued key on the
+  type `0x02` path too. The key's five-byte cap and 32-bit range are inherited
+  from the type `0x03` Action reader, not proven here; both lanes publish a
+  `groupIKeyWidth_*` histogram so the widths actually witnessed stay auditable
+  (today: only 1 and 2). Group B is still empty in every framed body of both
+  types, so its element width stays unresolved, and both lanes now publish the
+  same shared-framer residual list rather than each carrying a shorter one.
+  Reference targets, container membership, ordering and selection are not
+  claimed. See
+  [`reports/animestudio/hirc_type07_body_current_latest.md`](../reports/animestudio/hirc_type07_body_current_latest.md).
+- Numeric HIRC type `0x05` is the third type on the shared node frame: node
+  groups, then a fixed 24-byte opaque block, one counted vector of four-byte
+  anonymous references and one counted vector of eight-byte anonymous records.
+  All 30,352 current objects / 3,652,971 body bytes consume exactly. The two
+  terminal counts are **independent**: 130,591 references against 130,655
+  records, and the reader publishes `referenceRecordCountMismatch` (39) so that
+  per-object claim is a measurement in the report rather than prose nobody can
+  check. Neither vector is a projection of the other and no relationship between
+  them is claimed. When unifying lanes, keep each lane's own layout sentence and
+  its own non-claims: collapsing them once silently dropped type `0x02`'s
+  source-identity and cross-bank disclaimers and every lane's description of what
+  its framer consumes, which the counts alone could not reveal. With three lanes sharing
+  one framer, the maintained code now carries one census object, one metrics
+  reader, one accumulator, one markdown renderer and one report publisher;
+  adding a further type is a lane declaration plus a framer, and the shared
+  residual list is published identically by every lane. Corpus detail is in
+  [`reports/animestudio/hirc_type05_body_current_latest.md`](../reports/animestudio/hirc_type05_body_current_latest.md).
+- The shared node frame's group H **state is variable-length**: a four-byte key
+  plus its own `u16`-counted vector of six-byte elements. A fixed twelve bytes
+  survived three whole corpora because every one of their 1,546 states carries
+  exactly one element; type `0x09` bodies carry two and disprove it. This is the
+  second latent fixed width of the same class, after the group I variable-size
+  key. Within the field family `{key, count at +4, count elements, fixed tail}`
+  the six-byte element is forced, not fitted: a `u32` count would make the
+  two-element sample declare 65,538 elements, and widths 3, 4 or 12 contradict
+  the count the one-element sample carries. That uniqueness is only inside that
+  family -- a fixed twelve-byte state followed by a separately gated six-byte
+  structure is **not** excluded, which is precisely the failure mode being
+  corrected, so the census carries it as a residual. Note also that the shipped
+  reports alone cannot settle this: every state they publish is one element wide,
+  and the only non-degenerate witness is type `0x09`, which is not a shipped
+  lane. Take the pattern seriously: a width that a
+  one-dimension sweep reports as
+  *uniquely determined* can still be a degenerate case, because uniqueness is
+  only ever over the shapes the corpus happens to contain. Both lanes now publish
+  `groupHStateWidth_*` and `groupIKeyWidth_*` histograms so the degenerate case
+  is visible rather than inferred, and the gate requires each histogram to match
+  both its count and its byte total. Type `0x02`, `0x05` and `0x07` still close
+  exactly after the correction, so no published count changed.
+- Numeric HIRC type `0x09` is **not** a closed lane and is deliberately not
+  shipped as one. Its bodies are the shared node frame, a counted four-byte
+  reference vector, a counted layer vector and one trailing byte, where a layer
+  is a fifteen-byte header plus a counted list of per-reference twelve-byte graph
+  points. That frames 5,154 of 5,158 current objects. The other 4 carry a
+  nonempty `u16`-counted sub-list inside the layer header that the rest never
+  exercise, and its element width cannot be separated from the surrounding
+  fields without guessing, so the grammar stays unresolved rather than being
+  fitted to four samples. Do not publish a type `0x09` lane until those four
+  parse; the gate would refuse it anyway.
+- **Layer 4 opens for audio.** The anonymous four-byte values inside the exactly
+  framed terminal vectors of numeric types `0x04`, `0x05`, `0x06` and `0x07` are object
+  identities. All 230,247 of them resolve, every one to exactly one HIRC object
+  declared by the **same bank**: zero unresolved, zero crossing a bank or package
+  boundary, zero self references, zero targets carrying more than one referrer,
+  zero framed entries that never reached the census, and zero nodes on or feeding
+  a cycle, at a longest traversed chain of 7 references (8 objects). Every one of
+  those numbers is computed and published by the maintained reader; none is prose.
+  Numeric edge counts and a per-type referenced-versus-population table are in
+  [`reports/animestudio/hirc_reference_graph_current_latest.md`](../reports/animestudio/hirc_reference_graph_current_latest.md).
+  Seventeen object ids repeat inside a bank, 17 distinct ids over 17 repeat
+  occurrences, so each appears exactly twice; **no reference targets a duplicated
+  id**, so that ambiguity does not touch the claim.
+- Numeric HIRC type `0x06` is the fourth type on the shared node frame: node
+  groups, a fixed ten-byte opaque header, one counted four-byte reference vector,
+  one counted group list where each group carries a four-byte key and its own
+  counted vector, and one counted vector of fourteen-byte records. All 4,573
+  current objects / 1,334,519 body bytes consume exactly, and every suffix width
+  is uniquely determined by whole-corpus closure.
+- Type `0x06` is also where the reference join first had to say no. Only its
+  child vector resolves completely (20,290/20,290). Of the other framed words,
+  432 of 22,234 group items and 573 of 20,863 record leading words match no
+  object in their bank, so those words are **not** established as identities and
+  are not joined. Excluding them silently would have been cherry-picking -- a 98%
+  rate reported as 100% -- so the census publishes them as `candidateWords` with
+  the number that do match, and the gate requires that count to cover every
+  framed word held out. The gate caught this: the first attempt claimed all three
+  vectors as references and failed with 1,005 unresolved. Believe the counter and
+  narrow the claim, never the reverse.
+- **The music types `0x0A`-`0x0D` are attempted and NOT framed. Read this before
+  trying again.** They do not open with the shared node frame, and the ways they
+  fail are per-type: at offset 0 the frame dies on `range_groupHStateElements` for
+  `0x0A` (2,505/4,158) and `0x0D` (912/2,431), on `unsupported_groupB_nonempty`
+  for `0x0B` (4,217/4,325), while `0x0C` "succeeds" on 586/742 but leaves 143-303
+  bytes over. Those successes are not evidence: see the next point.
+- **Do not try to locate the frame by searching for a start offset.** Every music
+  body admits many offsets at which the node frame parses cleanly -- typically 2
+  to 12, and up to 12 for `0x0B`. The frame is permissive enough that "it parsed"
+  carries almost no information here, which is a stronger version of the ambiguity
+  that type `0x0E` had. A structural predictor is required, as with the `0x0E`
+  flag byte.
+- Anchors that do exist, and their exact limits. Types `0x0A` and `0x0D` share an
+  opening: nine bytes (usually zero) then a 32-bit word at offset 9. That word
+  names an object in its own bank in 4,047/4,158 `0x0A` bodies and 2,321/2,431
+  `0x0D` bodies; the rest are zero (92 and 78) or name nothing at all (19 and 32).
+  The non-resolving ones were checked against **every** bank, not just their own,
+  so they are not cross-bank references -- this corpus still has no cross-bank
+  evidence. **97.3% is not a reference claim**; the bar this repo holds is every
+  value resolving, so offset 9 stays an anchor for probing and nothing more.
+- Type `0x0A` also carries a counted run of same-bank object ids, and byte 14 is a
+  count of five-byte elements: the run starts at exactly `32 + 5 * byte14` for the
+  clean cases. But a fit of `base + w14*byte14 + w17*byte17` only reaches 96.8%,
+  and byte 17 takes values like 95 and 110, so it is not a second count and the
+  correlation is partly spurious. At least one further variable-length interior
+  region is unisolated, so **no `0x0A` layout is established and no lane exists.**
+- `0x0B` is *not* yet the witness that would resolve the node frame's group B
+  width. Its bodies would only make group B nonempty if the frame starts at offset
+  0, which is exactly what is not established. Group B remains unresolved.
+- Method that paid off and is worth reusing: mirror the C# node frame in Python
+  under `tmp/`, then **prove the mirror first** against an already-closed type.
+  The mirror reproduced all 48,740 type `0x07` bodies exactly before it was used
+  on anything, which is what makes its music-type failures trustworthy. Iterating
+  in Python avoids a C# rebuild per hypothesis; nothing from the mirror ships.
+- **Numeric HIRC type `0x0E` is framed byte-exact, and it does not use the shared
+  node frame.** 24,145 bodies / 5,143,855 bytes, every one consumed from its first
+  byte to its declared object-body end. Layout: a fixed 21-byte head, an optional
+  20-byte block, 19 opaque bytes, a byte-counted list whose entries each carry one
+  selector byte plus a `u16` element count plus that many 12-byte elements, and two
+  closing bytes that read as zero everywhere.
+- The branch is decided by a byte, not by a search. The candidate layout was found
+  by sweeping shapes, which left 6,218 of the bodies with two start offsets that
+  both consumed exactly -- so the sweep alone could not fix the prefix. Byte 1 of
+  the body settles it: it is 0 or 1 across the whole corpus, and it predicts prefix
+  21 versus prefix 41 in every single body. The framer therefore reads the flag and
+  computes the prefix; it never searches, and any other flag value fails closed.
+  **Do not weaken this to "take the earliest offset that parses"** -- that would
+  reintroduce the ambiguity the flag byte removes.
+- The minority branch is real, not a degenerate fit: its 164 bodies span 37 distinct
+  bodies, 89 banks, 130 object ids, 3 files, 23 lengths and 21 distinct optional
+  blocks. That check is the standing lesson from the group I and group H fixed
+  widths, applied before publishing rather than after being caught.
+- This lane carries a **closed-form byte identity** the other lanes cannot: framed
+  bytes must equal `24 * bodies + 12 * elements + 3 * entries + 20 * optionalBlocks`.
+  It holds exactly at 5,143,855. That is an equation, not the containment inequality
+  the node-frame lanes use, so a miscounted element or entry cannot hide in slack.
+  See [`reports/animestudio/hirc_type14_body_current_latest.md`](../reports/animestudio/hirc_type14_body_current_latest.md).
+- What stays open on `0x0E`: the 21-byte head and 20-byte block are consumed by
+  extent only; the 12-byte element is not split internally (only its trailing word
+  is published as a histogram, bounded 0..9); and the two closing zero bytes cannot
+  be distinguished from an always-empty counted list in this corpus. The 12-byte
+  elements are **not** claimed to be points, curves, or samples of anything.
+- **Layer 5 opens: numeric HIRC type `0x04` is the object that shipped managed
+  code addresses by name.** The evidence is a unique cross-table reference, not a
+  label. `global-metadata.dat` `stringLiteral` rows give 221 exact audio-like
+  strings the game's own code contains; 151 of their FNV-1/UTF-16 hashes equal a
+  HIRC object identity, and **all 151 land on type `0x04` and none on any other
+  type**. Type `0x04` is 22,910 of the 323,034 objects (7.09%), so coincidence
+  would scatter about 140 of those 151 matches onto other types; none did. That
+  share is measured from the reader's own type histogram by `named_type_share`,
+  not asserted in prose. The gate refuses to
+  publish if a single match ever lands elsewhere, because that would dissolve the
+  identification rather than weaken it -- never turn this into a percentage.
+- Walking from a named type `0x04` object through reference vectors alone reaches
+  numeric type `0x02` objects, whose bounded 14-byte prefix yields a source id:
+  63 of the 151 named objects reach at least one, 134 source ids in total. The
+  other 88 reach none, almost always because the walk hits an edge leaving the
+  bank -- 98 such edges, counted and never followed. The walk also uses the type
+  `0x03` target word, which is **not** a gated reference vector (only about three
+  quarters of those words name an object in their own bank), so it is reported as
+  what it is rather than folded in.
+  See [`reports/animestudio/hirc_named_reach_current_latest.md`](../reports/animestudio/hirc_named_reach_current_latest.md).
+- What Layer 5 does **not** license, even now. A reached source id does not mean
+  posting the identifier plays that media; nothing here establishes ordering,
+  selection, mixing, audibility, or that the media is ever decoded. Only the type
+  `0x04` entry point has a name -- every other object on the path is still
+  anonymous, and an edge leaving the bank still resolves to nothing this corpus
+  can see.
+- Be precise about what the reference graph is. The only direction it establishes
+  is physical: which object's body holds the four-byte value. Over that byte-level
+  direction the relation is acyclic with at most one holder per target, which is
+  why the reader can walk it and report a depth. Do **not** promote that to
+  parenthood, containment, membership, a tree, or a root: those are semantic
+  readings the join does not license, and neither endpoint of an edge has a name.
+  Ordering, selection, mixing and playback are equally unclaimed. The absence of a
+  cross-bank edge is a property of this corpus, not a proven rule.
+- Two further properties are readable straight off the published table, because
+  with zero multi-referrer targets the references into a type are that many
+  distinct objects of it: type `0x03` shows 28,379 referenced against 28,379
+  objects, so every one is referenced exactly once; type `0x04` shows 0 referenced
+  against 22,910 objects, so no type `0x04` object is ever the target of a
+  reference.
+- The null model for that result is per bank, not corpus-wide, because resolution
+  only ever looks inside one bank. With 323,034 objects over 20,873 banks the
+  reference-weighted expectation is about **0.15** chance resolutions, not the
+  ~16 a corpus-wide pool would suggest. The finding is roughly two orders of
+  magnitude stronger than a whole-corpus null implies -- but it argues the values
+  *are* identities, still not what the edges mean.
+- A bounded read-only probe shows how far the node frame reaches: it consumes
+  cleanly from byte 0 for every type `0x06` (4,573) body and, after the counted
+  state correction, for all 5,158 type `0x09` bodies, each leaving a regular
+  type-specific suffix, while types
+  `0x0B`, `0x0E`, `0x12`, `0x16` and `0x08` reject it outright and
+  `0x0A`/`0x0C`/`0x0D` match only in part. Type `0x09`'s suffix looks like a
+  counted four-byte reference vector followed by a second counted section and
+  one trailing byte; type `0x06`'s is more varied and not yet decoded. Treat
+  this as a prioritisation signal, not a framing claim: no suffix is parsed and
+  no maintained reader accepts those types yet.
 - AKPK entries, Wwise numeric media ids, Events, containers, switches, random
   nodes, RTPC curves, and authored consumers keep their native identities.
   Same-id files in different roots are not collapsed by filename stem.

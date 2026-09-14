@@ -270,8 +270,84 @@ but still authenticates the selected VFS files and requires exact BNK section
 and HIRC object consumption. Preserve numeric HIRC type IDs; object-envelope
 framing is not object behavior, event selection, or audibility.
 Numeric HIRC type `0x02` additionally has a bounded 14-byte source prefix and,
-for plugin type `0x02`, a checked length-prefixed parameter range. Keep its
-NodeBase and remaining tail bytes opaque until separately proven.
+for plugin type `0x02`, a checked length-prefixed parameter range. Its body is
+now consumed whole by a separate anonymous nine-group frame that must reach the
+declared object-body end; run it through the same corpus gate and read
+`reports/animestudio/hirc_type02_body_current_latest.md` before assuming the tail
+is still unframed. The same nine groups are shared with numeric types `0x07`
+and `0x05`: `0x07` adds one terminal counted vector of four-byte anonymous
+references, `0x05` adds a fixed 24-byte opaque block plus two independently
+counted vectors. Numeric type `0x06` shares them too and adds three counted
+vectors, of which only the first resolves whole-corpus to same-bank identities;
+the other two are published as `candidateWords` with their shortfall, never
+joined. One maintained reader and one corpus lane frame all four, so
+extend those rather than adding a parallel copy. Widths that stay unresolved must keep failing closed: group B has
+no nonempty sample in any framed type, and group E's selector `0x02` is
+unobserved, so bit-1-only and both-bits-set tie. Selector `0x01` does occur and
+disproves a bit-0 rule, but in only 4 of 48,740 type `0x07` objects. The group I
+anonymous key is variable-size, not a fixed byte, and the group H state is a key
+plus its own counted six-byte elements, not a fixed twelve. Both fixed widths
+survived whole corpora as degenerate cases, so a one-dimension sweep reporting a
+width as uniquely determined proves only that no observed shape contradicts it.
+Re-check every width when a new type enters, and read the published
+`groupIKeyWidth_*` and `groupHStateWidth_*` histograms rather than assuming the
+inherited five-byte varint cap is a corpus fact. Exact consumption is byte extent only;
+keep group letters, selector bits, keys, values, and reference targets anonymous
+until a serializer or consumer witness assigns them.
+The reference vectors of numeric types `0x04`, `0x05`, `0x06` and `0x07` are the
+one place this corpus reaches layer 4: every value resolves to exactly one object
+identity declared by the same bank, and
+`hirc_reference_graph_current_latest.md` carries the numeric edge counts plus a
+per-type referenced-versus-population table. Treat that as identity resolution
+only. The one direction it establishes is physical -- which object's body holds
+the value -- and over that the relation is acyclic with at most one holder per
+target. That is not parenthood, containment, membership, a tree or a root. Before extending it,
+re-run the gate: it refuses to publish unless every reference names exactly one
+unambiguous same-bank object, duplicate-id targets included.
+
+Numeric type `0x0E` is framed byte-exact too, but on its own terms: it does not
+use the node frame at all, so it must not inherit the node frame's residual list,
+its group widths, or its unconditional selector families -- the lane framework now
+takes all three as parameters, and reusing the node-frame defaults for `0x0E`
+would publish claims about groups its bodies never contain. Layout: a fixed
+21-byte head, a 20-byte block present only when body byte 1 is 1, 19 opaque bytes,
+a byte-counted list of entries each carrying a selector byte, a `u16` element
+count and that many 12-byte elements, then two closing bytes that must read as
+zero. The prefix length is **read from that flag byte, never searched for**: a
+shape sweep alone leaves thousands of bodies with two offsets that both consume
+exactly, and only the flag removes the ambiguity. This lane also carries a
+closed-form byte identity rather than the containment inequality the node-frame
+lanes use, so a miscount breaks an equation instead of being absorbed. Before
+extending it, check the minority branch the way this one was checked -- 164 bodies
+across 89 banks with 21 distinct blocks, not one sample repeated.
+
+The music types `0x0A`-`0x0D` are attempted and unframed; do not restart from
+scratch. They do not open with the node frame, and searching for an offset where
+the frame parses is worthless because every music body admits several such
+offsets -- the frame is permissive, so "it parsed" is nearly no evidence. A
+structural predictor is needed, the way byte 1 predicts the `0x0E` prefix.
+Types `0x0A` and `0x0D` open with nine bytes and a 32-bit word at offset 9 that
+names a same-bank object in about 97% of bodies; the remainder name nothing in
+any bank, so this is an anchor for probing and **not** a reference claim, which
+here requires every value to resolve. When probing them, mirror the node frame in
+Python under `tmp/` and prove the mirror against an already-closed type first --
+the current mirror reproduces all 48,740 type `0x07` bodies exactly, which is why
+its music-type failures can be believed.
+
+One endpoint now has a witness. `scripts/audio_semantics/hirc_named_reach.py`
+hashes the exact audio-like `stringLiteral` rows out of `global-metadata.dat`
+with FNV-1 over UTF-16 code units and joins them to HIRC object identities. Every
+current match lands on numeric type `0x04` and none on any other type, which is
+what identifies `0x04` as the object shipped managed code addresses by name; the
+type is only about seven percent of the corpus, and the gate measures that share
+from the reader's own histogram rather than asserting it. Treat a single match on
+another type as dissolving the identification, not lowering a rate -- the gate
+refuses to publish in that case. Walking reference vectors from a named object
+reaches the type `0x02` source ids, but the walk also crosses the type `0x03`
+target word, which is *not* a gated reference vector, so report it separately.
+Edges leaving the bank are counted and never followed. Nothing here names any
+object but the `0x04` entry point, and none of it establishes playback,
+ordering, selection, mixing, or audibility.
 
 For IV recovery, region, index filename-table, and index-directed payload
 framing are distinct claims. `parse_index_bytes` proves one unambiguous count-

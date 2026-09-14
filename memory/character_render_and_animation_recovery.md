@@ -826,6 +826,14 @@ actor identifier. Observer storage must remain bounded and off large callback
 stack frames. Cleanup may not invalidate function pointers retained by the
 client.
 
+A graphics packet directory is named `<present>` or `<present>-lane<N>`, and
+several physical lanes can publish at one Present. Every reader must parse it
+through `endfield_reconstruction_lab/tools/endfield_capture_frames.py`, order
+packets by Present then lane, and fail when a directory name and its metadata
+`frame` disagree. A bare `int()` on the directory name aborts on any
+lane-suffixed session before it reads any evidence, and reads as a broken
+capture when the capture is fine.
+
 Failed or partially collected retail sessions remain under scratch as
 diagnostics. Their observations may justify a tool fix, but never become parity
 evidence retroactively.
@@ -879,6 +887,25 @@ outputs are verified. See the capture environment observer guide for contracts.
   generated report.
 - Comparison frames must join exact no-frame-generation source frames and the
   corresponding Unity clock/state. Do not align by appearance alone.
+- An extracted reference sequence is numbered from its own first frame, not
+  from the source video. Convert with
+  `extracted index = source frame - startFrame + 1` before pairing anything by
+  hand; for the clean Endminf segment that is `source frame - 87`. Skipping the
+  conversion misaligns the pairing by 1.45 s and makes correctly matched poses
+  look like a whole-body animation defect.
+- Establish phase alignment before quoting any effect-region number. The
+  Endminf burst signal changes by roughly 3x per two frames, so a two-frame
+  misalignment can invert a conclusion, and it has. The burst flash is itself
+  the best phase instrument: it is high-contrast and free of the entrance
+  ghosting that makes raw sweeps unsafe there.
+- Never compare two lab renders made with different capture profiles. The
+  viewer capture applies its 2/60 s clip lead only to video-export,
+  pre/post-HDR and default runs, not to explicit requested-times runs, so the
+  same nominal time is a different instant in each.
+- A byte-exact original-DXBC replay of a captured post draw yields encode-free
+  retail pixels at a known, bracketed body phase. Prefer that image over a video
+  frame for any question about field brightness, gradient shape, or thin-line
+  contrast, and keep the video sequence for motion, lifecycle, and timing.
 - Annotate visible pointer/controller changes and split input-stable frames
   from camera-motion-affected frames. Deterministic animation renders use the
   actor's serialized camera entry state; capture-specific input endpoints or
@@ -1065,6 +1092,33 @@ newer source version must not silently replace the capture-matched texture.
   graphics-quality application also updates the main camera directly. Preserve
   these producers separately from authored startup defaults and history resets.
   Mode mutation history and consistent projection/history integration remain open.
+  The late overview_02 stones were absent because the deferred sidecar's
+  activation gate starved their producer. The gate required the renderer to be
+  inside the camera's culling mask, while the exact M27 route requires the
+  opposite - isolation on layer 31, excluded from that mask - so the late
+  producer could never satisfy the gate deciding whether its own render path
+  runs. The gate therefore held only while the early overview_01 rocks had live
+  particles, ending at body ~4.37 s, and the overview_02 authored delays elapse
+  at body 4.49 s. Admitting the isolated row under the opposite visibility rule
+  makes the producer reachable: it now resolves with 15 live particles at body
+  4.500 s, matching the authored 4.49 s delay, the body 4.5223-4.5390 s bracket
+  of retail's captured M27 packet, and the 15 authored-seed particle
+  fingerprints already recovered from that draw. Canonical output is
+  byte-identical across the change. Presentation is still a separate boundary.
+  Three durable lessons from the diagnosis, all general. Unity holds
+  ParticleSystem.time at 0 through a start delay, so a zero clock is not
+  evidence of a stalled system - read the authored delays first, and pick a
+  control whose delays are comparable. The capture defines its own time zero at
+  its restart edge, so body time = play time minus that edge; any sampler must
+  state which clock it is on. And a resolver that signals absence by succeeding
+  with a null output, or a one-shot log latch shared by two different facts,
+  hides exactly this class of defect.
+  Retail's final post draw is now closed end to end from a live capture: the
+  original VS/PS bytecode on the captured scene-colour, bloom and LUT inputs
+  with both captured constant buffers reproduces the retained 4K output byte for
+  byte, and the recovered production Unity post shader matches that same output
+  to a maximum channel error of 5. Final post arithmetic therefore no longer
+  explains any remaining visible difference; look upstream at scene composition.
   CPP request mip bias has its own reusable gated evaluator; do not substitute
   the camera material/resolution producer. Recorded request values still need
   an upload-generation join before selecting the live draw route.
@@ -1078,3 +1132,43 @@ newer source version must not silently replace the capture-matched texture.
   playables without actor-specific renderer forks.
 - Keep capture tooling bounded, observation-only, exact-build gated, and
   reproducible across client updates.
+
+## Verifying recovered lighting against retail's DXBC (session 2026-09-14)
+
+- `_CharacterParams[N]` is `ShaderVariablesGlobal cb1[107 + N]` in retail's
+  D3D11 `HGRP_CharacterNPR` pixel shader. Established by the reference range
+  being exactly `cb1[107]`-`cb1[122]` with zero references immediately outside
+  on both sides, plus three independent expression matches (ambient lobe
+  CP6/CP7, `shadowStrength` CP1.y, diffuse-band range bias CP11.w*CP12.x).
+  Use it to check any `CharacterParams` claim directly against the
+  disassembly. The lab's HGCharacterVolume recovery came from Vulkan
+  fragments, so this is an independent cross-backend confirmation.
+- Retail's character ambient tint is selected by
+  `if (CharacterParams1.y < 0.5)` - irradiance-volume L1 SH, HSV
+  saturation-clamped - `else CharacterParams2.rgb`. `CharacterParams1.y` is
+  `(float)shadowTintMode`, enum `Auto = 0, CustomTintColor = 1`, so the test
+  is "is the shadow tint mode Auto?". CP1.y is also a multiplier in
+  `shadowStrength`; retail does the same, so that dual use is faithful.
+- Endminf's CharInfo scene carries `shadowTintMode: 1`, imported from the
+  captured `charShadowTintControl` through the required `Resolved()` accessor.
+  Retail therefore takes the authored-tint branch there too: **implementing
+  the irradiance volume clipmap would not change that render.** It IS needed
+  for actors whose scenes carry `shadowTintMode: 0` (several generated
+  ability-prop, ambient-NPC and enemy viewers do).
+- `HGCompatRenderPipeline` is **never instantiated** - the asset's
+  `CreatePipeline()` returns `new HDRenderPipeline(this)`. The subclass
+  survives only as a name for inherited statics, so it greps as alive while
+  any instance-level code added to it silently does nothing. Put per-frame or
+  per-instance pipeline behaviour in `HDRenderPipeline`.
+- The canonical render sets `ENDFIELD_RECOVERED_SOURCE_ENERGY_CORE=1`, which
+  forces `diffuseAuditMode = 5`, and mode 5 executes `color = recoveredDiffuse`
+  - discarding the `diffuseColor * illumination` built from
+  `environmentIllumination`. The `(0.2 + ShadeSH9) * _RecoveredAmbientStrength`
+  block in the cloth and hair shaders is **dead code in that profile**. The
+  live canonical diffuse is `EndfieldHGRPRecoveredSourceDiffuse` /
+  `EndfieldHGRPRecoveredLiveShadowEnergy`.
+- **A byte-identical ablation is a broken or inert instrument until proven
+  otherwise, never evidence that the ablated term does not matter.** Confirm
+  the lever moved pixels before interpreting any null result. Two independent
+  causes produced a null in one experiment here, and reporting either as a
+  finding would have been wrong.
