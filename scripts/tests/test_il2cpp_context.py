@@ -1,13 +1,28 @@
+import hashlib
 import struct
 import io
 import json
 from contextlib import redirect_stderr
+from pathlib import Path
 import unittest
 from types import SimpleNamespace
 
 from scripts.game_data.il2cpp_context import ContextError, GenericInstantiationTable, method_parameter_owner, type_image_owners, match_image_modules, method_spec_usage_index, generic_type_carrier, select_rgctx_range
 from scripts.game_data.il2cpp_context_audit import main, native_gate, sweep, validate_selected_method_spec, reader_cursor_consumers, reader_construction, serializer_return_consumers, skill_resource_context
+from scripts.game_data.il2cpp_context_audit import (
+    skilldata_corpus_branch_evidence, skilldata_terminal_collision_evidence,
+    skilldata_cursor_hook_call_sites, skilldata_terminal_sample_byte_witness,
+    skilldata_terminal_tail_layout, skilldata_terminal_branch_sample_witness,
+    skilldata_positive_branch_reader_replay, skilldata_shifted_terminal_wrapper_probe,
+    skilldata_shifted_candidate_reader_assessment, select_skilldata_terminal_branch_samples,
+    skilldata_nested_branch_static_alignment,
+    skilldata_actiongroup_branch_sample_witness,
+    skilldata_actiongroup_branch_static_alignment,
+)
 from scripts.game_data.memorypack.skill_corpus import CensusGateError
+from scripts.game_data.memorypack.skill_terminal import frame_skill_terminal_at
+from scripts.game_data.memorypack.buff_actions import Reader as BuffActionReader
+from scripts.game_data.memorypack.buff_actions import Unsupported as BuffActionUnsupported
 from scripts.game_data.il2cpp_context import unresolved_usage_index, rip_qword_load_target
 from scripts.game_data.il2cpp_context import class_sharing_branch
 from scripts.game_data.il2cpp_context import named_top_level_type
@@ -51,6 +66,22 @@ from scripts.game_data.il2cpp_context_audit import buff_ifelse_read_order
 from scripts.game_data.il2cpp_context_audit import buff_sequence_read_order
 from scripts.game_data.il2cpp_context_audit import buff_tag76_read_order
 from unittest.mock import patch
+
+
+class Il2CppAuditDiagnosticTests(unittest.TestCase):
+    def test_main_serializes_bounded_byte_diagnostics(self):
+        error = ContextError('fixture.dll', 0x25, b'expected', b'actual')
+        output = io.StringIO()
+        with patch('scripts.game_data.il2cpp_context_audit.audit', side_effect=error), \
+                redirect_stderr(output):
+            self.assertEqual(main(), 1)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['diagnostic']['offset'], 0x25)
+        self.assertEqual(result['diagnostic']['expected'],
+                         {'byteLength': 8, 'hex': '6578706563746564'})
+        self.assertEqual(result['diagnostic']['actual'],
+                         {'byteLength': 6, 'hex': '61637475616C'})
 
 
 class BuffTag76ReadOrderTests(unittest.TestCase):
@@ -968,9 +999,11 @@ class ListFormatterCandidateTests(unittest.TestCase):
             0x200:struct.pack('<QQQQ',self.base+0x300,self.base+0x400,0,0),
             0x300:struct.pack('<QII',54057,0x120000,0)}
         for at,raw in ((0x3BA410E,'488B47508B30'),(0x3BA4120,'48834750048347400483474404895F30'),
-            (0x3BA4130,'48634744488B4F18482BC84863C6483BC8'),(0x3BA4147,'83FEFF0F842F010000'),
+            (0x3BA4130,'48634744488B4F18482BC84863C6483BC8'),
+            (0x3BA4141,'0F8CB4653201'),(0x3BA4147,'83FEFF0F842F010000'),
             (0x3BA415F,'49833E00488B4520488B88C00000000F8518653201'),(0x3BA41C1,'85F60F881F653201'),
-            (0x3BA4282,'49C70600000000'),(0x4ECA6AB,'FF431CC7431800000000E9799BCDFE'),
+            (0x3BA4282,'49C70600000000'),(0x4ECA6FB,'33D28BCEE8900A8404CCCC'),
+            (0x4ECA6AB,'FF431CC7431800000000E9799BCDFE'),
             (0x3BA4261,'85F67F4D'),(0x3BA42C3,'4C8D4C24584C8BC7498BD7E8FD494FFC'),
             (0x3BA4312,'41FFC4443BE60F8D47FFFFFFEB92')):self.parts[at]=bytes.fromhex(raw)
         self.pointers={self.base+0x10000+209879*8:self.base+0x100,self.base+0x20000:self.base+0x3BA40F0}
@@ -2357,6 +2390,794 @@ class SkillResourceContextTests(unittest.TestCase):
         with self.assertRaises(ContextError):self.run_probe()
 
 
+class SkillDataCorpusBranchEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.input_set = 'A' * 64
+
+    def row(self, name, counts, cursor, stop=None, peek=None):
+        lists = [{'count': count} for count in counts]
+        if peek is not None:
+            lists[-1]['firstRecordMemberCount'] = peek
+        path = f'Data/Json/SkillData/{name}.json'
+        logical_sha = ('B' if name.endswith('empty') else 'C') * 64
+        prefix = {
+            'recordLists': lists,
+            'cursorOffset': f'0x{cursor:x}',
+            'byteRanges': [{'start': 0, 'end': cursor, 'kind': 'fixture-prefix'}],
+        }
+        if stop is not None:
+            prefix['stopListIndex'] = stop
+        return {
+            'virtualPath': path,
+            'logicalSha256': logical_sha,
+            'parserCursor': cursor,
+            'hardLimit': 100,
+            'boundaryClass': 'ambiguous',
+            'boundaryContext': {
+                'inputSetSha256': self.input_set,
+                'logicalFileIdentity': path,
+                'logicalSha256': logical_sha,
+                'parserCursor': cursor,
+                'hardLimit': 100,
+            },
+            'commonPrefixFraming': prefix,
+            'framing': {
+                'candidateCount': 2,
+                'candidates': [{'startOffset': '0x14'}, {'startOffset': '0x15'}],
+            },
+        }
+
+    def corpus(self):
+        rows = [
+            self.row('both_empty', [0, 0], 10),
+            self.row('second_nonempty', [0, 1], 10, stop=1, peek=4),
+            self.row('first_nonempty', [1], 6, stop=0, peek=2),
+        ]
+        return {
+            'inputSetSha256': self.input_set,
+            'files': rows,
+            'summary': {
+                'filesSelected': len(rows),
+                'byteBoundaryEvidence': {'exactClosedRecords': 0},
+            },
+        }
+
+    def test_branch_ranges_keep_unconsumed_child_byte_separate(self):
+        result = skilldata_corpus_branch_evidence(self.corpus(), source='fixture-corpus.json')
+        self.assertEqual(result['branchCounts'], {
+            'bothListsEmpty': 1,
+            'firstEmptySecondNonempty': 1,
+            'firstNonempty': 1,
+        })
+        self.assertEqual(result['emptyActionGroupCandidateRange'], {
+            'start': 1, 'end': 10, 'endExclusive': True,
+            'candidateFiles': 1,
+            'conditionalOn': 'both List<T> reads taking the audited ListFormatter<T> candidate four-byte zero-count path',
+            'exactClosedRecords': 0,
+        })
+        sample = result['representativeCurrentVfsSamples']['firstEmptySecondNonempty']
+        self.assertEqual(sample['parserCursor'], 10)
+        self.assertEqual(sample['firstUnconsumedByteOffset'], 10)
+        self.assertEqual(sample['peekOnlyMemberCount'], 4)
+        self.assertEqual(result['wholeFileBoundary']['ambiguousFiles'], 3)
+        self.assertEqual(result['wholeFileBoundary']['exactClosedRecords'], 0)
+
+    def test_cursor_drift_in_current_report_fails_closed(self):
+        corpus = self.corpus()
+        corpus['files'][1]['boundaryContext']['parserCursor'] = 9
+        with self.assertRaises(ContextError) as caught:
+            skilldata_corpus_branch_evidence(corpus, source='fixture-corpus.json')
+        self.assertEqual(caught.exception.diagnostics['offset'], 0)
+        self.assertIn('boundaryContext.parserCursor', caught.exception.diagnostics['expected'])
+
+    def test_consumed_ranges_must_tile_to_the_parser_cursor(self):
+        corpus = self.corpus()
+        corpus['files'][0]['commonPrefixFraming']['byteRanges'] = [
+            {'start': 0, 'end': 9, 'kind': 'short-prefix'},
+        ]
+        with self.assertRaises(ContextError) as caught:
+            skilldata_corpus_branch_evidence(corpus, source='fixture-corpus.json')
+        self.assertIn('tile [0,10)', caught.exception.diagnostics['expected'])
+
+    def terminal_collision_row(self):
+        path = 'Data/Json/SkillData/Potential_test.json'
+        logical_sha = 'C' * 64
+        hard_limit = 533
+        parser_cursor = 10
+        shape = [
+            'bool', 'counted-member-record-list',
+            'counted-nested-object-list-a', 'counted-nested-object-list-b', 'bool',
+        ]
+
+        def candidate(index, start):
+            final = hard_limit
+            members = [
+                {'index': 0, 'kind': 'bool', 'value': bool(index),
+                 'range': {'start': start, 'end': start + 1, 'byteLength': 1},
+                 'type': 'bool'},
+                {
+                    'index': 1, 'kind': 'counted-member-record-list',
+                    'encoding': 'one-member-wrapper' if index == 0 else 'counted',
+                    'count': 0,
+                    'wrapperRange': (
+                        {'start': start + 1, 'end': start + 2, 'byteLength': 1}
+                        if index == 0 else None
+                    ),
+                    'countRange': {'start': 520, 'end': 524, 'byteLength': 4},
+                    'records': [],
+                    'range': {'start': start + 1 if index == 0 else 520,
+                              'end': 524,
+                              'byteLength': 5 if index == 0 else 4},
+                    'type': 'counted-member-record-list',
+                },
+            ]
+            for member_index, member_start in ((2, 524), (3, 528)):
+                members.append({
+                    'index': member_index, 'kind': 'counted-nested-object-list',
+                    'count': 0,
+                    'countRange': {'start': member_start, 'end': member_start + 4,
+                                   'byteLength': 4},
+                    'records': [],
+                    'range': {'start': member_start, 'end': member_start + 4,
+                              'byteLength': 4},
+                    'type': 'counted-nested-object-list',
+                })
+            members.append({
+                'index': 4, 'kind': 'bool', 'value': False,
+                'range': {'start': final - 1, 'end': final, 'byteLength': 1},
+                'type': 'bool',
+            })
+            ranges = [
+                {'start': member['range']['start'], 'end': member['range']['end'],
+                 'kind': member['kind'], 'memberIndex': member['index']}
+                for member in members
+            ]
+            candidate_end = '0x215'
+            return {
+                'status': 'exact-eof-anchored-terminal-shape',
+                'startOffset': hex(start),
+                'endOffset': candidate_end,
+                'byteLength': final - start,
+                'exactToEof': True,
+                'encoding': 'one-member-wrapper' if index == 0 else 'counted',
+                'shape': shape,
+                'members': members,
+                'wholeSchemaExact': False,
+                'candidateRange': {'start': start, 'end': final, 'endExclusive': True},
+                'parserCursor': final,
+                'hardLimit': final,
+                'byteRanges': ranges,
+                'opaqueByteRanges': [{
+                    'start': parser_cursor, 'end': start,
+                    'kind': 'opaque-between-prefix-and-terminal-candidate',
+                }],
+                'boundaryClass': 'ambiguous',
+                'boundaryContext': {
+                    'inputSetSha256': self.input_set,
+                    'logicalFileIdentity': path,
+                    'logicalSha256': logical_sha,
+                    'startOffset': start,
+                    'hardLimit': final,
+                    'parserCursor': final,
+                    'candidateRange': [start, final],
+                },
+            }
+
+        first = candidate(0, 518)
+        second = candidate(1, 519)
+        row = self.row('Potential_test', [0, 0], parser_cursor)
+        row['hardLimit'] = hard_limit
+        row['boundaryContext'].update({'startOffset': 0, 'hardLimit': hard_limit})
+        prefix = row['commonPrefixFraming']
+        prefix['parserCursor'] = parser_cursor
+        prefix['hardLimit'] = hard_limit
+        prefix['boundaryContext'] = {
+            'inputSetSha256': self.input_set,
+            'logicalFileIdentity': path,
+            'logicalSha256': logical_sha,
+            'startOffset': 0,
+            'hardLimit': hard_limit,
+            'parserCursor': parser_cursor,
+        }
+        row['framing'] = {
+            'status': 'ambiguous-exact-terminal-shape',
+            'memberCount': 48,
+            'envelope': {'startOffset': '0x0', 'payloadStartOffset': '0x1',
+                         'endOffset': '0x215', 'byteLength': hard_limit},
+            'candidateCount': 2,
+            'candidates': [first, second],
+            'wholeSchemaExact': False,
+            'serializedFieldOrderStatus': 'unresolved',
+            'ambiguity': {
+                'kind': 'one-byte-bool-vs-counted-wrapper-collision',
+                'candidateStartOffsets': ['0x206', '0x207'],
+                'sharedCountedRecordCounts': [0, 0, 0],
+                'resolutionStatus': 'unresolved-both-exact-to-eof',
+            },
+        }
+        return row
+
+    def terminal_collision_for_raw(self, raw):
+        row = self.terminal_collision_row()
+        logical_sha = hashlib.sha256(raw).hexdigest().upper()
+        row['logicalSha256'] = logical_sha
+        row['boundaryContext']['logicalSha256'] = logical_sha
+        row['commonPrefixFraming']['boundaryContext']['logicalSha256'] = logical_sha
+        for candidate in row['framing']['candidates']:
+            candidate['boundaryContext']['logicalSha256'] = logical_sha
+        corpus = self.corpus()
+        corpus['files'].append(row)
+        return skilldata_terminal_collision_evidence(
+            corpus, source='fixture-corpus.json')
+
+    def terminal_raw(self):
+        raw = bytearray(533)
+        raw[519] = 1
+        return bytes(raw)
+
+    def terminal_tail_reads(self):
+        rows = [
+            (43, 'switchToCenterBeforeCast', 'bool', 0xA5, 0x37DE8C5, 0x2CA88C0, 0x37DE8E0),
+            (44, 'tagDuringAttach', 'Beyond.Gameplay.Core.GameplayTagList',
+             0xB8, 0x37DE8F3, 0x2DA5C90, 0x37DE90E),
+            (45, 'toggleBuffs',
+             'System.Collections.Generic.List`1<Beyond.Gameplay.Core.ToggleBuffData>',
+             0xD8, 0x37DE92E, 0x381F8F0, 0x37DE949),
+            (46, 'uiRangeHints',
+             'System.Collections.Generic.List`1<Beyond.Gameplay.Core.UIRangeHintData>',
+             0xC8, 0x37DE969, 0x381F8F0, 0x37DE984),
+            (47, 'useAIExclusiveFrame', 'bool', 0x58, 0x37DE99D, 0x2CA88C0, 0x37DE9C2),
+        ]
+        return [
+            {'serializedOrderIndex': order, 'fieldName': name, 'wireType': wire,
+             'objectField': {'fieldOffset': field_offset},
+             'callInstructionRva': call, 'readerTargetRva': target,
+             'storeInstructionRva': store}
+            for order, name, wire, field_offset, call, target, store in rows
+        ]
+
+    def gameplay_tag_wrapper(self):
+        return {
+            'typeName': 'Beyond.Gameplay.Core.GameplayTagList',
+            'memberCount': 1,
+            'member': {
+                'name': 'predefinedTag',
+                'wireType': 'System.Collections.Generic.List`1<Beyond.Gameplay.Core.GameplayTag>',
+            },
+            'readerMethodIdentity': {
+                'pointerVa': 1, 'name': 'Deserialize',
+                'declaringType': 'Beyond.MemoryPack.Beyond_Gameplay_Core_GameplayTagListForMemoryPack',
+            },
+            'nestedReadType':
+                'System.Collections.Generic.List`1<Beyond.Gameplay.Core.GameplayTag>',
+            'headerEvidence': {
+                'headerByteWidth': 1, 'acceptedNonNullHeaderByte': 1,
+                'nullHeaderByte': 0xFF,
+            },
+        }
+
+    def positive_terminal_branch_fixture(self):
+        input_set = 'A' * 64
+        path = 'Data/Json/SkillData/fixture_tag_list.json'
+        tail = b'\x00\x01' + struct.pack('<I', 1) + b'\x01' + struct.pack('<I', 42)
+        tail += struct.pack('<I', 0) + struct.pack('<I', 0) + b'\x00'
+        raw = bytes(10) + tail
+        digest = hashlib.sha256(raw).hexdigest().upper()
+        hard_limit = len(raw)
+
+        def candidate(start, encoding):
+            parsed_report = frame_skill_terminal_at(raw, start, source=path)
+            parsed = [item for item in parsed_report['candidates']
+                      if item['encoding'] == encoding and item['end'] == hard_limit]
+            if len(parsed) != 1:
+                raise AssertionError((start, encoding, parsed_report))
+            item = parsed[0]
+            ranges = [
+                {'start': member['range']['start'], 'end': member['range']['end'],
+                 'kind': member['kind'], 'memberIndex': member['index']}
+                for member in item['members']
+            ]
+            return {
+                **item,
+                'startOffset': hex(start),
+                'endOffset': hex(hard_limit),
+                'exactToEof': True,
+                'parserCursor': hard_limit,
+                'hardLimit': hard_limit,
+                'candidateRange': {'start': start, 'end': hard_limit,
+                                   'endExclusive': True},
+                'byteRanges': ranges,
+                'boundaryClass': 'ambiguous',
+                'boundaryContext': {
+                    'inputSetSha256': input_set,
+                    'logicalFileIdentity': path,
+                    'logicalSha256': digest,
+                    'startOffset': start,
+                    'parserCursor': hard_limit,
+                    'hardLimit': hard_limit,
+                    'candidateRange': [start, hard_limit],
+                },
+            }
+
+        row = {
+            'virtualPath': path,
+            'logicalSha256': digest,
+            'parserCursor': 10,
+            'hardLimit': hard_limit,
+            'boundaryClass': 'ambiguous',
+            'boundaryContext': {
+                'inputSetSha256': input_set,
+                'logicalFileIdentity': path,
+                'logicalSha256': digest,
+                'parserCursor': 10,
+                'hardLimit': hard_limit,
+            },
+            'framing': {
+                'candidateCount': 2,
+                'candidates': [candidate(10, 'one-member-wrapper'),
+                               candidate(11, 'counted')],
+            },
+        }
+        corpus = {'inputSetSha256': input_set, 'files': [row]}
+        selection = {
+            'fieldName': 'tagDuringAttach.predefinedTag',
+            'memberIndex': 1, 'count': 1, 'row': row,
+        }
+        return corpus, selection, raw
+
+    def test_terminal_collision_preserves_both_identity_bound_byte_tilings(self):
+        corpus = self.corpus()
+        row = self.terminal_collision_row()
+        corpus['files'].append(row)
+        result = skilldata_terminal_collision_evidence(
+            corpus, source='fixture-corpus.json')
+        self.assertEqual(result['inputSetSha256'], self.input_set)
+        self.assertEqual(result['logicalFileIdentity'], row['virtualPath'])
+        self.assertEqual(result['logicalSha256'], row['logicalSha256'])
+        self.assertEqual(result['sourceRange'],
+                         {'start': 0, 'end': 533, 'endExclusive': True})
+        self.assertEqual(result['parserCursor'], 10)
+        self.assertEqual(result['classification'], 'ambiguous')
+        self.assertEqual([candidate['start'] for candidate in result['candidates']],
+                         [518, 519])
+        self.assertEqual([candidate['end'] for candidate in result['candidates']],
+                         [533, 533])
+        self.assertEqual([candidate['byteRanges'][-1]['end']
+                          for candidate in result['candidates']], [533, 533])
+        self.assertEqual(result['exactClosedRecords'], 0)
+
+    def test_terminal_candidate_identity_drift_fails_closed(self):
+        corpus = self.corpus()
+        row = self.terminal_collision_row()
+        row['framing']['candidates'][1]['boundaryContext']['logicalSha256'] = 'D' * 64
+        corpus['files'].append(row)
+        with self.assertRaises(ContextError) as caught:
+            skilldata_terminal_collision_evidence(corpus, source='fixture-corpus.json')
+        self.assertIn('boundaryContext.logicalSha256',
+                      caught.exception.diagnostics['expected'])
+
+    def test_terminal_candidate_gaps_and_trailing_bytes_fail_closed(self):
+        for mutation in ('gap', 'trailing'):
+            corpus = self.corpus()
+            row = self.terminal_collision_row()
+            if mutation == 'gap':
+                row['framing']['candidates'][0]['byteRanges'][1]['start'] += 1
+            else:
+                row['framing']['candidates'][1]['endOffset'] = '0x214'
+                row['framing']['candidates'][1]['candidateRange']['end'] = 532
+                row['framing']['candidates'][1]['candidateRange']['endExclusive'] = True
+                row['framing']['candidates'][1]['parserCursor'] = 532
+                row['framing']['candidates'][1]['boundaryContext']['parserCursor'] = 532
+                row['framing']['candidates'][1]['boundaryContext']['candidateRange'] = [519, 532]
+            corpus['files'].append(row)
+            with self.subTest(mutation=mutation), self.assertRaises(ContextError):
+                skilldata_terminal_collision_evidence(corpus, source='fixture-corpus.json')
+
+    def test_raw_sample_byte_witness_binds_candidate_identity_and_counts(self):
+        raw = self.terminal_raw()
+        collision = self.terminal_collision_for_raw(raw)
+        witness = skilldata_terminal_sample_byte_witness(
+            collision, raw, source='fixture-Potential_test.json')
+        self.assertEqual(witness['inputSetSha256'], self.input_set)
+        self.assertEqual(witness['candidateRange'],
+                         {'start': 518, 'end': 533, 'endExclusive': True})
+        self.assertEqual(witness['terminalRawHex'], '000100000000000000000000000000')
+        self.assertEqual(witness['nestedMemberCountByte']['value'], 1)
+        self.assertEqual([row['value'] for row in witness['signedListCounts']], [0, 0, 0])
+
+    def test_raw_sample_byte_witness_rejects_bad_header_counts_and_limits(self):
+        good = self.terminal_raw()
+        for mutation in ('short', 'trailing', 'header', 'count', 'boolean'):
+            raw = bytearray(good)
+            if mutation == 'short':
+                raw = raw[:-1]
+            elif mutation == 'trailing':
+                raw += b'\x00'
+            elif mutation == 'header':
+                raw[519] = 2
+            elif mutation == 'count':
+                struct.pack_into('<i', raw, 524, 1)
+            else:
+                raw[518] = 2
+            raw = bytes(raw)
+            collision = self.terminal_collision_for_raw(
+                good if mutation in ('short', 'trailing') else raw)
+            with self.subTest(mutation=mutation), self.assertRaises(ContextError):
+                skilldata_terminal_sample_byte_witness(
+                    collision, raw, source='fixture-Potential_test.json')
+
+    def test_static_tail_layout_ranks_shape_without_closing_record(self):
+        raw = self.terminal_raw()
+        collision = self.terminal_collision_for_raw(raw)
+        witness = skilldata_terminal_sample_byte_witness(
+            collision, raw, source='fixture-Potential_test.json')
+        result = skilldata_terminal_tail_layout(
+            collision, witness, self.terminal_tail_reads(),
+            self.gameplay_tag_wrapper(), source='fixture.dll')
+        self.assertEqual(result['classification'],
+                         'static-terminal-shape-match-with-conditional-shifted-candidate-conflict')
+        self.assertEqual(result['candidateComparison'][0]['candidateRange'],
+                         {'start': 518, 'end': 533, 'endExclusive': True})
+        self.assertEqual(result['candidateComparison'][1]['candidateRange'],
+                         {'start': 519, 'end': 533, 'endExclusive': True})
+        self.assertEqual(result['runtimeCursor'], 'unobserved')
+        self.assertEqual(result['exactClosedRecords'], 0)
+
+    def test_static_tail_layout_rejects_type_or_wrapper_drift(self):
+        raw = self.terminal_raw()
+        collision = self.terminal_collision_for_raw(raw)
+        witness = skilldata_terminal_sample_byte_witness(
+            collision, raw, source='fixture-Potential_test.json')
+        reads = self.terminal_tail_reads()
+        reads[2]['wireType'] = 'System.Collections.Generic.List`1<Wrong.Type>'
+        with self.assertRaises(ContextError):
+            skilldata_terminal_tail_layout(
+                collision, witness, reads, self.gameplay_tag_wrapper(), source='fixture.dll')
+        wrapper = self.gameplay_tag_wrapper()
+        wrapper['memberCount'] = 2
+        with self.assertRaises(ContextError):
+            skilldata_terminal_tail_layout(
+                collision, witness, self.terminal_tail_reads(), wrapper, source='fixture.dll')
+
+    def test_nonempty_terminal_branch_replays_both_identity_bound_candidates(self):
+        corpus, selection, raw = self.positive_terminal_branch_fixture()
+        result = skilldata_terminal_branch_sample_witness(
+            corpus, selection, raw, source='fixture-tag-list.json')
+        self.assertEqual(result['positiveBranch']['fieldName'],
+                         'tagDuringAttach.predefinedTag')
+        self.assertEqual(result['positiveBranch']['count'], 1)
+        self.assertEqual(result['positiveBranch']['recordHeaderMemberCounts'], [1])
+        self.assertEqual(result['classification'], 'ambiguous')
+        self.assertEqual(result['rawParserReplay']['oneMemberWrapperCandidate']['end'],
+                         len(raw))
+        self.assertEqual(result['rawParserReplay']['shiftedCountedCandidate']['end'],
+                         len(raw))
+        self.assertEqual(result['exactClosedRecords'], 0)
+
+    def test_nonempty_terminal_branch_rejects_hash_count_and_range_drift(self):
+        for mutation in ('hash', 'requested-count', 'candidate-range'):
+            corpus, selection, raw = self.positive_terminal_branch_fixture()
+            if mutation == 'hash':
+                bad = raw[:-1] + b'\x01'
+                chosen = selection
+            elif mutation == 'requested-count':
+                bad = raw
+                chosen = {**selection, 'count': 2}
+            else:
+                bad = raw
+                chosen = selection
+                chosen['row']['framing']['candidates'][0]['candidateRange']['start'] += 1
+            with self.subTest(mutation=mutation), self.assertRaises(ContextError):
+                skilldata_terminal_branch_sample_witness(
+                    corpus, chosen, bad, source='fixture-tag-list.json')
+
+    def test_selector_covers_every_positive_terminal_list_count(self):
+        rows = []
+        for ordinal, (member_index, count) in enumerate(
+                ((1, 1), (1, 3), (2, 1), (2, 2), (3, 1), (3, 2))):
+            members = [{'count': 0} for _ in range(5)]
+            members[member_index]['count'] = count
+            path = f'Data/Json/SkillData/branch_{ordinal}.json'
+            rows.append({
+                'virtualPath': path,
+                'logicalSha256': f'{ordinal:064X}',
+                'framing': {'candidates': [
+                    {'encoding': 'one-member-wrapper', 'members': members},
+                    {'encoding': 'counted', 'members': members},
+                ]},
+            })
+        corpus = {'inputSetSha256': 'A' * 64, 'files': rows}
+        selected = select_skilldata_terminal_branch_samples(
+            corpus, source='fixture-corpus.json')
+        self.assertEqual(
+            [(row['memberIndex'], row['count']) for row in selected],
+            [(1, 1), (1, 3), (2, 1), (2, 2), (3, 1), (3, 2)],
+        )
+        self.assertEqual(len({row['row']['virtualPath'] for row in selected}), 6)
+
+
+class SkillDataActionGroupBranchTests(unittest.TestCase):
+    input_set = 'A' * 64
+
+    @staticmethod
+    def empty_sequence_array_raw():
+        return (b'\x30\x02' + struct.pack('<i', 1) + b'\x02' +
+                struct.pack('<i', 0x12345678) + struct.pack('<i', 0) +
+                struct.pack('<i', 0) + b'\x99')
+
+    @staticmethod
+    def nonempty_sequence_unknown_action_raw():
+        return (b'\x30\x02' + struct.pack('<i', 2) + b'\x02' +
+                struct.pack('<i', 0x12345678) + struct.pack('<i', 1) +
+                b'\x03' + struct.pack('<i', 1) + b'\xD5opaque-tail')
+
+    def corpus_for(self, raw, path='Data/Json/SkillData/fixture_actiongroup.json'):
+        logical_sha = hashlib.sha256(raw).hexdigest().upper()
+        list_count = struct.unpack_from('<i', raw, 2)[0]
+        row = {
+            'inputSetSha256': self.input_set,
+            'virtualPath': path,
+            'logicalSha256': logical_sha,
+            'hardLimit': len(raw),
+            'boundaryClass': 'ambiguous',
+            'boundaryContext': {
+                'inputSetSha256': self.input_set,
+                'logicalFileIdentity': path,
+                'logicalSha256': logical_sha,
+                'hardLimit': len(raw),
+            },
+            'commonPrefixFraming': {'recordLists': [{'count': list_count}]},
+            'framing': {'candidateCount': 2, 'candidates': [{}, {}]},
+        }
+        return {'inputSetSha256': self.input_set, 'files': [row]}, row
+
+    def static_evidence(self):
+        return (
+            {
+                'inputSetSha256': self.input_set,
+                'firstSkillDataField': {'fieldName': 'actionGroupData'},
+                'actionGroupDataMembers': [
+                    {
+                        'serializedOrderIndex': 0,
+                        'fieldName': 'passiveEventActions',
+                        'readerMethodSpec': {
+                            'index': 610662,
+                            'genericType': {
+                                'typeName': 'System.Collections.Generic.List`1',
+                                'elementTypeName': 'Beyond.Gameplay.Core.AbilityActionMap',
+                            },
+                        },
+                    },
+                    {
+                        'serializedOrderIndex': 1,
+                        'fieldName': 'timelineActions',
+                        'readerMethodSpec': {
+                            'index': 610915,
+                            'genericType': {
+                                'typeName': 'System.Collections.Generic.List`1',
+                                'elementTypeName': 'Beyond.Gameplay.Core.TimelineAction+TimelineActionData',
+                            },
+                        },
+                    },
+                ],
+                'codeWindows': [{
+                    'rva': 58581179,
+                    'byteLength': 2314,
+                    'sha256': 'FEA359985EBF5DF75CC58D871469481F0F692B1768D84724FF5941D47CAD8132',
+                }],
+                'verifiedInstructionWindows': [
+                    {'rva': 65273925, 'rawHex': '4080FD02',
+                     'role': 'ActionGroupData member-count comparison against 2'},
+                    {'rva': 65273975, 'rawHex': '48894118',
+                     'role': 'store passiveEventActions result at object offset +0x18'},
+                    {'rva': 65274020, 'rawHex': '48894110',
+                     'role': 'store timelineActions result at object offset +0x10'},
+                ],
+            },
+            {
+                'methods': [{'methodIndex': 104445}, {'methodIndex': 104446}],
+                'anonymousReadOrder': {'mapMember2': ['scalar32', 'nullable-sequence-array']},
+                'codeWindows': [{
+                    'startRva': 63974160,
+                    'endRva': 63974463,
+                    'sha256': 'ADDDF617D14CF2A723E7E6CDD2978D46BC6557DEE539EA28A21A12619CCF42BB',
+                }],
+                'nestedContexts': [{
+                    'typeName': 'Beyond.Gameplay.Core.SequenceActionData',
+                    'methodSpecIndex': 610597,
+                }],
+            },
+            {
+                'contractPath': str(Path(__file__).resolve().parents[1] /
+                                    'game_data' / 'buff_b4_native.json'),
+                'contractSha256': hashlib.sha256(
+                    (Path(__file__).resolve().parents[1] /
+                     'game_data' / 'buff_b4_native.json').read_bytes()).hexdigest().upper(),
+                'methods': [{}],
+                'codeWindows': [{
+                    'startRva': 46828560,
+                    'endRva': 46829514,
+                    'sha256': 'CD9E5FC3BAB5502AC7D168F445CA3DC207C39D61A9CFF7D7F52F51A1F447B7C5',
+                }],
+            },
+            {
+                'methods': [{'methodIndex': 104346}, {'methodIndex': 104347}],
+                'windows': [{'rva': 0x39C6B82,
+                             'rawHex': '4080FE030F85DD030000'}],
+                'boundary': 'Header 3 takes a signed DWORD count after the one-byte header.',
+            },
+        )
+
+    def witness(self, raw, *, path='Data/Json/SkillData/fixture_actiongroup.json'):
+        corpus, _ = self.corpus_for(raw, path)
+        return skilldata_actiongroup_branch_sample_witness(
+            corpus, path, raw, source='fixture-actiongroup.json')
+
+    def test_empty_and_nonempty_branches_bind_ranges_and_keep_parents_open(self):
+        empty = self.witness(self.empty_sequence_array_raw())
+        self.assertEqual(empty['boundaryClass'], 'structural-prefix')
+        self.assertEqual(empty['parserCursor'], 15)
+        self.assertEqual(empty['consumedByteRanges'][-1],
+                         {'start': 11, 'end': 15, 'kind': 'count-i32'})
+        self.assertEqual(empty['completedNestedRecords'], [
+            {'start': 6, 'end': 15, 'kind': 'anonymous-ability-action-map'},
+            {'start': 2, 'end': 15, 'kind': 'anonymous-ability-action-map-list'},
+        ])
+        self.assertEqual(empty['nextMemberCountPeekOnly'], {
+            'fieldName': 'timelineActions.count', 'offset': 15,
+            'signedI32': 0, 'consumed': False,
+        })
+        self.assertEqual(empty['wholeSkillDataClassification'], 'ambiguous')
+        self.assertEqual(empty['wholeSkillDataExactClosedRecords'], 0)
+
+        nonempty = self.witness(self.nonempty_sequence_unknown_action_raw())
+        self.assertEqual(nonempty['boundaryClass'], 'opaque')
+        self.assertEqual(nonempty['parserCursor'], 20)
+        self.assertEqual(nonempty['countI32Fields'], [
+            {'offset': 2, 'end': 6, 'signedI32': 2},
+            {'offset': 11, 'end': 15, 'signedI32': 1},
+            {'offset': 16, 'end': 20, 'signedI32': 1},
+        ])
+        self.assertEqual(nonempty['firstUnconsumedActionUnionByte'], {
+            'offset': 20, 'firstByte': 0xD5, 'consumed': False,
+        })
+        self.assertEqual(nonempty['completedNestedRecords'], [])
+        self.assertEqual(nonempty['opaqueByteRanges'][0]['start'], 20)
+        self.assertEqual(nonempty['wholeSkillDataExactClosedRecords'], 0)
+
+    def test_static_native_alignment_covers_both_branches_but_closes_no_parent(self):
+        skilldata_reader, ability_map_reader, shared_list_reader, sequence_reader = (
+            self.static_evidence())
+        for raw in (self.empty_sequence_array_raw(),
+                    self.nonempty_sequence_unknown_action_raw()):
+            witness = self.witness(raw)
+            aligned = skilldata_actiongroup_branch_static_alignment(
+                witness, skilldata_reader, ability_map_reader, shared_list_reader,
+                sequence_reader, source='fixture-actiongroup.json')
+            self.assertEqual(aligned['status'], 'conditional-static-reader-alignment')
+            self.assertEqual(aligned['actionGroupDataExactClosedRecords'], 0)
+            self.assertEqual(aligned['wholeSkillDataClassification'], 'ambiguous')
+            self.assertEqual(aligned['wholeSkillDataExactClosedRecords'], 0)
+            self.assertEqual(aligned['runtimeProviderCacheSelection'], 'unobserved')
+
+    def test_ordinary_reader_stops_on_unknown_union_tag_without_completing_parent(self):
+        raw = self.nonempty_sequence_unknown_action_raw()
+        reader = BuffActionReader(raw, 'fixture-actiongroup.json', limit=len(raw))
+        reader.pos = 2
+        with self.assertRaises(BuffActionUnsupported) as caught:
+            reader.ability_action_map_collection_profile(0)
+        self.assertEqual(caught.exception.diagnostic['category'], 'union-tag')
+        self.assertEqual(caught.exception.diagnostic['offset'], 20)
+        self.assertEqual(reader.pos, 20)
+        self.assertFalse(any(row['kind'] in (
+            'anonymous-ability-action-map', 'anonymous-ability-action-map-list', 'sequence')
+            for row in reader.records))
+
+    def test_truncation_bad_headers_and_counts_preserve_first_unconsumed_byte(self):
+        bad_actiongroup_header = bytearray(self.empty_sequence_array_raw())
+        bad_actiongroup_header[1] = 3
+        with self.assertRaises(ContextError):
+            self.witness(bytes(bad_actiongroup_header))
+
+        bad_map_header = bytearray(self.empty_sequence_array_raw())
+        bad_map_header[6] = 3
+        malformed_map = self.witness(bytes(bad_map_header))
+        self.assertEqual(malformed_map['parserCursor'], 6)
+        self.assertEqual(malformed_map['parserError']['category'], 'member-count')
+        self.assertEqual(malformed_map['boundaryClass'], 'malformed')
+        self.assertEqual(malformed_map['opaqueByteRanges'][0]['start'], 6)
+
+        bad_nested_count = bytearray(self.empty_sequence_array_raw())
+        struct.pack_into('<i', bad_nested_count, 11, -2)
+        malformed_count = self.witness(bytes(bad_nested_count))
+        self.assertEqual(malformed_count['parserCursor'], 15)
+        self.assertEqual(malformed_count['parserError']['category'], 'count-bounds')
+        self.assertEqual(malformed_count['boundaryClass'], 'malformed')
+
+        truncated_sequence = (b'\x30\x02' + struct.pack('<i', 1) + b'\x02' +
+                              struct.pack('<i', 0x12345678) + struct.pack('<i', 1) +
+                              b'\x03\x01\x00')
+        truncated = self.witness(truncated_sequence)
+        self.assertEqual(truncated['parserCursor'], 16)
+        self.assertEqual(truncated['parserError']['category'], 'truncated')
+        self.assertEqual(truncated['boundaryClass'], 'structural-prefix')
+        self.assertEqual(truncated['opaqueByteRanges'][0]['start'], 16)
+
+    def test_trailing_bytes_stay_opaque_and_bad_identity_or_limit_fails_closed(self):
+        raw = self.empty_sequence_array_raw()
+        witness = self.witness(raw)
+        self.assertEqual(witness['parserCursor'], 15)
+        self.assertEqual(witness['opaqueByteRanges'], [{
+            'start': 15, 'end': len(raw),
+            'kind': 'unconsumed-actiongroup-and-skilldata-bytes',
+        }])
+
+        corpus, row = self.corpus_for(raw)
+        with self.assertRaises(ContextError):
+            skilldata_actiongroup_branch_sample_witness(
+                corpus, row['virtualPath'], raw[:-1] + b'\x98',
+                source='fixture-actiongroup.json')
+        row['hardLimit'] += 1
+        with self.assertRaises(ContextError):
+            skilldata_actiongroup_branch_sample_witness(
+                corpus, row['virtualPath'], raw, source='fixture-actiongroup.json')
+        row['hardLimit'] = len(raw)
+        row['boundaryContext']['inputSetSha256'] = 'B' * 64
+        with self.assertRaises(ContextError):
+            skilldata_actiongroup_branch_sample_witness(
+                corpus, row['virtualPath'], raw, source='fixture-actiongroup.json')
+
+    def test_native_alignment_rejects_reader_window_drift(self):
+        raw = self.empty_sequence_array_raw()
+        witness = self.witness(raw)
+        skilldata_reader, ability_map_reader, shared_list_reader, sequence_reader = (
+            self.static_evidence())
+        shared_list_reader['codeWindows'][0]['sha256'] = '0' * 64
+        with self.assertRaises(ContextError):
+            skilldata_actiongroup_branch_static_alignment(
+                witness, skilldata_reader, ability_map_reader, shared_list_reader,
+                sequence_reader, source='fixture-actiongroup.json')
+
+
+class SkillDataCursorHookCallSiteTests(unittest.TestCase):
+    def setUp(self):
+        self.base = 0x180000000
+        target = self.base + 0x2CA88C0
+        self.parts = {}
+        for instruction_rva in (0x37DE8C5, 0x37DE99D):
+            address = self.base + instruction_rva
+            self.parts[instruction_rva] = (
+                b'\xE8' + struct.pack('<i', target - address - 5))
+        self.pe = SimpleNamespace(
+            image_base=self.base,
+            bytes_at_va=lambda va, size: self.parts[va - self.base],
+        )
+
+    def test_exact_helper_targets_and_post_call_return_rvas(self):
+        result = skilldata_cursor_hook_call_sites(self.pe, source='fixture.dll')
+        self.assertEqual([site['callInstructionRva'] for site in result['sites']],
+                         [0x37DE8C5, 0x37DE99D])
+        self.assertEqual([site['returnAddressRva'] for site in result['sites']],
+                         [0x37DE8CA, 0x37DE9A2])
+        self.assertTrue(all(site['targetRva'] == 0x2CA88C0
+                            for site in result['sites']))
+
+    def test_truncated_trailing_wrong_opcode_and_wrong_target_fail_closed(self):
+        for instruction_rva, original in list(self.parts.items()):
+            mutations = (
+                original[:-1],
+                original + b'!',
+                b'\x90' + original[1:],
+                original[:-1] + bytes([original[-1] ^ 1]),
+            )
+            for bad in mutations:
+                self.parts[instruction_rva] = bad
+                with self.subTest(instruction_rva=instruction_rva,
+                                  bad=bad.hex()), self.assertRaises(ContextError):
+                    skilldata_cursor_hook_call_sites(self.pe, source='fixture.dll')
+            self.parts[instruction_rva] = original
+
+
 class SerializerReturnConsumerTests(unittest.TestCase):
     def setUp(self):
         self.parts={rva:b'\xe8'+struct.pack('<i',target-rva-5) for rva,target in
@@ -3162,6 +3983,325 @@ class ImageOwnerTests(unittest.TestCase):
 
     def test_unrelated_tail_not_consumed(self):
         self.assertEqual(type_image_owners(self.fixture([(0,3)])+b'tail', 3, source='fixture'), [0,0,0])
+
+
+class SkillDataPositiveNestedReaderReplayTests(unittest.TestCase):
+    input_set = 'A' * 64
+
+    def sample(self, raw, field_name, member_index, count, record_ranges,
+               header_counts, count_range):
+        digest = hashlib.sha256(raw).hexdigest().upper()
+        hard_limit = len(raw)
+        terminal_start = 10
+        return {
+            'inputSetSha256': self.input_set,
+            'logicalFileIdentity': f'Data/Json/SkillData/{field_name}.json',
+            'logicalSha256': digest,
+            'sourceRange': {'start': 0, 'end': hard_limit, 'endExclusive': True},
+            'parserCursor': 10,
+            'hardLimit': hard_limit,
+            'terminalCandidateRanges': [
+                {'start': terminal_start, 'end': hard_limit, 'endExclusive': True},
+                {'start': terminal_start + 1, 'end': hard_limit, 'endExclusive': True},
+            ],
+            'shiftedCandidateTypeProbe': skilldata_shifted_terminal_wrapper_probe(
+                raw, terminal_start, hard_limit, source='fixture.json'),
+            'listCounts': [{
+                'memberIndex': member_index, 'fieldName': field_name,
+                'countRange': count_range, 'count': count,
+                'recordRanges': record_ranges,
+                'recordHeaderMemberCounts': header_counts,
+            }],
+            'positiveBranch': {
+                'fieldName': field_name, 'memberIndex': member_index,
+                'count': count, 'recordRanges': record_ranges,
+                'recordHeaderMemberCounts': header_counts,
+            },
+            'classification': 'ambiguous',
+            'exactClosedRecords': 0,
+        }
+
+    def tag_fixture(self, count=1):
+        tags = b''.join(
+            b'\x01' + struct.pack('<I', 0x8CF01A14 + index)
+            for index in range(count))
+        terminal = (b'\x00\x01' + struct.pack('<I', count) + tags +
+                    struct.pack('<I', 0) + struct.pack('<I', 0) + b'\x00')
+        raw = bytes(10) + terminal
+        row = self.sample(
+            raw, 'tagDuringAttach.predefinedTag', 1, count,
+            [{'start': 16 + index * 5, 'end': 21 + index * 5,
+              'endExclusive': True} for index in range(count)], [1] * count,
+            {'start': 12, 'end': 16})
+        return raw, row
+
+    def toggle_fixture(self):
+        terminal = (b'\x00\x01' + struct.pack('<I', 0) +
+                    struct.pack('<I', 1) + b'\x02' +
+                    struct.pack('<I', 0) + struct.pack('<I', 0) +
+                    struct.pack('<I', 0) + b'\x00')
+        raw = bytes(10) + terminal
+        row = self.sample(
+            raw, 'toggleBuffs', 2, 1,
+            [{'start': 20, 'end': 29, 'endExclusive': True}], [2],
+            {'start': 16, 'end': 20})
+        return raw, row
+
+    def ui_range_fixture(self):
+        f32zero = struct.pack('<f', 0.0)
+        empty_string = struct.pack('<I', 0)
+        radius_key = struct.pack('<I', 6) + b'radius'
+        shape_body = (
+            f32zero + empty_string + b'\x00' + bytes(8) +
+            empty_string + empty_string + bytes(8) +
+            empty_string + empty_string + b'\x00' + f32zero +
+            radius_key + b'\x00' + struct.pack('<i', 2) +
+            bytes(5) + f32zero + empty_string)
+        shape = b'\x15' + shape_body
+        self.assertEqual(len(shape), 75)
+        ui_range = b'\x03\x00' + shape + struct.pack('<i', 4)
+        self.assertEqual(len(ui_range), 81)
+        terminal = (b'\x00\x01' + struct.pack('<I', 0) +
+                    struct.pack('<I', 0) + struct.pack('<I', 1) +
+                    ui_range + b'\x00')
+        raw = bytes(10) + terminal
+        row = self.sample(
+            raw, 'uiRangeHints', 3, 1,
+            [{'start': 24, 'end': 105, 'endExclusive': True}], [3],
+            {'start': 20, 'end': 24})
+        return raw, row
+
+    @staticmethod
+    def static_nested_schemas():
+        return {
+            'gameplayTagElement': {
+                'readerMethodIdentity': {'methodIndex': 104467},
+                'memberCountCheck': {'acceptedMemberCount': 1},
+                'tagIdField': {'fieldType': {'wireType': 'System.Int32'}},
+                'readerCall': {'targetRva': 0x2CA86B0},
+                'cursorAdvancement': {
+                    'validNormalPathByteWidth': 5,
+                    'derivation': 'one byte plus four bytes',
+                },
+            },
+            'toggleBuffData': {
+                'memberCountCompare': {'memberCount': 2},
+                'members': [{'fieldName': 'buffs'}, {'fieldName': 'conditions'}],
+            },
+            'uiRangeHintData': {
+                'memberCountCompare': {'memberCount': 3},
+                'members': [{'fieldName': 'selectAll'}, {'fieldName': 'shapeData'},
+                            {'fieldName': 'targetFaction'}],
+            },
+            'skillHintShapeData': {
+                'memberCountCompare': {'memberCount': 21},
+                'serializedOrder': [
+                    {'fieldName': name} for name in (
+                        'angle', 'angleKey', 'centerBaseIsEndPoint', 'centerOffset',
+                        'centerOffsetXKey', 'centerOffsetZKey', 'extent', 'extentXKey',
+                        'extentZKey', 'fixedExtent', 'radius', 'radiusKey',
+                        'restrictEndPointInRange', 'shape', 'useAngleKey',
+                        'useCenterOffsetKey', 'useExtentKey', 'useRadiusKey',
+                        'useWidthKey', 'width', 'widthKey')],
+            },
+        }
+
+    @staticmethod
+    def static_list_formatter():
+        return {
+            'classInstantiation': {'index': 816},
+            'methodSpecIndices': [215461],
+            'fastHeaderGuard': {
+                'countWidthBytes': 4,
+                'signedCount': True,
+                'remainingBytesComparedToCount': True,
+                'rangeFailureCondition': 'remaining < signed count',
+                'comparisonRva': 0x3BA4130,
+                'comparisonRawHex': '48634744488B4F18482BC84863C6483BC8',
+                'rangeFailureBranchRva': 0x3BA4141,
+                'rangeFailureBranchRawHex': '0F8CB4653201',
+                'rangeFailureTargetRva': 0x4ECA6FB,
+                'rangeFailureBodyRawHex': '33D28BCEE8900A8404CCCC',
+            },
+        }
+
+    def test_positive_tag_toggle_and_nested_shape_ranges_replay_to_hard_limits(self):
+        cases = [self.tag_fixture(), self.toggle_fixture(), self.ui_range_fixture()]
+        expected = [
+            ('tagDuringAttach.predefinedTag', 'read_skill_gameplay_tag_list_field', 1),
+            ('toggleBuffs', 'read_skill_toggle_buff_data', 2),
+            ('uiRangeHints', 'read_skill_ui_range_hint_data', 3),
+        ]
+        for (raw, sample), (field_name, reader, member_count) in zip(cases, expected):
+            with self.subTest(field=field_name):
+                replay = skilldata_positive_branch_reader_replay(
+                    sample, raw, source='fixture.json')
+                self.assertEqual(replay['positiveFieldName'], field_name)
+                self.assertEqual(replay['nestedReaderReplay']['elementRecords'][0]['memberCount'],
+                                 member_count)
+                self.assertEqual(replay['nestedReaderReplay']['reader'], reader)
+                self.assertEqual(replay['wholeSkillDataClassification'], 'ambiguous')
+                self.assertEqual(replay['wholeSkillDataExactClosedRecords'], 0)
+
+    def test_shifted_candidate_uses_wrapper_header_or_bounded_list_count_guard(self):
+        gameplay_tag = {
+            'typeName': 'Beyond.Gameplay.Core.GameplayTagList',
+            'memberCount': 1,
+            'nestedReadInstantiation': {'index': 816},
+            'headerEvidence': {
+                'headerByteWidth': 1,
+                'acceptedNonNullHeaderByte': 1,
+                'nullHeaderByte': 0xFF,
+            },
+        }
+        list_formatter = self.static_list_formatter()
+        schemas = self.static_nested_schemas()
+
+        raw, sample = self.tag_fixture(count=1)
+        replay = skilldata_positive_branch_reader_replay(
+            sample, raw, source='fixture-tag-one.json')
+        aligned = skilldata_nested_branch_static_alignment(
+            replay, schemas, gameplay_tag, list_formatter=list_formatter,
+            source='fixture-tag-one.json')
+        shifted = aligned['shiftedCandidateAssessment']
+        self.assertEqual(shifted['gameplayTagListHeaderByte']['value'], 1)
+        self.assertEqual(shifted['nestedListCount']['signedI32'], 0x01000000)
+        self.assertEqual(shifted['nestedListCount']['remainingAfterCount'], 13)
+        self.assertEqual(shifted['status'], 'rejected-by-registered-list-count-bound')
+        self.assertEqual(aligned['wholeSkillDataClassification'], 'ambiguous')
+        self.assertEqual(aligned['exactClosedWholeSkillDataRecords'], 0)
+
+        raw, sample = self.tag_fixture(count=3)
+        replay = skilldata_positive_branch_reader_replay(
+            sample, raw, source='fixture-tag-three.json')
+        aligned = skilldata_nested_branch_static_alignment(
+            replay, schemas, gameplay_tag, list_formatter=list_formatter,
+            source='fixture-tag-three.json')
+        shifted = aligned['shiftedCandidateAssessment']
+        self.assertEqual(shifted['gameplayTagListHeaderByte']['value'], 3)
+        self.assertEqual(shifted['status'],
+                         'outside-registered-GameplayTagList-header-path')
+
+        for fixture, source in ((self.toggle_fixture(), 'fixture-toggle.json'),
+                                (self.ui_range_fixture(), 'fixture-ui.json')):
+            raw, sample = fixture
+            replay = skilldata_positive_branch_reader_replay(sample, raw, source=source)
+            aligned = skilldata_nested_branch_static_alignment(
+                replay, schemas, gameplay_tag, list_formatter=list_formatter,
+                source=source)
+            shifted = aligned['shiftedCandidateAssessment']
+            self.assertEqual(shifted['gameplayTagListHeaderByte']['value'], 0)
+            self.assertEqual(shifted['status'],
+                             'outside-registered-GameplayTagList-header-path')
+
+    def test_shifted_candidate_count_guard_requires_exact_matching_formatter(self):
+        raw, sample = self.tag_fixture(count=1)
+        replay = skilldata_positive_branch_reader_replay(
+            sample, raw, source='fixture-tag-one.json')
+        gameplay_tag = {
+            'typeName': 'Beyond.Gameplay.Core.GameplayTagList',
+            'memberCount': 1,
+            'nestedReadInstantiation': {'index': 816},
+            'headerEvidence': {
+                'headerByteWidth': 1,
+                'acceptedNonNullHeaderByte': 1,
+                'nullHeaderByte': 0xFF,
+            },
+        }
+        without_formatter = skilldata_nested_branch_static_alignment(
+            replay, self.static_nested_schemas(), gameplay_tag,
+            source='fixture-tag-one.json')
+        self.assertEqual(without_formatter['shiftedCandidateAssessment']['status'],
+                         'unresolved-list-formatter-selection')
+        wrong_formatter = self.static_list_formatter()
+        wrong_formatter['classInstantiation']['index'] = 815
+        with self.assertRaises(ContextError):
+            skilldata_nested_branch_static_alignment(
+                replay, self.static_nested_schemas(), gameplay_tag,
+                list_formatter=wrong_formatter, source='fixture-tag-one.json')
+
+    def test_shifted_wrapper_probe_preserves_truncated_count_as_prefix(self):
+        probe = skilldata_shifted_terminal_wrapper_probe(
+            b'\x00\x01\x01', 0, 3, source='fixture-truncated.json')
+        self.assertEqual(probe['gameplayTagListHeaderByte'],
+                         {'offset': 2, 'value': 1})
+        self.assertEqual(probe['nestedListCount']['availableByteLength'], 0)
+        self.assertFalse(probe['nestedListCount']['complete'])
+        with self.assertRaises(ContextError):
+            skilldata_shifted_terminal_wrapper_probe(
+                b'\x00', 0, 2, source='fixture-overflow.json')
+
+    def test_nested_reader_replay_rejects_bad_outer_and_inner_headers(self):
+        raw, sample = self.toggle_fixture()
+        raw = bytearray(raw)
+        raw[20] = 3
+        raw = bytes(raw)
+        sample['logicalSha256'] = hashlib.sha256(raw).hexdigest().upper()
+        with self.assertRaises(ContextError):
+            skilldata_positive_branch_reader_replay(sample, raw, source='fixture-toggle.json')
+
+        raw, sample = self.ui_range_fixture()
+        raw = bytearray(raw)
+        raw[26] = 20
+        raw = bytes(raw)
+        sample['logicalSha256'] = hashlib.sha256(raw).hexdigest().upper()
+        with self.assertRaises(ContextError):
+            skilldata_positive_branch_reader_replay(sample, raw, source='fixture-ui.json')
+
+    def test_positive_branch_reader_schema_alignment_is_fail_closed(self):
+        raw, sample = self.tag_fixture()
+        replay = skilldata_positive_branch_reader_replay(sample, raw, source='fixture-tag.json')
+        gameplay_tag = {
+            'typeName': 'Beyond.Gameplay.Core.GameplayTagList',
+            'memberCount': 1,
+            'nestedReadInstantiation': {'index': 816},
+            'headerEvidence': {
+                'headerByteWidth': 1,
+                'acceptedNonNullHeaderByte': 1,
+                'nullHeaderByte': 0xFF,
+            },
+        }
+        aligned = skilldata_nested_branch_static_alignment(
+            replay, self.static_nested_schemas(), gameplay_tag,
+            list_formatter=self.static_list_formatter(), source='fixture-tag.json')
+        self.assertEqual(aligned['status'],
+                         'positive-raw-sample-matches-static-nested-reader-schema')
+        self.assertEqual(aligned['exactClosedWholeSkillDataRecords'], 0)
+        tag_id = aligned['alignment']['rawU32AndSignedI32Views'][0]
+        self.assertGreater(tag_id['rawU32'], 0x7FFFFFFF)
+        self.assertEqual(tag_id['signedI32'], tag_id['rawU32'] - 0x100000000)
+        bad_tag_schema = self.static_nested_schemas()
+        bad_tag_schema['gameplayTagElement']['cursorAdvancement'][
+            'validNormalPathByteWidth'] = 4
+        with self.assertRaises(ContextError):
+            skilldata_nested_branch_static_alignment(
+                replay, bad_tag_schema, gameplay_tag,
+                list_formatter=self.static_list_formatter(), source='fixture-tag.json')
+
+        raw, sample = self.toggle_fixture()
+        replay = skilldata_positive_branch_reader_replay(
+            sample, raw, source='fixture-toggle.json')
+        aligned = skilldata_nested_branch_static_alignment(
+            replay, self.static_nested_schemas(), gameplay_tag,
+            list_formatter=self.static_list_formatter(),
+            source='fixture-toggle.json')
+        self.assertEqual(aligned['alignment']['rawAndStaticFieldOrder'],
+                         ['buffs', 'conditions'])
+
+        raw, sample = self.ui_range_fixture()
+        replay = skilldata_positive_branch_reader_replay(sample, raw, source='fixture-ui.json')
+        aligned = skilldata_nested_branch_static_alignment(
+            replay, self.static_nested_schemas(), gameplay_tag,
+            list_formatter=self.static_list_formatter(), source='fixture-ui.json')
+        self.assertEqual(aligned['alignment']['rawAndStaticShapeFieldOrder'],
+                         [row['fieldName'] for row in self.static_nested_schemas()
+                          ['skillHintShapeData']['serializedOrder']])
+        schemas = self.static_nested_schemas()
+        schemas['skillHintShapeData']['serializedOrder'].reverse()
+        with self.assertRaises(ContextError):
+            skilldata_nested_branch_static_alignment(replay, schemas, gameplay_tag,
+                                                     list_formatter=self.static_list_formatter(),
+                                                     source='fixture-ui.json')
 
 
 if __name__ == '__main__':

@@ -40,6 +40,14 @@ Current durable state:
   palette bytes as draw-consumed data. Full capture's Streamline publication
   prerequisite can postpone dense palette sampling beyond the early pose gap.
 
+Character lighting import consumes the resolved active volume stack. A raw
+post-transfer profile still contains disabled values and cannot substitute for
+that stack; preserve its native transfer snapshot separately. Packed ambient
+vectors must not be recomputed from legacy authoring sliders. CharInfo uses its
+prefab-linked CharInfo_Volume base, not GachaRoom_Volume; actor snapshot application
+must preserve the selected context instead of injecting another scene's defaults.
+The authored profile join does not establish live stack-generation ownership.
+
 Changing actor counts, shader hashes, frame metrics, session ids, and capture
 inventories belong in `reports/assets/character_recovery/`.
 
@@ -147,6 +155,38 @@ only.
 
 ## Rendering boundary
 
+Transparent character materials must remain admitted when the sceneMV compositor
+replaces ordinary pipeline submission: recovered cloth uses `ForwardBase`.
+Preserve authored main-pass `_ZWrite` independently of `_TransparentDepthWrite`;
+the latter is not permission to enable depth writes in the transparent color
+pass. Missing lower translucent cloth was a submission omission, independent of
+remaining cloth simulation and shading differences.
+
+Cloth normal mapping preserves raw raster-interpolated normal/tangent weights
+until the mapped world normal is assembled and normalized. Unit vertex vectors
+do not justify normalizing the interpolants first. This correction has only a
+small measured effect on the sleeve and does not resolve its broad highlight;
+material mip bias and actual sampled texture payloads remain separate gaps.
+Camera-global and CPP otherData mip snapshots are now retained with matching
+copy endpoints; effective scale/getter inputs and draw-consumed upload lifetime
+remain unjoined. Sampler audits must query actual bound D3D samplers, not null
+sampler placeholders attached to separate texture descriptors. The lab pipeline
+removes forced anisotropy so per-texture filtering survives the quality preset;
+actual cloth samplers now match native linear min/mag and point mip filtering.
+This has only a small visual effect. Continue comparing rendered frames against
+the original at fixed animation checkpoints after rendering changes, with
+clothes and light effects prioritized over mouse-driven background movement.
+The shared native Texture2D importer now admits explicit material selections as
+well as effects. Cloth color, normal and packed inputs retain their original
+BC7/BC5 formats and authored mip chains through the actual color draw, preserving
+PNG GUIDs and material references. This closes texture reconstruction for those
+selected inputs, but leaves the broad sleeve highlight, deformation and burst
+smearing unresolved. Temporal resolve must use its explicitly published image
+extent for neighborhood and history-filter taps; the unused `_MainTex` implicit
+texel-size binding was zero in the actual draw. Publish the extent independently
+of optional dilation. Restored filtering improves the measured comparison, but
+history ownership/cadence, residual trails and burst composition remain open.
+
 - Direct3D11 is the authoritative lab backend because it matches the recovered
   retail shader binaries. D3D12 experiments remain labeled diagnostics.
 - CharacterNPR, LitEffect, deferred resolve, shadow, post-processing, temporal,
@@ -211,6 +251,15 @@ only.
   stored CharacterBit through its comparison. Depth writes and other stencil
   bits must not be inferred from the later color pass. See lab PROGRESS findings
   142-143 and `reports/assets/character_recovery/depth_only_outline_validation.json`.
+- Skinned hair's pixel-stage strand basis comes from the palette header, which
+  reconstructs as the authored root-bone world transform. Direct GPU readback
+  confirms Unity's skinned draw already supplies that basis in
+  `unity_ObjectToWorld`, even when the CPU renderer matrix reports identity.
+  Use the built-in skinned transform; the redundant matrix publisher was
+  removed. The isolated hair GPU probe distinguishes baked-mesh and skinned
+  submission without altering beauty variants. CPU property observations are
+  not GPU matrix proof, and matching VS/PS views do not establish byte lifetime
+  through a later retail draw. See lab PROGRESS findings 404-406.
 - ContactShadow captured-input replay needs repeat controls: original dispatches
   can differ at pixels with overlapping recovered output writes. Preserve the
   original dot-product instructions through distance quantization; scalar
@@ -228,7 +277,12 @@ only.
   `_PARALLAX_MAP` M01/M38 with a companion VFXBaseV2 particle cohort. Complete
   serialized prefab ownership, including fail-closed renderers, is the required
   shader-census starting point. The later overview_02 M27 and overview_02/03
-  M28 owners remain separately gated.
+  M28 owners remain separately gated. Canonical burst-frame GPU inspection
+  confirms no M27/LitEffect stone draw while the late source-enabled renderer
+  remains disabled with no material slots. Early one-time sidecar activation
+  logs do not establish later submission. Close the live late-stone producer
+  and deferred handoff before enabling presentation; post-shader changes cannot
+  restore a draw that was never submitted.
   Particle `moveWithTransform` is an integer simulation-space enum, not a
   boolean. M27 preserves Local simulation; world-space expanded GPU vertices
   do not imply world-space CPU particle positions. Apply the source parent
@@ -248,6 +302,14 @@ only.
   promoted through a hashed Resource plus active source-marker join, preserving
   readiness separately from the zero value. That scope does not authorize the
   later overview_02 M27 globals or either path's final deferred presentation.
+  The native anchor vector belongs to the world anchor-wave manager, not the
+  particle clock. Disabling its brightness preserves position and radius;
+  recover the scene manager's lifecycle and prior updates before publishing it
+  for late effects. See `reports/assets/character_recovery/native_hgvfx_anchor_476.json`.
+- Shared camera constant-buffer uploads must be recorded in the same command
+  stream as their bindings and consumers. Immediate uploads allow a later camera
+  to overwrite earlier queued inputs. The lab's queued-camera GPU verifier covers
+  both transform/global publishers, two cameras and both command-buffer layouts.
 - Material keywords, pass/queue selection, constant-buffer values, textures,
   depth, motion vectors, shadows, exposure, and history are accepted only from
   their exact serialized or observed owner.
@@ -374,9 +436,20 @@ only.
   path, object lifetime, or consumption of the recorded payload by a draw.
   Exact replay additionally requires the consumer's fresh t0 contents, t1/t2,
   ranged VS b0 and PS b0/b1, and actual pipeline state. Capture v4 retains those
-  inputs; v3 cannot establish them from resource identity alone. Initial
-  destination/depth dependence remains a separate replay gate. Follow the
-  capture README and lab progress log for validation and collection.
+  inputs; v3 cannot establish them from resource identity alone. Combined
+  capture also publishes a separate draw-owned post packet. Its authenticated
+  textures, exact constant ranges and fixed state now reproduce the retained
+  retail target byte-for-byte with original DXBC and independently proven full
+  coverage. This closes isolated post-draw replay, not the separate environment
+  CPP upload ownership or Unity rendering gaps. The draw-consumed LUT agrees
+  with the lab's retained CharInfo LUT. On those same captured inputs, the
+  recovered production Unity post shader preserves the geometry, fragments and
+  blur placement with small, nonzero channel differences. This isolated result
+  shifts the large full-scene gaps toward upstream content and live input
+  publication; it does not prove all post variants or parameter modes. Packed
+  bloom upload must round-trip to the original GPU bytes before comparison.
+  See the lab's original_dxbc_exact README for preparation commands and the
+  generated native/Unity post replay reports for evidence.
   Original Uber bytecode omits RDEF resource metadata; bound-input requirements
   come from executable declarations, not a zero reflection resource count.
   Isolated replay must also prove full target coverage before a cleared target
@@ -568,6 +641,18 @@ only.
   lifetime observations still invalidate evidence. Inspect its loss-reason
   ledger before treating downstream staging/backend failures as native-layout
   mismatches. Capture diagnostics now surface that causal failure explicitly.
+  Fullscreen bindings and indexed PS b4 retain immutable draw-local map state;
+  later maps must not replace its generation or completed unmap timestamps.
+  The latest-per-resource ledger cannot reconstruct this history for older
+  captures. A matching map generation still does not exclude GPU writes or
+  prove resource creation/destruction lifetime.
+  Fullscreen chronology uses the observed Present clock even without a
+  resource-copy owner. Joined late frames retain unowned post chronology.
+  Combined capture publishes the completed post inputs and output separately,
+  moving staging ownership without new GPU copies and reusing the CPU buffer
+  after acknowledgement of the joined packet. The packet preserves the draw's
+  owner, call and Present; collection requires its declared inputs and output.
+  This does not close the native packed-allocation-to-upload ownership gap.
   Per-window completeness and exact camera bytes must validate before using
   a runtime phase to explain a captured draw; raw instance IDs are not source
   asset names. Follow the EndfieldCapture README's opt-in procedure and retain
@@ -810,8 +895,20 @@ outputs are verified. See the capture environment observer guide for contracts.
   for collection and validation; this scope omits Streamline surfaces.
 - Report spatial, temporal, silhouette, effect, and color errors separately.
   One aggregate score can hide a regression in a critical layer.
+- Sparse saved checkpoints must still render intervening simulation frames.
+  The batch capture previously advanced animation while retaining color history
+  from the last saved checkpoint; motion history required consecutive frames.
+  Explicit capture now owns camera rendering at output resolution. Optional
+  bounded CPU receipts verify camera/history chronology; selected GPU captures
+  establish actual bindings separately. This fixes a capture defect, not native
+  temporal parity. The first-visible blank-frame/reset boundary remains open.
 - Captured resources and replayed lab outputs keep their color space, format,
   viewport, frame, camera, and producer provenance.
+  Normalize raw-surface row orientation before assigning upright anatomical
+  regions; preserve the transform in the report. Sharper diagnostic output is
+  not automatically more faithful: isolated radial removal sharpens cloth but
+  worsens the retained original-frame comparison. Join native post ownership
+  before changing that behavior.
 - Reference videos and raw frames are evidence inputs, not repository memory
   prose.
 
@@ -842,6 +939,12 @@ Character-wide texture repair applies only exact source texture-contract
 entries. Recursive scans also reach effects and other importer-owned assets;
 they must not guess material roles from filenames and overwrite those settings.
 Fallback texture setup belongs to an import with actual material-slot context.
+Effect texture contracts preserve source compression, color space, sampler
+settings and authored mip chains through the existing PNG asset identities.
+Equal decoded image bytes do not establish equal shader sampling: an sRGB
+view changes RGB values, and generated mips can change filtering. Compare
+actual GPU views and payloads after import. A same-name/PathID asset from a
+newer source version must not silently replace the capture-matched texture.
 
 ## Remaining gaps
 
@@ -865,10 +968,17 @@ Fallback texture setup belongs to an import with actual material-slot context.
   native paths; join activation/release and tween identity before choosing
   whether lab selection resets or preserves camera state. Visible actor-switch
   gaps do not establish camera initialization timestamps.
-  The pose observer now retains bounded gyroscope lifecycle callbacks across
-  both visits, with before/after extension/tween state and QPC/Present clocks.
-  Use the complete raw receipt to test reuse; it does not establish allocation
-  lifetime or actor consumption by itself.
+  The pose observer retains separate bounded gyroscope lifecycle and Tick
+  receipts across both visits, including before/after target, offset and
+  extension/tween state with QPC/Present clocks. Collection requires both;
+  overflow and incomplete reads/callbacks fail closed. The camera auditor can
+  bracket draws with either standalone pose ticks or the environment stream.
+  Following observations remain later evidence, even if their values match;
+  neither stream alone establishes actor ownership or camera consumption.
+  Match the recorded state sequence separately from QPC brackets: a draw can
+  agree with a Tick whose callback overlaps the metadata observation, or with
+  a state retained after that Tick completed. Preserve repeated-value ambiguity;
+  nearest-clock selection alone can create false trajectory outliers.
   EndfieldCapture's
   dedicated pose-timing launcher preallocates a bounded dense palette sequence
   before readiness and arms on a new Animator/graphics trigger without waiting
@@ -895,6 +1005,75 @@ Fallback texture setup belongs to an import with actual material-slot context.
   attachment, and idle waiting before authenticated Play/draw; WARP bootstrap
   readiness and regular Present scheduling are not valid substitutes.
 - Expand converter and shader fixtures while preserving exact source bytes.
+- Version M27 terrain inputs with their selected shader program. A newer
+  retained consumer gates the terrain profile with an additional enable lane
+  where the older generative shell declares padding. Exact shader metadata and
+  the current ordinary native producer identify the complete 16-byte block as
+  enable, curvature scale, curvature offset and encoded profile. Reset disables
+  the keyword and sets terrain stencil; it does not clear the block. A draw-local
+  zero fixture does not establish manager lifecycle, active patch state or a
+  global default. The native CPP terrain member is a separate 20-byte structure
+  with authored use, curvature, effective keyword and stencil; it has no profile
+  index. Device/feature policy can make its keyword flag differ from authored
+  use. The reusable ordinary CPP conversion preserves both flags and the
+  native 20-byte layout; it does not replace the GPU publisher or prove its
+  selected-frame inputs. Observe both before joining this structure to the GPU buffer.
+  The environment-shadow observer retains member snapshots and now hooks the
+  actual terrain packer, allocation helper and profile lookup. Validated retail
+  observations connect packed allocations through staging-copy source offsets
+  and mapped destinations to bound terrain ranges. It records unscoped
+  execution rather than assuming bridge containment, and samples both neighboring request
+  inputs when a bridge exists; native execution reads the first input.
+  Use the environment-shadow launcher to collect this bounded native trace.
+  Packing bytes and request endpoints do not establish allocation lifetime,
+  backend upload generation or GPU consumption. The no-layer path binds an
+  existing buffer whose contents remain unproven by the packer observer.
+  Captured disabled/zero terrain values still produce M27 emission in exact
+  packet replay, so those values alone do not explain missing live stones.
+  Version the consumer and close selected-frame ownership before
+  admitting presentation; preserve distinct payloads through GPU consumption.
+  Material validation must cover every selected shader-read field and its
+  explicit runtime copy owner; matching a destination default does not establish
+  source transfer. Synthetic compute/pixel readbacks verify buffer transport,
+  independently of selected retail frame ownership.
+  Compiler callbacks carry no asset identity: require an explicit selected-pass
+  bytecode hash before joining an observed callback. Matching resource layouts
+  alone can select an unrelated shell, and distinct source files can compile
+  to identical bytecode. Keep versioned replacement programs separately pinned;
+  diagnostic shell sink instructions do not represent retail pixel shading.
+  The offline M27 selected-draw runner now reproduces all five captured targets
+  with nonzero shading and a failing emission perturbation control. After-draw
+  depth is an idempotence seed, not preceding scene history. This validates the
+  selected packet's shading while live producer ownership and submission remain
+  open. Continue full-scene original/render comparisons after runtime changes,
+  emphasizing cloth transparency, fabric detail and light effects.
+  Native centered Halton jitter arithmetic now matches a selected c19 packet;
+  its mode-dependent cycle, increment/wrap and positive forced-phase policy
+  are also implemented. The opt-in NGX proxy generates its retained diagnostic
+  cycle from that arithmetic. Native camera state is retained by camera plus
+  XR multipass ID. Its update precedes culling-parameter acquisition, so failed
+  culling must not stall the camera counter. Reset clears that counter without
+  resetting jitter phase; neither animation entry nor the resettable count can
+  establish the phase. In contrast, UpdateAntialiasing clears phase when jitter
+  is not required, before the later increment. Its temporal-mode requirement
+  includes the MetalFX platform capability, not just a nonzero mode value.
+  Combined validation now exposes the already-recorded raw camera AA flags,
+  additional-camera identities and read/change failures. Inspect these before
+  requesting another capture for mode evidence; raw fields still do not prove
+  IFix getter results, phase initialization or upload consumption. Table settings
+  reach a camera through ApplyTableCameraSettings and its one-update flag;
+  graphics-quality application also updates the main camera directly. Preserve
+  these producers separately from authored startup defaults and history resets.
+  Mode mutation history and consistent projection/history integration remain open.
+  CPP request mip bias has its own reusable gated evaluator; do not substitute
+  the camera material/resolution producer. Recorded request values still need
+  an upload-generation join before selecting the live draw route.
+  Check actual draw-time shader hashes as well as compiler callbacks: a successful
+  selected-pass compile and SetPass can still end in an error-shader draw.
+  Clear the shader cache after independent CompileVariant and before runtime
+  warm-up. The synthetic draw fixture verifies both selected shell hashes and
+  nonzero shading. On the validated Unity D3D11 path, ShaderLab LEqual submits
+  native GREATER_EQUAL; GEqual submits LESS_EQUAL under reversed depth.
 - Turn the validated Endminf solution into data-driven profiles for all
   playables without actor-specific renderer forks.
 - Keep capture tooling bounded, observation-only, exact-build gated, and

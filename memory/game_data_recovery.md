@@ -62,7 +62,12 @@ its reader, fixtures, and generated corpus report. Durable current conclusions:
 
 - DynamicStreaming is a generated FlatBuffers family with validated version,
   grid, string, resource/state, and area accessors. The deeper meaning of its
-  DataMask and several record fields remains unresolved.
+  DataMask and several record fields remains unresolved. The maintained
+  `stream_area` gate rejoins current `FBStreamArea.bytes` files to the
+  authenticated outer VFS ledger and requires the final vector to reach payload
+  EOF; its six vector widths and one inline root field are framing evidence,
+  not field names or runtime semantics. Current corpus details are in
+  [`dynamic_stream_area_current_latest.md`](../reports/animestudio/dynamic_stream_area_current_latest.md).
 - StreamingChunkInfo has an exact anonymous EOF graph and slot partitions
   derived from actual vtable positions. Standard rows provide one inline
   eight-byte pair and a counted vector of eight-byte pairs. Their anonymous
@@ -189,17 +194,55 @@ its reader, fixtures, and generated corpus report. Durable current conclusions:
   complete byte layouts.
 - LipSync JsonData has an exact selected-build MemoryPack layout. Its float rows
   are native-proven Unity keyframe values. LipSync animation data remains
-  distinct from language voice-audio availability.
+  distinct from language voice-audio availability. The maintained
+  `memorypack.lipsync_corpus` gate binds every current family identity to
+  `AnimeStudio stream --verify-md5` bytes and requires the 15-member reader to
+  consume each file through EOF; changing coverage totals stay in its generated
+  report.
+- NPC MontageNew JsonData has a bounded three-member root and 24-member body;
+  member 3 and member 18 collections use explicit counts and nested member
+  markers. Strings, scalar values and fixed record bodies stay anonymous. The
+  `memorypack.npc_montage_corpus` gate joins current ledger identities to
+  `AnimeStudio stream --verify-md5` bytes by path, length and logical MD5, then
+  requires the maintained frame reader to consume supported records through
+  EOF. Coverage totals belong in
+  `reports/animestudio/npc_montage_current_latest.{json,md}`; exact framing does
+  not establish field meaning or runtime use.
 - SkillData's MemoryPack framing remains a structural prefix: the current
-  corpus report preserves all valid EOF-anchored terminal candidates. The
-  current IL2CPP context resolves the resource type as `Core.SkillData` rather
-  than the same-named AI nested type and establishes relative reader order, but
-  does not join an absolute cursor to a current VFS file. Available TypeTrees
-  do not cover these JsonData files. Static wrapper and adapter identities do
-  not establish which formatter consumed the payload or distinguish the
-  one-byte-shifted bool-versus-counted terminal candidates; neither candidate
-  is a proven record end. A bounded exact-build `skilldata-cursor` observer is
-  available, but no receipt has yet verified a candidate. Cleanup now requires
+  corpus report preserves all valid EOF-anchored terminal candidates. Exact-
+  build native evidence resolves the resource type as `Core.SkillData` and
+  orders the first field as `actionGroupData`; its nested reader requests
+  `passiveEventActions` followed by `timelineActions`. Current VFS branches
+  cross-check those list counts and consumed prefix ranges. The empty-list
+  nested endpoint `[1,10)` remains conditional on both generic formatter
+  queries selecting the audited four-byte zero-count path. Provider/cache
+  state and an executed cursor are not available offline, so this does not
+  establish which formatter path ran or prove a parent record end. The
+  exact-build offline audit now binds raw bytes
+  for one terminal collision and branch samples covering every positive
+  count shape of the three terminal lists to their current VFS identities,
+  hashes and hard limits, then matches nested parser cursors and member order
+  to registered static reader bodies. This includes the one-member
+  GameplayTagList wrapper, its GameplayTag element reader, ToggleBuffData, and
+  UIRangeHintData with its nested 21-member shape reader. The registered
+  GameplayTag path consumes one member-count byte and a four-byte field; its
+  `tagId` is `System.Int32`, while the parser preserves the same bytes as an
+  unsigned id/hash view, so signed semantic interpretation remains open.
+  Under these registered paths, the shifted tail fails either the wrapper's
+  accepted-header path or the bounded list reader's remaining-byte check. This
+  ranks the tail hypotheses offline, but provider/cache selection and an
+  executed parent cursor remain unavailable, so no whole SkillData record is
+  closed. A separate ActionGroupData branch probe conditionally matches a
+  `passiveEventActions` AbilityActionMap element to its registered reader: an
+  empty SequenceActionData array reaches the map's static end, while a
+  nonempty sequence stops before its first non-null action-union payload. This
+  does not close the parent list or ActionGroupData; bytes outside these
+  sample-local ranges and before the terminal tail remain opaque.
+  The report also verifies the observer's post-call return-address coordinates,
+  which are hook locations rather than a live cursor receipt.
+  Available TypeTrees do not cover these JsonData files.
+  A bounded exact-build `skilldata-cursor` observer is available, but no receipt
+  has yet verified a candidate. Cleanup now requires
   a post-disable thread-IP rendezvous over the detour and MinHook trampoline;
   incomplete enumeration, context reads, or thread resumption leaves the
   capture incomplete and transfers its owners to a cleanup worker that retries
@@ -256,6 +299,13 @@ selected native enum contracts, Assets, Audio, and the curated graph.
   on malformed prefixes even when the legacy suffix reader succeeds. Current
   Sequence consumer evidence places the counted indirect child array before
   two nonzero-normalized bytes; child output-slot width does not bound payloads.
+  `memorypack.buff_1b_corpus` joins exact-closed root-continuation tag `0x1B`
+  records to re-streamed current logical bytes and the exact-build selected
+  `BlowOffAction_Data` reader contract. This keeps the action body anonymous;
+  the continuation profile does not authenticate root-field ownership. Live
+  provider selection, action semantics and whole-BuffData EOF remain unresolved.
+  Changing coverage belongs in
+  `reports/animestudio/buff_1b_current_latest.{json,md}`.
   `scripts/game_data/buff_184_native.json` joins TogglableAction to header6:
   the common prefix followed by two independent SequenceActionData records.
   Null or empty first sequences retain the second, and each count reserves
@@ -1441,6 +1491,19 @@ Stable conclusions:
 
 - `build_audio.py` owns decode, bank/HIRC indexing, relinking, and Gameplay
   sidecars. Shared SFX/music and language voice remain separate physical roots.
+- Numeric HIRC type `0x03` Action bodies now have an input-set-bound structural
+  cursor gate. It joins verified package hashes/chunks/physical sources to the
+  authenticated outer ledger and reconciles per-bank with package totals;
+  unsupported bodies stay unsupported. Exact framing does not establish
+  operation names, field ownership, targets, runtime execution, selection, or
+  audibility. Current corpus details belong in
+  [`reports/animestudio/hirc_action_current_latest.md`](../reports/animestudio/hirc_action_current_latest.md).
+- Numeric HIRC type `0x02` source prefixes have a companion current-corpus
+  gate. The maintained parser bounds the 14-byte prefix and the optional
+  plugin-type-`0x02` parameter range; the gate reconciles object counts and
+  prefix-plus-opaque-tail body bytes per bank/package against the authenticated
+  outer ledger. The remaining body stays opaque and has no full cursor claim.
+  See [`reports/animestudio/hirc_type02_prefix_current_latest.md`](../reports/animestudio/hirc_type02_prefix_current_latest.md).
 - AKPK entries, Wwise numeric media ids, Events, containers, switches, random
   nodes, RTPC curves, and authored consumers keep their native identities.
   Same-id files in different roots are not collapsed by filename stem.

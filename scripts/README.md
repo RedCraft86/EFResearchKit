@@ -30,6 +30,14 @@ current native consumer contract, and writes
 `reports/animestudio/terrain_tret_latest.{json,md}`. It is a focused recovery
 command, not part of normal WebUI export.
 
+The maintained DynamicStreaming `stream_area` gate is
+`python -m scripts.game_data.dynamic_stream_area_corpus --expected-input-set-sha256 INPUT_SET_SHA256`.
+It revalidates the authenticated outer VFS inputs, streams only current
+`FBStreamArea.bytes` files, checks every payload against its ledger identity,
+and writes `reports/animestudio/dynamic_stream_area_current_latest.{json,md}`.
+It bounds the root fields and requires the greatest vector end to equal payload
+EOF; gaps between offsets and record contents remain unassigned.
+
 For the recovery path and evidence boundary of an individual WebUI page, use
 [`memory/webui/README.md`](../memory/webui/README.md). This file remains the
 command and module-ownership map.
@@ -115,6 +123,8 @@ a degraded reason instead of using them as direct evidence.
 | Assets | `build_assets.py` | asset indexes and media lookup |
 | Audio | `build_audio.py` | decoded/relinked audio data |
 | Audio semantics | `build_audio_semantics.py` | compact Audio page evidence and shards |
+| Audio HIRC structural gates | `audio_semantics/hirc_action_corpus.py` | Action cursors and type `0x02` source prefixes under `reports/animestudio/` |
+| DynamicStreaming stream-area gate | `game_data/dynamic_stream_area_corpus.py` | `reports/animestudio/dynamic_stream_area_current_latest.{json,md}` |
 | Updates | `build_updates.py` | `webui/data/updates/latest.json`, `webui/data/updates/characters.json` |
 | Packaging | `pack_webui.py` | distributable static package |
 
@@ -214,6 +224,8 @@ python -m scripts.game_data.streaming_marker13_corpus --input-set-sha256 CURRENT
 python -m scripts.game_data.streaming_marker2_corpus --input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
 python -m scripts.game_data.memorypack.skill_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256 --output reports/animestudio/skilldata_current_latest.json --output-md reports/animestudio/skilldata_current_latest.md
 python -m scripts.game_data.memorypack.skill_cursor_receipt --preflight
+python -m scripts.game_data.memorypack.npc_montage_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+python -m scripts.game_data.memorypack.buff_1b_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
 %ASCLI% shader-recover --input PATH_TO_SPIRV --output PATH_TO_HLSL
 %ASCLI% inspect-object --index OBJECT_INDEX.jsonl --path-id PATH_ID --source SOURCE --type TYPE
 %ASCLI% audit-refs --index OBJECT_INDEX.jsonl
@@ -287,6 +299,14 @@ hashes, hard limits, and terminal candidates. It can promote only the observed
 terminal range, not the complete SkillData schema. Use its receipt mode from
 the exact-build workflow in `tools/EndfieldCapture/README.md`; `--preflight`
 prints the authenticated current input-set hash without launching the game.
+`memorypack.npc_montage_corpus` authenticates the complete current
+`Data/Json/NPC/MontageJson/MontageNew/*.json` family by joining each
+outer-ledger identity to AnimeStudio `stream --verify-md5` output, then frames
+supported records through EOF. It checks current chunks, CLI and parser
+fingerprints at both ends and writes
+`reports/animestudio/npc_montage_current_latest.json` and `.md`. Changing
+coverage belongs in that report; nested strings, scalars and fixed record bodies
+remain anonymous.
 `memorypack.corpus_gate` owns shared outer-ledger, overlay, fingerprint and output
 guards. `memorypack.buff_corpus` joins the full current BuffData stream and retains
 every filename-string anchor and reader-accepted suffix candidate, without
@@ -308,6 +328,21 @@ supported first collection, beginning at `currentEventPrefix.consumedEnd`.
 Its independent status and ranges retain the remaining physical bytes as opaque;
 malformed continuation data also fails publication. This does not join the
 filename suffix to a proven root field or establish whole-schema EOF.
+`memorypack.buff_1b_corpus` rebuilds that full current census, selects only
+exact-closed tag `0x1B` records from root continuation, and re-streams matching
+files to verify their literal tag byte against ledger MD5 and logical SHA-256.
+It joins the tag to the exact-build selected `BlowOffAction_Data` reader order
+and writes `reports/animestudio/buff_1b_current_latest.{json,md}`. Provider
+selection, action semantics and whole-BuffData EOF remain unresolved.
+`memorypack.lipsync_corpus` joins the full LipSync JsonData stream to current
+ledger identities and runs the strict 15-member reader through EOF, checking
+logical MD5 and source/tool/parser pins at both ends. It reads JSONL one row at a
+time and writes `reports/animestudio/lipsync_current_latest.json` plus `.md`:
+
+```bat
+python -m scripts.game_data.memorypack.lipsync_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+```
+
 `python -m scripts.game_data.il2cpp_context_audit` emits an exact-build native
 generic-instantiation audit as JSON on stdout. `il2cpp_context` owns bounded
 pointer-table/record/vector decoding and reciprocal method-parameter identity;
@@ -315,7 +350,19 @@ the audit checks selected native inputs and consumer pins, scans all registered
 instances, validates metadata image ownership and unique module-name joins, and
 rechecks the saved SkillData corpus's live input/tool/parser/chunk pins through
 `memorypack.skill_corpus.verify_current_report_inputs`. It does not
-re-stream VFS bytes or establish runtime formatter/cursor identity.
+re-stream the full corpus or establish runtime formatter/cursor identity. Its
+SkillData section re-reads one terminal sample and selected branches covering
+every positive terminal-list count shape in the saved census. Each sample is
+bound to its current logical identity/hash/hard limit and replayed against the
+exact-build reader order and field types. It also checks the shifted candidate
+against the registered GameplayTagList header and matching List<GameplayTag>
+remaining-byte guard. These are conditional static-path checks; runtime
+provider/cache selection and an executed cursor remain unobserved.
+Its ActionGroupData section also cross-checks empty and nonempty
+`passiveEventActions` sequence branches against the registered AbilityActionMap
+and SequenceActionData readers. The empty-array branch reaches the map's
+conditional static end; the nonempty branch stops before its first non-null
+action-union byte, leaving its parent list incomplete.
 Object indexes may be JSONL or
 `.jsonl.gz`; `certify-index` requires a complete terminal summary row, `replay`
 uses one `{ "pathId": N, "source": "...", "type": "..." }` request per line,
@@ -483,6 +530,19 @@ HIRC candidates separately in
 Use `--skip-decode --refresh-hirc` when parser/schema work needs a fresh HIRC
 bank pass while decoded audio files are already current; plain `--skip-decode`
 reuses the existing event-media/HIRC cache.
+For a structural-only current-corpus cursor audit of numeric HIRC type `0x03`,
+pass the exact `inputSetSha256` from
+`reports/animestudio/vfs_understanding_latest.json` with the required
+`--expected-input-set-sha256` argument to
+`python -m scripts.audio_semantics.hirc_action_corpus`.
+The gate binds verified package MD5/chunk/source identities and per-bank cursor
+totals to the outer ledger, then writes
+`reports/animestudio/hirc_action_current_latest.{json,md}`. It also writes
+`reports/animestudio/hirc_type02_prefix_current_latest.{json,md}` after
+reconciling every type `0x02` object count and its bounded source-prefix bytes
+plus opaque-tail bytes against package and bank body totals. The type `0x02`
+report leaves the opaque tail unparsed; neither report assigns Action operation
+names or runtime behavior.
 Its v150 HIRC parser also publishes exact NodeBase effect slots and output-bus
 IDs. Effect definitions retain physical PCK/bank scope, built-in plug-in class
 identity, and parameter hashes. Fingerprinted shipped `SetParamsBlock` layouts

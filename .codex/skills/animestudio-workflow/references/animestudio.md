@@ -167,7 +167,7 @@ The stable code and fixture entry points are:
 | Table / SparkBuffer | `AnimeStudio/Endfield/Extraction/EndfieldSparkBuffer.cs` | `EndfieldSparkBufferTests.cs` |
 | JsonData / LipSync | `scripts/game_data/memorypack/lipsync.py` | `scripts/tests/test_memorypack_lipsync.py` |
 | JsonData / gameplay subfamilies | `scripts/story_builder/*_binary.py`, `scripts/game_data/memorypack/`, routed per virtual-path family | matching `scripts/tests/test_*_binary.py`, including `test_jsondata_binary.py`; current SkillData/BuffData and LevelData/LevelScriptData partial framings stay non-exact |
-| JsonData / NPC Montage | `scripts/game_data/memorypack/npc_montage.py` | `scripts/tests/test_memorypack_npc_montage.py` (both counted collections and nested markers exact-frame the current family) |
+| JsonData / NPC Montage | `scripts/game_data/memorypack/npc_montage.py`, `scripts/game_data/memorypack/npc_montage_corpus.py` | `scripts/tests/test_memorypack_npc_montage.py`, `scripts/tests/test_memorypack_npc_montage_corpus.py` (authenticated current ledger/stream join; exact EOF gate; report: `reports/animestudio/npc_montage_current_latest.{json,md}`) |
 | ExtendData / CompressData | `AnimeStudio/Endfield/Extraction/EndfieldCompressData.cs`, `scripts/game_data/extend_data_binary.py` | AnimeStudio CLI fixtures and `scripts/tests/test_mmap_extend_data.py` |
 | Lua | `AnimeStudio/Endfield/Extraction/EndfieldLuaDecoder.cs` | AnimeStudio CLI fixtures plus the `lua-sweep` mode |
 | Video / USM | `AnimeStudio/Endfield/Extraction/EndfieldUsmConverter.cs` | AnimeStudio CLI USM framing fixtures |
@@ -294,6 +294,13 @@ to run the game. The current native parser signatures carry no payload length
 and perform no final cursor/EOF comparison. Their numeric magic values recur
 inside the same payloads, so signature scanning cannot substitute for those
 missing bounds or establish a record start.
+
+For BuffData tag `0x1B`, run `python -m scripts.game_data.memorypack.buff_1b_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256`.
+It rebuilds the current BuffData census, verifies the selected tag byte against
+its authenticated VFS logical file, and joins the exact-build selected action
+reader. Runtime provider selection, action meaning, suffix ownership and whole
+BuffData EOF remain unresolved. Negative coverage lives in
+`scripts/tests/test_memorypack_buff_1b_corpus.py`.
 
 For SkillData work, run `python -m scripts.game_data.memorypack.skill_corpus`
 against the current outer summary, ledger, and input-set SHA. Historical
