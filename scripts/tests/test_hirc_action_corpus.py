@@ -19,7 +19,9 @@ from scripts.audio_semantics.hirc_action_corpus import (
     the_extended_trailer_is_opened_by_the_trailing_block,
     the_trailer_branches_partition_the_framed_bodies,
     the_trailer_close_block_ends_in_eight_zeros,
-    the_trailing_section_closes_only_multi_entry_bodies,
+    the_entry_header_word_at_thirty_two_is_a_float,
+    the_entry_header_carries_the_same_word_twice,
+    the_element_reserved_bytes_are_checked_and_zero,
     TYPE11_HEADER_SCALARS,
     _read_hierarchy_census,
     _read_music_mutuality_census,
@@ -3322,72 +3324,35 @@ class Type11TrailerPartitionTests(unittest.TestCase):
         )
 
 
-SECTION_GROUPS = {"entries": 3937, "trailingSections": 76}
-SECTION_SELECTORS = {
-    "trailingSectionOpens_0": 66,
-    "trailingSectionOpens_1": 10,
-    "trailingSectionFlag_0": 68,
-    "trailingSectionFlag_1": 8,
-}
+class Type11ReservedByteTests(unittest.TestCase):
+    """Twelve bytes an element carries are always zero, and are now checked."""
 
-
-class Type11TrailingSectionTests(unittest.TestCase):
-    """The section that closes a multi-entry body, and the coincidences it refuses."""
+    MEASURED = {"reservedBytesChecked": 30582,
+                "reservedControlsChecked": 12843,
+                "reservedControlsZero": 11774}
 
     def test_the_measured_corpus_passes(self) -> None:
-        self.assertTrue(the_trailing_section_closes_only_multi_entry_bodies(
-            SECTION_GROUPS, SECTION_SELECTORS, {"count": 4325, "exact": 3937}
-        ))
+        self.assertTrue(
+            the_element_reserved_bytes_are_checked_and_zero(self.MEASURED))
 
-    def test_a_section_whose_block_the_trailer_rule_does_not_know_fails(self) -> None:
-        # The 24 residues that a length-only control would close. Their opening byte
-        # is 0xAF, 0x55 or 0x59, so accepting them means the reader has stopped
-        # requiring the section's own bytes to agree with the trailer rule and is
-        # matching on total length alone.
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            dict(SECTION_GROUPS, trailingSections=100),
-            dict(SECTION_SELECTORS, trailingSectionOpens_0=66,
-                 trailingSectionOpens_175=24, trailingSectionFlag_0=92),
-            {"count": 4325, "exact": 3961},
-        ))
+    def test_checking_nothing_fails(self) -> None:
+        self.assertFalse(the_element_reserved_bytes_are_checked_and_zero(
+            dict(self.MEASURED, reservedBytesChecked=0)))
 
-    def test_a_section_with_an_out_of_range_flag_fails(self) -> None:
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            dict(SECTION_GROUPS, trailingSections=77),
-            dict(SECTION_SELECTORS, trailingSectionOpens_0=67,
-                 trailingSectionFlag_9=1),
-            {"count": 4325, "exact": 3938},
-        ))
+    def test_the_control_is_published_but_not_required_to_fail(self) -> None:
+        # Recorded deliberately. The shifted control scores 91.7% zero because it
+        # lands on the run header's own zero-invariant bytes -- the neighbourhood is
+        # zero-rich, so shifting within it cannot discriminate. A control has to land
+        # somewhere the claim does not already predict, and this one does not, so the
+        # gate publishes it instead of pretending it discriminates.
+        self.assertTrue(the_element_reserved_bytes_are_checked_and_zero(
+            dict(self.MEASURED, reservedControlsZero=12843)))
+        self.assertFalse(the_element_reserved_bytes_are_checked_and_zero(
+            dict(self.MEASURED, reservedControlsChecked=0)))
 
-    def test_counts_that_do_not_cover_the_sections_fail(self) -> None:
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            dict(SECTION_GROUPS, trailingSections=80),
-            SECTION_SELECTORS, {"count": 4325, "exact": 3937},
-        ))
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            SECTION_GROUPS,
-            {k: v for k, v in SECTION_SELECTORS.items() if "Flag" not in k},
-            {"count": 4325, "exact": 3937},
-        ))
-
-    def test_no_sections_at_all_fails_rather_than_passing_vacuously(self) -> None:
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            {"entries": 3861}, {}, {"count": 4325, "exact": 3861}
-        ))
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            {}, {}, {}
-        ))
-
-    def test_malformed_input_fails(self) -> None:
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            None, SECTION_SELECTORS, {}
-        ))
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            SECTION_GROUPS, None, {}
-        ))
-        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
-            SECTION_GROUPS, SECTION_SELECTORS, None
-        ))
+    def test_an_empty_census_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_element_reserved_bytes_are_checked_and_zero({}))
+        self.assertFalse(the_element_reserved_bytes_are_checked_and_zero(None))
 
 
 class Type11CloseBlockTests(unittest.TestCase):
@@ -3397,7 +3362,7 @@ class Type11CloseBlockTests(unittest.TestCase):
         self.assertTrue(the_trailer_close_block_ends_in_eight_zeros(
             {"finalCloseBlocks": 3937,
              "finalCloseBlocksEndingInEightZeros": 3937,
-             "interiorCloseBlocks": 38,
+             "interiorCloseBlocks": 0,
              "interiorCloseBlocksEndingInEightZeros": 0,
              "closeBlockControlsEndingInEightZeros": 0}
         ))
@@ -3406,7 +3371,7 @@ class Type11CloseBlockTests(unittest.TestCase):
         self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
             {"finalCloseBlocks": 3937,
              "finalCloseBlocksEndingInEightZeros": 3936,
-             "interiorCloseBlocks": 38,
+             "interiorCloseBlocks": 0,
              "interiorCloseBlocksEndingInEightZeros": 0,
              "closeBlockControlsEndingInEightZeros": 0}
         ))
@@ -3418,12 +3383,12 @@ class Type11CloseBlockTests(unittest.TestCase):
         self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
             {"finalCloseBlocks": 3937,
              "finalCloseBlocksEndingInEightZeros": 3937,
-             "interiorCloseBlocks": 38,
+             "interiorCloseBlocks": 0,
              "interiorCloseBlocksEndingInEightZeros": 0,
              "closeBlockControlsEndingInEightZeros": 3400}
         ))
 
-    def test_interior_blocks_scoring_like_final_ones_fails(self) -> None:
+    def test_interior_blocks_scoring_like_final_ones_still_fails(self) -> None:
         # The contrast this gate exists for. While every framed body had exactly one
         # element there were no interior blocks, so "the trailer ends in eight zeros"
         # and "the body ends in eight zeros" were the same claim. Now they are not:
@@ -3438,11 +3403,12 @@ class Type11CloseBlockTests(unittest.TestCase):
              "closeBlockControlsEndingInEightZeros": 0}
         ))
 
-    def test_no_interior_blocks_at_all_fails_for_want_of_a_contrast(self) -> None:
-        # The state the reader was in before multi-element bodies framed. The gate
-        # refuses rather than passing, because without interior blocks there is
-        # nothing to contrast the final ones against.
-        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
+    def test_no_interior_blocks_at_all_is_accepted_now(self) -> None:
+        # WITHDRAWN claim. The 38 interior blocks that once scored 0 came from the
+        # retired trailing-section reading, which placed a second entry header four
+        # bytes late. Under the corrected frame there are none, so the gate no longer
+        # demands a contrast it cannot have.
+        self.assertTrue(the_trailer_close_block_ends_in_eight_zeros(
             {"finalCloseBlocks": 3861,
              "finalCloseBlocksEndingInEightZeros": 3861,
              "interiorCloseBlocks": 0,

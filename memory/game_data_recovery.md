@@ -1848,6 +1848,89 @@ Stable conclusions:
   `AkBankMgr`/`AkMusic*`/`AkParameterNode` source paths, so the asserts that would
   have named them are not compiled in. Do not expect to recover layouts by
   string-mining this binary; the version is what it gives you.
+- **The DLL is not packed, and that now matters.** Measured sections: `.text`
+  2,662,400 B at entropy **6.39**, `.rdata` 652,288 at 6.61, and **no `.tvm0`**
+  section at all. Set against `EndfieldBase.dll` (79% `.tvm0` at 7.60) and
+  `HGP.dll` (92% at 7.56), the Wwise reader is in the *readable* half of this
+  game's binaries. Its RTTI is stripped -- only **12** `.?AV` type descriptors,
+  every one a `std::` exception class -- so no `CAk*` names, consistent with the
+  string-mining warning above.
+- The six chunk-tag constants sit clustered in **`0xf4b74`-`0xf67a0`**, which is
+  the section-dispatch region of the bank parser.
+- ***So the blocker is weaker than recorded.*** The note above says the deciding
+  witness is the licensed SDK and that obtaining it is the owner's call. That
+  stands as the *cheap* route, but it is not the only one: the same structs are
+  compiled into an unpacked 2.66 MB `.text` that ships with the game, with the
+  parser's entry region located. **"Blocked on a licence" and "blocked on
+  disassembly effort" are different states**, and only the second is true here.
+
+  *A process note, since it cost a batch.* This DLL was already identified in these
+  notes, with its SHA-256 and version string, **and with an explicit warning not to
+  string-mine it** -- which is exactly what I then did. The recovery memory is the
+  index of what is already known; **reading it first is cheaper than re-deriving
+  it**, and the only reason this batch was not pure waste is that entropy and RTTI
+  were questions the earlier pass had not asked.
+
+#### THE HIRC TYPE DISPATCH, READ OUT OF THE SHIPPED PARSER
+
+The warning was about *strings*. The **code** is a different matter, and it is readable
+without a disassembler library -- the dispatch is a plain compare-and-jump chain.
+
+**Locating it.** The bank chunk switch is at file `0xf4b60` and is literally
+`cmp eax,'DATA' / je`, `cmp eax,'DIDX'`, `cmp eax,'HIRC' / je +0x35`, `cmp eax,'STID'`,
+`cmp eax,'STMG'`. Following the `HIRC` branch reaches a `call` at `0xf4bdb` whose target
+is the HIRC section parser at **file `0xf70a0`, VA `0x1800f7ca0`** -- confirmed by a
+textbook prologue (`push rbp/rbx/rsi/rdi/r12/r14/r15; mov rbp,rsp; sub rsp,0x40`).
+
+**The per-item dispatch**, at `0xf7147`:
+
+```
+movzx eax, byte [rbp-0x14]          ; the HIRC item's type byte
+add   eax, -2                       ; type - 2
+cmp   eax, 0x14                     ; 21 entries
+ja    default
+mov   ecx, [r13 + rax*4 + 0xf8008]  ; jump table at VA 0x1800f8008
+add   rcx, r13
+jmp   rcx
+```
+
+**21 entries covering types `0x02`-`0x16` exactly** -- the same range this project's
+reader covers. Each arm writes a small constant to `[rbp+0x58]` and calls a per-type
+constructor:
+
+| class id | types |
+| --- | --- |
+| 0 | `0x02`, `0x05`, `0x06`, `0x07`, `0x09` |
+| 1 | `0x08`, `0x12` |
+| 2 | `0x03`, `0x04` |
+| 5 | `0x0E` |
+| **6** | **`0x13`, `0x14`, `0x16`** |
+| 8 | `0x0F` |
+| 9 | `0x11` |
+| 10 | `0x10` |
+| 11 | `0x15` |
+| *(none)* | `0x0A`, `0x0B`, `0x0C`, `0x0D` |
+
+**18 distinct constructors for 21 types**, each at a known address (`0x02` ->
+`0x1800f0b90`, `0x09` -> `0x1800f2d30`, `0x10` -> `0x1800f2750`, `0x11` -> `0x1800f2460`,
+`0x12` -> `0x1800f1850`, and so on).
+
+***The result that bears on an open question.*** **Types `0x0A`, `0x0B`, `0x0C` and
+`0x0D` share a single jump-table target** -- one handler, identical code, no per-type
+constant. They are therefore parsed *the same way*, so **whatever `0x0B`'s layout is, it
+is also `0x0A`'s, `0x0C`'s and `0x0D`'s**, and evidence gathered on any of them transfers
+to the rest. The `0x0B` fenced-body question has been worked on in isolation; it need not
+be.
+
+**And every stuck type now has a located constructor.** The note above says the Wwise SDK
+headers would settle `0x11`'s 21-versus-27 tie, `0x09`'s second run, `0x10`'s `0x7F`
+variant and `0x12` outright. Those four constructors are at `0x1800f2460`, `0x1800f2d30`,
+`0x1800f2750` and `0x1800f1850` in a shipped, unpacked binary.
+
+**What is *not* claimed.** These are addresses and groupings, not decoded layouts. The
+`[rbp+0x58]` value is a per-type constant handed to a shared tail; **calling it a class
+selector is a reading, and only the grouping is a fact of the code.** No struct field has
+been recovered here.
 - **Numeric type `0x12` is the one HIRC type with no framing at all, and these
   readings are ruled out.** 251 bodies, 15,175 bytes. It is not the `0x10`/`0x11`
   grammar -- its word at offset 4 fails `range_section` on all 251. It is not the
@@ -3159,7 +3242,7 @@ preceding content leaves it.
   against rivals sharing **neither** endpoint. *When scoring a two-part reading
   against rivals, rivals that share a part inherit its score; hold only the
   genuinely different ones to the wide margin.*
-### `0x0B` has a whole-body frame: 3,937 of 4,325
+### `0x0B` has a whole-body frame: 4,115 of 4,325
 
 ```
 u8  flag
@@ -3319,6 +3402,321 @@ distinguish the claim from a weaker one, so the claim looked exact.**
   means the reading has finally been tested. Change it then, not before."* That is
   exactly what happened, so it was replaced rather than relaxed. *Write the tripwire
   that tells you when your own caveat has expired.*
+
+#### EVERY ENTRY AFTER THE FIRST BEGINS 4 BYTES EARLY: 3,937 -> 4,115
+
+Identifying `+32` as a float handed over a second content check, and with two of them
+the second entry header could be **located** rather than assumed.
+
+- Two checks identify a first entry header, and both hold in **100%** of them: the word
+  at `+4` is a source id the same body declares, and the word at `+32` is a plausible
+  float.
+- At the place the reader used to put the second header, **neither holds -- 0 of 216**
+  two-entry bodies.
+- Scanning every offset from `-32` to `+32` from the end of entry 1, **exactly one**
+  passes either check: **`-4`**, in 168 of 216. **No other offset passes even once.**
+- Scored corpus-wide the step-back closes **4,115** against 3,937 without it, and every
+  rival step -- 2, 6, 8, 12, 16 -- lands at **3,861 to 3,863, below the baseline**.
+- **The control flipped to agreement.** The same `+32` offset in later entry headers
+  scored **2 of 26** while they were read four bytes late; with the step-back it scores
+  **210 of 210**. *A control that becomes confirmation when an offset is corrected is
+  the strongest evidence the correction was right.*
+- **Which side owns the four bytes is not determined** and the reader says so: either
+  the element walk over-consumes by four in the last element of a non-final entry, or
+  the entry header is longer than 48. The reader compensates where the evidence is
+  rather than inventing a field.
+- The frame is now much simpler. 4,453 entries over 4,115 bodies; **338 declare zero
+  elements and 4,115 declare one**, and the 338 step-backs are exactly those empty
+  entries. Entry counts are exercised at **1, 2, 3, 4, 5 and 8**. Fences fall from 388
+  to **210**.
+
+#### RETIRED: the trailing section was patching this, and WITHDRAWN: the interior blocks
+
+Two earlier results do not survive the step-back, and both are removed rather than left
+standing.
+
+- **The "trailing section"** -- one byte, a block and a trailer, which closed 76
+  multi-entry bodies -- **never fires** under the corrected frame: 0 of 4,325. It was
+  compensating for the misplaced header. *A reading that compensates for a misplaced
+  field is worse than no reading, because it makes the misplacement look closed.* The
+  code and its gate are deleted.
+- **The interior close blocks are withdrawn.** "The eight zeros belong to the block
+  ending the BODY, not to each element" rested on interior blocks scoring **0 of 38**
+  -- and those 38 existed only because the trailing-section reading placed a second
+  header four bytes late. Under the corrected frame every framed body carries exactly
+  one element, there are no interior blocks, and **the question is untestable again**.
+  *Evidence produced by a reading is only as good as the reading.*
+- The managed suite caught this too: its synthetic multi-entry body stopped framing the
+  moment the reader learned the step-back, which is the test doing its job.
+
+#### `0x0B`'s word at `+32` IS A FLOAT, and negative zero is why it hid
+
+Nine id populations had failed on this word: object references same-bank and
+corpus-wide, source ids, media ids, **bank ids**, **STMG's 578 ids**, fixed-point
+fractions, and the 24,231 identifier literal hashes. The last two populations only
+existed after this batch framed STMG and published bank ids; both came back with **no
+offset matching at all**.
+
+Read as a **float**, in first entry headers it is **1,953 of 1,953 plausible** -- 823
+exactly **negative zero**, and the rest in **-9.83 to 7.81** with most of them
+negative.
+
+| reading | plausible | share |
+| --- | --- | --- |
+| `+32` in the first entry header | **1,953 / 1,953** | **100%** |
+| the same span at `+28`..`+31`, `+33`..`+39` | 202 / 3,116 | 6.5% |
+| **`+32` in a LATER entry header** | **2 / 26** | **7.7%** |
+
+- ***The `-0.0` is why this took so long.*** A band test that asks for
+  `abs(v) > 1e-4` throws away `0x80000000` as "not a float" -- and that is **42%** of
+  the field. **A field whose unset marker is negative zero looks unlike a float to any
+  test that treats zero as uninteresting.** My own earlier float test on this header
+  covered `+12` and `+20` and scored `+32` at 60.5%, which read as a miss.
+- **The later-entry control is the sharp one, and it is a finding in itself.** The same
+  offset one entry later scores 2 of 26, the rate of a shifted read. So the word is a
+  float in the first entry header and **is not one after it** -- independent evidence
+  that a later entry is **not the same 48-byte layout**, which is exactly what the 76
+  trailing-section bodies have been hinting at.
+
+#### `+12`/`+20`: TEN populations eliminated, and what that leaves
+
+The pair is now tested against everything the shipped data contains.
+
+| population | size | matches at `+12`/`+20` |
+| --- | --- | --- |
+| object references, same bank | -- | 0 |
+| object references, corpus-wide | 238,807 | 0 |
+| source ids | 62,273 | 0 |
+| media ids | 61,333 | 0 |
+| bank ids | 20,863 | 0 |
+| `STMG` ids | 578 | 0 |
+| identifier-shaped literal hashes | 24,231 | 0 |
+| **every raw metadata literal hash** | **49,324** | **0** |
+| floats | -- | not plausible |
+| fixed-point fractions of 2^32 | -- | **2.9%**, see below |
+
+- **The fraction test, done properly with controls.** Several of the most common values
+  *look* like fractions -- `0xAAAAAAA3` is near 2/3, `0x71C71C6A` near 4/9,
+  `0x0F0F0F18` near 1/17 -- and that appearance is misleading. Asking for the closest
+  rational with denominator <= 64 and an error within 1 ULP: `+12` scores **2.9%** and
+  `+20` **2.8%**, against **100%** at `+28` and **96.4%** at `+36`, the two fields
+  already known to be fractions. The near-misses are off by 7 or 8 ULPs, and a real
+  fraction field here is exact. *An eyeball reading of the top few values is not a
+  measurement; the field that IS this encoding scores 100%.*
+- **What the values look like:** 373 distinct over 1,317 occurrences, so each repeats
+  about three and a half times; popcount centred on 16, which is what random 32-bit
+  values look like; range 1 to `0xFFFFFFFF`; equal to each other in **998 of 1,158**
+  headers where both are nonzero.
+- **So the pair is a hash or an id in a namespace the shipped files do not contain.**
+  Random-looking, repeating, 32 bits wide, and matching nothing the game ships --
+  including every string literal in `global-metadata.dat` at a chance rate of 0.05.
+  Further population tests on this field are not worth running until a new namespace
+  appears; the shipped ones are exhausted.
+
+#### The step-back is per ENTRY or per ELEMENT, and this corpus cannot tell
+
+Applying it between elements as well as between entries changes nothing -- 4,115
+either way -- because **every entry that frames carries at most one element**, so the
+between-elements case never arises. Recorded as an indeterminacy rather than a choice:
+the reader does it per entry because that is where the evidence was, and a corpus with
+a multi-element entry would settle it.
+
+#### `0x0B`'s `+12` and `+20` are one field written twice
+
+- Where both are nonzero they are **equal in 998 of 1,158 (86.2%)**. They share a top
+  value and a distribution: minimum 1, median about 2.18e9, maximum `0xFFFFFFFF`.
+- **Still unidentified.** The same nine populations failed on them. This is a
+  structural observation, gated so it cannot quietly stop being true while the note
+  claims it.
+
+#### CORPUS PROVENANCE: 10 banks ship twice, and one of them is the music bank
+
+Looking at `0x0B`'s residue along a **provenance** axis instead of a grammar one
+turned up something that qualifies a lot of numbers in this file.
+
+- **All 4,325 type `0x0B` bodies live in 4 banks**, and bank **266542773** holds 4,260
+  of them -- 2,130 in `audit_banks.pck` and 2,130 in `hotfix_main_b75.pck`, **byte-
+  identical, all 2,130 of them**.
+- Corpus-wide, **10 banks appear in more than one package**, duplicating **6,104 of
+  323,049 objects (1.9%)**. Bank 266542773 alone accounts for 6,052 of those.
+- **The duplication is concentrated in exactly the music types:**
+
+  | type | counted | distinct | duplicated |
+  | --- | --- | --- | --- |
+  | `0x0A` | 4,158 | **2,112** | 49.2% |
+  | `0x0B` | 4,325 | **2,195** | 49.2% |
+  | `0x0C` | 742 | **373** | 49.7% |
+  | `0x0D` | 2,431 | **1,230** | 49.4% |
+  | `0x11` | 2,645 | 2,427 | 8.2% |
+  | every other type | -- | -- | **under 0.2%** |
+
+- **99.7% of music objects (11,507 of 11,656) live in that one bank.** The music family
+  is one authored bank, shipped twice.
+- **The closure RATE is unaffected**, because an exact copy closes exactly when its
+  original does: `0x0B` is 3,937 of 4,325 and 1,998 of 2,195, both **91.0%**. What
+  changes is the evidence base -- **197 distinct bodies are unexplained, not 388** --
+  and the music-family size, **5,910 distinct rather than 11,656**.
+- *A percentage over duplicated data is still the right percentage and the wrong
+  sample size.* The audit now publishes the distinct count beside the total and gates
+  their arithmetic, so the day a second bank starts shipping twice, something says so.
+- **This is the cross-package trap for the FOURTH time.** A per-package census cannot
+  see it: each package reports the bank once and looks unremarkable. After the media
+  ids, the source ids and the plugin names, the rule is now unavoidable -- *if two
+  sides of a question can land in different `.pck` files, the question belongs in the
+  pass that unions them.*
+
+#### TWELVE BYTES AN ELEMENT that are always zero, and were never checked
+
+Looking for a condition that could drive a conditional element rule meant looking at
+the element bytes nobody had read.
+
+- The element head is 5 bytes and **only byte 0 was used** (the run count). Bytes
+  **1, 2 and 3 are zero in all 3,861** first elements that frame.
+- The run header is 11 bytes and **only byte 7 was used** (the record count). **Nine of
+  the other ten are zero** in every run header that frames -- only byte 3 varies.
+- **Enforcing all twelve costs nothing: 4,115 bodies frame either way.** 30,582
+  reserved bytes are now validated where the reader used to walk straight through
+  them. *A field that is always zero is still a field, and a parser that does not check
+  it will happily walk through garbage.*
+- **It moves the fences to where the problem is.** 115 bodies are now rejected at
+  `element_head_reserved_byte_is_not_zero`, and `range_element_trailer_flag` falls
+  from **111 to 14** -- the desynchronisation is caught three steps earlier, at its
+  cause instead of its symptom.
+
+**A control that could not work, recorded rather than hidden.** Reading the same three
+offsets five bytes on scores **11,774 zero of 12,843 (91.7%)**, because it lands on the
+run header's *own* zero-invariant bytes. The neighbourhood is zero-rich, so shifting
+within it cannot discriminate. ***A control has to land somewhere the claim does not
+already predict.*** The gate publishes the number instead of pretending it
+discriminates, and the evidence it rests on is the pair a bad control cannot produce:
+coverage unchanged at 4,115, and 115 bodies caught that were previously walked through.
+
+#### `0x0B`'s residue is at a practical ceiling: six mechanisms swept and excluded
+
+Every mechanism this format's own idioms suggest has now been tried on the 210, and
+each was scored over the whole corpus rather than on the failing slice.
+
+| mechanism | search space | best result |
+| --- | --- | --- |
+| a different uniform element grammar | ~2,300 shapes | 150-2,841 vs **4,115** |
+| an extended entry header behind a flag | 1,728 triples | +8, and it fires on 14 bodies closing 0 of them |
+| a different source-record width | 8..32, and a separate width after the first | 4,041 vs **4,115** |
+| a gap before the entry count | -12..+16 | closes **nothing** when applied to all bodies |
+| the step-back applied per element | -- | identical, the case never arises |
+| shifting the failing element | -40..+40 | repairs **20 of 182**, at two inconsistent deltas |
+
+Two further checks close off the easy explanations:
+
+- **They are not dead data.** Every one of the 2,195 distinct `0x0B` objects is
+  referenced by a `0x0A` counted array -- **100% of the framing ones and 100% of the
+  failing ones**. The residue is live, referenced music tracks.
+- **The surplus is not a constant.** For the 22 failing bodies simple enough that the
+  frame can predict a length from their declared counts, the actual length exceeds it
+  by 16, 38, 49 or 50 -- inconsistent. For the other 188 the element does not parse
+  from its declared start at all, so no length can be predicted.
+
+**The position, stated plainly: numeric type `0x0B` is at 4,115 of 4,325 counted and
+2,087 of 2,195 distinct -- 95.1% either way -- and the residue resists every mechanism
+the format's own vocabulary suggests.** Progress on it needs evidence this corpus does
+not contain, not another sweep. *Recording a ceiling is worth more than a sweep that
+was always going to fail, and cheaper than running it twice.*
+
+#### The 210 scale with body complexity, and the source region is NOT the cause
+
+With the twelve reserved bytes now fencing at the cause, the failing bodies can be
+characterised properly.
+
+- **Shifting the failing element repairs only 20 of 182**, at two inconsistent deltas
+  (`-36` and `+17`). The desynchronisation begins earlier than the element that
+  reports it.
+- **Failure rate rises sharply with body complexity**, and the source count is the
+  sharpest predictor:
+
+  | declared sources | closing | failing | fail rate |
+  | --- | --- | --- | --- |
+  | 1 | 4,041 | 172 | **4.1%** |
+  | 2 | 70 | 28 | **28.6%** |
+  | 4 | 2 | 6 | **75%** |
+  | 0 | 0 | 4 | 100% |
+
+  Entry count and body length track it: 1 entry 3.9%, 2 entries 15.0%, 4 entries
+  37.5%; bodies under 200 bytes 3.6%, 200-300 14.4%, 400+ 40%.
+
+- **But the source region is framed correctly, and two sweeps say so.** A separate
+  width for records after the first: **14 is uniquely best** over 8 to 32 (4,115
+  against 4,041 for every alternative). A gap between the records and the entry count:
+  **0 is uniquely best** over `-12` to `+16`, and applying any gap to all bodies closes
+  **nothing at all**.
+- So the correlation is **complexity, not a located mechanism** -- exactly what a
+  per-element error probability produces. *A predictor is not a cause; a sweep that
+  confirms the field it points at is the difference.*
+- One provenance note: bank **4247105105** in `init_banks.pck` fails **5 of 13
+  (38.5%)** against 4.8% for the music bank. Thirteen bodies is too thin to conclude
+  from, and it is recorded as a lead rather than a finding.
+
+#### Where the remaining 210 actually go wrong, and one methodological trap
+
+Applying the content checks that found the four-byte step-back to the residue.
+
+- **206 of the 210 failing bodies have a first entry header that passes both checks.**
+  The walk starts in the right place and loses synchronisation later.
+- **The 111 trailer-flag fences are a symptom, not a cause.** At the point of failure
+  the trailing block's opening byte is scattered noise -- 4, 129, 2, 0, 100, 247, 82,
+  15 -- so the walk is already lost before it reads the flag. The 36 that fail at a run
+  count and the 21 at an element head are earlier detections of the same loss.
+- **The zero-element entry advance is confirmed at 48.** Sweeping it from 17 to 52,
+  only 48 reaches 4,115; every other value drops to 3,861.
+
+**The trap, which nearly cost a batch.** Scanning *every* offset of a body for a window
+passing both content checks produces coincidences: **130 failing bodies show a second
+window exactly 17 bytes after the first**, consistently enough to look like a real
+17-byte entry header. Sweeping that as a rule closes **3,861** -- below the baseline --
+so it is a false positive of the scan, not a layout.
+
+*The `-4` finding was clean because the scan was restricted to `[-32, +32]` and had a
+unique answer.* A content check strong enough to locate a field within a restricted
+window is not automatically strong enough to survive scanning a whole body. **When a
+scan widens, its coincidence rate widens with it, and consistency across bodies is not
+proof -- the same coincidence recurs for the same structural reason.**
+
+#### Two exhaustive searches over `0x0B`'s 388, both negative
+
+The method that settled STMG's middle block -- enumerate every shape and let closure
+discriminate -- applied to `0x0B`. Both searches came back empty, and that is worth
+recording precisely so the ground is not re-walked.
+
+**1. No uniform element grammar beats the shipped one.** Over the whole space of
+element-head bytes 1..12, run-header bytes 5..16, record-count offset 0..runheader-1
+and run-trailing bytes 0..3 -- about 2,300 combinations -- **656 close at least one
+currently-failing body and none reaches 3,937**.
+
+| gained of the 388 | head | run header | count at | trailing | whole corpus |
+| --- | --- | --- | --- | --- | --- |
+| 88 | 11 | 14 | +9 | 0 | **150** |
+| 81 | 5 | 16 | +7 | 1 | **2,841** |
+| 0 | **5** | **11** | **+7** | **1** | **3,937** (shipped) |
+
+The shipped grammar is a **local maximum over the entire four-parameter space**. Every
+shape that gains on the residue collapses the corpus.
+
+**2. No extended entry header selected by a flag.** The trailer turned out to be
+`7 + 5*flag` normally and `14 + 5*k` when the trailing block opens with 1, so the same
+idiom was tested on the entry header: 48 bytes normally, `48 + extra` when some header
+byte equals some value. **1,728 (selector, value, extra) triples**; three beat the
+baseline, by **+8, +2 and +2**, with **zero losses**.
+
+- The best is `header[44] == 3 -> +12`. Zero losses looked encouraging until the
+  mechanism was checked: **`header[44]` is the low byte of the element count**, the rule
+  fires on **14** bodies whose first entry declares 3 elements, and it closes **0 of
+  those 14**. The +8 comes from later entries in multi-entry bodies, not from the
+  population the rule describes.
+- All three rejected. *A rule that gains without losing is not thereby right; check
+  that the gain comes from the cases the rule is about.* Out of 1,728 trials a maximum
+  of +8 on 388 candidates is what noise looks like.
+
+**So the 388 need something that is neither a global grammar change nor a
+flag-selected header variant.** Both of the format's known idioms have been tried and
+neither fits.
 
 #### What does NOT explain `0x0B`'s remaining 388, tested and eliminated
 
@@ -4019,6 +4417,95 @@ count x entry:  u32, u32, u8 zero, u32 records, 3 zero bytes   (13 bytes)
   discriminated against eleven rivals; the trailing run by a backward count, unique
   over every length from 1 to 480; the middle by exhaustion plus closure.
 
+#### `ENVS` is a run of curves over the SAME point record `0x0B` uses
+
+```
+(repeat until the section ends)
+u8, u8, u8 count, u8
+count x point:  f32 x, f32 y, u32 interpolation
+```
+
+- ENVS has **no count of its own** -- the run ends when the bytes do -- so byte-exact
+  closure is what makes the walk a frame rather than a scan. **Three** shapes close it
+  with every curve non-empty, and the content separated them:
+
+  | shape | codes 0..9 | curves with rising x |
+  | --- | --- | --- |
+  | **head 4, count at `+2`, 12-byte point** | **16 of 16** | **6 of 6** |
+  | head 12, count at `+2`, 18-byte record | 3 of 10 | 1 of 3 |
+
+  *Closure found three candidates; content picked one.* The third ran off the end of
+  the section, which is its own rejection.
+- 6 curves, 16 points; codes 4 (x8), 0, 1, 2 (x2 each), 6 and 7. Same vocabulary as
+  numeric type `0x0B`'s element runs.
+- **This is the second record the format shares between two places**, after the
+  14-byte source record that types `0x02` and `0x0B` share. The 12-byte
+  `(x, y, interpolation)` point appears in `ENVS` curves and in `0x0B` element runs.
+
+#### Every non-HIRC section of the bank format is now framed
+
+| tag | instances | bytes | framed |
+| --- | --- | --- | --- |
+| `BKHD` | 20,873 | 834,940 | version field |
+| `HIRC` | 20,873 | 26,995,526 | 10 types closed, `0x0B` at 3,937/4,325 |
+| `DIDX` | 1 | 84 | 7 x 12 media entries |
+| `DATA` | 1 | 5,913,232 | addressed by `DIDX` |
+| `STMG` | 1 | 10,118 | **10,118 byte-exact** |
+| `INIT` | 1 | 347 | **347 byte-exact** |
+| `ENVS` | 1 | 216 | **216 byte-exact** |
+| `PLAT` | 1 | 8 | **`Windows`** |
+
+#### `INIT` is a plugin NAME table, and it names the plugins the records use
+
+```
+u32 count                22
+count x entry:  u16 company, u16 plugin, NUL-terminated ASCII name
+```
+
+Closes byte-exactly on 347 bytes. A wrong field order would not land on the section
+end, which is the whole check for a section that appears once.
+
+- **The plugin id word at the front of the 14-byte source record decomposes as
+  `(plugin << 16) | company`**, and every company-2 value the corpus carries is named
+  here: `0x00640002` **AkSineTone**, `0x00650002` **AkSilenceGenerator**, `0x00940002`
+  **AkSynthOne**, `0x01990002` **AkMotion**. **973 of 147,262** source records name a
+  plugin the game itself names.
+- **Everything unnamed is company 1** -- `0x00040001` (132,056), `0x00140001` (12,512),
+  `0x00080001` (1,721). INIT lists plugin DLLs; company 1 is the built-in codec set,
+  which the engine does not need named. The gate requires the absences to be company 1
+  *exactly*, because a company-2 id missing would mean the decomposition is wrong.
+- `PLAT` is a single NUL-terminated platform name: **`Windows`**.
+
+#### THE CROSS-PACKAGE JOIN TRAP, THREE TIMES
+
+This has now bitten three separate fields, and the pattern is always the same: a table
+and its users live in **different `.pck` files**, so a join written inside the reader
+scores near zero and looks like a negative result.
+
+| field | package-local score | pooled score |
+| --- | --- | --- |
+| media ids named by source records | 12 of 147,262 | **61,325 of 61,333** |
+| source ids reached from named events | (pooled from the start) | 163 |
+| plugin ids named by `INIT` | **1** of 147,262 | **973** of 147,262 |
+
+`media_ids_from_audit` has carried the warning in its own docstring the whole time:
+*"joining inside one package answers a question nobody asked."* I wrote the C# join
+twice more anyway. **When a table and its users are in separate files, the join belongs
+in the pass that already unions the files** -- the reader collects, the audit joins.
+
+#### The 8 media nothing names, explained
+
+- **7 of the 8** are declared by `default_banks.pck`, which has `sounds=0`,
+  `externals=0` and **exactly 7 media entries** -- so all 7 come from its `DIDX`
+  section (84 bytes = 7 x 12). They are the Init bank's **embedded** media, and the
+  same 7 ids are also declared as streamed copies in `default_stream_0.pck`. The 8th is
+  in `default_stream_2.pck` only.
+- **None of the 8 is a bank id**: pooled over 20,863 bank ids, the intersection with
+  the 61,333 media ids is **0**, so they are genuine audio that no HIRC source record
+  names rather than banks miscounted as media.
+- Externals exist in this corpus -- 28,277 in `default_chinese_stream.pck` and 1 in
+  `hotfix_japanese_bD0.pck` -- but not in the packages the 8 live in.
+
 #### NOTHING outside HIRC references a music object either
 
 Sliding a 32-bit window over all four unparsed sections -- 10,677 words -- **63 name a
@@ -4162,6 +4649,1721 @@ reports/story/recovery/
 
 Revisitable format probes belong in `scratch/<topic>/`; disposable extraction
 and before/after evidence belongs in `tmp/<topic>/`.
+
+## IrradianceVolume: the largest unread VFS-native family
+
+The audio lane's three open items are all blocked on evidence outside the shipped
+audio data, so this batch triaged the whole VFS by byte volume to find where the
+unread data actually is.
+
+**The whole installed set is 67.5 GB over 455,691 ledger rows**, and by extension:
+
+| extension | bytes | share |
+| --- | --- | --- |
+| `.ab` (Unity asset bundles) | 42.07 GB | **62.3%** |
+| `.pck` (audio) | 11.49 GB | 17.0% |
+| `.usm` (video) | 6.56 GB | 9.7% |
+| **`.bytes` (VFS-native)** | **6.33 GB** | **9.4%** |
+| `.json` | 827 MB | 1.2% |
+
+Within `.bytes`, one family dominates:
+
+| family | files | bytes | share of `.bytes` |
+| --- | --- | --- | --- |
+| **`iv_*.bytes`** | **132** | **4.16 GB** | **65.6%** |
+| `LAYER_N_*` | 345 | 469 MB | 7.4% |
+| `LAYER_D_*` | 345 | 414 MB | 6.5% |
+| `InitChunkData_*` | 26,520 | 624 MB | 9.9% |
+| `Terrain_*` | 30,280 | 245 MB | 3.9% |
+
+### What is measured so far
+
+- The family is **`Data/IrradianceVolume/PC/<scene>/v3/iv_<x>_<y>.bytes`**, streamed
+  through the maintained CLI as `--block-type iv` (block value **14**); the `AuditIV`
+  block is 8. Streaming every `iv_*.bytes` yields **138 files**, 16,064 bytes to
+  70,032,579 bytes.
+- The first two `u32` take **49 distinct pairs** across the 138 files. The most common
+  is **`(3, 2)` in 34 files**; the rest are `(n, 512)`, `(n, 768)`, `(n, 1280)` with
+  `n` in the 990-2,270 range, and `(12291, 8)` / `(12291, 6)` in the four smallest.
+- The two 16,064-byte files (`gacha/character` and `gacha/weapon`) show a clear
+  **16-byte repeat**: one word, then three `RGB 00` triples. Colour triples at a fixed
+  stride are what an irradiance probe grid looks like, but that is a shape observation
+  and nothing is claimed from it yet.
+
+### What was measured and is WRONG
+
+A first reading of one `(3, 2)` file showed `03 03 03 00` at `+40` and `472` at `+44`,
+which looked like a 3x3x3 probe grid and a count. **Across the 34 files that share the
+header, those offsets hold `(3,3,3)`/472, `(15,15,15)`/472, `(3,3,0)`/472 and
+`(255,255,255)`/`0xFFFFFFFF`** -- the last being an all-`FF` region that starts at
+different places. So `+40` is not a fixed field; what precedes it is variable-length.
+*A tidy-looking triple in one file is a coincidence until the same offset is read in
+every file that should share the layout.*
+
+### The family splits in two, and the stride-4 peak is an artefact
+
+Autocorrelating byte i against byte i+stride over each payload puts **stride 4** on top
+in most files (0.14 to 0.42 agreement against a 0.03 to 0.09 mean), with 16, 32, 48 and
+64 following as its harmonics. That reads as 4-byte records. **It is only half true,
+and a per-phase content test says which half.**
+
+Splitting each payload into its four byte phases and measuring each one separately:
+
+| file | phase 0 | phase 1 | phase 2 | phase 3 | phase 3 zero |
+| --- | --- | --- | --- | --- | --- |
+| `gacha/character/iv_3_0_0` | 7.44 | 7.30 | 7.16 | **3.51** | **52.0%** |
+| `gacha/weapon/iv_3_0_0` | 4.66 | 4.71 | 4.08 | **1.30** | **75.1%** |
+| `indie_dg008/v3/iv_0_0` | 6.25 | 6.22 | 6.25 | 6.19 | 19.3% |
+| `dung02_cdg012/v3/iv_0_0` | 7.30 | 7.28 | 7.28 | 7.18 | 14.5% |
+
+(entropy in bits per byte)
+
+- **The `gacha/*` files have a real 4-byte record.** Phase 3 carries a fraction of the
+  entropy of phases 0 to 2 and is zero in half to three quarters of records -- the
+  shape of three colour channels plus a shared exponent or alpha. Four such files, 16
+  KB to 101 KB.
+- **The `v3/*` files have no byte-phase structure at all.** All four phases have the
+  same entropy to two decimal places and the same top byte values. **A file with
+  4-byte records cannot look like that**, so the stride-4 peak there is an artefact of
+  something else and not a record width. Those are 134 files and essentially the whole
+  4.16 GB.
+- *An autocorrelation peak says a distance matters; it does not say a record lives
+  there. The phase test is what separates the two.*
+- Entropy 6.2 to 7.3 with no phase structure is what compressed or block-packed data
+  looks like. **The terrain container's codec does not apply** -- that reader needs the
+  file's leading word to be the decoded size, and here the leading word is 3, 990,
+  1,182 or 12,291 for files of 16 KB to 70 MB.
+
+### The game names this format itself, and it has an INDEX
+
+Rather than guess the container further, `global-metadata.dat` was asked what the
+engine calls it. The answer is specific:
+
+```
+HGIrradianceVolumeManager / HGIrradianceVolumeManagerV2
+HGIrradianceVolumeConfig  / HGIrradianceVolumeConfigV2
+  GetCurrentIrradianceVolumePathV3      ReloadIndexFileV3 / ReloadIndexFileV2
+  ToggleDebugUpdateClipmap              ToggleDebugUpdateClipmapLod0
+  UpdateSceneStateMask                  UpdateGachaIV
+  StreamingInNewMap / StreamingInCabin  SetOverrideStreamingCenterByCamera
+```
+
+Three of these change what to do next:
+
+- **`ReloadIndexFileV3`** says there is an index. There is: **92 `index.bytes` files**
+  in the IV block, 980 bytes to 504 KB, one per scene -- plus **7 `regionIv_*.bytes`**
+  files totalling 3.09 MB. The earlier sweep matched only `iv_*.bytes` and missed both.
+- **`ToggleDebugUpdateClipmap`, `...Lod0`** name the structure: a **clipmap**, a
+  nested multi-resolution grid. That is what a volume file should be expected to hold.
+- **`UpdateGachaIV`** is a separate entry point from the V3 streaming path, which
+  independently confirms the `gacha` / `v3` split the byte-phase test measured.
+
+#### The index is framed enough to join, and the join is exact
+
+The index holds **length-prefixed UTF-16LE strings**: `u32 byteLength`, then that many
+bytes of UTF-16. The 980-byte index carries `u32 24` followed by `iv_0_0.bytes`.
+
+- Across the 92 index files, **138 `.bytes` names are listed -- exactly the 138 volume
+  files the block contains**.
+- **91 of the 92 indexes name precisely the set of files present in their own
+  directory.** Not a hit rate over a large population: each index names between one and
+  a few dozen files and gets the whole set right.
+- A `u32` at `+20` equals the name count in **86 of 92**, so it is a **candidate**
+  count offset rather than an established one, and is recorded that way.
+
+#### The index IS framed: 86 of 92, and the other 6 are fenced by name
+
+`scripts/asset_builder/irradiance_index.py`, with
+`scripts/tests/test_irradiance_index.py`:
+
+```
+u32 magic            0x03000003 x82, 0x01000043 x2, 0x03000002 x2
+u32 stateCount       the scene states GetStateNameList returns
+stateCount x name    u32 byteLength, then that many bytes of UTF-16LE
+u32 u32 u32          three words: 1, 0, 0 in every framed file
+u32 volumeCount
+volumeCount x name   the volume files in this directory
+... remainder        the clipmap description, not framed
+```
+
+| | |
+| --- | --- |
+| indexes | **92** |
+| framed exactly | **86** |
+| fenced as unsupported | **6** |
+| failed | **0** |
+| volume names read | 103 |
+| **volume sets matching the directory** | **86 of 86** |
+
+- **The content check is the volume-name join, and it is strict on purpose.** Each
+  index names between one and a few dozen files, so "the whole set, every time" is a far
+  stronger statement than a percentage over a large population. A single name that is
+  not there, or one missing, means the name table has been misread.
+- **The three middle words are discriminated by closure.** At three words 86 files
+  frame; at **zero, one, two, four or five words, not one file frames at all**. A width
+  that framed fewer would be weak evidence; a width that frames none is the whole
+  discrimination. Their values are constants -- 1, 0, 0 -- in all 86.
+- **The 6 fenced files declare scene states**, and their names are what the engine's
+  `GetStateNameList` returns: `Afternoon`, `Evening`, `001_damaged`, `001_normal`,
+  `001_overcast_rainy`, `Map02_lv009_night`, `under_construction`. After those names the
+  gap before the volume count is `3 + 3 x stateCount` words in three of them and
+  something else in the other three, so **the variant is refused rather than guessed
+  at** -- reported as `unsupported`, which cannot be mistaken for a defect.
+
+#### The remainder after the name table: measured, not framed
+
+With a fixed start offset in 86 files the remainder can be characterised, and what it
+is *not* is worth recording as clearly as what it is.
+
+- **It begins with a run of small signed integers.** In **63 of the 86** files all
+  sixteen leading words satisfy `|v| <= 4096`; the rest break sooner. First words are
+  `(4,3)`, `(5,3)`, `(5,2)`, `(9,5)`, `(7,5)`, `(11,7)`, `(5,3)`, `(11,9)` -- 23
+  distinct openings over 86 files.
+- **The `gacha` pair opens `24, -32, -32, -32, 0, 0`**, which reads as a size followed
+  by a negative corner. Reading these words as **signed** matters: unsigned they are
+  `4294967264` and look like garbage.
+- **They are not floats.** Every one of the leading words is `0.0` or `NaN` when read
+  as float32.
+- **No grid product predicts the remainder size.** Testing `w0*w1`, `w0*w1*w2` and
+  `w0*w1*w2*w3` against remainder minus a header of 8, 12, 16, 20 or 24 bytes, for a
+  record size between 1 and 4,096: **every combination that divides does so for exactly
+  one file of 86.** A record array would divide for many.
+- So the remainder is **not** `header + grid x record`, and the leading words are not a
+  dimension triple that sizes it. They are recorded as small signed integers and
+  nothing more.
+
+#### The index carries NO sizing for the volume payload, so the payload is self-describing
+
+I said last batch that the volume payload should wait for the index, because the index
+is what describes it. **Three joins say that is wrong, and the correction changes the
+plan.**
+
+| join tested | result |
+| --- | --- |
+| the volume file's byte length appears anywhere in its index | **0 of 86** |
+| the sum of volume lengths, or length minus 8, or length over 4 | **0 of 86** |
+| some remainder word divides the volume length into 1..4,096 parts | **2 of 71**, at record sizes 2,700 and 3,398 |
+
+The index names its volume files and nothing more that this can find: no offset table,
+no byte count, no probe count. **So the volume payload has to be self-describing**, and
+framing should start from `iv_*.bytes` rather than waiting on the index.
+
+*A plan built on "the index describes the payload" survived exactly as long as it took
+to test the join.*
+
+#### The `gacha` volume header: a candidate relation on four files, not a frame
+
+The volume filenames are `iv_<lod>_<x>_<y>.bytes`, and size falls with the first
+number -- `iv_0_0_0` is 2.25 MB, `iv_1_0_0` is 84.8 KB, `iv_3_0_0` is 16.1 KB. That is
+the clipmap LOD `ToggleDebugUpdateClipmapLod0` refers to.
+
+Six files carry magic **`0x00003003`**, and in **four of them** the first eight words
+line up:
+
+| file | w1 | w2 | w3 | w4 | w5 | w6 | w7 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `character/iv_0_0_0` | 58 | **2000** | 140 | **604** | 5 | 3 | **32** |
+| `weapon/iv_0_0_0` | 60 | **2000** | 140 | **620** | 4 | 3 | **32** |
+| `character/iv_1_0_0` | 6 | **2000** | 64 | **112** | 3 | 2 | **32** |
+| `weapon/iv_1_0_0` | 6 | **2000** | 64 | **112** | 5 | 2 | **32** |
+
+- **`w4 = w1 x 8 + w3`** in all four: 58x8+140=604, 60x8+140=620, 6x8+64=112. So `w3`
+  is a header size and `w1` counts 8-byte entries that follow it, ending at `w4`.
+- `w2` is **2000** and `w7` is **32** in all four; `w6` is 3 at LOD 0 and 2 at LOD 1.
+- **The two `iv_3_0_0` files share the magic and do not follow it**: their `w2` and `w3`
+  are arbitrary 32-bit values. Either the deepest LOD has no header, or the magic is
+  not what selects the layout.
+
+***Four files is thin, and this is recorded as a candidate relation rather than a
+frame.*** It is not in a maintained reader and has no gate. Three constants and one
+arithmetic identity over four samples is the kind of pattern that has already failed
+twice in this lane once the whole population was checked -- the stride-4 periodicity and
+the clipmap grid extents both looked at least this good.
+
+#### What the 132 `v3` payloads are NOT: five containers eliminated
+
+The `v3` files are 4.16 GB and the thing worth framing. Five hypotheses are now
+excluded, each by a measurement rather than by inspection.
+
+| hypothesis | test | result |
+| --- | --- | --- |
+| a chain of size-prefixed blocks | 1/2/4-byte sizes, prefix in or out, starts 0..32 | **no chain reaches EOF** in any file |
+| the terrain container's LZ4 variant | its reader needs the leading word to be the decoded size | the leading word is 3, 990, 1,182 or 12,291 for files of 16 KB to 70 MB |
+| standard compression | zlib, gzip, zstd, lz4 frame, bzip2 magics in the first 4 KB | **none**; the 22 "zlib" hits are coincidental `78 01` byte pairs, and no offset 0..63 inflates to more than 1 KB |
+| an array of 4-byte records | byte-phase entropy | **all four phases equal to two decimals**, which a 4-byte record cannot produce |
+| an array of spatially coherent probe values | delta entropy at every stride 1..64 | **every delta raises entropy above raw** -- 6.21 to 6.74 at best |
+
+The last is the sharpest. Irradiance data is spatially smooth by nature, so if the
+payload were probe values laid out on a grid, differencing at the record stride would
+*drop* the entropy. It rises at every stride from 1 to 64. **There is no byte stride at
+which consecutive values resemble each other.**
+
+Two more, from content tests rather than statistics:
+
+| hypothesis | test | result |
+| --- | --- | --- |
+| **BC6H blocks** (HDR, the natural choice for probes) | four 5-bit mode values are reserved, so real BC6H never lands on them | **7.9% to 11.1% reserved**, against **11.7% for the same bytes shuffled** -- no signal at all, at any block start from 0 to 63 |
+| run-length or sparse encoding | share of bytes in runs of 4 or more | **0.0% to 8.3%**, against 0.4% shuffled; one file has none whatever |
+
+**The BC6H test is the one that mattered**, because bit-packed block compression was
+the shape argument left standing after the other eliminations. It fails completely: the
+mode field carries no more structure than shuffled bytes do. *A shape argument survives
+exactly until someone tests the thing it predicts.*
+
+So after seven eliminations the `v3` container is still unidentified, and the profile it
+has to satisfy is now quite specific: **entropy 5.0-6.9 bits per byte, all four byte
+phases identical, no delta coherence at any stride 1-64, no runs, no standard
+compression, no block-mode structure.** The byte census is dominated by `00`, then
+`FF`, `04`, `80`, `CC`, `40`, `30`, `01` -- round values and `0xCC`, which is the
+repeating bit pattern `11001100`.
+
+#### THE FORMAT IS DESCRIBED BY ITS OWN TYPE: `HGIrradianceVolumeConfigV2`
+
+Seven eliminations by byte statistics had not identified the container. The IL2CPP type
+layout identifies it in one read, using the metadata parser already in
+`tools/endfield-il2cpp/catalog_option_flow_metadata.py`.
+
+**`UnityEngine.HyperGryph.HGIrradianceVolumeConfigV2`, 34 fields:**
+
+```
+clipMapTextureSizeX / Y / Z          maxRegionCount
+basisBaseGridDim, basisVoxelDataDim  perBasisLodBudget,  perBasisTextureOffset
+coeffBaseGridDim, coeffVoxelDataDim  perCoeffLodBudget,  perCoeffTextureOffset
+lod3BaseGridDim, lod3VoxelDataDim, lod3Budget
+rawDataSize, modelBufferBudget, perLOD
+perHalfStreamingChunkCountsX / Y / Z
+perRawBufferOffsets, perRawBufferCounts
+perBlockInfoBufferOffsets, perBlockInfoSize
+perBasisTextureBlockCounts, perCoeffTextureBlockCounts
+perFrameMaxLoadingByteCount, perFrameMaxUploadChunkCount
+```
+
+**`HGIrradianceVolumePipelineUpdateResultV2`:** `clipmapTextureALod0`, `BLod0`,
+`ALod1`, `BLod1`, `ALod3`, `BLod3`.
+
+So the payload is **GPU texture data for two textures per LOD** -- a **basis** and a
+**coefficient** set, which is spherical-harmonic lighting -- uploaded to a clipmap.
+***That is why no byte statistic found a record: there is no record.*** It is texture
+upload data, and the block structure belongs to the GPU format, not to a file layout.
+
+#### The LODs are 0, 1 and 3, and that explains the two exceptions
+
+The config names exactly `Lod0`, `Lod1` and `Lod3`, and gives **LOD 3 its own fields**
+(`lod3BaseGridDim`, `lod3VoxelDataDim`, `lod3Budget`) where the others share
+`basis*`/`coeff*` ones. The filenames agree: the six `iv_<lod>_<x>_<y>.bytes` files are
+**two each at LOD 0, 1 and 3** and nothing else.
+
+That settles the candidate relation recorded last batch. `w4 = w1 x 8 + w3` holds for
+LOD 0 and LOD 1, which share `w2 = 2000` and `w3` of 140 and 64 -- and fails for the two
+LOD 3 files, **because the engine declares LOD 3 as a separate case**. The exceptions
+were not noise in a thin sample; they are a documented variant. *A relation with
+unexplained exceptions and a relation whose exceptions the vendor's own config explains
+are different things.*
+
+#### TWO SCHEMES, and the field names say which file uses which
+
+There are two config types, and their fields are different schemes rather than
+versions of one:
+
+| `HGIrradianceVolumeConfigV2` (34 fields) | `HGIrradianceVolumeConfig` (26 fields) |
+| --- | --- |
+| `clipMapTextureSizeX/Y/Z` | `indirectionTextureSize`, `ClipmapTextureSize` |
+| `basisBaseGridDim`, `basisVoxelDataDim` | `blockCountX/Y/Z`, **`blockSizesV3`** |
+| `coeffBaseGridDim`, `coeffVoxelDataDim` | `hashTableSize`, `maxHashTableSize` |
+| `perBasisTextureOffset`, `perCoeffTextureOffset` | `perHashTableOffsets`, `perHashTableSizes` |
+| `lod3BaseGridDim`, `lod3VoxelDataDim`, `lod3Budget` | `perPhysicalTextureOffsets`, `perPhysicalTextureBlockCounts` |
+| `perRawBufferOffsets`, `perRawBufferCounts` | **`perFrameMaxLoadingByteCountV3`**, **`perFrameMaxUploadChunkCountV3`** |
+
+- **V2 is a clipmap of basis and coefficient textures per LOD.** That is the
+  `iv_<lod>_<x>_<y>.bytes` form -- the six non-`/v3/` gacha files at LODs 0, 1 and 3,
+  with magic `0x00003003` and the `w4 = w1 x 8 + w3` header.
+- **V3 is a sparse virtual texture: an indirection texture, a hash table, and physical
+  texture blocks.** The three fields carrying the `V3` suffix all live in
+  `HGIrradianceVolumeConfig`, alongside `blockSizesV3`. That is the
+  `Data/.../v3/iv_<x>_<y>.bytes` form -- 132 files, 4.16 GB.
+
+**This is what the byte statistics were seeing.** A hash table and an indirection
+texture at the front of a file are exactly what "49 distinct leading word pairs, no byte
+alignment, no delta coherence, no runs, entropy 5-7" look like. The leading words are
+hash-table and indirection data, and the bulk is physical texture blocks. *Seven
+eliminations were each correct and all pointing at the same answer, which none of them
+could name.*
+
+- **The LOD is carried inside the file, not in the name.** `perLOD`,
+  `perHashTableOffsets`, `perHashTableSizes`, `perPhysicalTextureOffsets` and
+  `perPhysicalTextureBlockCounts` are per-LOD arrays, so one `iv_<x>_<y>.bytes` holds
+  every LOD for its chunk. The `<x>_<y>` are chunk coordinates, which is why 117 of 132
+  begin `iv_0_`.
+
+#### Both configs are blittable structs of fixed buffers, and that closes the argument
+
+Every `per*` field is a C# **fixed buffer**: each has a generated nested type
+`<name>e__FixedBuffer` holding a single `FixedElementField`.
+
+| type | fields | of which fixed buffers |
+| --- | --- | --- |
+| `HGIrradianceVolumeConfig` (V3) | 26 | **11** -- `perLOD`, `perHalfChunkCounts`, `perHashTableOffsets`, `perHashTableSizes`, `perPhysicalTextureOffsets`, `perPhysicalTextureBlockCounts`, `perFrameMaxLoadingByteCount`, `perFrameMaxUploadChunkCount`, `ClipmapTextureSize`, **`blockSizesV3`**, `cameraForwardBiasForYAxis` |
+| `HGIrradianceVolumeConfigV2` | 34 | **19** -- the `basis*`/`coeff*` dims, `perRawBuffer*`, `perBlockInfo*`, `perBasisTexture*`, `perCoeffTexture*`, `perHalfStreamingChunkCounts{X,Y,Z}`, `streamingCenterBias` |
+
+So both are **blittable structs with fixed-size per-LOD arrays** -- native interop
+configs, not serialised objects.
+
+***`blockSizesV3` is a fixed buffer, so block size varies per LOD.*** That is the last
+of the byte-statistic negatives explained: there is no single record stride in a `v3`
+payload because the physical texture blocks are sized per LOD, and one file holds every
+LOD for its chunk.
+
+#### THE EXTENTS: every per-LOD buffer is 3 x 4 bytes, so there are THREE LODs
+
+`Il2CppTypeDefinitionSizes` in `GameAssembly.dll` gives each generated
+`e__FixedBuffer` type's size, and that size *is* the buffer. Reached through the
+existing bridge in `tools/endfield-il2cpp` -- CodeRegistration at `0x18a88e640`,
+MetadataRegistration at `0x18a88e860`, 58,110 size entries.
+
+**Every per-LOD buffer in both configs is `native 12` = 3 x 4 bytes**, without
+exception:
+
+| | buffers | native size | elements |
+| --- | --- | --- | --- |
+| `HGIrradianceVolumeConfig` (V3) | 11 | **12** each | **3** |
+| `HGIrradianceVolumeConfigV2` | 17 of 19 | **12** each | **3** |
+| `basisBaseGridDim`, `basisVoxelDataDim` | 2 | **24** | **6** |
+
+- **Three LOD slots, and 28 independent fields agree on it.** That is not one
+  measurement: `perLOD`, `perHashTableOffsets`, `perHashTableSizes`,
+  `perPhysicalTextureOffsets`, `perPhysicalTextureBlockCounts`, `blockSizesV3`,
+  `perRawBufferOffsets`, `perBlockInfoSize`, `perBasisTextureOffset`,
+  `perCoeffTextureOffset` and the rest are all 12 bytes.
+- **It matches the names.** `HGIrradianceVolumePipelineUpdateResultV2` exposes
+  `Lod0`, `Lod1` and `Lod3` -- three textures per set, indices 0, 1 and 3, three slots.
+- The two 24-byte buffers, `basisBaseGridDim` and `basisVoxelDataDim`, hold **six**
+  words where the matching `coeff*` fields are plain scalars. Three LODs x two values,
+  or two triples; that is not settled and is not claimed.
+- `streamingCenterBias` and `cameraForwardBiasForYAxis` are also 12 bytes, but they are
+  a `Vector3` rather than per-LOD -- *a size alone does not say what a buffer is for,
+  and these two are the reminder.*
+
+#### The exact config layouts, read from `Il2CppFieldOffsets`
+
+Both structs, byte-exact. Offsets below are struct-relative; the binary reports them
+object-relative, so each is 16 higher there (the managed header), and the last field
+lands on the struct size exactly -- which is the check that the table was read right.
+
+**`HGIrradianceVolumeConfig` -- the V3 scheme, 192 bytes:**
+
+```
++0   enableLowQualityMode    4     +96  perFrameMaxLoadingByteCount   12
++4   indirectionTextureSize  4     +108 perFrameMaxUploadChunkCount   12
++8   blockCountX             4     +120 perFrameMaxLoadingByteCountV3  4
++12  blockCountY             4     +124 perFrameMaxUploadChunkCountV3  4
++16  blockCountZ             4     +128 maxHashTableSize               4
++20  hashTableSize           4     +132 maxInactiveFrameCount          4
++24  perLOD                 12     +136 ClipmapTextureSize            12
++36  perHalfChunkCounts     12     +148 blockSizesV3                  12
++48  perHashTableOffsets    12     +160 cameraForwardBiasForYAxis     12
++60  perHashTableSizes      12     +172 maxRegionCount                 4
++72  perPhysicalTextureOffsets     12   +176 regionAtlasSizeX          4
++84  perPhysicalTextureBlockCounts 12   +180 regionAtlasSizeY          4
+                                        +184 regionAtlasSizeZ          4
+                                        +188 enableLowMemoryMode       4
+```
+
+**`HGIrradianceVolumeConfigV2` -- the clipmap scheme, 312 bytes:** same method;
+`clipMapTextureSizeX/Y/Z` at +4/+8/+12, `basisBaseGridDim` +16 (24 bytes),
+`basisVoxelDataDim` +40 (24), `coeffBaseGridDim` +64, `coeffVoxelDataDim` +68,
+`perCoeffLodBudget` +72, `perBasisLodBudget` +84, `lod3BaseGridDim` +96,
+`lod3VoxelDataDim` +100, `lod3Budget` +104, `rawDataSize` +108,
+`modelBufferBudget` +112, `perLOD` +116, then the `perHalfStreamingChunkCounts{X,Y,Z}`,
+`perRawBuffer{Offsets,Counts}`, `perBlockInfo{BufferOffsets,Size}`,
+`perBasisTexture{Offset,BlockCounts}`, `perCoeffTexture{Offset,BlockCounts}` and
+`perFrameMax{LoadingByteCount,UploadChunkCount}` buffers at 12 bytes each,
+`maxRegionCount` +284, `regionAtlasSizeX/Y/Z` +288/+292/+296,
+`streamingCenterBias` +300.
+
+**The `v3` container, as far as the evidence goes:** an indirection texture and a hash
+table addressing physical texture blocks, with **three** per-LOD offset/count pairs and
+three per-LOD block sizes, all in fixed buffers inside these blittable structs.
+
+#### The config is NOT in the shipped files, and the search had a positive control
+
+Knowing the struct exactly turns "is it in the file?" into a search with a
+specification rather than a pattern hunt. A 192-byte window counts only if every field
+is plausible for what it is named: `enableLowQualityMode` 0 or 1, the block counts and
+`indirectionTextureSize` positive and under 8192, `maxHashTableSize >= hashTableSize`,
+the three `perLOD` entries in 1..64, and `perHashTableOffsets` and
+`perPhysicalTextureOffsets` non-decreasing.
+
+| scanned | candidates |
+| --- | --- |
+| all 92 `index.bytes` | **0** |
+| 12 `v3` payloads, first 400 KB each | **0** |
+| the same payload bytes shuffled | 0 |
+
+***A test that returns zero on everything has not shown it can detect anything***, so
+the zero above is only worth having because of a positive control:
+
+| control | candidates |
+| --- | --- |
+| a synthetic config filled the way the engine would | **1** |
+| that struct embedded at offset 5000 in 20 KB of random bytes | **1, at exactly 5000** |
+| the 20 KB of random bytes alone | **0** |
+
+So the scanner detects the struct when it is there and does not fire on noise -- and
+**the V3 config does not appear in any shipped index or payload**. It is a runtime
+config the engine holds, not something serialised into the data, and the `.bytes` files
+must carry their geometry some other way.
+
+That closes the gap flagged last batch: knowing a struct exactly is not the same as
+knowing it is in the file, and here it is not.
+
+#### WHY it is not: the payload parser is native, the index handler is managed
+
+The method flags say exactly where the boundary runs.
+
+| type | methods | `iflags` | kind |
+| --- | --- | --- | --- |
+| `HGIrradianceVolume`, `HGIrradianceVolumeV2` | `SetMap`, `SetMapV3`, `PipelineUpdate`, `StreamingInCabin`, `SetActiveSceneStateMask`, ... | **0x1000** | **InternalCall -- native C++** |
+| `HGIrradianceVolumeManager` | `ReloadIndexFileV3`, `GetStateNameList`, `UpdateSceneStateMask`, `StreamingInNewMap`, ... | **0** | **managed C#** |
+
+- **The `.bytes` payload is parsed in native code**, reached through internal calls. IL2CPP
+  metadata cannot describe its layout because no managed type exists for it -- the
+  managed side passes a path and a config struct and nothing else crosses.
+- **That is why the config is not in the file.** It is the managed-to-native *parameter*,
+  not serialised content. The two findings are the same fact seen from both sides.
+- **The index handling is managed and therefore readable.** `ReloadIndexFileV3` and
+  `GetStateNameList` are ordinary C# with method bodies in `GameAssembly.dll`, which the
+  existing bridge can locate.
+
+**So the lane splits cleanly by reachability.** The index frame at 86 of 92 can be
+checked against the game's own parser. The payload layout cannot be reached this way at
+all; it needs the native loader disassembled, and the project's existing note that
+static work on `GameAssembly.dll` is constrained by HGP applies.
+
+*Knowing that a thing is out of reach, and why, is worth more than another sweep that
+was never going to find it.*
+
+#### `ReloadIndexFileV3` does not parse the index either
+
+The one reachable check turned out not to exist. `ReloadIndexFileV3` is managed, its
+body is at `0x188fc27d8` in `HG.RenderPipelines.Runtime.dll` (local method #2222 of
+9,473), and it is **40 instructions long**:
+
+```
+class-init guard (0x75a)
+if [this+0x10] != 0:  release it, null it, store a value at [this+0x18]
+store the path argument at [this+0x20]        <- m_irradianceDataPathV3
+return
+```
+
+It **releases the current volume and stores the new path**. No file is opened, no bytes
+are read, nothing is parsed. The load happens later, natively.
+
+- So **the entire IrradianceVolume format -- index as well as payload -- is parsed in
+  native code.** The managed surface is paths, a config struct, and lifetime calls.
+- **The index frame therefore cannot be cross-checked against the game's own parser**,
+  which was the reachable next step identified last batch. It is not reachable after
+  all.
+- That is acceptable rather than fatal, because the frame's evidence does not depend on
+  it: 86 of 92 files framed, **86 of 86 naming exactly the volume files present in
+  their directory**, and every rival middle-word width framing zero. *A name join that
+  gets the whole set right in every file is evidence in its own right.*
+
+**The lane's boundary, stated once:** everything the shipped bytes and the IL2CPP
+metadata can say has been said. Further progress on the payload needs the native loader,
+and the project's existing note about HGP applies to that.
+
+**Where this lane stands:** the index is framed and shipped at 86 of 92 with 20 tests;
+the payload's container is **identified** rather than guessed, with every one of the
+seven byte-statistic eliminations explained by the identification; the remaining work is
+extents and element widths, and it is reachable with `tools/endfield-il2cpp`.
+
+*Two batches of byte statistics eliminated seven containers and identified none. One
+read of the type layout named the format, explained the residue, and resolved the
+exceptions in a candidate relation. **When a format has a reader, read the reader.***
+
+*Asking the shipped code what a format is called cost one metadata scan and moved this
+further than two batches of byte-pattern search.*
+
+## `LAYER_D`/`LAYER_N`: the terrain splat arrays, named by the engine
+
+The second-largest `.bytes` family after IrradianceVolume, and untouched until now:
+**345 `LAYER_N_*` (469 MB) + 345 `LAYER_D_*` (414 MB) + 54 `LAYER_C_*` (57 MB)**, 940 MB
+in all. Asking the metadata first this time, rather than after seven byte-statistic
+eliminations.
+
+`HG.Rendering.Runtime.VirtualTextureRenderer` has 93 fields, and four of them settle it:
+
+```
+m_splatsDiffuseArray      m_splatIndexMap        m_terrainNormalMap
+m_splatsNormalArray       m_splatControlMap      m_terrainHeightmap
+                          m_colorVariationTex    m_deformableControlMap
+VT_CLIPMAP_BASE_WIDTH, VT_CACHE_PAGE_RESOLUTION, VT_CACHE_PAGE_BUFFER_SIDE_SIZE,
+VT_INDIRECT_TEX_BUFFER_COUNT, VT_GPU_FEEDBACK_BUFFER_COUNT, VT_WORK_GROUP_COUNT
+```
+
+- **`LAYER_D` is the splat diffuse array and `LAYER_N` the splat normal array.** The
+  counts agree: **345 each, exactly paired**, which is what two texture arrays over the
+  same layer set look like. `LAYER_C` at 54 files is a control or colour map --
+  `m_splatControlMap` and `m_colorVariationTex` are both candidates and it is not
+  settled which.
+- The surrounding machinery is named too: `HGASMVirtualTextureAllocator` with
+  `AllocateTile` and `GetVTData`, `ASMTileManager` with an LRU tile cache,
+  `HGTerrainGroundLayerClipmap` with `Initialize`/`Render`/`SetPlayerCenter`, and
+  `HGTerrainGroundLayer` carrying `TEXTURE_SIZE` and
+  `TERRAIN_GROUND_LAYER_CLIPMAP_NUM` with base, normal, wet and height render targets.
+- So this family is **GPU texture data for a virtual-texture terrain splat system**,
+  the same shape of answer the IrradianceVolume payload turned out to have.
+
+### The engine's constants are readable, and they decode as compressed integers
+
+`fieldDefaultValues` in `global-metadata.dat` holds every `const` in the image, and the
+blob is **ECMA-335 compressed unsigned integers** -- not raw 4-byte values. Reading it
+as raw int32 gives garbage like `TEXTURE_SIZE = 262280`; decoded properly:
+
+| constant | value | | constant | value |
+| --- | --- | --- | --- | --- |
+| `HGTerrainGroundLayer.TEXTURE_SIZE` | **2048** | | `VT_CACHE_PAGE_RESOLUTION` | **512** |
+| `TERRAIN_GROUND_LAYER_CLIPMAP_NUM` | **4** | | `VT_CACHE_PAGE_BUFFER_SIDE_SIZE` | **128** |
+| `ASMTileManager.MAX_TILE_COUNT` | **512** | | `VT_CACHE_PAGE_BUFFER_SIZE` | **8192** |
+| `VT_CLIPMAP_BASE_WIDTH` | **16** | | `VT_INDIRECT_TEX_BUFFER_COUNT` | **6** |
+| `VT_WORK_GROUP_COUNT` | **64** | | `VT_GPU_FEEDBACK_BUFFER_COUNT` | **8** |
+| `VT_COMPRESS_LOCAL_THREAD_COUNT` | **32** | | `VT_CPU_FEEDBACK_RAYCAST_DIST` | **1000.0f** |
+
+**Three things check the decoder at once.** Every integer comes out a power of two or a
+small round number; the one float reads exactly `1000.0`; and each field's `dataIndex`
+advances by exactly the width the decoder consumed -- 1 byte for values under 0x80, 2
+above. A wrong decoding satisfies none of those. *This is reusable: any `const` in the
+image is now readable the same way.*
+
+### The `LAYER_*` files are NOT raw texture slices
+
+With `TEXTURE_SIZE = 2048` in hand the prediction was testable, and it fails:
+
+| family | files | distinct sizes | typical |
+| --- | --- | --- | --- |
+| `LAYER_N` | 345 | **67** | ~1.33 MiB |
+| `LAYER_D` | 345 | ~60 | ~1.20 MiB |
+| `LAYER_C` | 54 | 9 | 0.86-1.11 MiB |
+
+No size is a multiple of a 2048x2048 surface at any block rate -- the ratios land on
+0.32, 0.64, 0.55 and similar, never a whole number or a mip chain. **Sizes that vary
+file by file are not raw slices**, so the payload is compressed or variably encoded,
+exactly as the IrradianceVolume payload turned out to be.
+
+*The constant gave the prediction a number to fail against. Without it "about 1.3 MB" would have looked like agreement with almost anything.*
+
+### CORRECTION: the `LAYER_*` files were already decoded, by the terrain lane
+
+They are in the **Terrain** block -- 744 of them, which the CLI confirms -- and
+`terrain_stream.load_samples` takes *every* file in that block rather than only
+`Terrain_*`. So they have been inside the gated corpus the whole time.
+
+- Running the maintained codec over them: **744 of 744 close**, 743 through the stream
+  decoder and 1 stored, each to exactly its declared length. Every decoded payload
+  begins `TRET`.
+- Only **two decoded sizes** exist: 1,398,148 (x690) and 1,398,121 (x53).
+- **The terrain report already names that group.** `terrain_tret_latest.json` carries
+  `layer2And3.frontier108And109.files = 690`, status `exact_anonymous_record_tiling` --
+  the same 690 files, already closed, already gated, counted inside the 46,164.
+
+***I nearly reported "744 of 744 decode" as a new result.*** It is not. The decode is
+the terrain lane's, done long ago; the filename triage found a family the block-level
+corpus had already swallowed. *A file-name family and a block are different
+partitions, and a new name for an old set is not a new set.*
+
+**What IS new here** is the naming. The terrain report calls that group
+`exact_anonymous_record_tiling` -- exact, and anonymous -- and its header report already
+carries the formats:
+
+| family | format | files | `VirtualTextureRenderer` field |
+| --- | --- | --- | --- |
+| `LAYER_D` | `mips11_format108` | 345 | **`m_splatsDiffuseArray`** |
+| `LAYER_N` | `mips11_format109` | 345 | **`m_splatsNormalArray`** |
+| `LAYER_C` | `mips11_format5` | 53 | see below |
+
+`frontier108And109` in `terrain_tret_latest.json` is exactly **formats 108 and 109**,
+which is exactly `LAYER_D` and `LAYER_N`. **690 anonymous records now have a name, and
+the 940 MB they hold has a purpose.**
+
+#### `LAYER_C` is per-layer and optional, which rules out the control map
+
+Across the **38 directories** that hold LAYER files:
+
+- **`D` and `N` carry identical index sets in all 38** -- strictly paired, one diffuse
+  and one normal per splat layer. That confirms the pairing rather than assuming it from
+  the equal totals.
+- **`C` appears in only 22 of the 38**, and sparsely where it does: 1 `C` against 4
+  `D`/`N`, 4 against 18, 2 against 27, 1 against 7. Its indices run to 34, the same
+  layer-index shape as `D` and `N`.
+
+An **optional, per-layer** texture is `m_colorVariationTex`. It is **not**
+`m_splatControlMap`: a control map is one per terrain, always present, and would not
+carry a layer index nor be absent from 16 directories. *The distribution settles which
+of the two candidates it is without needing to read a byte of its content.*
+
+`LAYER_C` also uses format **5** where `D` and `N` use 108 and 109 -- a low, presumably
+standard format against two engine-specific ones, which is consistent, though the format
+numbers themselves are not decoded.
+
+*Two batches were spent eliminating containers for IrradianceVolume before asking the
+metadata. This family got asked first, and the answer arrived in one read.*
+
+**A route to `LAYER_C`'s purpose that is now closed.** `LAYER_` occurs **132** times in
+`global-metadata.dat`, which looks like the obvious place to look next. It is not: every
+one of those is an **animation** layer -- `LAYER_MAIN`, `LAYER_UPPER`, `LAYER_TWO_ARMS`,
+`LAYER_LOOKAT_PITCH_YAW`, `LAYER_MASK2` -- plus a few concatenated string-table runs. The
+terrain `LAYER_*` files share a prefix with an unrelated concept, and *a string search
+that matches the wrong namespace is worse than no hits, because it returns something.*
+`LAYER_C`'s purpose stays where the distribution argument left it.
+
+## `InitChunkData`: the same container as terrain, and a named FlatBuffers schema
+
+**26,520 files, 624 MB** -- the largest `.bytes` family by file count. Streaming a
+312-file slice (`InitChunkData_-1_-1_0_0.bytes`, which recurs across scenes):
+
+- **312 of 312 decode with the maintained terrain codec.** The custom LZ4 with
+  big-endian offsets and bit-interleaved tokens in
+  `scripts/asset_builder/terrain_stream.py` -- built for `Terrain_*` -- decodes these
+  byte-exactly, each to the length its own leading word declares. *The container is
+  shared across two families that no naming convention connects.*
+- **All 312 decoded payloads are valid FlatBuffers**: root offset in range, vtable
+  reachable, and a root table of **8 vtable slots** in every one.
+
+The schema is named in the IL2CPP metadata:
+
+```
+Beyond.Gameplay.Core.DynamicScene.FBDynamicSceneChunkData
+    Version, StreamingVersion, UniqueId, Grids[], TotalStr[]
+
+Beyond.Gameplay.Core.DynamicScene.FBDynamicSceneSingleGrid   (278 methods)
+    UniqueId, SceneVisibleStateInts, SceneVisibleAreaInts, PrimitiveIntList,
+    PrimitiveStringList, DataIndex, Vector3, Model, Effect, Ecs, EcsModel,
+    DataGroup, ResourceGroupWithStateDesc, NavModifyArea, MountPair, IntStrMapEntry,
+    MissionCondition, IdComp, SeatComp, PureFuncComp, TriggerComp, HittableComp,
+    FactoryBlockComp, DynamicEntityControlComp, NavModifyAreaComp,
+    InteractiveStateComp, ViewStateControlComp, MissionControlComp,
+    GlobalVarControlComp, SettlementControlComp, FactoryRegionControlComp,
+    ScriptControlComp, ResourceComp, RootComp, TreeRootComp, DecorationRootComp,
+    ErosionRootComp, ModelViewStateControllerNewComp, ConveyorBeltComp,
+    ConveyorBeltBoxComp, ConveyorBeltGroupComp, ConveyorPath, PureSystemComp,
+    NatureResourceComp, SludgeComp, Bounds, ExtraSceneComp, SceneGridInfo,
+    RemapSceneComp, WaterPipeComp, StreamingAreaComp, NavmeshObstacle,
+    MapVarControlComp, ActivityCondition, ActivityControlComp, PoiControlComp,
+    BlightMiasmaComp, LodGridResource, SnowFallTreeComp, Desc, **DataMask**
+```
+
+- ***`DataMask` is in there***, the field this file's own Remaining-gaps list names as
+  unresolved. It is a field of `FBDynamicSceneSingleGrid`, alongside sixty-odd
+  component vectors that say what a scene grid holds: conveyor belts, nav-mesh
+  obstacles, mission conditions, factory blocks, erosion and sludge, POI control.
+- Smaller schemas named alongside: `FBDynamicSceneActivityControlComp`
+  (`Conditions`, `CompareType`, `ToBeTrue`), `FBDynamicScenePoiControlComp` (`Id`,
+  `DomainType`), `FBDynamicSceneSingleGridDescriptor` (`Scene`, `Ranges`),
+  `FBDynamicSceneVersionData` (`Entries`, `Major`, `Minor`).
+
+#### TESTED AND DISPROVED: the root is not `FBDynamicSceneChunkData`
+
+The previous paragraph said the schema was *named*, not matched, and flagged the match
+as unproven. It is now tested, and it fails.
+
+- **Reading the 8 slots as the declared field order does not work.** `Grids` and
+  `TotalStr` produce **identical** length distributions -- 1 in 46 files, 5 in 16, 3 in
+  16, 4 in 15 -- which two independent vectors would not. And walking the supposed
+  `Grids` elements, **0 of them resolve to a table**, in every file.
+- **No declared root type has 8 fields.** The whole image contains exactly **six**
+  FlatBuffers types with a `GetRootAs*`: `FBDynamicSceneChunkData` (5),
+  `FBDynamicSceneSingleGrid` (61), `FBDynamicSceneSingleGridDescriptor` (2),
+  `FBDynamicSceneVersionData` (3), `FBFactoryChunkData` (5) and
+  `FBStreamAreaTotalData` (7). **None is 8.**
+- The root's inline object is **40 bytes** in all 312 files, consistent with eight
+  4-byte fields plus the vtable offset -- so the 8 slots are real fields, not deprecated
+  holes.
+
+**So `InitChunkData` is a FlatBuffer whose schema has no generated C# accessor.** Like
+the IrradianceVolume payload, it is read natively; the `FBDynamicScene*` classes are a
+different family that happens to sit in the same namespace.
+
+***A schema that fits the subject matter is not thereby the schema of the file.*** The
+sixty component names -- conveyor belts, nav-mesh obstacles, sludge, POI control --
+described a scene grid so plausibly that it read as a match. The vtable disagreed in
+two independent ways within one test.
+
+**What survives, all of it measured from the bytes:**
+
+| | |
+| --- | --- |
+| terrain codec decodes | **312 / 312**, each to its declared length |
+| decoded payload is a valid FlatBuffer | **312 / 312** |
+| root vtable slots | **8**, in every file |
+| root inline object size | **40 bytes**, in every file |
+| slot 0 | **constant 47** across all 312 -- a version, on any reading |
+
+#### The root schema, read from the bytes with no schema at all
+
+**One vtable layout in all 312 files** -- offsets `(4, 8, 16, 20, 24, 28, 32, 36)` with a
+40-byte inline object -- so every field's width falls out of the gaps, exactly as the
+IrradianceVolume config layout did:
+
+| slot | offset | width | type, from what it points at |
+| --- | --- | --- | --- |
+| 0 | +4 | 4 | **`u32` = 47 in all 312** -- a version |
+| 1 | +8 | **8** | 64-bit scalar |
+| 2 | +16 | 4 | `u32` scalar (289 of 312 read as one) |
+| 3 | +20 | 4 | **vector** (277 plain, 22 also table-like) |
+| 4 | +24 | 4 | **vector** |
+| 5 | +28 | 4 | **vector of tables** -- all 312 |
+| 6 | +32 | 4 | **vector of tables** -- all 312 |
+| 7 | +36 | 4 | **vector of tables** -- all 312 |
+
+Each vector-of-tables classification is earned: the vector length is read, then the
+first elements are followed as uoffsets and each must land on a table whose vtable
+resolves. **Slots 5, 6 and 7 pass that in every file.**
+
+**That single layout is itself the evidence.** 312 files of wildly different sizes --
+171 bytes to 4.5 MB -- share one vtable byte-for-byte, so they are one schema, and the
+typing is a statement about that schema rather than about a sample.
+
+**And it independently confirms the disproof.** `FBDynamicSceneChunkData` is three
+scalars and two vectors. This root is **three scalars (one of them 64-bit) and five
+vectors, three of which hold tables**. They are not the same shape, which is a second,
+structural reason beyond the failed vector walk.
+
+#### The element tables, also read from the bytes
+
+Walking the three vector-of-tables slots and collecting every element's vtable:
+
+**Root slot 5 -- 7,272 element tables**, three layouts:
+
+| slots | inline object | field widths | count |
+| --- | --- | --- | --- |
+| 6 | 40 | 4, 4, 4, 4, **16**, 4 | 4,294 |
+| 4 | 20 | 4, 4, 4, 4 | 733 |
+| 6 | 44 | 4, 4, 4, 4, **20**, 4 | 675 |
+
+**Root slot 6 -- 642 element tables**, a single layout: **1 slot, 8-byte object, one
+4-byte field.** No variation at all.
+
+**Root slot 7 -- 642 element tables**, two layouts:
+
+| slots | inline object | field widths | count |
+| --- | --- | --- | --- |
+| 5 | 60 | **20**, 4, **24**, 4, 4 | 430 |
+| 5 | 56 | **16**, 4, **24**, 4, 4 | 212 |
+
+- **Slots 6 and 7 are parallel arrays.** Identical vector-length distributions in every
+  file -- 0 in 48 files, 1 in 166, 2 in 49, 3 in 14, 4 in 5 -- and **exactly 642 elements
+  each**. Two vectors that agree on length in all 312 files are indexed together.
+- **The 16, 20 and 24-byte fields are inline structs**, which is the only thing a
+  FlatBuffers field of that width can be -- four, five or six 32-bit values held in the
+  table rather than behind an offset. The 16-versus-20 variation in slot 5 and the
+  16-versus-20 in slot 7 are the same choice appearing twice.
+- Slot 5's population is a different scale entirely: 7,272 elements against 642, with
+  its own length distribution.
+
+**Where this family now stands**, all from the bytes and none of it from a schema:
+
+| | |
+| --- | --- |
+| container | terrain codec, **312 / 312** |
+| format | valid FlatBuffers, **312 / 312** |
+| root | 8 fields: 3 scalars (one 64-bit), 2 vectors, 3 vectors-of-tables -- one layout in all 312 |
+| element tables | typed for all three vector slots, 8,556 tables read |
+| managed schema | **excluded twice** -- failed vector walk, and no declared root has 8 fields |
+
+#### ROOT SLOT 1 IS THE CHUNK'S WORLD ORIGIN, joined to the filename
+
+The first field in this family with a *meaning*, and it came from a join rather than a
+name. Streaming **7,433** files across **361** distinct grid coordinates:
+
+```
+root slot 1, at table offset +8, eight bytes = two int32
+    +8  == x * 128        where x, y are the coordinates in
+    +12 == y * 128        InitChunkData_<x>_<y>_0_0.bytes
+```
+
+**7,433 of 7,433**, with the controls failing as they should:
+
+| reading | files |
+| --- | --- |
+| `+8 = x*128, +12 = y*128` | **7,433 / 7,433** |
+| axes swapped | 633 -- exactly the `x == y` cases where both readings coincide |
+| scale 64 or 256 | 85 -- exactly the origin chunks, where every scale gives 0 |
+
+So the 64-bit field is the chunk's **world-space origin**, and **128 is the chunk size
+in world units**. The 361 distinct coordinate pairs map to 361 distinct field values,
+one-to-one.
+
+***This also explains how the wrong schema looked right.*** Under
+`FBDynamicSceneChunkData` this slot read as `StreamingVersion`, with values 4294967168
+and 128 -- which is `0xFFFFFF80`, i.e. `-128`, i.e. `x * 128` for `x = -1`. A plausible
+name made a coordinate look like a version number. *The join to the filename settles in
+one test what no amount of reading the field alone could.*
+
+#### THE SLOT-7 ELEMENTS CARRY WORLD PLACEMENTS, found by joining to that origin
+
+With the chunk origin known, the chunk is a **box in world units**, and a box is
+something the other slots can be tested against. Over the same 7,433 files:
+
+**Slots 5 and 6 are not spatial at all.** Every float-shaped field in them is
+**0.0% non-denormal** -- the bytes are small integers, and reading them as float gives
+denormals near zero. *Their apparent "box hits" in the first pass were entirely that
+artefact:* a denormal lands in whatever box straddles zero, which is why own-box and
+neighbour-box scored identically (28.9% vs 28.8%). **A test whose control matches it is
+measuring the control.**
+
+**Slot 7's element field 2 is a 24-byte inline struct of six floats.** Both element
+shapes give it 24 bytes (`obj 60`: offsets 28..52; `obj 56`: 24..48), and it is either
+**wholly zero or wholly populated, with zero exceptions**:
+
+| | elements |
+| --- | --- |
+| all 24 bytes zero (unset) | 3,904 |
+| populated | 7,112 |
+| *records mixing the two* | **0** |
+
+**The first triple is a world-space position, `(x, height, z)`:**
+
+| reading | share of 7,112 |
+| --- | --- |
+| **f0 in own chunk's x, f2 in own chunk's z** | **73.96%** |
+| same test against a neighbour chunk (control) | **1.28%** |
+| `(f0, f1)` as the two axes -- the non-Y-up reading | 6.25% |
+| rotations `(f1, f0)`, `(f2, f1)` (controls) | 1.92%, 1.91% |
+
+A **58-fold** margin over the spatial control. The axis assignment is then confirmed a
+*second* time, without using the box at all -- by sign:
+
+```
+axis 0 negative  61.7%      axis 1 negative   4.9%      axis 2 negative  48.2%
+```
+
+The middle axis is the one that stays positive, which is what a height does and what a
+horizontal coordinate does not. *Two independent lines, one from geometry and one from
+sign, pick the same middle float.*
+
+**The second triple is non-negative, always.** 0 of 21,336 components negative across
+7,112 records, range 0..687 -- while the position triple in those same records is
+negative 61.7%/4.9%/48.2% of the time. It is **not** a second position (2.18% own box
+against a 2.26% control -- chance), not a unit quaternion (lengths 411..693), not a
+scale (magnitudes in the hundreds). An extent is consistent with all of it, but nothing
+here *discriminates* an extent from any other non-negative triple, so it stays
+**structural-only**.
+
+***Disproved along the way:*** the six floats as a min/max bounding box. `min <= max`
+componentwise holds for 38.52% -- **below** its own reversed control at 43.22%, and level
+with a shuffled pairing at 37.69%. *The reversed control outscoring the claim is the
+cleanest possible refutation, and it cost one run.* The `f3..f5 >= 0` check scored
+100.00% in that same run and meant nothing, because the unset records were still in the
+denominator; it only became evidence once the population was restricted to the 7,112 and
+the position triple supplied the contrast.
+
+#### THE ELEMENT'S FIRST FIELD IS A DESCRIPTOR THAT STATES ITS OWN CATEGORY TWICE
+
+Field 0 is 16 bytes at offset +4 and takes only **34 distinct values** across 11,016
+elements -- a vocabulary, so a type or flag word, not a per-instance identifier. Read as
+eight u16 it comes apart cleanly.
+
+**It partitions the placements perfectly.** Of the 34 values, **0 occur both placed and
+unset**: 2 values are unset-only (3,831 + 73 = exactly the 3,904 unset records) and 32
+are placed-only. Byte 1 alone carries it -- non-zero for **7,112 of 7,112** populated and
+zero for **3,904 of 3,904** unset.
+
+**Byte 1 is one-hot, without exception**: 7,112 of 7,112 are a single set bit, drawn from
+`{01, 02, 04, 08, 10, 20}`. A byte that happened to be one-hot would manage it 8 times in
+256.
+
+**The fifth u16 restates the same category, shifted four bits.** Writing `byte1 = 2^k`,
+that word carries the bits `8 | 2^(k+4)`:
+
+| test | share |
+| --- | --- |
+| **w4 carries the bits for k** | **6,570 / 6,570 = 100.00%** |
+| same test with k+1 (control) | **0.00%** |
+| same test with k-1 (control) | **0.00%** |
+
+*Both shifted controls at exactly zero is the strongest form this evidence takes:* the
+relation is not merely frequent, its neighbours are impossible. The census is conditioned
+on the `w1 == 0x2024` family (6,570 elements); the other families, `0x0820` (393) and
+`0x1020` (149), leave w4 zero. Eight elements carry the predicted bits *plus* one extra
+bit (73 = 72|1, 137 = 136|1, 4360 = 264|4096), which is why the relation is a **subset**
+test and not equality -- as equality it would have shown 8 spurious counter-examples.
+
+**Field 4 is the constant 4** in all 11,016 elements.
+
+***Disproved:*** field 3 as an index into a sibling vector. Its 2,136 distinct small
+integers look exactly like indices, but they fall inside slot 5's length only 4.37% of
+the time and inside slots 6 and 7 **never**. Field 1 scores 90.45% against slot 5, which
+is not evidence either -- its values are 1, 2 and 4, and *any* small integer clears that
+bound. **A containment test only discriminates when the candidate could plausibly fail.**
+
+#### THE 24-BYTE FIELD IS `FBDynamicSceneBounds`, AND THE NAME COMES FROM IL2CPP
+
+The name from outside arrived. IL2CPP carries **73 generated FlatBuffers types**, 65 of
+them in **`Beyond.Gameplay.Core.DynamicScene`** -- so InitChunkData belongs to the
+DynamicScene family, and its generated vocabulary is readable:
+
+| type | components | bytes |
+| --- | --- | --- |
+| `FBDynamicSceneVector3` | X, Y, Z (Single) | 12 |
+| **`FBDynamicSceneBounds`** | **Center, Extents (Vector3)** | **24** |
+| `FBDynamicSceneVisibilityInfo` | Center, BaseRadius, MinDis, Importance | 24 |
+| `FBDynamicSceneTransform` | Pos, Rot, Scl (Vector3) | 36 |
+| `FBDynamicSceneLodGridChain` | Lod0Grid, Lod1Grid, Lod2Grid (UInt32) | 12 |
+| `FBDynamicSceneDataIndex` | IsInvalid, Type, Grid, Index | 13 |
+
+**`Bounds` explains every byte-side observation at once**, and it was found by matching
+the *shape* -- a 24-byte inline struct of six floats -- not by matching a name:
+
+- **Center** is the first triple: a world position, in its own chunk 73.96% against a
+  1.28% control
+- **Extents** is the second triple, and an extent is a **half-size, so never negative** --
+  which is exactly the 0-of-21,336 result, an invariant that had no explanation until
+  the type supplied one
+- `min <= max` had to fail: this is centre-and-extents, *not* a min/max pair. **The
+  reading that the control killed was the reading the type was never going to support.**
+- centre + extents lands in the chunk 32.94% of the time, which is what an AABB's far
+  corner does -- it leaves the chunk whenever the object is large
+
+**`VisibilityInfo` is ruled out, and it had to be ruled out** -- it is also 24 bytes, also
+starts with a `Center`. The two differ in one place: its final component is
+`Importance:Int32`, which read as a float would be a denormal.
+
+| | share of 7,112 |
+| --- | --- |
+| f5 is a normal float | **7,112 / 7,112 = 100.00%** |
+| f5 as Int32 in an Importance-like range | **0 / 7,112 = 0.00%** |
+
+***`FBDynamicSceneModel` was also ruled out, by width.*** Its five fields match the
+element's five exactly and its names are tempting -- `Guid, Trans, GridChain, PathHash,
+VisInfo` -- but its slot 3 is `Int64`, eight bytes, where the data measures four. *A
+five-field type with a plausible name is not a match; the widths are the match.*
+
+##### The Bounds attribution has to be narrowed: the element is not a managed table
+
+Checking the rest of the vocabulary walks part of the previous claim back, so it is
+stated here rather than left standing.
+
+**Exactly one of the 72 generated tables carries a `FBDynamicSceneBounds` field** --
+`FBDynamicSceneSludgeComp`, which has **27** fields against the element's 5. And running
+the widths against *every* generated table with 5 non-vector fields, **none matches**
+`[16|20, 4, 24, 4, 4]`:
+
+| table | widths |
+| --- | --- |
+| `FBDynamicSceneModel` | `[16, 36, 12, 8, 24]` |
+| `FBDynamicSceneSeatComp` | `[4, 4, 12, 12, 4]` |
+| `FBDynamicSceneRootComp`, `ActivityCondition`, `SettlementControlComp` | all `[4, 4, 4, 4, 4]` |
+| `FBFactorySingleGridRangeData` | `[4, 4, 4, 4, 4]` |
+
+So **the slot-7 element table is read by nothing in the managed assembly** -- the same
+native boundary the IrradianceVolume lane hit. That is a real finding, and it is also the
+reason the name has to be qualified.
+
+***What survives and what does not.*** The *reading* stands on the bytes alone and is
+unaffected: a centre that sits in its own chunk 73.96% against a 1.28% control, and a
+second triple that is non-negative in 21,336 of 21,336 components. **What does not stand
+is the stronger form -- that this field IS the declared `FBDynamicSceneBounds`.** The
+engine declares a type with exactly this layout and that name, which is good evidence
+that centre-and-extents is a real layout in this codebase; it is *not* evidence that this
+particular field is that type, because no table that could contain it uses it. *The name
+describes the layout; it does not locate a use site.* Anyone taking the earlier phrasing
+literally would go looking for a managed reader that does not exist.
+
+Note also that `FBDynamicSceneGuid` is **16 bytes** (V0..V3, UInt32) -- exactly slot 0's
+width. It is still not a match: a GUID does not take **34 distinct values** across 11,016
+records.
+
+#### WHY SLOTS 5 AND 6 STAY UNINDEXED: THE CORPUS HAS NO VARIATION TO INDEX
+
+Not "not yet decoded" -- **decoded, and almost empty.** Establishing that is what stops
+this being mined forever.
+
+**The root layout is one shape, everywhere.** Offsets `(4, 8, 16, 20, 24, 28, 32, 36)`,
+object size 40, in **7,433 of 7,433** files. A single layout, no variants.
+
+**Slots 6 and 7 are genuinely parallel, and that was worth proving rather than assuming.**
+`len(slot6) == len(slot7)` in **7,433 of 7,433** files with identical length
+distributions -- which is exactly what reading *one* vector twice would also produce. It
+is not that: resolving every root slot and comparing landing offsets, slots 6 and 7 never
+coincide, and they **share zero element tables**. (Only slots 1&4 and 1&2 ever alias, in
+10 and 1 files.) *Two vectors agreeing that precisely is a reason to check for aliasing,
+not a finding.*
+
+**Slot 6 carries no information at all.** Its elements have exactly one vtable layout,
+`((4,), 8)` -- a single four-byte field -- in **11,016 of 11,016**, and that field holds
+**4 in every element of every file**: one distinct value corpus-wide, across 349 distinct
+chunk coordinates.
+
+***A vacuous test, caught by running the control both ways.*** The natural reading of a
+vector parallel to the placements is an offset table into slot 5, which predicts
+non-decreasing values. That scored **100%** -- and so did **non-increasing**. Both
+directions at 100% means the values never change, and the hypothesis was never under
+test. **When a claim and its opposite both pass, the corpus is degenerate, not
+confirming.** The slot-6 constant is why.
+
+**Slot 5 is a real table vector -- checked, not assumed.** Its scalar fields hold values
+like 36, 32 and 40, which are also the object sizes in its own vtable layouts, and that
+coincidence is what reading a vtable *as* a table produces. The discriminator is that
+FlatBuffers shares one vtable across same-shaped tables, so a genuine table vector has far
+fewer vtable addresses than elements:
+
+| slot | elements | distinct vtable addresses | per element |
+| --- | --- | --- | --- |
+| 5 | 185,063 | 18,480 | **0.100** |
+| 6 | 11,016 | 3,979 | 0.361 |
+| 7 | 11,016 | 5,207 | 0.473 |
+
+All far below 1.0, with forward uoffsets at 100.0%. The reading holds.
+
+**But slot 5's variation is almost nil**: across 185,063 element tables its scalar fields
+carry only **5 to 29 distinct values** each, and its 16/20-byte field is **all zeros in
+156,058 of 156,058 reads**.
+
+***One more coincidence declined.*** Slot 5's wide field is 16 or 20 bytes -- the same
+signature as slot 7's 34-value descriptor, which invites treating them as one vocabulary.
+They **share 0 values**: slot 5's is a single all-zero constant. *Matching field widths
+are not a shared type.*
+
+#### NO MANAGED CODE NAMES THESE FILES, AND THE TEMPTING MAPPING FAILS ITS OWN TEST
+
+Chasing the reader through the filename ends in a clean negative:
+
+| literal | global-metadata.dat | GameAssembly.dll |
+| --- | --- | --- |
+| `InitChunkData_` | **0** (ASCII and UTF-16) | **0** |
+| `ChunkData_` | 0 | 0 |
+| `_0_0.bytes` | 0 | 0 |
+| `InitChunkData` | 2 -- *both* the method `_InitChunkDataPool` | 0 |
+
+So **no managed string literal constructs these filenames.** The two hits are a
+`MapManager` method that initialises a chunk-data *pool*, not a path. These files are
+addressed some other way -- by catalogue id or hash -- which is consistent with the VFS
+design and with the slot-7 element matching none of the 72 generated accessors.
+
+***The mapping that looks obvious, and why it is refused.*** `MapManager+
+LoaderChunkStaticData` holds **three** collections -- `grids`, `tiers`, `mists` -- against
+the root's **three** vector slots, and `TierLoadConfigInfo` and `MistLoadConfigInfo` each
+have **exactly 5 fields**, matching the slot-7 element's 5. Two independent-looking
+coincidences pointing the same way.
+
+It is still refused, on two counts:
+
+1. **The widths disagree.** Both config types spend three of their five fields on vector
+   members (`worldCenter`, `worldLeftBottom`, `worldRightTop`), where the data has one
+   24-byte field and four small ones -- `[16|20, 4, 24, 4, 4]`. *A field-count match with
+   a width mismatch is the same mistake `FBDynamicSceneModel` already cost.*
+2. **The data argues against it directly.** `len(slot6) == len(slot7)` in **7,433 of
+   7,433** files, with identical length distributions down to the 3,454 files where both
+   are empty. Two *independent* collections -- tiers and mists -- would not have equal
+   counts in every chunk in the world. Slots 6 and 7 read as **two parallel arrays over
+   one list**, not as two separate concepts.
+
+*The second point is the useful one: it is evidence from the corpus rather than an
+absence of evidence from the binary, and it would still hold if a matching schema turned
+up tomorrow.*
+
+#### THE SIX CATEGORIES ARE UNORDERED: THE SIZE-CLASS READING IS REFUSED
+
+The `w4 = 8 | 2^(k+4)` lock-step makes `k` look like an index into something *ordered* --
+an LOD ladder or a size class -- which predicts that extents grow with `k`. Taking the
+geometric mean of each record's three extents and the median per category:
+
+| k | records | median extent | p25 | p75 |
+| --- | --- | --- | --- | --- |
+| 0 | 1,711 | 36.42 | 14.48 | 67.30 |
+| 1 | 1,178 | 30.32 | 11.09 | 58.09 |
+| 2 | 1,824 | **96.06** | 34.24 | 195.05 |
+| 3 | 1,204 | 39.48 | 16.85 | 59.89 |
+| 4 | 807 | 36.21 | 15.57 | 54.89 |
+| 5 | 388 | 33.77 | 14.21 | 50.73 |
+
+**Neither increasing nor decreasing.** Exact monotonicity across six bins would be a
+1-in-720 accident, so this had real power to confirm; it declined. `k` is a **categorical
+label, not a scale**, and the bit-shift relation between `byte1` and `w4` is an encoding
+convenience rather than an ordering.
+
+What the census does show: **k=2 is the distinctive class** -- the largest population and
+extents roughly three times the rest -- and **k=0 is the only category carrying the
+`0x0820` family** (393 of its 1,711). Both element object sizes, 56 and 60, occur in
+every category in roughly equal share, so the two shapes cut across the categories rather
+than encoding them.
+
+**Still open, with the route now narrowed:** what a slot-7 element *is*. Its category is a
+6-valued **unordered** one-hot code confirmed twice over and its 24-byte centre/extents
+field is read, but no managed accessor, no filename literal and no loader type matches it.
+A name has to come from the native reader.
+
+## `StreamingChunkInfo`: the per-level chunk index, and it checks out against the filenames
+
+Asking what *else* lives in the directory turned out to be worth more than any amount of
+further staring at the chunk payloads. Each level's `Data/Streaming/PC/<level>/Streaming/`
+holds three families:
+
+| file | per level |
+| --- | --- |
+| `InitChunkData_<x>_<y>_0_0.bytes` + `InitChunkData_Global_#_#.bytes` | one per chunk |
+| `StreamingChunkData_<x>_<y>_0_0.bytes` + `_Global_` | **the same coordinates, paired 1:1** |
+| **`StreamingChunkInfo.bytes`** | **exactly one -- the index** |
+
+**The index is not in the terrain container at all.** It decodes with the terrain codec
+**0 of 89** times, because it is a *plain, uncompressed FlatBuffers buffer* -- root
+uoffset 16, vtable immediately after. Its neighbours in the same directory are all
+codec-wrapped. *Sharing a directory does not mean sharing a container, and trying the
+neighbour's codec first is what established that cheaply.*
+
+**Framing, from the bytes.** 89 files, two root layouts and one element layout:
+
+```
+root   (4, 8, 12, 16) objectSize 20      x88        slot 3 = the chunk vector
+root   (4, 8, 12)     objectSize 16      x1         DevOnly -- no slot 3
+element (4, 12)       objectSize 16      x23,806    ALL of them, one layout
+   field 0  8 bytes = two int32   the chunk's (x, y) grid coordinates
+   field 1  4 bytes               the constant 4, in 23,806 of 23,806
+```
+
+Totals: **23,806 chunks indexed** across 88 levels, and exactly **88 sentinel entries** --
+`(INT32_MIN, INT32_MIN)`, **one per level**, which is the `_Global_` chunk.
+
+#### THE INDEX AGREES WITH THE FILENAMES EXACTLY, 88 OF 88
+
+The reading makes a prediction with nothing fitted to it: for every level, the set of
+coordinates *inside* the index equals the set of coordinates *in the filenames beside it*.
+It can fail in both directions -- an index entry with no file, or a file with no entry.
+
+| | levels |
+| --- | --- |
+| **exact set equality** | **88 / 88** |
+| any mismatch, either direction | **0** |
+| index did not frame | 1 (`DevOnly`, whose root has no slot 3) |
+| **control: matches a *different* level's files** | **1 / 88** |
+
+*Note the coordinates here are raw grid indices* -- `(-2, 0)`, `(-1, 1)` -- **not** scaled
+by 128 the way `InitChunkData`'s own origin field is. The same quantity is stored in two
+units in two places, which is exactly the sort of thing that makes a name-based guess go
+wrong and a join go right.
+
+***The control deserves its own note, because the single hit is real and not a weakness.***
+One adjacent pair of levels does share an identical chunk set -- because the data genuinely
+repeats: **73 distinct coordinate sets cover 88 levels**, with **14 levels sharing one
+65-chunk set** and 2 sharing a 257-chunk set. Those are instanced layouts. So the control
+fires where the world actually is duplicated, and nowhere else. *A control that returns
+exactly zero is sometimes a control that cannot fire at all; this one could, did once, and
+for a reason that is visible in the data.*
+
+## `StreamingChunkData` shares `InitChunkData`'s schema -- and carries none of the placements
+
+The paired family, over the same single-digit coordinate slice (**7,433 files each**, so
+14,866 in total; the full family is larger):
+
+- **7,433 of 7,433 decode with the terrain codec**, and show **one** root layout --
+  `(4, 8, 16, 20, 24, 28, 32, 36)`, objectSize 40 -- *identical* to `InitChunkData`'s.
+- **Slot 1 is the chunk origin here too: `(x*128, y*128)` in 7,433 of 7,433**, with the
+  axes-swapped control at the same 633 symmetric cases. *This prediction was made from the
+  Init family and tested on a family that had no part in fitting it.*
+- **Slot 0 is the constant 47 in all 14,866 files of both families** -- a format version
+  shared across the pair.
+
+So the two are **one schema**. What separates them is population, and the split is total:
+
+| | Init | Streaming |
+| --- | --- | --- |
+| slot 7 (placements) empty | 3,454 (46.47%) | **7,433 (100.00%)** |
+| slot 5 length equal to its partner's | — | **7,433 (100.00%)** |
+| byte-identical to its partner | — | **0 (0.00%)** |
+
+***The naming intuition is backwards.*** `StreamingChunkData` carries **no placements at
+all** in this slice, while `InitChunkData` carries them in 53.53% of chunks. Whatever
+distinguishes the two files, it is not that the "streaming" one holds the streamed
+objects. Their slot-5 vectors are the same length in every single pair, yet no pair is
+byte-identical.
+
+#### THE SCALAR SLOTS ARE SIZES, AND ONE EXACT RELATION TIES THEM TO SLOT 5
+
+`s2 = s3 + 8 + 4 * len(slot5)` in **14,866 of 14,866 files**, both families, no
+exceptions. Since a FlatBuffers vector occupies `4 + 4n` bytes, the gap between these two
+scalars is exactly slot 5's serialized footprint plus four of alignment.
+
+They are **not** offsets into the buffer: `s3 == slot-5 vector base`, `s2 == buffer
+length` and every related test score **0.00%**.
+
+##### SOLVED: they are payload sizes, and the formula is exact
+
+Chasing the residual rather than the value settled it. `len(buffer) - s2` takes **exactly
+two values** across all 7,433 Init files -- **44** (4,220) and **48** (3,213) -- and each
+is fully determined by where the root table sits:
+
+```
+residual 44  <->  root at 24     4,220 of 4,220
+residual 48  <->  root at 28     3,213 of 3,213
+```
+
+which is `rootOffset + 20`, and 20 is the root vtable's own size (4 header + 2x8 slots).
+So:
+
+| | Init | Streaming |
+| --- | --- | --- |
+| **`s2 == len - root - 20`** | **7,433 / 7,433 = 100.00%** | **0.00%** |
+| **`s3 == len - root - 28 - 4*n5`** | **7,433 / 7,433 = 100.00%** | **0.00%** |
+| control: `len - root - 16` / `- 24` | 0.00% | 0.00% |
+| control: `len - 20`, dropping the root term | 0.00% | 0.00% |
+
+**`s2` is the size of everything past the root vtable -- the serialized payload -- and
+`s3` is that same size minus slot 5's vector footprint** (`4 + 4n` for the vector, plus 4
+of alignment). The earlier exact relation `s2 = s3 + 8 + 4*n5` was these two formulas
+seen from the side, with the length and root terms cancelling.
+
+***That the same field means nothing of the sort in `StreamingChunkData` is the sharper
+half.*** Every formula and control scores **0.00%** there, and `len - s2` spreads over
+**845** distinct residuals. The two families share a root *layout*, a version constant and
+a chunk origin -- and still do not agree on what slot 2 counts. *A shared schema does not
+guarantee a shared meaning per field, and nothing short of testing the second family would
+have shown it.*
+
+### FULL-CORPUS GATE: 26,520 files per family, every claim re-run
+
+Everything above was established on the single-digit coordinate slice. The gate re-runs it
+over the whole family, and the headline is that **62.47% of the corpus -- 16,568
+multi-digit-coordinate files -- had never been tested at all**, alongside 148 `_Global_`
+files carrying no coordinate pair.
+
+| claim | Init | Streaming |
+| --- | --- | --- |
+| total files | 26,520 | 26,520 |
+| decoded with the terrain codec | 26,519 | 26,519 |
+| **decode failed** | **1** | **1** |
+| root layout `(4,8,16,20,24,28,32,36)`/40 | **26,519 / 26,519** | **26,519 / 26,519** |
+| slot 0 == 47 | **26,519 / 26,519** | **26,519 / 26,519** |
+| origin == `(x*128, y*128)` | **26,372 / 26,372**, 0 mismatches | **26,372 / 26,372**, 0 mismatches |
+| origin unsupported (`_Global_`) | 147 | 147 |
+| `s2 == len-root-20` | **26,519 (100.00%)** | **0 (0.00%)** |
+| `s3 == len-root-28-4n5` | **26,519 (100.00%)** | **0 (0.00%)** |
+| slot 7 (placements) empty | 20,517 (77.36%) | **26,519 (100.00%)** |
+
+**Everything held, including on the 62% never previously seen.** And one slice-level
+finding is *strengthened* rather than merely confirmed: `StreamingChunkData` carries
+**no placements in any of its 26,519 decodable files, corpus-wide** -- not a property of
+the sampled coordinates.
+
+***The two failures are the same level, and they fail loudly.*** Both are `DevOnly`'s
+`_Global_` files, rejected by the codec with `match offset 0 reaches before the output` --
+a refusal, not a silent truncation. `DevOnly` is the consistent outlier in this family: it
+is also the one level whose `StreamingChunkInfo` root has 3 slots instead of 4.
+
+#### THE TWO FILES DISAGREE ABOUT HOW TO SPELL "GLOBAL"
+
+All **294** decodable `_Global_` chunk files carry **one** origin value:
+
+```
+StreamingChunkInfo entry for the global chunk   (INT32_MIN, INT32_MIN)
+InitChunkData_Global_* own origin field         (INT32_MAX, INT32_MIN)
+```
+
+*Same concept, two different sentinels, in files that sit in the same directory and
+describe the same chunk.* The earlier 88-of-88 index join survived only because it matched
+on **filenames**, not on origin values -- a join written the other way would have scored
+zero and read as a refutation of a correct reading.
+
+### THE `streaming` VFS BLOCK IS NOW FULLY INVENTORIED
+
+A bounded completeness claim, which is worth more than another partial one. Streaming the
+block with a filter that **excludes** the three known families returns **0 files**, so
+nothing else is in there. The totals close exactly:
+
+| family | files |
+| --- | --- |
+| `InitChunkData_<x>_<y>_0_0.bytes` | 26,372 |
+| `InitChunkData_Global_#_#.bytes` | 148 |
+| `StreamingChunkData_<x>_<y>_0_0.bytes` | 26,372 |
+| `StreamingChunkData_Global_#_#.bytes` | 148 |
+| `StreamingChunkInfo.bytes` | 89 |
+| **total** | **53,129 files, 719.4 MB** |
+
+and the five shapes sum to 53,129 with nothing left over. **Every family in this block is
+framed, and the framing is gated over all of it.** Two files -- `DevOnly`'s `_Global_`
+pair -- are reported as codec refusals rather than skipped.
+
+***The schema is not shipped, and that is now checked rather than assumed.*** Streaming
+the `table`, `json-data`, `extend-data` and `initial-extend-data` blocks for
+`*.fbs`, `*.bfbs`, `*.schema` and `*.proto` returns **0 files**. So the two things still
+unknown here -- what a slot-7 element *is*, and what slot 5's 19-value coupled code
+selects -- **cannot be settled from the shipped data at all**. They need the native
+reader. *That is a different statement from "not yet found", and it is the one the
+evidence supports.*
+
+#### WHERE THE NATIVE READER LIVES, AND WHY IT IS NOT READABLE
+
+"Needs the native reader" is worth replacing with a measurement. The game ships
+**`EndfieldBase.dll`, 35.8 MB**, which is the module that would hold a C++ FlatBuffers
+reader -- and it yields **nothing**:
+
+| probe | ASCII | UTF-16 |
+| --- | --- | --- |
+| `InitChunkData`, `StreamingChunkData`, `StreamingChunkInfo` | 0 | 0 |
+| `ChunkData`, `Terrain`, `IrradianceVolume` | 0 | 0 |
+| `flatbuffers`, `FlatBuffer` | 0 | 0 |
+
+Section entropy says why:
+
+| module | section | raw bytes | entropy |
+| --- | --- | --- | --- |
+| **`EndfieldBase.dll`** | **`.tvm0`** | **28,246,016** (79% of the file) | **7.60** |
+| `HGP.dll` | `.tvm0` | 9,003,008 (92%) | **7.56** |
+| `GameAssembly.dll` | `.tvm0` | 13,463,552 | 6.94 |
+| `GameAssembly.dll` | `.text` / `il2cpp` | 11.2 MB / 165 MB | 6.46 / 6.35 |
+
+**`EndfieldBase` is four fifths virtualised**, with the leftover `.rdata` at entropy 4.93
+and odd companion sections (`.BNN`, `.i,9`) typical of a code virtualiser. `HGP.dll` is
+the same construction plus `.detourc`/`.detourd` -- a detour engine, itself virtualised.
+
+*This also explains the shape of every success so far.* `GameAssembly.dll`'s `.text` and
+`il2cpp` sections are **not** packed, which is exactly why the managed metadata work keeps
+paying -- 73 generated FlatBuffers types, field widths, `Il2CppFieldOffsets`. The moment a
+question needs a *native* body, it moves into a `.tvm0` section and the evidence stops.
+**The boundary is not "IL2CPP vs native"; it is "packed vs not", and it runs through
+GameAssembly itself.**
+
+##### CORRECTION: THE CEILING ABOVE IS WRONG -- I MEASURED THE WRONG MODULE
+
+The paragraph this replaces concluded that every remaining question needs 28 MB of
+entropy-7.6 bytes and that static recovery cannot reach it. **That is false, and the error
+was testing `EndfieldBase.dll` because it looked like the right module rather than
+following the evidence to the module that actually holds the code.**
+
+**`UnityPlayer.dll` -- 33.1 MB, `.text` 25,530,880 bytes at entropy 6.52, not packed**
+(its `.tvm0` is only 1.49 MB). This is a *heavily modified* Unity player carrying the
+engine-side HyperGryph code with readable symbols:
+
+| evidence in `UnityPlayer.dll` | count |
+| --- | --- |
+| `HyperGryph` symbols | **866** |
+| `FlatBufferConvertContext` | 14 |
+| `HG_ALWAYS_ASSERT failed on expression: '...'` | many, expression text intact |
+| mangled `BindProxyEntityConvertFuncFromScript@HGStreamingSceneManager@HyperGryph@@...W4ProxyEntityType@3@` | present |
+| `PropertySerializeId::GetComponentIndexFromType` | present |
+
+#### AND THE FILENAMES ARE BUILT HERE, WHICH CORRECTS A SECOND CONCLUSION
+
+The earlier note reasoned that because no complete `InitChunkData_` literal exists in
+`global-metadata.dat` or `GameAssembly.dll`, the files must be "addressed by catalogue id
+or hash". **The premise was right and the conclusion was wrong.** The format strings are
+in `UnityPlayer.dll`, immediately beside the literals `Init` and `Streaming` that fill
+their `{1}` slot:
+
+```
+{0}/{1}{2}ChunkData_{3}_{4}_{5}_{6}.bytes
+{0}/{1}{2}ChunkData_Global_{3}_{4}.bytes
+   ... adjacent literals: "Streaming", "Init"
+```
+
+*A search for `InitChunkData_` could never have found this, because the name does not
+exist anywhere as one string.* **A negative string search bounds where a literal is, not
+where the behaviour is** -- and I turned the first into the second.
+
+So the native reader is **not** behind the virtualiser. `EndfieldBase.dll` (79% `.tvm0`
+at 7.60) and `HGP.dll` (92% at 7.56) are packed and stay unreadable, but they are not
+where this code lives. **The route is open, via `UnityPlayer.dll` and the
+`UnityEngine.HyperGryph.Streaming` namespace.**
+
+#### THE NEW SOURCE: `UnityEngine.HyperGryph.Streaming`
+
+35 types in the IL2CPP metadata, engine-level rather than game-level, including the enums
+a chunk record would plausibly reference:
+
+| enum | members |
+| --- | --- |
+| `StreamingLayer` | Default, Persistent, HLOD0, HLOD1, HLOD2, Collider, Tiny, Water, Lighting, Audio, RendererWithCollider, Count |
+| `ProxyEntityType` | IrradianceVolume, AudioVolume, AudioEmitter, AudioRoom, TerrainSurfaceTypeData, AudioPortal, SOCChunk, GrassGrid, GpuClothGroup, TreeGrid, GPUParticleSystem, TypeCount |
+| `StreamingComponentType` | 45 members |
+| `StreamingMode` | Stream, Pause, Teleport, Unload, TeleportUnload, TeleportLoad |
+| `StreamingStatus` | Idle, Loading, Unloading, Empty |
+
+***And `ProxyEntityType` is refused as the slot-5 kind code, despite reading perfectly.***
+Its members are exactly the things a chunk places, which is the most seductive name match
+in this whole family. It has an external anchor, so it is testable: the `iv` block
+independently gives each level's IrradianceVolume count. Scoring **all 28** kind codes:
+
+| | result |
+| --- | --- |
+| codes whose per-level total equals the IV count | **0 of 28, on 0 of 88 levels** |
+| **positive control**: levels where *some* code equals the IV count | **17 of 88** -- the test can fire |
+| slot-5 entries per level | median **4,861**, max 535,440 |
+| IrradianceVolumes per level | median **1**, max 14 |
+
+Three orders of magnitude apart. **Slot 5 is not a placement list at all**, whatever its
+codes mean. *The positive control is what makes the zero worth anything: without it, a
+test that cannot fire and a hypothesis that is false look identical.*
+
+#### WHAT THE ENGINE'S OWN ASSERTS AND LOGS SAY -- AND WHAT THE DATA DOES WITH IT
+
+`UnityPlayer.dll` keeps its `HG_ALWAYS_ASSERT` expression text and log formats, which is
+vocabulary straight from the authors:
+
+```
+fbMonoEntityData->componentDataList()->Get(0)->type() == kComponentTypeTransform
+!fbMonoEntityData->componentDataList()->empty()
+componentType != kComponentTypeNone        entityType != kECSEntityTypeCount
+entityType != kProxyEntityTypeCount        transition < EntityTransition::Count
+
+"Missing chunk file at %d,%d,%d, lod %d"   "Unexpected chunk status %u when load"
+"Unsupported Proxy entity type %u to ConvertFrom"   "[Streaming] Failed to load %s"
+```
+
+The first line is **literal FlatBuffers accessor code**: a table `MonoEntityData` with a
+`componentDataList()` vector whose elements carry a `type()`, and element 0 is always a
+Transform. Three bind functions sit beside it -- `BindMonoComponentConvertFuncFromScript`
+(`StreamingComponentType`), `BindProxyEntityConvertFuncFromScript` (`ProxyEntityType`),
+`BindECSEntityConvertFuncFromScript` (`ECSEntityType`) -- **three entity categories
+against the root's three vector slots.** That is the same matching-counts shape already
+refused twice in this family, so it is left as a lead, not a conclusion.
+
+***Two readings this vocabulary suggests, both refused by the bytes.***
+
+**`componentDataList` is not slot 5.** The assert predicts element 0 has one fixed type.
+Across all 26,372 files, slot-5 element 0 carries **15 distinct kind codes**, the most
+common covering 66%. Not a constant, so this vector is not that one.
+
+**The filename's fourth field is not a lod.** `Missing chunk file at %d,%d,%d, lod %d`
+invites reading `InitChunkData_<x>_<y>_<z>_<w>` as x/y/z/lod. The distribution says
+otherwise: `w` is **0 in 26,070 of 26,372** files, and where it is not it takes values
+like **587717614** and **293885694** -- confined entirely to **one level, `map02`**
+(302 files). A lod index does not look like that. *A log format string names the
+engine's addressing, not necessarily the filename's.*
+
+##### A refinement to the StreamingChunkInfo join
+
+The third field *does* vary -- `z` runs 0..7+ -- and **7 of 88 levels hold more chunk
+files than distinct `(x, y)` pairs**: `map01` has 7,599 files over 6,028 columns, `map02`
+1,952 over 1,229. So chunks are addressed by more than `(x, y)`.
+
+This does not break the earlier 88-of-88 index result, which compared **sets** of
+coordinates and so collapsed the `z` variants harmlessly -- but it does correct the
+impression that index entries and chunk files stand 1:1. **The index carries one entry per
+`(x, y)` column; the files are per `(x, y, z)`.** *The test was sound and its natural
+reading was not, which is a failure mode worth naming: set equality proves set equality,
+and nothing about multiplicity.*
+
+#### SLOT 5's KIND CODES, IDENTIFIED: `StreamingLayer` AND `ECSEntityType`
+
+Four independent lines agree, and each could have failed.
+
+***1. Range exclusivity.*** Over **1,602,882** elements, `f2` takes `{0..10, 12, 13}`:
+
+| candidate enum | verdict for `f2` |
+| --- | --- |
+| `StreamingLayer` (11) | **out of range** -- 12, 13 |
+| `ProxyEntityType` (11) | **out of range** -- 12, 13 |
+| **`ECSEntityType` (14)** | **in range, 13 of 14 values used (93%)** |
+| `StreamingComponentType` (44) | in range but only 30% used |
+
+*Two candidates are excluded outright by two values.* `StreamingComponentType` survives
+the range test and fails the coverage one: 30 of its 44 members never appearing across 1.6
+million elements is not what a live discriminator looks like. `ECSEntityType` uses every
+value but index 11 (`TerrainSplineDecal`), and its maximum is exactly `TypeCount - 1`.
+
+`f1` takes `0..10` -- exactly 100% of `StreamingLayer`'s eleven, and of
+`ProxyEntityType`'s eleven.
+
+***2. A cross-block join that had to be earned.*** The `terrain` block gives terrain
+presence per level independently. Scoring every `(f1, f2)` pair over 38 terrain levels and
+50 without:
+
+| pair | terrain | non-terrain | separation |
+| --- | --- | --- | --- |
+| **`(5, 7)`** | **37/38** | **0/50** | **+97.37%** |
+| `(0, 4)` | 38/38 | 0/50 | +100.00% |
+| everything else | -- | -- | +52% or below, most near 0 |
+
+Under the reading, `(5, 7)` is **`StreamingLayer.Collider` + `ECSEntityType.TerrainCollider`**
+-- a terrain collider on the collider layer, present in essentially every terrain level and
+**no** level without terrain. *The name and the statistic were derived from different
+files and agree.*
+
+***3. An earlier negative becomes positive evidence.*** `ProxyEntityType` is the rival for
+`f1`, and it was already refused: if `f1` were `ProxyEntityType`, then `f1 == 0` would be
+`IrradianceVolume` and its per-level count had to equal the `iv` block's -- it matched on
+**0 of 88 levels**, with a positive control confirming the test could fire. Under
+`StreamingLayer`, `f1 == 0` is `Default`, which makes no such prediction. **The failed test
+does not merely leave the question open; it discriminates between the two survivors.**
+
+***4. Absence behaves like a default.*** `f2` is *absent* on 405,611 elements, and
+FlatBuffers omits any field equal to its default. `ECSEntityType.Render` is 0 -- the
+commonest thing in a chunk -- so the commonest record carries no type word at all.
+
+***5. The enum values are now verified, not assumed.*** The mapping above originally read
+member values off **declaration order**, which is a guess. IL2CPP stores the real values in
+`fieldDefaultValues` (127,853 records) indexing `fieldAndParameterDefaultValueData`, and
+decoding them confirms it:
+
+| enum | values | terminator | valid range |
+| --- | --- | --- | --- |
+| `StreamingLayer` | **sequential 0..11** | `Count` = 11 | **0..10** |
+| `ECSEntityType` | **sequential 0..14** | `TypeCount` = 14 | **0..13** |
+| `ProxyEntityType` | sequential 0..11 | `TypeCount` = 11 | 0..10 |
+| `StreamingComponentType` | **NOT sequential** -- max value **128** | `Count` = 43 | -- |
+
+`ECSEntityType`'s valid range ends at exactly **13**, which is exactly `f2`'s observed
+maximum. And the fourth candidate is now excluded on a second, stronger ground: `f2`'s
+values are **contiguous 0..13**, which a non-sequential enum carrying a 128 does not
+produce. *The coverage argument against it was suggestive; this one is structural.*
+
+**A read that failed usefully.** The values are stored as **single bytes**, and reading
+them as int32 produced `0x03020100`, `0x04030201`, `0x05040302` -- consecutive overlapping
+windows. *That the garbage was orderly is what identified the stride:* entries one byte
+apart, values 0, 1, 2, 3. A wrong read that returns noise tells you nothing; a wrong read
+that returns a pattern tells you the layout.
+
+**What is still not claimed.** `(0, 4)` separates terrain at 100% but reads as
+`Default + SphereCollider`, which is not a terrain concept; terrain levels are the outdoor
+maps, so that separation plausibly tracks *outdoors*, not terrain. **One pair fitting the
+statistic without fitting the name keeps the mapping at strongly supported rather than
+settled.**
+
+#### SLOT 7's DESCRIPTOR: THREE CANDIDATES REFUSED, AND MY OWN "6-VALUED" CORRECTED
+
+The method that worked on slot 5 does not transfer, and saying so precisely is the result.
+
+***The category is 7-valued, not 6.*** Corpus-wide the one-hot invariant **strengthens** --
+byte 1 is a single set bit in **12,859 of 12,859** non-zero descriptors, no exceptions --
+but `k` runs **0..6**, with `k = 6` present on 2 descriptors (0.016%). **The earlier
+"6-valued" figure was an artefact of the single-digit coordinate slice.** Two descriptors
+out of 12,859 is thin, and it is enough: a range claim is settled by its rarest member.
+
+| k | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| descriptors | 2,956 | 1,980 | **3,305** | 2,250 | 1,536 | 830 | **2** |
+
+***Refused 1 -- a mask over `ECSEntityType`.*** The word is 14 bits wide and
+`ECSEntityType` has exactly 14 values, which is the same coincidence that identified slot
+5's `f2`. Testing it *within* each file, against the types that chunk's slot 5 actually
+contains:
+
+| | share of 18,391 descriptors |
+| --- | --- |
+| mask is a subset of the chunk's types | 41.42% |
+| **control: the mask shifted right** | **45.37%** |
+| control: the mask shifted left | 37.37% |
+| control: subset of a *different* chunk's types | 40.53% |
+
+**A control beat the claim.** The same reasoning that succeeded one slot over fails here,
+and it fails against three controls at once.
+
+***Refused 2 -- `ECSExplicitEntityType` and `StreamingMode`.*** Both have exactly 6
+members, which is why the corrected range matters: `k` reaches **6**, so seven values, and
+both are excluded outright.
+
+***Refused 3 -- a cross-slot join on the one name both enums share.***
+`HGDecalProjector` appears as `ECSExplicitEntityType` position 5 *and* `ECSEntityType`
+value 10, so `k = 5` records should co-occur with slot-5 `f2 = 10`. They do, at 65.88% --
+and `k = 4` does at 61.27%, `k = 1` at 59.49%, `k = 2` at 27.43%. *Highest is not
+isolated*, and a spread of 27-66% across the categories discriminates nothing.
+
+**What the descriptor is made of, precisely.** The low byte takes only four values --
+`0xFF` (12,638), `0x00` (5,459), `0xBF` (283), `0x3F` (11) -- so only bits 6 and 7 vary
+there, while bits 8..14 carry the one-hot category. *The structure is fully framed and the
+referent is unidentified*, which is a different and more useful state than either half
+alone.
+
+##### Three further constraints, each narrowing what the category can be
+
+***It is not an enum in this vocabulary.*** Searching every enum in the HyperGryph,
+Streaming and Beyond namespaces whose values are verified sequential from
+`fieldDefaultValues`, exactly **one** has seven members -- `AudioDebugGizmosType`, a debug
+gizmo list. There is no seven-valued streaming enum for `k` to be.
+
+***It is orthogonal to level content.*** The terrain anchor that identified slot 5's `f2`
+gives **nothing** here: every category appears in nearly every level, terrain or not.
+
+| k | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| terrain-vs-not separation | +0.00% | -0.63% | -0.63% | -0.63% | -5.79% | +9.26% | +5.26% |
+
+**A category present in all 88 levels in similar proportion is a per-object attribute, not
+a content kind** -- which rules out the whole family of readings that name *what* is
+placed, and is why `ProxyEntityType`-style guesses were never going to land.
+
+***The ordering refusal holds on the full corpus.*** Re-run with the corrected seven-value
+range (the earlier run used the slice that misreported it as six), the median geometric
+extent per category is **38.98, 28.45, 97.74, 40.89, 38.05, 33.77, 31.51** -- neither
+increasing nor decreasing. *Re-testing was justified because the input had been shown
+unrepresentative, not because the answer was unwelcome.*
+
+**Two facts left for the next attempt.** `k = 2` is the outlier on every measure -- the
+largest population (3,305) and a median extent **2.5x** every other category. And the two
+varying low bits are not independent of the category: among populated descriptors the
+value `0xBF` occurs **only** with `k = 0`, 221 times in 2,956, with every other category
+exclusively `0xFF`.
+
+***A degenerate fit, caught by fitting four rivals at once.*** `s4 == 24 + 24*n7` scores
+**100.00%** on the Streaming family, which reads like a decoded record stride -- until the
+rivals are run beside it. `24 + 32*n7`, `24 + 40*n7` and `24 + 44*n7` **all score
+100.00% too**, because Streaming's `n7` is *always* zero and every candidate collapses to
+the constant 24. On the Init family all four score the same 46.47% -- again exactly the
+`n7 == 0` subset. **The stride is unidentified, and the way to know that was to make the
+rivals compete rather than to check one and stop.** Init's actual `s4` grows far faster
+than linearly in `n7` (`n7=1` spans 188 distinct values; `n7=8` reaches 81,200), so it is
+a byte size over variable-length records, not a count times a stride.
+
+#### THE PAIR SPLITS SLOT 5's FIELDS INTO INVARIANT AND VARYING -- WHICH ONE FAMILY CANNOT SHOW
+
+Comparing each chunk's two files element by element, over **217,620 elements** in 7,433
+pairs. The element counts match in **every** pair (0 differ), and **not one element is
+byte-identical**:
+
+| slot-5 field | agrees across the pair |
+| --- | --- |
+| **field 1** | **58,141 of 58,141 = 100.0%** |
+| **field 2** | **100,822 of 100,822 = 100.0%** |
+| field 4 | 88.2% |
+| field 3 | 9.7% |
+| field 0 | 4.2% |
+| **field 5** | **0 of 81,172 = 0.0%** |
+
+*Two fields never disagree and one never agrees.* Fields 1 and 2 also carry the fewest
+distinct values in the corpus -- 5 and 11 -- so they read as a **kind or type code that
+identifies the same entry in both files**, while 0, 3 and 5 carry per-file quantities.
+**This partition is invisible from either family alone**: within `InitChunkData` all six
+fields look alike, small integers with few distinct values. It took the pairing to
+separate them.
+
+Element *vtable layouts* match in only 2,930 of 7,433 pairs, so some of these fields are
+optional and present in one file but not the other.
+
+***What this does not establish.*** The natural follow-up -- that fields 0, 3 and 5 are
+byte sizes summing to one of the scalars -- **fails**. Summing each across a chunk's
+entries and testing against `s2`, `s3`, `s4` and the buffer length gives at best 16.70%,
+and the one suggestive hit, `sum(field5) == s4 - 24` at **46.47%**, lands on **3,454**
+files in *both* families -- the same recurring empty-chunk subset that every degenerate
+fit in this family has produced. *When a number that has already been identified as the
+degenerate subset turns up as a match rate, it is the subset talking, not the hypothesis.*
+The scalars stay unexplained.
+
+#### THE KIND CODES ARE COUPLED, BUT NOT A SECTION DIRECTORY
+
+Fields 1 and 2 -- the two that never disagree across the pair -- take
+`{5, 6, 8, 9, 10}` and `{1..10, 12}`. Independent codes would give 55 combinations;
+**only 19 occur**, so the two are coupled and carry less information than their ranges
+suggest. Over **629,607** slot-5 elements:
+
+| reading | result |
+| --- | --- |
+| a directory keyed by kind (each kind once per chunk) | **refused** -- 3,410 of 7,433 files repeat a `(f1, f2)` |
+| a sort key | **refused** -- field 2 is unordered in 2,226 of 7,433 files |
+| distinct `(f1, f2)` combinations | 19 of a possible 55 |
+
+***A test that cannot decide, recorded so it is not run again.*** The remaining reading is
+that `(f1, f2)` is a **union tag** selecting a record type, which predicts one vtable
+layout per kind. The census gives 19 kinds against 16 layouts, with only **6 of 19** kinds
+showing a single layout -- which looks like a refutation and **is not one**. *FlatBuffers
+omits any field whose value equals its default*, so a single type legitimately produces
+several layouts depending on which fields happen to be defaulted. Layout spread within a
+kind is uninformative here, in both directions. **The union reading is neither supported
+nor refused by this evidence, and re-running it will not change that** -- separating the
+cases needs the schema, not the bytes.
+
+**Where this family stands.** Slots 5 and 6 are not unindexed for want of effort -- at
+this `inputSetSha256` **slot 6 contains no variation to index against at all**, and slot
+5's remaining questions are now pinned to a 19-value coupled code whose resolution needs
+the schema. Further mining needs a different corpus, not a better test.
 
 ## Remaining gaps
 

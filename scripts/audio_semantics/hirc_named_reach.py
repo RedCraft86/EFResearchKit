@@ -508,6 +508,224 @@ def the_stmg_section_closes_byte_exactly(stmg: dict[str, Any]) -> bool:
     return int(stmg.get("entryRecordsCarryingTheMarker") or 0) == records
 
 
+INIT_SCALARS = (
+    "sections", "sectionsTooShort", "countOutOfRange", "sectionsNotClosing",
+    "sectionsFramed", "entries", "distinctPluginIds",
+    "platSections", "platSectionsNotClosing", "platSectionsFramed",
+)
+
+
+def init_from_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    """The INIT plugin table, pooled, and joined to the plugin ids the records carry.
+
+    The join has to happen here and not in the reader. INIT lives in init_banks.pck
+    and the 147,262 source records live in default_banks.pck, so a package-local join
+    scores 1 of 147,262. That is the third field in this format whose two sides sit in
+    different packages, after the media ids and the source ids -- the reader collects,
+    this pass unions and joins.
+    """
+    totals = _sum_census(audit, "init", INIT_SCALARS, ("platformNames",))
+    names: dict[str, str] = {}
+    used: Counter[str] = Counter()
+    absent: Counter[str] = Counter()
+    for row in audit.get("rows", []):
+        if row.get("status") != "verified":
+            continue
+        package = row.get("package") or {}
+        block = (package.get("init") or {}).get("pluginNames")
+        if isinstance(block, dict):
+            names.update({str(k): str(v) for k, v in block.items()})
+    joined = 0
+    for row in audit.get("rows", []):
+        if row.get("status") != "verified":
+            continue
+        package = row.get("package") or {}
+        census = (package.get("hircMediaJoin") or {}).get("hircSourceRecords") or {}
+        for key, count in (census.get("pluginIdsByType") or {}).items():
+            word = key.rsplit("_", 1)[-1].upper()
+            joined += int(count)
+            if word in names:
+                used[names[word]] += int(count)
+            else:
+                absent[word] += int(count)
+    totals["pluginNames"] = len(names)
+    totals["sourceRecordsJoined"] = joined
+    totals["sourceRecordsNamingAPlugin"] = sum(used.values())
+    totals["pluginsUsed"] = dict(sorted(used.items()))
+    totals["pluginIdsNotInTheTable"] = dict(sorted(absent.items()))
+    return totals
+
+
+def the_init_table_names_the_plugins_the_records_use(init: dict[str, Any]) -> bool:
+    """INIT closes byte-exactly, and it names the plugins the source records carry.
+
+    INIT is self-describing: a u32 count, then 22 entries of `u16 company, u16 plugin,
+    NUL-terminated name`, closing exactly on 347 bytes. A wrong field order would not
+    land on the section end, which is the whole check for a section that appears once.
+
+    The plugin id word at the front of the 14-byte source record decomposes as
+    `(plugin << 16) | company`, and **every company-2 value the corpus carries is in the
+    table**: 0x00640002 AkSineTone, 0x00650002 AkSilenceGenerator, 0x00940002
+    AkSynthOne, 0x01990002 AkMotion.
+
+    The company-1 values are not, and that is not a shortfall. INIT lists plugin DLLs;
+    company 1 is the built-in codec set, which the engine does not need named. So the
+    gate asks that the table close, that it name some records, and that **everything it
+    fails to name be company 1** -- because a company-2 id missing from the table would
+    mean the decomposition is wrong.
+    """
+    if not isinstance(init, dict):
+        return False
+    if int(init.get("sections") or 0) <= 0:
+        return False
+    if int(init.get("sectionsFramed") or 0) != int(init.get("sections") or 0):
+        return False
+    if int(init.get("platSectionsFramed") or 0) != int(init.get("platSections") or 0):
+        return False
+    entries = int(init.get("entries") or 0)
+    if entries <= 0 or int(init.get("distinctPluginIds") or 0) != entries:
+        return False
+    if int(init.get("sourceRecordsNamingAPlugin") or 0) <= 0:
+        return False
+    absent = init.get("pluginIdsNotInTheTable")
+    if not isinstance(absent, dict):
+        return False
+    for word in absent:
+        try:
+            if int(word, 16) & 0xFFFF != 1:
+                return False
+        except ValueError:
+            return False
+    return True
+
+
+ENVS_SCALARS = (
+    "sections", "sectionBytes", "sectionsNotClosing", "sectionsFramed",
+    "curves", "points", "codesInRange", "floatsBounded", "curvesWithRisingX",
+)
+
+
+def envs_from_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    return _sum_census(audit, "envs", ENVS_SCALARS, ("interpolationCodes",))
+
+
+def the_envs_curves_carry_interpolation_codes(envs: dict[str, Any]) -> bool:
+    """ENVS is a run of curves over the SAME 12-byte point numeric type 0x0B carries.
+
+    The section has no count of its own -- the run ends when the bytes do -- so
+    byte-exact closure is what makes the walk a frame rather than a scan. Three shapes
+    close it with every curve non-empty, and the content separates them:
+
+    | shape | codes 0..9 | curves with rising x |
+    | --- | --- | --- |
+    | head 4, count at +2, 12-byte point | **16 of 16** | **6 of 6** |
+    | head 12, count at +2, 18-byte record | 3 of 10 | 1 of 3 |
+
+    *Closure found three candidates; content picked one.* The surviving point is the
+    same `f32 x, f32 y, u32 interpolation` record that numeric type 0x0B's element runs
+    carry -- the second record this format shares between two places, after the 14-byte
+    source record that types 0x02 and 0x0B share.
+    """
+    if not isinstance(envs, dict):
+        return False
+    sections = int(envs.get("sections") or 0)
+    framed = int(envs.get("sectionsFramed") or 0)
+    if sections <= 0 or framed != sections:
+        return False
+    if int(envs.get("sectionsNotClosing") or 0) != 0:
+        return False
+    points = int(envs.get("points") or 0)
+    curves = int(envs.get("curves") or 0)
+    if points <= 0 or curves <= 0:
+        return False
+    # The two content tests that separated this reading from its rivals.
+    if int(envs.get("codesInRange") or 0) != points:
+        return False
+    if int(envs.get("floatsBounded") or 0) != points:
+        return False
+    return int(envs.get("curvesWithRisingX") or 0) == curves
+
+
+def bank_duplication_from_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    """How much of the HIRC corpus is the same bank shipped in more than one package.
+
+    A per-package census cannot see this, which makes it the fourth field in this
+    format whose two sides sit in different files, after the media ids, the source
+    ids and the plugin names. Here the two sides are the same bank in two packages.
+    """
+    per_bank: dict[str, set[str]] = {}
+    objects: dict[str, int] = {}
+    for row in audit.get("rows", []):
+        if row.get("status") != "verified":
+            continue
+        package = row.get("package") or {}
+        counts = package.get("bnkBankObjectCounts")
+        if counts is None:
+            continue
+        if not isinstance(counts, dict):
+            raise ValueError("bank object counts census is not an object")
+        path = str(row.get("path"))
+        for bank, count in counts.items():
+            value = int(count)
+            if value < 0:
+                raise ValueError("bank object counts census has a negative count")
+            per_bank.setdefault(str(bank), set()).add(path)
+            objects[str(bank)] = value
+    total = sum(objects.get(bank, 0) * len(paths) for bank, paths in per_bank.items())
+    distinct = sum(objects.values())
+    shared = {bank: sorted(paths) for bank, paths in per_bank.items() if len(paths) > 1}
+    return {
+        "banks": len(per_bank),
+        "banksInMoreThanOnePackage": len(shared),
+        "objectsCounted": total,
+        "objectsDistinct": distinct,
+        "objectsDuplicated": total - distinct,
+        "sharedBanks": {
+            bank: {"packages": paths, "objects": objects.get(bank, 0)}
+            for bank, paths in sorted(shared.items())
+        },
+    }
+
+
+def the_corpus_reports_its_duplication(duplication: dict[str, Any]) -> bool:
+    """Totals must be published next to the distinct counts behind them.
+
+    One bank is shipped byte-identically in two packages -- audit_banks.pck and
+    hotfix_main_b75.pck -- and it holds 99.7% of the music objects. So the music
+    types' counts are inflated by about half: type 0x0B is 4,325 bodies but 2,195
+    distinct, 0x0A 4,158 but 2,112, 0x0C 742 but 373, 0x0D 2,431 but 1,230. Every
+    other type is within 0.2% of its distinct count.
+
+    The closure RATE is unaffected, because an exact copy closes exactly when its
+    original does -- 3,937 of 4,325 and 1,998 of 2,195 are both 91.0%. What changes is
+    the evidence base: 197 distinct bodies are unexplained, not 388.
+
+    *A percentage over duplicated data is still the right percentage and the wrong
+    sample size.* This gate exists so the distinct count is always published beside
+    the total, and so the day a second bank starts being shipped twice is a day
+    something says so.
+    """
+    if not isinstance(duplication, dict):
+        return False
+    counted = int(duplication.get("objectsCounted") or 0)
+    distinct = int(duplication.get("objectsDistinct") or 0)
+    if counted <= 0 or distinct <= 0 or distinct > counted:
+        return False
+    if int(duplication.get("objectsDuplicated") or 0) != counted - distinct:
+        return False
+    shared = duplication.get("sharedBanks")
+    if not isinstance(shared, dict):
+        return False
+    if len(shared) != int(duplication.get("banksInMoreThanOnePackage") or -1):
+        return False
+    # Every shared bank must name the packages it appears in, or the census is
+    # reporting a number nobody can check.
+    return all(
+        isinstance(entry, dict) and len(entry.get("packages") or ()) > 1
+        for entry in shared.values()
+    )
+
+
 def the_unparsed_sections_name_only_buses(words: dict[str, Any]) -> bool:
     """The sections nothing parses reference buses, and no music object at all.
 
@@ -908,6 +1126,9 @@ def run(
     music_reach = music_reach_from_audit(audit)
     stmg = stmg_from_audit(audit)
     stmg_words = stmg_words_from_audit(audit)
+    init = init_from_audit(audit)
+    envs = envs_from_audit(audit)
+    duplication = bank_duplication_from_audit(audit)
     if not media:
         problems.append("the audit declares no media ids, so the media join cannot be checked")
 
@@ -1026,6 +1247,30 @@ def run(
             f"marker={stmg.get('entryRecordsCarryingTheMarker')}"
             f"/{stmg.get('entryRecords')}"
         )
+    if not the_corpus_reports_its_duplication(duplication):
+        problems.append(
+            "the corpus duplication census is inconsistent: "
+            f"counted={duplication.get('objectsCounted')} "
+            f"distinct={duplication.get('objectsDistinct')} "
+            f"shared={duplication.get('banksInMoreThanOnePackage')}"
+        )
+    if not the_envs_curves_carry_interpolation_codes(envs):
+        problems.append(
+            "the ENVS curves no longer close or no longer carry interpolation codes: "
+            f"framed={envs.get('sectionsFramed')}/{envs.get('sections')} "
+            f"curves={envs.get('curves')} points={envs.get('points')} "
+            f"codes={envs.get('codesInRange')} bounded={envs.get('floatsBounded')} "
+            f"rising={envs.get('curvesWithRisingX')}"
+        )
+    if not the_init_table_names_the_plugins_the_records_use(init):
+        problems.append(
+            "the INIT plugin table no longer closes or no longer names the plugins "
+            "the source records carry: "
+            f"framed={init.get('sectionsFramed')}/{init.get('sections')} "
+            f"entries={init.get('entries')} "
+            f"named={init.get('sourceRecordsNamingAPlugin')} "
+            f"absent={init.get('pluginIdsNotInTheTable')}"
+        )
     if not the_unparsed_sections_name_only_buses(stmg_words):
         problems.append(
             "the unparsed sections no longer name only buses, which means either the "
@@ -1086,6 +1331,9 @@ def run(
         "musicReach": music_reach,
         "stmg": stmg,
         "unparsedSectionWords": stmg_words,
+        "initPluginTable": init,
+        "envsCurves": envs,
+        "bankDuplication": duplication,
         "mediaSummary": {
             "declaredMediaIds": len(media),
             "identifiersReachingMedia": sum(1 for v in media_reached.values() if v),

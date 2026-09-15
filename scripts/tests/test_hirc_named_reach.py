@@ -8,6 +8,11 @@ from scripts.audio_semantics.hirc_named_reach import (
     the_stmg_record_stride_beats_its_rivals,
     the_stmg_tail_run_is_located_by_its_count,
     the_stmg_section_closes_byte_exactly,
+    init_from_audit,
+    bank_duplication_from_audit,
+    the_corpus_reports_its_duplication,
+    the_envs_curves_carry_interpolation_codes,
+    the_init_table_names_the_plugins_the_records_use,
     the_unparsed_sections_name_only_buses,
     music_reach_from_audit,
     the_music_family_is_not_entered_from_the_object_graph,
@@ -580,3 +585,177 @@ class StmgClosureTests(unittest.TestCase):
                  entryRecordsCarryingTheMarker=0)))
         self.assertFalse(the_stmg_section_closes_byte_exactly({}))
         self.assertFalse(the_stmg_section_closes_byte_exactly(None))
+
+
+class InitPluginTableTests(unittest.TestCase):
+    """INIT names the plugins the source records carry, across a package boundary."""
+
+    MEASURED = {
+        "sections": 1, "sectionsFramed": 1, "platSections": 1,
+        "platSectionsFramed": 1, "entries": 22, "distinctPluginIds": 22,
+        "sourceRecordsJoined": 147262, "sourceRecordsNamingAPlugin": 973,
+        "pluginIdsNotInTheTable": {"00040001": 132056, "00080001": 1721,
+                                   "00140001": 12512},
+    }
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_init_table_names_the_plugins_the_records_use(self.MEASURED))
+
+    def test_a_company_two_id_missing_from_the_table_fails(self) -> None:
+        # The check that tests the decomposition rather than the coverage. Company 1
+        # is the built-in codec set and INIT does not list it, so those absences are
+        # expected; a company-2 id absent would mean (plugin << 16) | company is the
+        # wrong reading of the word.
+        self.assertFalse(the_init_table_names_the_plugins_the_records_use(
+            dict(self.MEASURED, pluginIdsNotInTheTable={"00040001": 132056,
+                                                        "00650002": 833})))
+
+    def test_a_section_that_does_not_close_fails(self) -> None:
+        self.assertFalse(the_init_table_names_the_plugins_the_records_use(
+            dict(self.MEASURED, sectionsFramed=0)))
+        self.assertFalse(the_init_table_names_the_plugins_the_records_use(
+            dict(self.MEASURED, platSectionsFramed=0)))
+
+    def test_colliding_plugin_ids_fail(self) -> None:
+        self.assertFalse(the_init_table_names_the_plugins_the_records_use(
+            dict(self.MEASURED, distinctPluginIds=21)))
+
+    def test_a_table_that_names_nothing_fails(self) -> None:
+        # The state a package-local join produced: the table parsed, and joined to
+        # almost nothing, because its users are in another file.
+        self.assertFalse(the_init_table_names_the_plugins_the_records_use(
+            dict(self.MEASURED, sourceRecordsNamingAPlugin=0)))
+
+    def test_an_empty_census_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_init_table_names_the_plugins_the_records_use({}))
+        self.assertFalse(the_init_table_names_the_plugins_the_records_use(None))
+
+    def test_the_join_pools_across_packages(self) -> None:
+        # One package holds INIT, another holds the records. The join must see both.
+        base = {k: 0 for k in (
+            "sections", "sectionsTooShort", "countOutOfRange",
+            "sectionsNotClosing", "sectionsFramed", "entries",
+            "distinctPluginIds", "platSections", "platSectionsNotClosing",
+            "platSectionsFramed")}
+        audit = {"rows": [
+            {"status": "verified", "package": {
+                "init": dict(base, sections=1, sectionsFramed=1, entries=2,
+                             distinctPluginIds=2,
+                             pluginNames={"00640002": "AkSineTone",
+                                          "00650002": "AkSilenceGenerator"})}},
+            {"status": "verified", "package": {"hircMediaJoin": {
+                "hircSourceRecords": {"pluginIdsByType": {
+                    "type02_plugin_00650002": 833,
+                    "type02_plugin_00040001": 100}}}}},
+        ]}
+        out = init_from_audit(audit)
+        self.assertEqual(out["pluginNames"], 2)
+        self.assertEqual(out["sourceRecordsNamingAPlugin"], 833)
+        self.assertEqual(out["pluginsUsed"], {"AkSilenceGenerator": 833})
+        self.assertEqual(out["pluginIdsNotInTheTable"], {"00040001": 100})
+
+
+class EnvsCurveTests(unittest.TestCase):
+    """Closure found three shapes for ENVS; content picked one."""
+
+    MEASURED = {
+        "sections": 1, "sectionBytes": 216, "sectionsNotClosing": 0,
+        "sectionsFramed": 1, "curves": 6, "points": 16, "codesInRange": 16,
+        "floatsBounded": 16, "curvesWithRisingX": 6,
+    }
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_envs_curves_carry_interpolation_codes(self.MEASURED))
+
+    def test_a_code_outside_zero_to_nine_fails(self) -> None:
+        # The test that separated this shape from the 18-byte rival, which put 3 of
+        # 10 codes in range. Closure alone could not tell them apart.
+        self.assertFalse(the_envs_curves_carry_interpolation_codes(
+            dict(self.MEASURED, codesInRange=15)))
+
+    def test_a_curve_whose_x_goes_backwards_fails(self) -> None:
+        self.assertFalse(the_envs_curves_carry_interpolation_codes(
+            dict(self.MEASURED, curvesWithRisingX=5)))
+
+    def test_an_unbounded_float_fails(self) -> None:
+        self.assertFalse(the_envs_curves_carry_interpolation_codes(
+            dict(self.MEASURED, floatsBounded=15)))
+
+    def test_a_section_that_does_not_close_fails(self) -> None:
+        self.assertFalse(the_envs_curves_carry_interpolation_codes(
+            dict(self.MEASURED, sectionsFramed=0, sectionsNotClosing=1,
+                 curves=0, points=0, codesInRange=0, floatsBounded=0,
+                 curvesWithRisingX=0)))
+
+    def test_an_empty_census_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_envs_curves_carry_interpolation_codes({}))
+        self.assertFalse(the_envs_curves_carry_interpolation_codes(None))
+        self.assertFalse(the_envs_curves_carry_interpolation_codes(
+            dict(self.MEASURED, curves=0, points=0)))
+
+
+class BankDuplicationTests(unittest.TestCase):
+    """One bank shipped in two packages inflates every count it contributes to."""
+
+    MEASURED = {
+        "banks": 20863, "banksInMoreThanOnePackage": 1,
+        "objectsCounted": 323049, "objectsDistinct": 316945,
+        "objectsDuplicated": 6104,
+        "sharedBanks": {"266542773": {
+            "packages": ["Data/Audio/PCK/Windows/Audit/audit_banks.pck",
+                         "Data/Audio/PCK/Windows/Hotfix/hotfix_main_b75.pck"],
+            "objects": 6052}},
+    }
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_corpus_reports_its_duplication(self.MEASURED))
+
+    def test_arithmetic_that_does_not_add_up_fails(self) -> None:
+        self.assertFalse(the_corpus_reports_its_duplication(
+            dict(self.MEASURED, objectsDuplicated=0)))
+        self.assertFalse(the_corpus_reports_its_duplication(
+            dict(self.MEASURED, objectsDistinct=400000)))
+
+    def test_a_shared_bank_naming_one_package_fails(self) -> None:
+        # A bank is only shared if it appears in more than one place, and the census
+        # has to name them or the number cannot be checked.
+        self.assertFalse(the_corpus_reports_its_duplication(
+            dict(self.MEASURED, sharedBanks={"266542773": {
+                "packages": ["a.pck"], "objects": 6052}})))
+
+    def test_a_count_that_disagrees_with_the_listing_fails(self) -> None:
+        self.assertFalse(the_corpus_reports_its_duplication(
+            dict(self.MEASURED, banksInMoreThanOnePackage=2)))
+
+    def test_an_empty_census_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_corpus_reports_its_duplication({}))
+        self.assertFalse(the_corpus_reports_its_duplication(None))
+
+    def test_the_census_sees_a_bank_in_two_packages(self) -> None:
+        # The whole point: a per-package census cannot see this, because each package
+        # reports the bank once and looks unremarkable.
+        audit = {"rows": [
+            {"status": "verified", "path": "a.pck",
+             "package": {"bnkBankObjectCounts": {"7": 100, "8": 5}}},
+            {"status": "verified", "path": "b.pck",
+             "package": {"bnkBankObjectCounts": {"7": 100}}},
+            {"status": "failed", "path": "c.pck",
+             "package": {"bnkBankObjectCounts": {"9": 999}}},
+        ]}
+        out = bank_duplication_from_audit(audit)
+        self.assertEqual(out["banks"], 2)
+        self.assertEqual(out["banksInMoreThanOnePackage"], 1)
+        self.assertEqual(out["objectsCounted"], 205)
+        self.assertEqual(out["objectsDistinct"], 105)
+        self.assertEqual(out["objectsDuplicated"], 100)
+        self.assertEqual(out["sharedBanks"]["7"]["packages"], ["a.pck", "b.pck"])
+
+    def test_a_malformed_census_fails_closed(self) -> None:
+        for bad in ({"7": -1}, "counts"):
+            with self.assertRaises(ValueError):
+                bank_duplication_from_audit({"rows": [
+                    {"status": "verified", "path": "a.pck",
+                     "package": {"bnkBankObjectCounts": bad}},
+                ]})

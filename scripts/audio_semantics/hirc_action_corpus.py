@@ -3507,53 +3507,110 @@ def the_trailer_branches_partition_the_framed_bodies(
     return plain + extended == elements
 
 
-def the_trailing_section_closes_only_multi_entry_bodies(
-    groups: dict[str, Any], selectors: dict[str, Any], corpus: dict[str, Any]
-) -> bool:
-    """Numeric type 0x0B's multi-entry bodies end with a section the entries do not cover.
+def the_entry_header_word_at_thirty_two_is_a_float(corpus: dict[str, Any]) -> bool:
+    """Numeric type 0x0B's entry-header word at +32 is a float, and -0.0 is why it hid.
 
-    After the entry walk falls short, one byte then the same 12-byte block and the
-    same trailer an element ends with lands exactly on the terminator in 76 bodies.
-    The prefix is discriminated: width 1 closes 76 and every other width from 0 to 9
-    closes at most 10. The section costs nothing, because it is only attempted once
-    the walk has already failed -- it can add bodies, never take one.
+    Nine id populations failed to explain this word: object references same-bank and
+    corpus-wide, source ids, media ids, bank ids, STMG's ids, fixed-point fractions,
+    and the 24,231 identifier literal hashes from global-metadata.dat.
 
-    What this gate insists on is the part that is easy to lose. A control that
-    accepts any of the four observed trailer lengths and ignores the flag closes 100
-    rather than 76: the extra 24 have a residue of the right total length but a block
-    opening byte of 0xAF, 0x55 or 0x59 and a scattered selector. Those are length
-    coincidences, not sections, and they stay fenced. So every section this reader
-    accepts must have an opening byte the trailer rule recognises -- 0 or 1 -- and a
-    plain flag in range. If a section ever appears with an opening byte outside that
-    pair, the reader has started accepting the coincidences and the gate says so.
+    Read as a float, **2,189 of its 2,189 nonzero values are plausible** -- 865 exactly
+    NEGATIVE zero, and the other 1,324 in -9.83 to 7.81 with 1,220 negative. Every
+    other offset from 28 to 39 scores between 0 and 17.7%, the four-byte-aligned
+    neighbours at 28 and 36 included.
+
+    *The -0.0 is why this took so long.* A band test that asks for `abs(v) > 1e-4`
+    discards 0x80000000 as "not a float", and that is 40% of the field. A field whose
+    unset marker is negative zero looks unlike a float to any test that treats zero as
+    uninteresting.
+
+    The gate wants all three things: every value plausible, the controls clearly
+    worse, and the negative zeros actually present -- because if they vanished, the
+    field being read would no longer be the one this note describes.
     """
-    if not isinstance(groups, dict) or not isinstance(selectors, dict):
-        return False
     if not isinstance(corpus, dict):
         return False
-    sections = int(groups.get("trailingSections") or 0)
-    if sections <= 0:
+    tested = int(corpus.get("gainsTested") or 0)
+    if tested <= 0:
         return False
-    opens = {
-        name.rsplit("_", 1)[-1]: int(value) for name, value in selectors.items()
-        if name.startswith("trailingSectionOpens_")
-    }
-    if not opens or sum(opens.values()) != sections:
+    if int(corpus.get("gainsPlausible") or 0) != tested:
         return False
-    # The whole discrimination in one line: an opening byte the trailer rule knows.
-    if not set(opens) <= {"0", "1"}:
+    if int(corpus.get("gainsThatAreNegativeZero") or 0) <= 0:
         return False
-    flags = {
-        name.rsplit("_", 1)[-1]: int(value) for name, value in selectors.items()
-        if name.startswith("trailingSectionFlag_")
-    }
-    if sum(flags.values()) != sections:
+    controls = int(corpus.get("gainControlsTested") or 0)
+    if controls <= 0:
         return False
-    return all(int(name) <= 2 for name in flags)
+    # The controls must fail clearly, or "it reads as a float" says nothing.
+    if int(corpus.get("gainControlsPlausible") or 0) * 4 >= controls:
+        return False
+    # This WAS a control and is now confirmation, which is the whole story of the
+    # four-byte entry step-back. While later entry headers were read four bytes late,
+    # the same offset scored 2 of 26 -- the rate of a shifted read. With the step-back
+    # applied it scores 210 of 210. *A control that flips to agreement when an offset
+    # is corrected is the strongest evidence the correction was right.*
+    later = int(corpus.get("laterEntryGainsTested") or 0)
+    if later <= 0:
+        return False
+    return int(corpus.get("laterEntryGainsPlausible") or 0) == later
+
+
+def the_element_reserved_bytes_are_checked_and_zero(corpus: dict[str, Any]) -> bool:
+    """Twelve bytes an element carries are always zero, and the reader now checks them.
+
+    The element head is 5 bytes and only byte 0 was read, the run count; bytes 1, 2 and
+    3 are zero in all 3,861 first elements that frame. The run header is 11 bytes and
+    only byte 7 was read, the record count; nine of the other ten are zero in every run
+    header that frames, leaving only byte 3 varying.
+
+    **Enforcing them costs nothing** -- 4,115 bodies frame either way -- so the reader
+    validates twelve bytes an element that it used to walk straight through. *A field
+    that is always zero is still a field, and a parser that does not check it will
+    happily walk through garbage.*
+
+    **A shifted control does not work here and the attempt is recorded rather than
+    hidden.** Reading the same three offsets five bytes on scores 11,774 zero of
+    12,843 -- 91.7% -- because it lands on the run header's OWN zero-invariant bytes.
+    The neighbourhood is zero-rich, so shifting within it cannot discriminate. *A
+    control has to land somewhere the claim does not already predict.*
+
+    What stands in for it is the pair of facts a bad control cannot produce: enforcing
+    the invariant leaves coverage at exactly 4,115, and it rejects 115 bodies that the
+    reader used to walk straight through -- moving them out of
+    `range_element_trailer_flag`, which falls from 111 to 14. Strictness that costs
+    nothing and catches desynchronisation three steps earlier is the evidence.
+    """
+    if not isinstance(corpus, dict):
+        return False
+    checked = int(corpus.get("reservedBytesChecked") or 0)
+    if checked <= 0:
+        return False
+    # The control is published so the 91.7% stays visible; it is deliberately not
+    # required to fail, because it cannot.
+    return int(corpus.get("reservedControlsChecked") or 0) > 0
+
+
+def the_entry_header_carries_the_same_word_twice(corpus: dict[str, Any]) -> bool:
+    """The words at +12 and +20 are one field written twice, more often than not.
+
+    Where both are nonzero they are **equal in 1,102** cases. They also share a top
+    value and a distribution: minimum 1, median about 2.18e9, maximum 0xFFFFFFFF.
+
+    This is a structural observation, not an identification. What the pair holds is
+    still unknown and the same nine populations failed on it as on +32. It is gated so
+    that the relationship cannot quietly disappear while the note still claims it.
+    """
+    if not isinstance(corpus, dict):
+        return False
+    tested = int(corpus.get("pairsTested") or 0)
+    equal = int(corpus.get("pairsEqual") or 0)
+    if tested <= 0 or equal <= 0 or equal > tested:
+        return False
+    # A majority, or "the same field twice" is not what the data shows.
+    return equal * 2 > tested
 
 
 def the_trailer_close_block_ends_in_eight_zeros(totals: dict[str, Any]) -> bool:
-    """The block that ENDS A BODY carries eight zero bytes; interior ones do not.
+    """Every element trailer ends with four variable bytes and eight zero ones.
 
     Two claims about the same twelve bytes, and they have different answers.
 
@@ -3582,16 +3639,20 @@ def the_trailer_close_block_ends_in_eight_zeros(totals: dict[str, Any]) -> bool:
         return False
     if control * 2 >= final:
         return False
-    # The interior blocks are the discrimination, and they only became available when
-    # multi-element bodies started to frame. If they scored like the final ones the
-    # eight zeros would be a property of trailers in general; they score 0 of 38, so
-    # it is a property of the block that ends the body.
+    # WITHDRAWN: interior close blocks used to score 0 of 38 here, and that contrast
+    # was the evidence that the eight zeros belong to the block ending the BODY rather
+    # than to each element. Those 38 came from the retired trailing-section reading,
+    # which placed a second entry header four bytes late. Under the corrected frame
+    # every framed body carries exactly one element, so there are no interior blocks
+    # and the question is untestable again.
+    #
+    # *Evidence produced by a reading is only as good as the reading.* The contrast is
+    # no longer demanded; if interior blocks reappear they are censused and it can be
+    # settled properly.
     interior = int(totals.get("interiorCloseBlocks") or 0)
-    if interior <= 0:
-        # Not yet testable. Refuse rather than pass: this gate's whole content is the
-        # contrast, and without interior blocks there is no contrast to check.
-        return False
-    return int(totals.get("interiorCloseBlocksEndingInEightZeros") or 0) * 2 < interior
+    if interior > 0:
+        return int(totals.get("interiorCloseBlocksEndingInEightZeros") or 0) * 2 < interior
+    return True
 
 
 TYPE11_HEADER_SCALARS = (
@@ -3604,6 +3665,11 @@ TYPE11_HEADER_SCALARS = (
     "boundedFloatsTested", "boundedFloatsInBand",
     "floatControlsTested", "floatControlsInBand",
     "sourceJoinTested", "sourceJoinMatched",
+    "gainsTested", "gainsPlausible", "gainsThatAreNegativeZero",
+    "gainControlsTested", "gainControlsPlausible",
+    "laterEntryGainsTested", "laterEntryGainsPlausible",
+    "pairsTested", "pairsEqual",
+    "reservedBytesChecked", "reservedControlsChecked", "reservedControlsZero",
     "closeBlocks", "closeBlocksEndingInEightZeros",
     "closeBlockControlsEndingInEightZeros",
     "finalCloseBlocks", "finalCloseBlocksEndingInEightZeros",
@@ -7132,10 +7198,14 @@ def run_current_corpus_audit(
     t11_ext_free = the_trailer_branches_partition_the_framed_bodies(
         type11_body_selectors, type11_body_corpus
     )
-    t11_section_ok = the_trailing_section_closes_only_multi_entry_bodies(
-        type11_body_corpus.get("groupCounts") or {},
-        type11_body_selectors,
-        type11_body_corpus,
+    t11_gain_ok = the_entry_header_word_at_thirty_two_is_a_float(
+        report["corpus"].get("type11EntryHeaders") or {}
+    )
+    t11_reserved_ok = the_element_reserved_bytes_are_checked_and_zero(
+        report["corpus"].get("type11EntryHeaders") or {}
+    )
+    t11_pair_ok = the_entry_header_carries_the_same_word_twice(
+        report["corpus"].get("type11EntryHeaders") or {}
     )
     t11_close_ok = the_trailer_close_block_ends_in_eight_zeros(
         report["corpus"].get("type11EntryHeaders") or {}
@@ -7224,7 +7294,9 @@ def run_current_corpus_audit(
         and t11_ext_ok
         and t11_ext_free
         and t11_close_ok
-        and t11_section_ok
+        and t11_gain_ok
+        and t11_pair_ok
+        and t11_reserved_ok
         and t11_header_ok
         and t11_count_is_a_count
         and t11_curves_ok
@@ -7654,12 +7726,6 @@ def run_current_corpus_audit(
             "the type 0x0B trailer branches no longer partition the framed bodies, "
             "so a body is being counted in both branches or in neither: "
             f"selectors={type11_body_selectors} exact={type11_body_corpus.get('exact')}"
-        )
-    if not t11_section_ok:
-        lane_failures.append(
-            "the type 0x0B trailing section is gone, or has started accepting "
-            "residues whose opening byte the trailer rule does not recognise: "
-            f"{ {k: v for k, v in type11_body_selectors.items() if 'railingSection' in k} }"
         )
     if not t11_close_ok:
         h11 = report["corpus"].get("type11EntryHeaders") or {}
