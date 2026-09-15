@@ -305,6 +305,15 @@ target. That is not parenthood, containment, membership, a tree or a root. Befor
 re-run the gate: it refuses to publish unless every reference names exactly one
 unambiguous same-bank object, duplicate-id targets included.
 
+Numeric type `0x16` is framed byte-exact (778 bodies, 16,635 bytes) and is worth
+copying as a method: a byte count, that many one-byte keys followed by that many
+four-byte values as two parallel runs, one anonymous byte, then the node frame's
+group I structure verbatim. Most of it was already proven, so before decoding a
+small type from scratch, check whether it ends with a structure another type
+already closes. It shares only group I, so it carries only the group I residuals,
+and its selector families are per-element -- one observation per counted thing --
+and reconcile against their own counters rather than the body total.
+
 Numeric type `0x0E` is framed byte-exact too, but on its own terms: it does not
 use the node frame at all, so it must not inherit the node frame's residual list,
 its group widths, or its unconditional selector families -- the lane framework now
@@ -326,10 +335,93 @@ scratch. They do not open with the node frame, and searching for an offset where
 the frame parses is worthless because every music body admits several such
 offsets -- the frame is permissive, so "it parsed" is nearly no evidence. A
 structural predictor is needed, the way byte 1 predicts the `0x0E` prefix.
-Types `0x0A` and `0x0D` open with nine bytes and a 32-bit word at offset 9 that
-names a same-bank object in about 97% of bodies; the remainder name nothing in
-any bank, so this is an anchor for probing and **not** a reference claim, which
-here requires every value to resolve. When probing them, mirror the node frame in
+The numeric type `0x03` target word crosses bank boundaries -- 1,499 of 28,379
+name an object in another bank of the same package, and a cross-package probe adds
+739 more, against 1.53 expected by chance. Do **not** repeat the older note that
+this corpus has no cross-bank evidence: that is true of the gated reference
+vectors and was over-generalised to the corpus. Actions are a different relation.
+
+Only numeric types `0x04`, `0x08` and `0x15` carry names, plus bank ids; the other
+sixteen HIRC types match no shipped literal at all and media ids match none either
+(0 of 61,333 against an expectation of 0.36). Those zeros are measured, so treat
+that anonymity as a property of the data rather than a gap to keep searching. The
+identifier chain ends at an opaque media id and does not continue into a filename.
+Judge any new naming claim by its computed coincidence rate -- population / 2^32 --
+because type `0x02` produces plausible-looking names at exactly its chance rate.
+
+The source id in a numeric type `0x02` bounded prefix names a media file the
+corpus ships, and **the plug-in id decides whether it does** -- two ids always
+resolve, five never, none both. Report the partition rather than the ~98% rate,
+which hides it. Union the media ids across every package before joining: a bank's
+media usually lives in another package, so a per-package join matches 12 of 75,958
+and is worthless. The whole plug-in id decides, not its low nibble.
+
+The HIRC serializer ships with the game: `Endfield_Data/Plugins/x86_64/
+AkSoundEngine.dll` is built from **Wwise SDK v2023.1.17** (that string occurs 28
+times and is the only version in the binary), against a vendored tree at
+`E:\Engine\RM42.Beyond\Audio\Wwise\SDK`. Treat a stock 2023.1.17 layout as a
+strong prior, not ground truth. The binary names no bank structures -- only the
+chunk tags -- so string-mining it further will not yield layouts; its value is the
+version. Where this corpus leaves a width genuinely tied, that SDK is the witness
+that would settle it.
+
+Numeric type `0x12` remains unframed and several readings are already eliminated:
+not the `0x10`/`0x11` grammar (all 251 fail on the section size), not the `0x16`
+shape, and chained counted blocks close only 8 of 251. Its leading word is not a
+reference field -- it names nothing in 119 of 251 bodies -- so do not gate it like
+the `0x08`/`0x0A`/`0x0C`/`0x0D` heads. A fixed-21-byte-tail reading fits two sample
+bodies and fails on the corpus; work from the end-aligned census instead, where
+bytes -5..-3 are zero everywhere.
+
+Numeric types `0x13`, `0x14` and `0x15` are framed byte-exact but on 4, 9 and 5
+bodies respectively, so read their report before relying on them: `0x13`/`0x14`
+are a four-byte-value block, an eight-byte-value block, then two bytes, and `0x15`
+is the `0x10`/`0x11` header plus eight bytes. The eight-byte width rests on the 6
+bodies that carry a nonempty second block, and the gate refuses an all-empty
+corpus so the width cannot pass unwitnessed.
+
+Numeric type `0x09` is opened by the shared node frame in all 5,158 bodies; after
+it come a counted four-byte run and a second count, and where that count is zero a
+single byte closes the body -- 4,973 of them, now gated. The recovery memory
+records a better layer grammar reaching 5,154, but it exists only as prose and a
+later attempt could not reproduce it from 48 swept variants, so the shipped census
+is the weaker verified one. Record grammars as widths and offsets, not sentences.
+
+Numeric types `0x11` and `0x10` share one grammar: an eight-byte header whose
+second word sizes an opaque section, one byte, group I, a 16-bit flag, then a
+counted run of six-byte elements. 2,983 of 3,098 bodies close exactly. Type `0x10`
+was never decoded on its own -- its header matched, the existing grammar was tried,
+and 430 of 453 fit; its 23 stragglers all carry third byte `0x7F` and are fenced
+under their own reason, which applies to `0x10` only. Do not try to close the other 92:
+when the flag is set, block widths 21 and 27 both consume every flagged body
+exactly (27 swallows the run's single element and reads a zero count), and the
+flag is never above 1, so nothing in this corpus separates them. That is a tie,
+not a gap, and it is fenced as its own outcome rather than failed or guessed.
+
+Numeric type `0x08`'s leading word is null or names exactly one same-bank object
+(157 resolve, 4 null, 0 unresolved over 161 bodies); null is an allowed outcome
+for this type, unlike the music head where it is not. `0x08` is not framed: its
+key/value block matches `0x16`'s, and after it a one-entry list whose key sizes
+the value (`0x15` -> 11 bytes, `0x1D` -> 27) plus a recurring
+`02 e8 03 00 00 00 00 c0 c2` signature explain 148 of 161 bodies and no more.
+Types `0x10`, `0x11` and most of `0x12` do not share that head at all.
+
+Type `0x0B` opens with a byte, a 32-bit record count, and that many fourteen-byte
+source records; every one of the 4,447 records carries a plug-in id numeric type
+`0x02` also uses, which is what evidences the stride -- plug-in ids are sparse, so
+a wrong stride leaves the set at once, and the 230 records after a body's first
+are the ones that test it. Do not extend this to a frame: the 88-byte entries that
+follow consume only 2,221 of 4,325 bodies exactly, 248 of their words name no
+declared source, and the node frame reaches EOF from there in 2 bodies.
+
+Types `0x0A`, `0x0C` and `0x0D` share a head and carry one gated reference each:
+body byte 2 selects the offset of a 32-bit word (0 -> offset 9, nonzero -> offset
+5), and under that rule 7,326 of 7,331 bodies name exactly one same-bank object.
+The five exceptions are `0x0C` bodies whose *first* byte is 6, a head shape
+neither branch fits; they are excluded from the claim but kept in the denominator. Fixing the offset at 9 instead
+resolves only ~97%, which looked like missing references and was not -- when a
+rule is nearly always right, look for the byte that makes it always right before
+recording a limit. When probing them, mirror the node frame in
 Python under `tmp/` and prove the mirror against an already-closed type first --
 the current mirror reproduces all 48,740 type `0x07` bodies exactly, which is why
 its music-type failures can be believed.

@@ -6,7 +6,10 @@ one that most needs its evidence stated plainly. Every step is exact:
 1. ``global-metadata.dat`` ``stringLiteral`` rows are exact ``<byteLength,
    dataIndex>`` pairs over exact bytes, so an audio-like literal is a string the
    shipped managed code actually contains.
-2. Its FNV-1 hash over UTF-16 code units is compared to HIRC object identities.
+2. Its hash under the shipped ``AudioHashGenerator`` -- FNV-1 over UTF-16 code
+   units, folding ASCII ``A``-``Z`` before each XOR -- is compared to HIRC object
+   identities. The folding is not cosmetic: 46 shipped literals contain capitals,
+   and hashing them unfolded loses every one of their names.
    Every current match lands on a numeric type ``0x04`` object and on no other
    type, which is what identifies that type as the object managed code addresses
    by name. The gate refuses to publish if a match ever lands elsewhere, because
@@ -36,7 +39,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from scripts.audio_semantics.identifiers import collect_metadata_audio_literals
+from scripts.audio_semantics.identifiers import (
+    audio_hash_generator_compute,
+    collect_metadata_audio_literals,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTER = ROOT / "reports/animestudio/vfs_understanding_latest.json"
@@ -44,32 +50,15 @@ DEFAULT_OUTPUT = ROOT / "reports/animestudio/hirc_named_reach_current_latest.jso
 DEFAULT_CLI = ROOT / "tools/AnimeStudio/AnimeStudio.CLI/bin/Release/net9.0-windows/AnimeStudio.CLI.exe"
 DEFAULT_TEMP_AUDIT = ROOT / "tmp/audio/hirc_named_reach/audio_audit.json"
 
-FNV1_OFFSET_BASIS = 0x811C9DC5
-FNV1_PRIME = 0x01000193
 # The type that every current literal hash match lands on. Kept as a number: the
 # identification is "managed code addresses this type by name", not a Wwise label.
 NAMED_OBJECT_TYPE = 0x04
 
 
-def fnv1_utf16(name: str) -> int:
-    """FNV-1 over UTF-16 code units, matching the shipped AudioHashGenerator."""
-    state = FNV1_OFFSET_BASIS
-    for character in name:
-        code_point = ord(character)
-        if code_point < 0x10000:
-            units: tuple[int, ...] = (code_point,)
-        else:
-            offset = code_point - 0x10000
-            units = (0xD800 + (offset >> 10), 0xDC00 + (offset & 0x3FF))
-        for unit in units:
-            state = ((state * FNV1_PRIME) & 0xFFFFFFFF) ^ unit
-    return state
-
-
 def index_literals(literals: Iterable[str]) -> dict[int, set[str]]:
     index: dict[int, set[str]] = defaultdict(set)
     for name in literals:
-        index[fnv1_utf16(name)].add(name)
+        index[audio_hash_generator_compute(name)].add(name)
     return index
 
 
@@ -105,18 +94,119 @@ def named_type_share(type_counts: Iterable[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def media_ids_from_audit(audit: dict[str, Any]) -> set[int]:
+    """Every media id the corpus declares, unioned across packages.
+
+    A bank's media usually lives in a different package, so this has to be a union;
+    joining inside one package answers a question nobody asked.
+    """
+    media: set[int] = set()
+    for row in audit.get("rows", []):
+        if row.get("status") != "verified":
+            continue
+        package = row.get("package")
+        if not isinstance(package, dict):
+            continue
+        join = package.get("hircMediaJoin")
+        if not isinstance(join, dict):
+            continue
+        ids = join.get("mediaIds")
+        if not isinstance(ids, list):
+            raise ValueError("media join census has invalid mediaIds")
+        media.update(int(value) for value in ids)
+    return media
+
+# A general identifier shape. The narrow prefix list that drives the type 0x04
+# claim exists because unfiltered literals resolve generic words by coincidence;
+# this keeps a structural filter but drops the vocabulary, so the coincidence rate
+# can be measured instead of assumed.
+BROAD_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_./+:-]{5,}$")
+# A type is only claimed as named when its matches exceed chance by this factor.
+# The id space is 32 bits, so chance is computable rather than a matter of taste.
+NAMED_TYPE_MINIMUM_RATIO = 100.0
+HASH_SPACE = float(1 << 32)
+
+
+def broad_literals(metadata_path: Path) -> list[str]:
+    """Identifier-shaped managed literals, without the audio prefix vocabulary."""
+    from scripts.audio_semantics.identifiers import (  # noqa: PLC0415
+        collect_metadata_literals_raw,
+    )
+
+    return [value for value in collect_metadata_literals_raw(metadata_path)
+            if BROAD_IDENTIFIER_RE.fullmatch(value)]
+
+
+def coincidence_table(
+    matches_by_type: dict[str, int], populations: dict[str, int], literals: int
+) -> dict[str, Any]:
+    """Compare observed matches per numeric type against chance.
+
+    With a 32-bit hash, a literal hits a given type's population by chance with
+    probability population / 2**32, so the expected count is literals * that. A
+    type whose observed count sits at its expectation is noise no matter how
+    meaningful its names look; one that sits orders of magnitude above it is not.
+    """
+    rows: dict[str, Any] = {}
+    claimed: list[str] = []
+    coincidental: list[str] = []
+    for type_key, population in sorted(populations.items()):
+        observed = int(matches_by_type.get(type_key, 0))
+        if not observed:
+            continue
+        expected = literals * population / HASH_SPACE
+        ratio = observed / expected if expected > 0 else float("inf")
+        rows[type_key] = {
+            "observed": observed,
+            "population": population,
+            "expectedByChance": round(expected, 6),
+            "ratio": round(ratio, 1) if ratio != float("inf") else None,
+        }
+        if ratio >= NAMED_TYPE_MINIMUM_RATIO:
+            claimed.append(type_key)
+        else:
+            coincidental.append(type_key)
+    return {
+        "literals": literals,
+        "byType": rows,
+        "typesNamedAboveChance": claimed,
+        "typesIndistinguishableFromChance": coincidental,
+        "minimumRatio": NAMED_TYPE_MINIMUM_RATIO,
+    }
+
+
+def broad_naming_is_discriminated(table: dict[str, Any]) -> bool:
+    """At least one type must clear the bar and the rule must be applied to all.
+
+    If nothing clears it the section claims nothing; if every type clears it the
+    bar is not doing any work and the discrimination is not being tested.
+    """
+    rows = table.get("byType") or {}
+    named = table.get("typesNamedAboveChance") or []
+    if not rows or not named:
+        return False
+    for type_key, row in rows.items():
+        ratio = row.get("ratio")
+        above = ratio is None or ratio >= table["minimumRatio"]
+        if above != (type_key in named):
+            return False
+    return True
+
+
+
 def summarise(census_rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate the reader's per-package named-reach census."""
     totals: Counter[str] = Counter()
     matches: Counter[str] = Counter()
     reached_by_identity: dict[str, int] = {}
+    reached_ids: dict[str, set[int]] = {}
     scalar_fields = (
         "matchedObjects",
         "matchedNamedType",
         "reachingASource",
         "reachingNoSource",
         "reachedSourceIds",
-        "walkEdgesLeavingTheBank",
+        "walkEdgesLeavingThePackage",
     )
     for census in census_rows:
         if not isinstance(census, dict):
@@ -137,6 +227,17 @@ def summarise(census_rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
             if re.fullmatch(r"type[0-9A-F]{2}", name) is None:
                 raise ValueError(f"named-reach match key is not a numeric type: {name!r}")
             matches[name] += int(count)
+        raw_list = census.get("reachedSourceIdListByIdentity")
+        if not isinstance(raw_list, dict):
+            raise ValueError("named-reach census has invalid reachedSourceIdListByIdentity")
+        for key, values in raw_list.items():
+            identity = str(key)
+            if re.fullmatch(r"[0-9A-F]{8}", identity) is None:
+                raise ValueError(f"named-reach identity is not a 32-bit hex id: {identity!r}")
+            if not isinstance(values, list):
+                raise ValueError(f"named-reach reached list is not a list: {identity}")
+            reached_ids.setdefault(identity, set()).update(int(value) for value in values)
+
         raw_reach = census.get("reachedSourceIdsByIdentity")
         if not isinstance(raw_reach, dict):
             raise ValueError("named-reach census has invalid reachedSourceIdsByIdentity")
@@ -152,8 +253,11 @@ def summarise(census_rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "namedObjectsReachingASource": int(totals["reachingASource"]),
         "namedObjectsReachingNoSource": int(totals["reachingNoSource"]),
         "reachedSourceIdTotal": int(totals["reachedSourceIds"]),
-        "walkEdgesLeavingTheBank": int(totals["walkEdgesLeavingTheBank"]),
+        "walkEdgesLeavingThePackage": int(totals["walkEdgesLeavingThePackage"]),
         "reachedSourceIdsByIdentity": dict(sorted(reached_by_identity.items())),
+        "reachedSourceIdListByIdentity": {
+            identity: sorted(values) for identity, values in sorted(reached_ids.items())
+        },
     }
 
 
@@ -180,6 +284,12 @@ def check_identification(summary: dict[str, Any]) -> list[str]:
         problems.append("named object reach outcomes do not partition their instances")
     # One identity may occur in several banks, so identities are at most instances.
     # More identities than instances would mean the reader keyed a row it never matched.
+    listed = summary.get("reachedSourceIdListByIdentity") or {}
+    if set(listed) != set(summary["reachedSourceIdsByIdentity"]):
+        problems.append("the reached-id lists and the reached counts cover different identities")
+    for identity, values in listed.items():
+        if len(values) < summary["reachedSourceIdsByIdentity"].get(identity, 0):
+            problems.append(f"identity {identity} lists fewer source ids than it counted")
     identities = len(summary["reachedSourceIdsByIdentity"])
     if identities > summary["namedObjectInstances"]:
         problems.append(
@@ -212,8 +322,10 @@ def markdown(report: dict[str, Any]) -> str:
             f"- Audio-like managed string literals recovered: {report['metadata']['audioLiteralCount']:,}.",
             f"- Literal hash matches: {sum(summary['literalHashMatchesByObjectType'].values()):,}, all on numeric type `{NAMED_OBJECT_TYPE:#04x}`.",
             f"- Distinct named identifiers: {len(report['identifiers']):,}; reaching at least one source: {sum(1 for count in report['identifiers'].values() if count):,}.",
+            f"- Reaching at least one media file this corpus ships: {report['mediaSummary']['identifiersReachingMedia']:,}; distinct media files reached: {report['mediaSummary']['distinctMediaReached']:,}.",
+            f"- Reached source ids that name no shipped media: {report['mediaSummary']['reachedIdsNamingNoMedia']:,} (the plug-in partition says some never do).",
             f"- Named object instances: {summary['namedObjectInstances']:,}; reaching a source: {summary['namedObjectsReachingASource']:,}; reaching none: {summary['namedObjectsReachingNoSource']:,}.",
-            f"- Walk edges leaving the bank and therefore not followed: {summary['walkEdgesLeavingTheBank']:,}.",
+            f"- Walk edges leaving the package and therefore not followed: {summary['walkEdgesLeavingThePackage']:,}.",
             "",
             "## Literal hash matches by numeric object type",
             "",
@@ -229,7 +341,10 @@ def markdown(report: dict[str, Any]) -> str:
             "have landed on some other type. None did. Every match landing on one type is what "
             "establishes that managed code addresses that type by name. A single match "
             "elsewhere would dissolve the identification, so the gate refuses to publish in "
-            "that case rather than reporting a rate.",
+            "that case rather than reporting a rate. Read the scope literally: this is "
+            "about these literals, not the format. The broad pass below names numeric "
+            "types `0x08` and `0x15` from other literals, so `0x04` is not the only type "
+            "addressed by name.",
             "",
             "## Identifiers reaching the most distinct source ids",
             "",
@@ -242,6 +357,60 @@ def markdown(report: dict[str, Any]) -> str:
             "about three quarters of those words name an object in their own bank. Edges that "
             "leave the bank are counted above and not followed, which is the main reason a "
             "named identifier can reach no source here.",
+            "",
+            "## Naming beyond type `0x04`, judged against chance",
+            "",
+            "| Numeric type | Population | Matches | Expected by chance | Ratio |",
+            "|---|---:|---:|---:|---:|",
+            *(
+                f"| `{name}` | {row['population']:,} | {row['observed']:,} | "
+                f"{row['expectedByChance']:.4g} | {row['ratio']:,.0f}x |"
+                for name, row in sorted(
+                    report["broadNaming"]["byType"].items(),
+                    key=lambda item: -(item[1]["ratio"] or 0),
+                )
+            ),
+            "",
+            "The prefix vocabulary that drives the claim above exists because unfiltered "
+            "literals resolve generic words by coincidence. That reasoning is right but "
+            "cannot be checked from inside the filter, so this pass drops the vocabulary, "
+            "keeps only a structural identifier shape, and **measures** the coincidence "
+            "rate instead of assuming it. The hash is 32 bits, so a literal hits a type's "
+            "population by chance with probability population / 2^32 -- the expectation "
+            "above is computed, not estimated.",
+            "",
+            f"Types named above chance: {', '.join('`' + t + '`' for t in report['broadNaming']['typesNamedAboveChance'])}. "
+            f"Indistinguishable from chance and therefore **not** claimed: "
+            f"{', '.join('`' + t + '`' for t in report['broadNaming']['typesIndistinguishableFromChance']) or 'none'}. "
+            f"The bar is {report['broadNaming']['minimumRatio']:.0f} times the expectation, "
+            "and the gate checks that the rule was applied to every type rather than "
+            "only to the convenient ones.",
+            "",
+            f"Populations the literals never name at all: "
+            f"{', '.join('`' + t + '`' for t in report['broadNaming'].get('populationsWithNoMatch') or []) or 'none'}. "
+            "Those zeros are measured, not assumed, and they say something the hits do "
+            "not: the ids of those types are **not** hashes of any string this build "
+            "ships, so their anonymity is a property of the data rather than a gap in "
+            "this search. Media ids are the notable one -- 61,333 of them, an expectation "
+            "of 0.36 by chance, and nothing. The identifier chain therefore ends at an "
+            "opaque media id and does not continue into a filename.",
+            "",
+            "Bank ids are a separate population from HIRC objects and are judged by the "
+            "same arithmetic. They are named, and none of the named bank ids is also an "
+            "object id, so bank names and event names are different strings rather than "
+            "one name reused.",
+            "",
+            "Type `0x02` is the case that makes the test worth having. Its two matches "
+            "look like names until the expectation is computed: with 142,815 objects it "
+            "sits at its own coincidence rate, so it is reported and not claimed. Names "
+            "that merely read plausibly are exactly what this rejects.",
+            "",
+            "The chain is now complete end to end: a shipped identifier hashes to a numeric "
+            "type `0x04` object, reference vectors lead from it to numeric type `0x02` "
+            "objects, and their source ids are joined against the media this corpus ships. "
+            "Each link is gated on its own terms. A reached id that names no media is "
+            "reported rather than dropped, because the plug-in partition establishes that "
+            "some source ids never name shipped media.",
             "",
             "A reached source id is the value inside the bounded 14-byte prefix of a numeric "
             "type `0x02` object. This report does not establish that posting the identifier "
@@ -317,10 +486,15 @@ def run(
         )
     )
     problems = check_identification(summary)
+    media = media_ids_from_audit(audit)
+    if not media:
+        problems.append("the audit declares no media ids, so the media join cannot be checked")
 
     # Map identities back to the literals that produced them. A hash collision between
     # two shipped literals would make the name ambiguous, so it is reported, not picked.
     identifiers: dict[str, int] = {}
+    media_reached: dict[str, list[int]] = {}
+    unmatched_reached: dict[str, list[int]] = {}
     ambiguous: dict[str, list[str]] = {}
     for identity, count in summary["reachedSourceIdsByIdentity"].items():
         names = sorted(literal_index.get(int(identity, 16), ()))
@@ -336,6 +510,80 @@ def run(
             )
             continue
         identifiers[names[0]] = count
+        reached = set(summary["reachedSourceIdListByIdentity"].get(identity, ()))
+        media_reached[names[0]] = sorted(reached & media)
+        unmatched = reached - media
+        if unmatched:
+            # A reached source id that names no shipped media is a real outcome --
+            # the plug-in partition says some never do -- so it is reported, not
+            # treated as an error, and never silently dropped.
+            unmatched_reached[names[0]] = sorted(unmatched)
+
+    # A second pass with a broader, purely structural literal filter. Kept separate
+    # from the claim above so that widening the filter cannot weaken it.
+    from scripts.audio_semantics.identifiers import audio_hash_generator_compute
+
+    wide = broad_literals(metadata_path)
+    wide_index: dict[int, set[str]] = {}
+    for value in wide:
+        wide_index.setdefault(audio_hash_generator_compute(value), set()).add(value)
+    wide_hash_file = intermediate_path.with_suffix(".broad-hashes.txt")
+    wide_hash_file.write_text(
+        "".join(f"{value:08X}" + chr(10) for value in sorted(wide_index)), encoding="utf-8"
+    )
+    wide_audit_path = intermediate_path.with_suffix(".broad.json")
+    wide_command = list(command)
+    wide_command[wide_command.index("--named-hash-file") + 1] = str(wide_hash_file)
+    wide_command[wide_command.index("--output") + 1] = str(wide_audit_path)
+    wide_result = subprocess.run(wide_command, cwd=ROOT, capture_output=True, text=True, check=False)
+    if wide_result.returncode != 0:
+        raise ValueError(
+            f"AnimeStudio broad audio-audit failed: exit={wide_result.returncode} "
+            f"stderr={wide_result.stderr[-800:]}"
+        )
+    wide_audit = json.loads(wide_audit_path.read_text(encoding="utf-8"))
+    wide_rows = [row for row in wide_audit.get("rows", []) if row.get("status") == "verified"]
+    wide_matches: dict[str, int] = {}
+    populations: dict[str, int] = {}
+    for row in wide_rows:
+        package = row.get("package")
+        if not isinstance(package, dict):
+            continue
+        for key, count in (package["hircNamedReachCensus"]["matchesByObjectType"] or {}).items():
+            wide_matches[str(key)] = wide_matches.get(str(key), 0) + int(count)
+        for key, count in (package.get("hircObjectTypeCounts") or {}).items():
+            name = "type" + str(key)[2:].upper()
+            populations[name] = populations.get(name, 0) + int(count)
+    # Bank ids and media ids are separate id populations; the same arithmetic
+    # judges them, so they join the table rather than getting a special case.
+    banks_matched = banks_seen = media_matched = media_seen = 0
+    for row in wide_rows:
+        package = row.get("package")
+        if not isinstance(package, dict):
+            continue
+        census = package["hircNamedReachCensus"]
+        banks_matched += int(census.get("banksMatched") or 0)
+        banks_seen += int(census.get("banksSeen") or 0)
+        media_matched += int(census.get("mediaMatched") or 0)
+        media_seen += int(census.get("mediaSeen") or 0)
+    if banks_seen:
+        wide_matches["bankId"] = banks_matched
+        populations["bankId"] = banks_seen
+    if media_seen:
+        wide_matches["mediaId"] = media_matched
+        populations["mediaId"] = media_seen
+    table = coincidence_table(wide_matches, populations, len(wide))
+    # A population with no matches is absent from the table, which would hide a
+    # meaningful zero. Media ids matching nothing is a result, so state it.
+    table["populationsWithNoMatch"] = sorted(
+        name for name, size in populations.items() if size and not wide_matches.get(name)
+    )
+    if not broad_naming_is_discriminated(table):
+        problems.append(
+            "the broad naming pass does not discriminate: "
+            f"named={table['typesNamedAboveChance']} "
+            f"coincidental={table['typesIndistinguishableFromChance']}"
+        )
 
     report = {
         "format": "animestudio-wwise-hirc-named-reach-audit",
@@ -358,6 +606,15 @@ def run(
         },
         "summary": summary,
         "identifiers": identifiers,
+        "mediaReachedByIdentifier": media_reached,
+        "reachedSourceIdsNamingNoMedia": unmatched_reached,
+        "broadNaming": table,
+        "mediaSummary": {
+            "declaredMediaIds": len(media),
+            "identifiersReachingMedia": sum(1 for v in media_reached.values() if v),
+            "distinctMediaReached": len({m for v in media_reached.values() for m in v}),
+            "reachedIdsNamingNoMedia": len({m for v in unmatched_reached.values() for m in v}),
+        },
         "problems": problems,
         "evidenceBoundary": {
             "layer": 5,

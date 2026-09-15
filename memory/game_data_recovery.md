@@ -1620,6 +1620,21 @@ Stable conclusions:
   fields without guessing, so the grammar stays unresolved rather than being
   fitted to four samples. Do not publish a type `0x09` lane until those four
   parse; the gate would refuse it anyway.
+- **That 5,154 grammar is documented here but not implemented anywhere, and this
+  prose is not enough to rebuild it.** A later attempt re-derived type `0x09` from
+  scratch with a validated node-frame mirror and reached only 4,982 bodies at
+  best, after sweeping 48 layer-grammar variants (header widths 8..23 against
+  fixed, single-counted and per-reference point lists). None reproduced 5,154. If
+  the layer grammar is revisited, **write it down as field widths and offsets or
+  as code**, not as a sentence -- a number in a note that nobody can reproduce is
+  worse than no number.
+- What that attempt did confirm independently: the shared node frame opens **all
+  5,158** type `0x09` bodies, and after it come a counted run of four-byte
+  entries and a second count. Where the second count is zero, one further byte
+  closes the body exactly -- 4,973 bodies, 308,489 of 344,190 bytes, now gated and
+  tested in the reader. The other 185 are fenced. **This shipped census is
+  deliberately weaker than the 5,154 recorded above**; it is what is verified in
+  code, not the best reading anyone has had.
 - **Layer 4 opens for audio.** The anonymous four-byte values inside the exactly
   framed terminal vectors of numeric types `0x04`, `0x05`, `0x06` and `0x07` are object
   identities. All 230,247 of them resolve, every one to exactly one HIRC object
@@ -1649,6 +1664,322 @@ Stable conclusions:
   framed word held out. The gate caught this: the first attempt claimed all three
   vectors as references and failed with 1,005 unresolved. Believe the counter and
   narrow the claim, never the reverse.
+- **Bank ids are named too, and media ids are not -- both measured.** Applying the
+  same coincidence arithmetic to id populations other than HIRC objects: 175 of
+  20,873 bank ids are named by shipped literals (1,448x chance), while **0 of
+  61,333 media ids** are, against an expectation of 0.36. So the identifier chain
+  ends at an opaque media id and does **not** continue into a filename; do not go
+  looking for one.
+- None of the named bank ids is also a HIRC object id, so bank names and event
+  names are different strings rather than one name reused across both.
+- **Sixteen HIRC types match no literal at all**, and that zero is now measured
+  rather than assumed: `0x03`, `0x05`, `0x06`, `0x07`, `0x09`, `0x0A`-`0x0E`,
+  `0x10`-`0x14`, `0x16`. Their ids are not hashes of any string this build ships,
+  so their anonymity is a property of the data, not a gap in the search. Only
+  `0x04`, `0x08` and `0x15` carry names.
+- **Naming now extends past type `0x04`, and the test is a computed coincidence
+  rate rather than a vocabulary.** The prefix filter (`au_`/`bark_`/`radio_`/`vo_`)
+  exists because unfiltered literals resolve generic words by chance -- sound
+  reasoning that cannot be checked from inside the filter. Dropping the vocabulary,
+  keeping a structural identifier shape, and using the shipped folded hash
+  (`AudioHashGenerator`, which lowercases A-Z) gives 24,868 literals and a
+  measurable answer.
+- Because the hash is 32 bits, chance is computable: a literal hits a type by
+  chance with probability `population / 2**32`. Observed against expected:
+  `type15` 4 matches on 5 objects (**138,000x** chance), `type08` 3 on 161
+  (**3,218x**), `type04` 204 on 22,910 (**1,538x**), `type02` 2 on 142,815
+  (**2.4x** -- its own coincidence rate).
+- So type `0x02` is reported and **not** claimed, which is the point of the test:
+  its two matches read like names (`on_threst_timer_finish`) and are noise. The
+  gate requires the bar to be applied to every type, not just the convenient ones,
+  and refuses a pass where nothing clears it.
+- Concretely gained: type `0x04` goes from 151 to **204** named objects, and two
+  new types get names -- `type08` (`Character`, `Effect`, `object`) and `type15`
+  (`SYSTEM`, `System_3D`, `Controller_Speaker`, `Wwise_Motion`), the latter naming
+  **4 of its 5 objects**. The type `0x15` names are device-shaped and the `0x08`
+  names bus-shaped, but that is an observation about the strings, not a claim
+  about what either type does.
+- The narrow prefix claim is untouched and still gated separately, so widening the
+  filter cannot weaken it.
+- A second audit pass found a **stale non-claim**, which is the opposite failure
+  and just as misleading. The type `0x02` prefix report listed "physical media
+  placement" among the things it does not identify. That was true when written and
+  is now false: the source id inside that prefix joins to the media the corpus
+  ships, gated in the reference-graph report. Saying it is unidentified reads as
+  caution while actually being wrong.
+- **Non-claims go stale too, and nothing makes them fail.** A wrong positive claim
+  eventually contradicts a number somewhere; a wrong "we do not know this" just
+  sits there looking responsible. When a new join lands, re-read the non-claims of
+  every report that touches the same bytes.
+- Sweeping the remaining reports found two more. The type `0x03` action report
+  said it does not establish **target resolution** -- which the reference-graph
+  report had just gated (21,956 same-bank, 1,499 other-bank). The type `0x04`
+  vector report said **entry values remain unnamed** and that no **Action
+  relationship** is established, while the reference graph publishes this type's
+  edges into type `0x03` and the named-reach report names 203 of the objects
+  holding those vectors. Both are now scoped: the entry *targets* are still
+  unnamed, which is narrower and still true.
+- That is four stale non-claims across four reports, all written correctly and all
+  falsified later by a different lane. **The pattern is structural, not careless**:
+  each report is gated on what it claims, so nothing in the build can notice when a
+  sibling lane makes one of its non-claims obsolete. Treat "this does not establish
+  X" as a dated statement and re-read it whenever X lands somewhere else.
+- **An audit of the published wording found the over-generalisation had spread.**
+  After correcting the cross-bank claim in these notes, the same claim was still
+  sitting in two published reports, and one of them contradicted a table twenty
+  lines above it. Both are now scoped: the reference-graph report says its
+  same-bank result is a fact about *those counted vectors*, not the corpus, and
+  says plainly that names do exist for some endpoints. The named-reach report says
+  its "all on type `0x04`" result is a fact about *those literals*, not the format,
+  since the broad pass in the same module names `0x08` and `0x15`.
+- **When a conclusion is corrected, grep for where else it was asserted.** A
+  correction recorded only in memory leaves the wrong sentence in every report and
+  docstring that repeated it, and those are what a future reader actually reads.
+  The tests now pin the scoping rather than the old absolute sentence.
+- One cross-check passed and is worth recording as passing: the five reached source
+  ids that name no shipped media all come from plug-in ids the media partition says
+  never name media (`00080001`, `00640002`, `00650002`). The media join and the
+  identifier chain agree.
+- **Correction: this corpus DOES contain cross-bank references.** The numeric type
+  `0x03` target word leaves its bank routinely -- of 28,379 targets, 21,956 name an
+  object in the same bank, **1,499 name one in another bank of the same package**,
+  4,907 name nothing the package declares, and 17 are null. A Python probe that can
+  see every package classifies 739 of those 4,907 as objects in a *different
+  package*, so the relation crosses package boundaries too.
+- This is not marginal and not a coincidence: a random 32-bit word lands on one of
+  the 231,693 declared object ids about **1.53 times** across all 28,379 targets,
+  against 2,238 observed crossings -- roughly 1,463x chance.
+- **What was wrong was the generalisation, not the measurement.** The gated
+  reference vectors of types `0x04`/`0x05`/`0x06`/`0x07` really are all same-bank,
+  and that is still true. Recording it as "this corpus has no cross-bank evidence"
+  extended a fact about those vectors to the whole corpus, and several notes in
+  this file repeated it. Actions are a different relation and behave differently.
+- The first body byte clearly matters -- `action_03` resolves 21,894 times in-bank
+  while `action_04` resolves 17 times in 3,578 -- but it is **reported and not
+  claimed as a decider**, because no class is clean the way the type `0x02`
+  plug-in partition is. A rule here would be fitted rather than found.
+- Targets outside the package are counted as outside rather than unresolved: the
+  reader sees one package and cannot speak for the others. The gate asserts that
+  the crossing is *observed*, so a future reader reporting zero cannot quietly
+  restore the old conclusion.
+- **The chain is closed end to end: shipped identifier -> media file.** 97 of the
+  194 named identifiers reach at least one media file this corpus ships, reaching
+  163 distinct files between them. The report lists them per identifier,
+  so `au_int_erosion_sludge_recover_loop` resolves to 6 files, `au_int_box_touch`
+  to 5, and so on.
+- **The named-reach walk crosses banks now, and that was worth 14 identifiers.**
+  It used to run once per bank, so any edge pointing at a sibling bank was counted
+  as leaving and abandoned -- the same over-generalisation the type `0x03`
+  classification exposed, except compiled in rather than written down. Walking the
+  whole package at once takes reaching-a-source from 109 to 120, source ids from
+  181 to 218, identifiers reaching media from 83 to 97, and distinct media from
+  150 to 163. Abandoned edges drop from 102 to 47, so more than half of them were
+  sibling-bank all along.
+- The counter is now `walkEdgesLeavingThePackage`, not `...TheBank`. Renaming it
+  mattered: a package-wide walk reporting "edges leaving the bank" would have
+  described itself in the vocabulary of the bug it just fixed.
+- Matched objects (199) exceed distinct identifiers (194) because 5 named objects
+  are declared in two packages each. That is expected, not a defect -- the gate
+  checks identities never exceed instances, which is the direction that would
+  indicate one.
+- Five reached source ids name **no** shipped media, and that is reported per
+  identifier rather than dropped, because the plug-in partition establishes that
+  some source ids never name media at all. A reached id missing from the media
+  table is an expected outcome here, not a defect.
+- The named-reach walk now publishes the reached ids themselves, not just how many,
+  and the gate requires the id lists and the counts to describe the same walk: a
+  count with no list, or a list shorter than its count, stops publication.
+- **The audio chain now reaches shipped media, and the plug-in id decides whether
+  it does.** Joining the source id in a numeric type `0x02` bounded prefix against
+  the media ids in the AKPK bank and sound sectors: 60,049 of 60,997 distinct
+  source ids name a file this corpus ships, and 1,284 of 61,333 media files are
+  never named.
+- **Read the partition, not the 98% rate.** The outcome is decided entirely by the
+  plug-in id, with no exceptions anywhere: `0x00040001` (51,889) and `0x00140001`
+  (8,160) name shipped media in **every** case, and `0x00080001`, `0x00640002`,
+  `0x00650002`, `0x00940002` and `0x01990002` name it in **none** (948 together).
+  No plug-in id appears on both sides. The gate enforces that no plug-in id is
+  split and that both sides are non-empty; a rate would have hidden the structure
+  entirely.
+- The low nibble does not explain it: `0x00080001` is type 1 like the two that
+  always resolve, and never resolves. It is the whole 32-bit plug-in id that
+  decides, so do not simplify this to "type 1 has media, type 2 does not".
+- **Compute this join across the whole corpus, never per package.** A bank's media
+  almost always lives in a *different* package: the same join done inside one
+  package matches 12 of 75,958. The reader therefore reports the two id sets and
+  the gate unions them, which is also why the reader carries no verdict here.
+- Not claimed: what any plug-in id is, what the five that name no media do instead
+  (generation and out-of-corpus media are both consistent with these bytes), or
+  that any of it is ever decoded or played.
+- **The serializer is on disk, and it is Wwise SDK v2023.1.17.** The shipped
+  `Endfield_Data/Plugins/x86_64/AkSoundEngine.dll` (3,586,536 bytes, SHA-256
+  `FD75D48813DC5B6497F0FD18B1AEE1912B8383FFA0AC229AD45A147A7ED052C6`) carries
+  compiled-in assert paths naming its build tree. The string `wwise_v2023.1.17`
+  occurs 28 times and is the **only** version string in the binary, so the
+  identification is not an inference from bank version 150 -- it comes from the
+  reader itself.
+- Two build roots appear: stock `C:\Jenkins\ws\wwise_v2023.1.17\Wwise\SDK\...`
+  and a vendored tree at `E:\Engine\RM42.Beyond\Audio\Wwise\SDK\...`. So the
+  engine is Wwise 2023.1.17 with in-house modifications, and a stock-SDK layout
+  should be treated as a strong prior rather than ground truth.
+- **This retires the claim that the stuck cases are undecidable.** They are
+  undecidable *from the bank bytes alone* -- that part stands, and the reasoning
+  for each still holds -- but the deciding witness exists and is now named: the
+  Wwise 2023.1.17 SDK headers define every HIRC struct exactly, which would settle
+  `0x11`'s 21-versus-27 tie, `0x09`'s second run, `0x10`'s `0x7F` variant and
+  `0x12` outright. That SDK is licensed from Audiokinetic and is not in this repo;
+  obtaining it is a decision for the project owner, not something to work around.
+- The DLL does **not** name the bank structures directly: its only chunk-tag
+  strings are `BKHD`, `DIDX`, `DATA`, `HIRC`, `STID`, `STMG`, and it carries no
+  `AkBankMgr`/`AkMusic*`/`AkParameterNode` source paths, so the asserts that would
+  have named them are not compiled in. Do not expect to recover layouts by
+  string-mining this binary; the version is what it gives you.
+- **Numeric type `0x12` is the one HIRC type with no framing at all, and these
+  readings are ruled out.** 251 bodies, 15,175 bytes. It is not the `0x10`/`0x11`
+  grammar -- its word at offset 4 fails `range_section` on all 251. It is not the
+  `0x16` shape (0 of 251). Chained counted blocks after a four-byte lead close only
+  8 of 251 at any chain depth from 1 to 4.
+- Its leading 32-bit word names a same-bank object in 132 of 251 bodies and names
+  nothing in the other 119, so unlike types `0x08`, `0x0A`, `0x0C` and `0x0D` it is
+  **not** a reference field and must not be gated as one.
+- A "fixed 21-byte tail" reading looked convincing on two sample bodies -- the float
+  `9a 99 c0 c2` sat exactly 21 bytes from the end in both -- and is **wrong**: only
+  100 of 251 bodies have it there. Two samples agreeing on an offset is not
+  evidence; this corpus has now punished that three times.
+- What the end-aligned census supports as a *shape hypothesis* only: counting back
+  from EOF, bytes -5, -4 and -3 are zero in every body, byte -6 takes seven small
+  values, and bytes -12 and -11 look like the high half of a float.
+- **The fixed-trailer reading that hypothesis suggests has now been tested and
+  fails.** Sweeping every trailer width from 0 to 39 against a four-byte lead and
+  a block chain of any depth, the best is 33 bytes explaining 143 of 251. So the
+  bytes before the trailer are not a block chain, or the trailer is not fixed, or
+  both.
+- Four further readings are eliminated, bringing the total to eight. Group I does
+  not appear: scanning every offset, only 34 bodies have one landing within eight
+  bytes of EOF and those start at two fixed offsets, which is coincidence rather
+  than structure. TLV records -- a key byte, a size of one, two or four bytes, then
+  that many bytes, with zero to two bytes of padding -- reach 84 of 251 at best.
+  And the length is not predicted by flags: the best single byte fixes it for 26%
+  of bodies and the best pair for 26%, against 100% for the `0x0E` flag byte, so
+  `0x12` is not a fixed layout with flag-gated optional parts either.
+- Taken together these say the body is **not** a linear sequence of self-describing
+  records, which is what every model tried so far assumed.
+- **The size-field premise that suggested has now been tried too, and also fails.**
+  Testing every offset 0..23 at 16 and 32 bits for a value that sizes a following
+  region gives at best 30% agreement on the leftover; repeating it relative to the
+  end of a one-, two- or three-block chain gives at best 33%. In both sweeps the
+  "agreeing" leftovers cluster at 76/72/32 bodies, which is exactly the body-length
+  histogram -- so the agreement is an artifact of a few common lengths, not a field.
+  **Check a candidate field's hit distribution against the length histogram before
+  believing it**; these two sweeps looked like 30% signal and were 0%.
+- Ten readings are now eliminated. I have no further structural hypothesis for
+  `0x12` that this corpus can test, and would rather say so than keep sweeping.
+  The Wwise 2023.1.17 SDK would settle it outright; short of that, a genuinely new
+  premise is needed, not another parameterisation of an old one.
+- **Numeric types `0x13`, `0x14` and `0x15` are framed byte-exact: 18 bodies, 685
+  bytes, all of them.** `0x13` and `0x14` are a counted block of four-byte values,
+  a counted block of **eight**-byte values, then two bytes; keys and values are
+  parallel runs in both, the same shape `0x16` uses. `0x15` instead shares the
+  eight-byte header `0x10` and `0x11` use and closes with eight further bytes.
+- **Treat these as weak claims and keep the witness counts in view.** Four, nine
+  and five bodies is not a corpus -- plenty of layouts consume four bodies. What
+  distinguishes the eight-byte second-block width from a four-byte one is that 6
+  bodies actually carry a nonempty second block (11 entries in total), and the
+  gate refuses a corpus where every second block is empty precisely so the width
+  cannot pass unwitnessed. If these types ever grow, re-check the width first.
+- They were only findable because the shapes were already known: the block came
+  from `0x16`, the header from `0x10`/`0x11`. That is now four types closed by
+  reuse rather than decode.
+- **Numeric type `0x10` shares type `0x11`'s grammar exactly, and was never
+  decoded separately.** Its header matched (`u16`, `u16`, `u32` size), so the
+  existing grammar was tried and 430 of its 453 bodies closed at once. That is now
+  the third time "check whether another type already closes this" paid off, after
+  `0x16` reusing group I and `0x11` doing the same.
+- The 23 `0x10` bodies that do not close all carry third byte `0x7F`, and group I
+  fails to parse in their tail at every offset tried. They are fenced under their
+  own reason, `type10_variant7F`, not blamed on the shared grammar. The reader
+  applies that rule to type `0x10` only -- a `0x7F` third byte on a `0x11` body is
+  normal, and a test pins that so the rule cannot leak across types.
+- Both types now report through one census with a **named reason for every fenced
+  body**, and the gate requires the reasons to account for every fence. A fence
+  without a reason is indistinguishable from a body quietly dropped.
+- **Numeric type `0x11` is framed for 2,553 of its 2,645 bodies (208,891 of
+  213,491 bytes); the other 92 are fenced because a width genuinely ties.**
+  Layout: an eight-byte header whose second word sizes an opaque section, one
+  byte, the node frame's group I structure, a 16-bit flag, then a counted run of
+  six-byte elements. Group I is reused, not re-derived -- the third type now to
+  end with it, after `0x16` and the node-frame types.
+- **The tie is the important part, and it must not be broken by picking.** When
+  the flag is set an extra block appears, and two widths consume *every* flagged
+  body exactly: 21 and 27. They are the same bytes read two ways -- 27 swallows
+  the run's single element and reads a zero count, 21 leaves it as one element.
+  The flag is never greater than 1 anywhere in the corpus, so no body can separate
+  them; a body with flag 2 would, and none exists. This is underdetermined in the
+  same sense as type `0x09`, not merely undecoded, so those 92 bodies are not
+  framed at all.
+- The gate for this type forbids failures outright and allows only the fenced
+  outcome, which is counted separately from both success and failure. Fencing
+  everything would make the claim vacuous and is rejected too.
+  See [`reports/animestudio/hirc_reference_graph_current_latest.md`](../reports/animestudio/hirc_reference_graph_current_latest.md).
+- **Numeric type `0x08`'s leading 32-bit word is null or names exactly one
+  same-bank object -- never a non-null value that names nothing.** 161 bodies: 157
+  resolve, 4 are null, 0 unresolved. Null is a real outcome for this type, so the
+  gate permits it and forbids only the third case; an all-null corpus would make
+  the claim vacuous and does not count as closed either.
+- **`0x08` now frames byte-exact in 96 of its 161 bodies.** Layout, end to end:
+  a 32-bit reference, the counted key/value block type `0x16` uses (a count, that
+  many one-byte keys, that many four-byte values as parallel runs), a one-entry
+  list whose key sizes its value (`0x15` -> 11 bytes, `0x1D` -> 27, exactly 16
+  apart), the fixed nine-byte signature `02 e8 03 00 00 00 00 c0 c2`, a zero word,
+  a counted run of six-byte entries, and five zero bytes.
+- Two details are the whole difference between this and the earlier attempt.
+  The one-entry list's key **predicts** its value width, so an unobserved key is
+  held unsupported instead of walked with a guessed width. And the entry run
+  carries **one extra byte when its count is nonzero and nothing at all when the
+  count is zero** -- which the bodies declaring no entries fix, rather than being
+  assumed.
+- The 65 remaining bodies are fenced by named reason, never skipped:
+  `trailer_is_not_five_bytes` 40, `word_after_signature_is_not_zero` 11,
+  `signature_not_where_expected` 9, `range_properties` 4,
+  `second_list_is_not_one_entry` 1. Those names are where the next attempt starts.
+- `0x08` is deliberately **not** one of the closure-gated body lanes: a lane
+  publishes a closed-form byte total and this type has none. Its gate forbids only
+  what a partial framing must not do -- leave a body neither framed nor accounted
+  for, report an ambiguous body, or pass with nothing framed at all.
+- **A rule that looked right and is withdrawn.** Bodies whose leading reference is
+  null appeared to carry an extra 32-bit word before the property count. Adding
+  that rule changes the exact count by **zero**, and not one of the four
+  null-reference bodies frames under it. It was fitted to nothing. The general
+  lesson: when a special case is suggested by a handful of bodies, check that
+  removing it changes the count before keeping it.
+- The other small types do **not** share `0x08`'s head. Their leading word names
+  nothing in 119 of 251 `0x12` bodies, all 453 `0x10` bodies, and all 2,645 `0x11`
+  bodies, so offset 0 is simply not a reference field for them. `0x12`'s first
+  reference sits at offset 39 in a third of its bodies, which is the thread to
+  pull there.
+- **Numeric HIRC type `0x16` is framed byte-exact: 778 bodies / 16,635 bytes.**
+  Layout: a byte count, then that many one-byte keys followed by that many
+  four-byte values as **two parallel runs rather than interleaved pairs**, then one
+  anonymous byte, then the node frame's group I structure verbatim.
+- It closed fast because most of it was already proven. Group I is the same
+  structure the reader frames byte-exactly on types `0x02`, `0x05`, `0x06` and
+  `0x07`, so the only new part was the key/value block. **When a small type
+  resists, check whether it ends with a structure another type already closes** --
+  that is what turned this one from a decode into a ten-line framer.
+- The parallel-runs detail is the one thing worth remembering about the block: an
+  interleaved reading of key-then-value fails immediately, and the giveaway was
+  that body length is exactly `4 + 5 * count` for the short bodies.
+- `0x16` shares *only* group I, not the whole node frame, so it carries the group I
+  residuals and none of the others. Its property keys and group I key widths are
+  **per-element** selector families -- one observation per counted thing, not per
+  body -- so they reconcile against their own counters rather than the body total.
+  The lane framework now supports that kind of family explicitly; the first attempt
+  bounded them by exact bodies and the gate correctly rejected it.
+  See [`reports/animestudio/hirc_type22_body_current_latest.md`](../reports/animestudio/hirc_type22_body_current_latest.md).
+- None of the small types `0x08`, `0x10`, `0x11`, `0x12`, `0x16` open with the node
+  frame. `0x08` and `0x12` begin *with* a same-bank reference at offset 0 (157/161
+  and 132/251), which is a different head from every type seen so far and is the
+  obvious next thread.
 - **The music types `0x0A`-`0x0D` are attempted and NOT framed. Read this before
   trying again.** They do not open with the shared node frame, and the ways they
   fail are per-type: at offset 0 the frame dies on `range_groupHStateElements` for
@@ -1661,20 +1992,88 @@ Stable conclusions:
   carries almost no information here, which is a stronger version of the ambiguity
   that type `0x0E` had. A structural predictor is required, as with the `0x0E`
   flag byte.
-- Anchors that do exist, and their exact limits. Types `0x0A` and `0x0D` share an
-  opening: nine bytes (usually zero) then a 32-bit word at offset 9. That word
-  names an object in its own bank in 4,047/4,158 `0x0A` bodies and 2,321/2,431
-  `0x0D` bodies; the rest are zero (92 and 78) or name nothing at all (19 and 32).
-  The non-resolving ones were checked against **every** bank, not just their own,
-  so they are not cross-bank references -- this corpus still has no cross-bank
-  evidence. **97.3% is not a reference claim**; the bar this repo holds is every
-  value resolving, so offset 9 stays an anchor for probing and nothing more.
-- Type `0x0A` also carries a counted run of same-bank object ids, and byte 14 is a
-  count of five-byte elements: the run starts at exactly `32 + 5 * byte14` for the
-  clean cases. But a fit of `base + w14*byte14 + w17*byte17` only reaches 96.8%,
+- **Types `0x0A`, `0x0C` and `0x0D` share one head, and each names exactly one
+  same-bank object.** Body byte 2 selects where the 32-bit word sits: zero puts it
+  at offset 9, nonzero at offset 5. Under that rule 7,326 of 7,331 bodies resolve
+  -- all 4,158 `0x0A`, all 2,431 `0x0D`, and 737 of 742 `0x0C` -- with zero
+  unresolved, zero null, and no unobserved discriminant.
+- The five exceptions are all `0x0C` bodies whose **first** byte is 6 rather than
+  0. That is a different head shape: their offset 9 is null and their offset 5
+  names nothing, so neither branch applies. They are excluded from the claim and
+  **counted in the published total** rather than dropped, so the denominator stays
+  the whole population. `0x0A` and `0x0D` are byte 0 == 0 in every body. Observed byte 2 values are 0 (6,368), 1 (194) and 2
+  (27); anything else must fail closed, because a fourth value has no branch.
+  This is gated inside the reference-graph report and is a Layer-4 identity fact
+  only: it says nothing about direction, containment, or meaning.
+- **That folding is load-bearing, and getting it wrong cost 46 names.** The first
+  version of this lane carried its own `fnv1_utf16` without the case fold, even
+  though `identifiers.audio_hash_generator_compute` already mirrored the shipped
+  implementation correctly. 46 shipped literals contain capitals -- every
+  `Au_UI_Button_*`, `Au_UI_Event_*` and similar -- and all of them were missed.
+  Correcting it took the lane from 151 to 203 named objects, 63 to 109 reaching a
+  source, and 57 to 83 reaching media. **Never re-implement a hash this repo
+  already mirrors**; the duplicate is what drifted, not the original.
+- The falsification property survives the correction and is stronger for it: all
+  203 matches still land on type `0x04` and none anywhere else.
+- That corrects an earlier reading in this file. Fixing the word at offset 9 for
+  every body resolves only 97.3% of `0x0A` and 95.5% of `0x0D`, and the shortfall
+  looks like missing references. It is not: those bodies put the word at offset 5,
+  and the byte that says so is right there. **A rule that is "nearly always right"
+  is worth one more look for the byte that makes it always right** -- the same
+  lesson type `0x0E` taught. The residue really did name nothing in any bank --
+  which is a fact about those words only. **Do not read it as "no cross-bank
+  evidence anywhere"**, as this note once did: the numeric type `0x03` target word
+  crosses banks routinely, and that is recorded above.
+- Type `0x0A` also carries a *second* group of references: a counted run of
+  same-bank object ids, and byte 14 is a count of five-byte elements -- the run
+  starts at exactly `32 + 5 * byte14` for the clean cases. This run is **not**
+  gated and is not in the reference graph, because it cannot be located in 255 of
+  4,158 bodies. But a fit of `base + w14*byte14 + w17*byte17` only reaches 96.8%,
   and byte 17 takes values like 95 and 110, so it is not a second count and the
   correlation is partly spurious. At least one further variable-length interior
   region is unisolated, so **no `0x0A` layout is established and no lane exists.**
+- **Type `0x0B` opens with a counted run of 14-byte source records, and they share
+  numeric type `0x02`'s plug-in id space.** Layout of the head: one byte, a 32-bit
+  record count, then that many records of plug-in id (`u32`), stream-type byte,
+  source id (`u32`), and five further bytes. All 4,447 records across 4,325 bodies
+  carry a plug-in id type `0x02` also uses -- only `0x00040001` (3,506) and
+  `0x00140001` (941), both from type `0x02`'s seven-value set.
+- Why that is evidence for the 14-byte stride rather than a coincidence: plug-in
+  ids are sparse 32-bit values, not small integers, so a wrong stride would put
+  arbitrary bytes in that field and they would leave the set immediately. The
+  records *after the first* are what actually test it -- 106 bodies declare 2 to 4
+  records, contributing 230 such records, and every one landed in the set.
+- **Every `0x0B` body ends with the 32-bit word 100** -- 4,325 of 4,325, no other
+  word observed. Gated on equality with the body count, not a rate, because one
+  exception would mean the reader is looking at a different layout.
+- **After the record run comes a 32-bit entry count, that many variable-width
+  entries, then that terminator.** Counts run 0 to 8 (4,019 bodies declare one).
+  The first entry's leading word is 0 in 4,295 bodies and 1 in 26, and its *second*
+  word is one of the body's own declared source ids in all 4,321 bodies that
+  declare an entry -- the four declaring zero carry no echo, which is the control.
+  What fixes the entry start is that **no other offset in a 48-byte window echoes
+  a source id even once**; source ids are sparse 32-bit values, so this is not
+  something arbitrary bytes produce. No body carries more echoes than it declares
+  (4,261 match exactly, 64 carry fewer because later entries, being
+  variable-width, do not land on four-byte boundaries).
+- **Retraction.** The earlier reading of this tail as fixed 88-byte entries is
+  withdrawn. It called 2,221 bodies exact because the run finished at EOF -- which
+  it could only do by swallowing the terminator. The 88 was the 4-byte count plus
+  the *modal* 84-byte entry, not a stride; entry widths are 84, 89, 120, 132, 168,
+  137, ... The "248 entries name something other than a declared source" figure
+  came from that same wrong stride and is withdrawn with it.
+- Still **not** established for `0x0B`: anything inside an entry past its first two
+  words, and therefore the entry widths themselves. Eleven readings of the entry
+  interior have been eliminated. The latest: the entry does not end with a node
+  frame (768 of 4,019 single-entry bodies admit no closing frame at any offset),
+  and the 53 + 12k head widths that *do* close are a fit rather than a layout --
+  no field in the first 53 bytes carries k (best agreement 34 of 834 bodies with
+  k > 0, which is noise). So `0x0B` still has no lane.
+- Type `0x0B` carries **no** same-bank object references at all -- it is pointed to
+  by `0x0A`, and points at media instead. The corpus has only 7 DIDX entries in
+  total, so its media is streamed rather than embedded, and `0x0B`'s source ids
+  match neither the DIDX ids nor type `0x02`'s source ids. Those are simply
+  disjoint id sets, which is not evidence against the layout.
 - `0x0B` is *not* yet the witness that would resolve the node frame's group B
   width. Its bodies would only make group B nonempty if the frame starts at offset
   0, which is exactly what is not established. Group B remains unresolved.
@@ -1714,9 +2113,10 @@ Stable conclusions:
 - **Layer 5 opens: numeric HIRC type `0x04` is the object that shipped managed
   code addresses by name.** The evidence is a unique cross-table reference, not a
   label. `global-metadata.dat` `stringLiteral` rows give 221 exact audio-like
-  strings the game's own code contains; 151 of their FNV-1/UTF-16 hashes equal a
-  HIRC object identity, and **all 151 land on type `0x04` and none on any other
-  type**. Type `0x04` is 22,910 of the 323,034 objects (7.09%), so coincidence
+  strings the game's own code contains; 203 of their hashes equal a HIRC object
+  identity, and **all 203 land on type `0x04` and none on any other type**. The
+  hash is the shipped `AudioHashGenerator`: FNV-1 over UTF-16 code units, folding
+  ASCII `A`-`Z` before each XOR. Type `0x04` is 22,910 of the 323,034 objects (7.09%), so coincidence
   would scatter about 140 of those 151 matches onto other types; none did. That
   share is measured from the reader's own type histogram by `named_type_share`,
   not asserted in prose. The gate refuses to

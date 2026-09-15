@@ -9,6 +9,19 @@ import unittest
 from pathlib import Path
 
 from scripts.audio_semantics.hirc_action_corpus import (
+    type03_targets_cross_bank_boundaries,
+    media_join_is_decided_by_the_plugin_id,
+    small_types_are_closed,
+    type09_is_framed_except_the_second_run,
+    type17_is_framed_except_the_tied_block,
+    type08_head_words_are_null_or_resolve,
+    type11_sources_share_the_type02_plugin_space,
+    type11_bodies_share_one_terminator,
+    type08_bodies_are_exact_or_named,
+    _read_type08_body_frame,
+    type11_tail_entries_are_counted,
+    _read_type11_source_census,
+    music_head_references_are_closed,
     _capture_cli_output_closure,
     _load_json_with_sha256,
     _body_lane_markdown,
@@ -65,6 +78,7 @@ def valid_action_fixture():
         "minOpaqueTailBytes": 32,
         "maxOpaqueTailBytes": 32,
         "pluginTypeCounts": {"0x1": 1, "0x2": 1},
+        "pluginIdCounts": {"plugin_00040001": 1, "plugin_00140001": 1},
     }
     type02_stats = {"count": 2, "declaredLengthBytes": 108}
     type07_stats = {"count": 2, "declaredLengthBytes": 248}
@@ -158,6 +172,140 @@ def valid_action_fixture():
         "unsupportedCategories": {},
         "nonExactExamples": [],
     }
+    media_join = {
+        "mediaEntries": 3,
+        "mediaIds": [10, 11, 12],
+        "sourceIdsByPlugin": {
+            "plugin_00040001": [10, 11],
+            "plugin_00650002": [90, 91],
+        },
+    }
+    small_types = {
+        "bodies": 4,
+        "exact": 4,
+        "failed": 0,
+        "exactBytes": 120,
+        "bodyBytes": 120,
+        "bodiesWithSecondBlock": 2,
+        "secondBlockEntries": 3,
+        "bodiesByType": {"type13": 1, "type14": 2, "type15": 1},
+        "failureCounts": {},
+    }
+    type03_targets = {
+        "objects": 10,
+        "zero": 1,
+        "sameBank": 6,
+        "otherBankInPackage": 2,
+        "outsidePackage": 1,
+        "sameBankByActionByte": {"action_03": 6},
+        "otherBankByActionByte": {"action_02": 2},
+        "outsideByActionByte": {"action_04": 1},
+    }
+    type09_bodies = {
+        "bodies": 5,
+        "exact": 4,
+        "unestablishedSecondRun": 1,
+        "failed": 0,
+        "exactBytes": 80,
+        "bodyBytes": 100,
+        "runEntries": 6,
+        "failureCounts": {},
+        "tailFlagCounts": {"tail_00": 3, "tail_01": 1},
+    }
+    type17_bodies = {
+        "bodies": 5,
+        "exact": 4,
+        "fenced": 1,
+        "failed": 0,
+        "exactBytes": 80,
+        "bodyBytes": 100,
+        "runElements": 3,
+        "groupIEntries": 2,
+        "failureCounts": {},
+        "fenceReasons": {"tiedOptionalBlockWidth": 1},
+        "bodiesByType": {"type10": 2, "type11": 3},
+    }
+    type08_head = {
+        "bodies": 3,
+        "resolved": 2,
+        "null": 1,
+        "unresolved": 0,
+        "tooShort": 0,
+    }
+    type08_body = {
+        "count": 3,
+        "exact": 2,
+        "unsupported": 0,
+        "failed": 1,
+        "ambiguous": 0,
+        "bodyBytes": 180,
+        "failureCategories": {"trailer_is_not_five_bytes": 1},
+        "unsupportedCategories": {},
+    }
+    type11_sources = {
+        "bodies": 2,
+        "bodiesWithRecords": 2,
+        "records": 3,
+        "recordsOutOfRange": 0,
+        "tooShort": 0,
+        "pluginIdCounts": {"plugin_00040001": 2, "plugin_00140001": 1},
+        "streamTypeCounts": {"streamType_02": 3},
+        "recordCountCounts": {"records_1": 1, "records_2": 1},
+        "endsWithTerminator": 2,
+        "terminatorCounts": {"end_00000064": 2},
+        "bodiesWithATail": 2,
+        "noTailAfterTheRun": 0,
+        "tailCountOutOfRange": 0,
+        "tailEntriesDeclared": 3,
+        "tailEntriesEchoed": 3,
+        "tailEchoesMatchTheCount": 2,
+        "tailEchoesExceedTheCount": 0,
+        "firstTailEntryNamesADeclaredSource": 2,
+        "firstTailEntryTooShort": 0,
+        "tailEntryCountCounts": {"tailEntries_1": 1, "tailEntries_2": 1},
+        "firstTailEntryLeadingWordCounts": {"lead_00000000": 2},
+    }
+    music_head = {
+        "bodies": 4,
+        "resolved": 3,
+        "unresolved": 0,
+        "zero": 0,
+        "unknownDiscriminant": 0,
+        "tooShort": 0,
+        "unknownHeadShape": 1,
+        "bodies": 4,
+        "bodiesByType": {"type0A": 2, "type0C": 1, "type0D": 1},
+        "offsetCounts": {"offset_5": 1, "offset_9": 2},
+        "discriminantCounts": {"byte2_00": 2, "byte2_01": 1},
+        "headShapeCounts": {"head_00": 3, "head_06": 1},
+    }
+    type22_body = {
+        "count": 2,
+        "exact": 2,
+        "unsupported": 0,
+        "failed": 0,
+        "ambiguous": 0,
+        "bodyBytes": 49,
+        "exactCursorBytes": 49,
+        "nonExactBodyBytes": 0,
+        "minExactBodyBytes": 9,
+        "maxExactBodyBytes": 40,
+        "groupCounts": {
+            "propertyEntries": 3,
+            "groupIEntries": 1,
+            "groupIKeyBytes": 1,
+            "groupIPoints": 1,
+        },
+        "selectorCounts": {
+            "propertyKey_00": 2,
+            "propertyKey_11": 1,
+            "groupIKeyWidth_1": 1,
+        },
+        "failureCategories": {},
+        "unsupportedCategories": {},
+        "nonExactExamples": [],
+    }
+    type22_stats = {"count": 2, "declaredLengthBytes": 57}
     type14_body = {
         "count": 2,
         "exact": 2,
@@ -253,18 +401,29 @@ def valid_action_fixture():
                 "source": r"D:\Persistent\VFS\AA\bank.chk",
                 "status": "verified",
                 "package": {
-                    "hircObjectTypeCounts": {"0x02": 2, "0x03": 2, "0x04": 2, "0x05": 2, "0x07": 2, "0x0E": 2},
+                    "hircObjectTypeCounts": {"0x02": 2, "0x03": 2, "0x04": 2, "0x05": 2, "0x07": 2, "0x0E": 2, "0x16": 2},
                     "hircObjectTypeStats": {
                         "0x02": copy.deepcopy(type02_stats),
                         "0x04": copy.deepcopy(type04_stats),
                         "0x07": copy.deepcopy(type07_stats),
                         "0x05": copy.deepcopy(type05_stats),
                         "0x0E": copy.deepcopy(type14_stats),
+                        "0x16": copy.deepcopy(type22_stats),
                     },
                     "hircType02Prefix": copy.deepcopy(type02_prefix),
                     "hircType02BodyFrame": copy.deepcopy(type02_body),
                     "hircType07BodyFrame": copy.deepcopy(type07_body),
                     "hircType14BodyFrame": copy.deepcopy(type14_body),
+                    "hircType22BodyFrame": copy.deepcopy(type22_body),
+                    "hircMusicHeadReferences": copy.deepcopy(music_head),
+                    "hircType11Sources": copy.deepcopy(type11_sources),
+                    "hircType08Head": copy.deepcopy(type08_head),
+                    "hircType08BodyFrame": copy.deepcopy(type08_body),
+                    "hircType17": copy.deepcopy(type17_bodies),
+                    "hircType09": copy.deepcopy(type09_bodies),
+                    "hircType03Targets": copy.deepcopy(type03_targets),
+                    "hircSmallTypes": copy.deepcopy(small_types),
+                    "hircMediaJoin": copy.deepcopy(media_join),
                     "hircType05BodyFrame": copy.deepcopy(type05_body),
                     "hircReferenceCensus": copy.deepcopy(reference_census),
                     "hircType03ActionFrame": copy.deepcopy(frame),
@@ -279,11 +438,22 @@ def valid_action_fixture():
                                 "0x07": copy.deepcopy(type07_stats),
                                 "0x05": copy.deepcopy(type05_stats),
                                 "0x0E": copy.deepcopy(type14_stats),
+                                "0x16": copy.deepcopy(type22_stats),
                             },
                             "hircType02Prefix": copy.deepcopy(type02_prefix),
                             "hircType02BodyFrame": copy.deepcopy(type02_body),
                             "hircType07BodyFrame": copy.deepcopy(type07_body),
                             "hircType14BodyFrame": copy.deepcopy(type14_body),
+                            "hircType22BodyFrame": copy.deepcopy(type22_body),
+                            "hircMusicHeadReferences": copy.deepcopy(music_head),
+                            "hircType11Sources": copy.deepcopy(type11_sources),
+                            "hircType08Head": copy.deepcopy(type08_head),
+                            "hircType08BodyFrame": copy.deepcopy(type08_body),
+                            "hircType17": copy.deepcopy(type17_bodies),
+                            "hircType09": copy.deepcopy(type09_bodies),
+                            "hircType03Targets": copy.deepcopy(type03_targets),
+                            "hircSmallTypes": copy.deepcopy(small_types),
+                            "hircMediaJoin": copy.deepcopy(media_join),
                             "hircType05BodyFrame": copy.deepcopy(type05_body),
                             "hircReferenceCensus": copy.deepcopy(reference_census),
                             "hircType03ActionFrame": copy.deepcopy(frame),
@@ -400,7 +570,12 @@ class HircActionCorpusTests(unittest.TestCase):
         markdown = _type04_markdown(report)
 
         self.assertIn("all-candidate-vectors-exact", markdown)
-        self.assertIn("Entry values remain unnamed", markdown)
+        # The entry targets are still unnamed, but the objects holding the vectors
+        # are not, and the entries do resolve. The report must keep the narrow
+        # statement without implying the broader one.
+        self.assertIn("entry targets themselves remain unnamed", markdown)
+        self.assertNotIn("Entry values remain unnamed", markdown)
+        self.assertIn("named-reach report", markdown)
         self.assertIn("does not establish serialized field ownership", markdown)
         self.assertIn("Corpus gate SHA-256: `" + "F" * 64, markdown)
         self.assertIn("79 files", markdown)
@@ -877,7 +1052,13 @@ class HircActionCorpusTests(unittest.TestCase):
         self.assertIn("Resolution is an identity fact and nothing more", markdown)
         self.assertIn("does not establish direction", markdown)
         self.assertIn("The type pairs are numeric on both sides", markdown)
-        self.assertIn("a property of this corpus, not a rule", markdown)
+        # The report must not generalise these vectors' same-bank behaviour to the
+        # corpus: type 0x03 targets leave their bank, and that over-generalisation
+        # was published once already.
+        self.assertIn("not about the corpus", markdown.replace("**", ""))
+        self.assertIn("Do not generalise the vectors", markdown)
+        # It must also not imply endpoints are nameless, since three types are named.
+        self.assertIn("names do exist for some endpoints", markdown)
         # No edge may be rendered with a domain name.
         for word in ("event", "action", "parent", "child", "container", "playlist"):
             self.assertNotIn(f"`{word}", markdown.lower())
@@ -985,7 +1166,7 @@ class HircActionCorpusTests(unittest.TestCase):
         from scripts.audio_semantics.hirc_action_corpus import _build_body_lanes
 
         lanes = _build_body_lanes()
-        self.assertEqual(sorted(lanes), ["0x02", "0x05", "0x06", "0x07", "0x0E"])
+        self.assertEqual(sorted(lanes), ["0x02", "0x05", "0x06", "0x07", "0x0E", "0x16"])
         layouts = {key: lane.layout for key, lane in lanes.items()}
         self.assertEqual(len(set(layouts.values())), len(lanes))
         self.assertIn("counted list of groups", layouts["0x06"])
@@ -1022,6 +1203,528 @@ class HircActionCorpusTests(unittest.TestCase):
             scope["hircType05BodyFrame"]["groupCounts"]["recordEntries"] = 1_000_000
         with self.assertRaisesRegex(ValueError, "anonymous element bytes exceed the framed bodies"):
             aggregate_current_hirc_actions(outer, expected_files, excluded_files, oversized)
+
+    def test_media_join_is_decided_by_the_plugin_id(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        media = result["type02MediaJoin"]
+        self.assertEqual(media["sourceIds"], 4)
+        self.assertEqual(media["sourceIdsNamingMedia"], 2)
+        self.assertEqual(media["pluginIdsAlwaysNamingMedia"], 1)
+        self.assertEqual(media["pluginIdsNeverNamingMedia"], 1)
+        self.assertEqual(media["pluginIdsSplitAcrossBothOutcomes"], [])
+        self.assertTrue(media_join_is_decided_by_the_plugin_id(media))
+
+        # One plug-in id landing on both sides falsifies the claim outright; a rate
+        # would hide exactly that.
+        self.assertFalse(
+            media_join_is_decided_by_the_plugin_id(
+                {**media, "pluginIdsSplitAcrossBothOutcomes": ["plugin_00040001"]}
+            )
+        )
+        # A partition with nothing on one side asserts nothing.
+        self.assertFalse(
+            media_join_is_decided_by_the_plugin_id({**media, "pluginIdsNeverNamingMedia": 0})
+        )
+        self.assertFalse(
+            media_join_is_decided_by_the_plugin_id({**media, "pluginIdsAlwaysNamingMedia": 0})
+        )
+
+    def test_media_join_detects_a_plugin_id_on_both_sides(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        mixed = copy.deepcopy(audio_audit)
+        for scope in (
+            mixed["rows"][0]["package"],
+            mixed["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircMediaJoin"]["sourceIdsByPlugin"]["plugin_00040001"] = [10, 99]
+        media = aggregate_current_hirc_actions(
+            outer, expected_files, excluded_files, mixed
+        )["type02MediaJoin"]
+        self.assertEqual(media["pluginIdsSplitAcrossBothOutcomes"], ["plugin_00040001"])
+        self.assertFalse(media_join_is_decided_by_the_plugin_id(media))
+
+    def test_media_join_rejects_a_malformed_census(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        for field, value, pattern in (
+            ("mediaEntries", 9, "disagrees with the id list"),
+            ("sourceIdsByPlugin", {"nonsense": [1]}, "plug-in key is malformed"),
+        ):
+            broken = copy.deepcopy(audio_audit)
+            for scope in (
+                broken["rows"][0]["package"],
+                broken["rows"][0]["package"]["bnkStructures"][0],
+            ):
+                scope["hircMediaJoin"][field] = value
+            with self.assertRaisesRegex(ValueError, pattern):
+                aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
+
+    def test_small_types_need_a_real_width_witness_not_just_exact_bodies(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        small = result["smallTypeBodies"]
+        self.assertEqual(small["exact"], 4)
+        self.assertEqual(small["bodiesByType"], {"type13": 1, "type14": 2, "type15": 1})
+        self.assertTrue(small_types_are_closed(small))
+
+        # Consuming every body exactly is weak on a corpus this small. If no body
+        # carries a nonempty second block, the eight-byte value width is unwitnessed
+        # and the layout is merely fitted, so that must not pass.
+        self.assertFalse(
+            small_types_are_closed(
+                {**small, "bodiesWithSecondBlock": 0, "secondBlockEntries": 0}
+            )
+        )
+        self.assertFalse(small_types_are_closed({**small, "exact": 3, "failed": 1}))
+
+    def test_small_type_counters_must_reconcile(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        for field, value, pattern in (
+            ("exact", 3, "do not partition"),
+            ("bodiesWithSecondBlock", 9, "witnesses exceed the bodies"),
+            ("exactBytes", 900, "exact bytes exceed"),
+        ):
+            broken = copy.deepcopy(audio_audit)
+            for scope in (
+                broken["rows"][0]["package"],
+                broken["rows"][0]["package"]["bnkStructures"][0],
+            ):
+                scope["hircSmallTypes"][field] = value
+            with self.assertRaisesRegex(ValueError, pattern):
+                aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
+
+    def test_type03_targets_are_shown_to_cross_bank_boundaries(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        t03 = result["type03Targets"]
+        self.assertEqual(t03["sameBank"], 6)
+        self.assertEqual(t03["otherBankInPackage"], 2)
+        self.assertTrue(type03_targets_cross_bank_boundaries(t03))
+
+        # The reference vectors never leave their bank and that was once recorded as
+        # a property of the corpus. If a future reader reports no crossing here, the
+        # old conclusion must not quietly come back.
+        self.assertFalse(
+            type03_targets_cross_bank_boundaries({**t03, "otherBankInPackage": 0})
+        )
+        self.assertFalse(type03_targets_cross_bank_boundaries({**t03, "sameBank": 0}))
+
+    def test_type03_target_outcomes_must_partition_and_sum(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        for field, value, pattern in (
+            ("sameBank", 5, "do not partition"),
+            ("sameBankByActionByte", {"action_03": 1}, "does not sum to its outcome"),
+        ):
+            broken = copy.deepcopy(audio_audit)
+            for scope in (
+                broken["rows"][0]["package"],
+                broken["rows"][0]["package"]["bnkStructures"][0],
+            ):
+                scope["hircType03Targets"][field] = value
+            with self.assertRaisesRegex(ValueError, pattern):
+                aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
+
+    def test_type09_is_framed_or_fenced_and_flags_match_exact_bodies(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        bodies = result["type09Bodies"]
+        self.assertEqual(bodies["exact"], 4)
+        self.assertEqual(bodies["unestablishedSecondRun"], 1)
+        self.assertTrue(type09_is_framed_except_the_second_run(bodies))
+        self.assertFalse(
+            type09_is_framed_except_the_second_run({**bodies, "exact": 3, "failed": 1})
+        )
+
+        # One tail flag is read per exactly framed body and nowhere else, so the
+        # histogram cannot drift from the exact count.
+        broken = copy.deepcopy(audio_audit)
+        for scope in (
+            broken["rows"][0]["package"],
+            broken["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircType09"]["tailFlagCounts"] = {"tail_00": 9}
+        with self.assertRaisesRegex(ValueError, "tail flags do not match"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
+
+        partition = copy.deepcopy(audio_audit)
+        for scope in (
+            partition["rows"][0]["package"],
+            partition["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircType09"]["unestablishedSecondRun"] = 0
+        with self.assertRaisesRegex(ValueError, "do not partition"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, partition)
+
+    def test_type17_is_framed_or_fenced_never_failed(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        bodies = result["type17Bodies"]
+        self.assertEqual(bodies["exact"], 4)
+        # A tied width is its own outcome, not a failure and not a pass.
+        self.assertEqual(bodies["fenced"], 1)
+        self.assertEqual(bodies["bodiesByType"], {"type10": 2, "type11": 3})
+        self.assertTrue(type17_is_framed_except_the_tied_block(bodies))
+
+        # A real failure is never acceptable, even one.
+        self.assertFalse(
+            type17_is_framed_except_the_tied_block({**bodies, "exact": 3, "failed": 1})
+        )
+        # Fencing everything would make the claim vacuous.
+        self.assertFalse(
+            type17_is_framed_except_the_tied_block({**bodies, "exact": 0, "fenced": 5})
+        )
+
+    def test_type17_outcomes_must_partition_and_bytes_must_fit(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        for field, value, pattern in (
+            ("exact", 3, "do not partition"),
+            ("exactBytes", 500, "exact bytes exceed"),
+        ):
+            broken = copy.deepcopy(audio_audit)
+            for scope in (
+                broken["rows"][0]["package"],
+                broken["rows"][0]["package"]["bnkStructures"][0],
+            ):
+                scope["hircType17"][field] = value
+            with self.assertRaisesRegex(ValueError, pattern):
+                aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
+
+        mismatched = copy.deepcopy(audio_audit)
+        for scope in (
+            mismatched["rows"][0]["package"],
+            mismatched["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircType17"]["failureCounts"] = {"trailing_bytes": 2}
+        with self.assertRaisesRegex(ValueError, "do not sum to the failures"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, mismatched)
+
+        # A fenced body without a stated reason is indistinguishable from one that
+        # was quietly dropped, so the reasons must account for every fence.
+        unreasoned = copy.deepcopy(audio_audit)
+        for scope in (
+            unreasoned["rows"][0]["package"],
+            unreasoned["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircType17"]["fenceReasons"] = {}
+        with self.assertRaisesRegex(ValueError, "fence reasons do not sum"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, unreasoned)
+
+        wrong_types = copy.deepcopy(audio_audit)
+        for scope in (
+            wrong_types["rows"][0]["package"],
+            wrong_types["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircType17"]["bodiesByType"] = {"type11": 3}
+        with self.assertRaisesRegex(ValueError, "per-type counts disagree"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, wrong_types)
+
+    def test_type08_head_word_is_null_or_names_one_object(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type08HeadWords"]
+        self.assertEqual(head["bodies"], 3)
+        self.assertEqual(head["resolved"], 2)
+        # Null is an allowed outcome; it is what the claim explicitly permits.
+        self.assertEqual(head["null"], 1)
+        self.assertTrue(type08_head_words_are_null_or_resolve(head))
+
+        # A non-null word that names nothing is the case the claim forbids.
+        self.assertFalse(
+            type08_head_words_are_null_or_resolve({**head, "resolved": 1, "unresolved": 1})
+        )
+        self.assertFalse(
+            type08_head_words_are_null_or_resolve({**head, "resolved": 1, "tooShort": 1})
+        )
+        # All-null would make the claim vacuous, so it does not count as closed.
+        self.assertFalse(
+            type08_head_words_are_null_or_resolve(
+                {"bodies": 3, "resolved": 0, "null": 3, "unresolved": 0, "tooShort": 0}
+            )
+        )
+
+    def test_type08_head_outcomes_must_partition_the_bodies(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        broken = copy.deepcopy(audio_audit)
+        for scope in (
+            broken["rows"][0]["package"],
+            broken["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircType08Head"]["null"] = 0
+        with self.assertRaisesRegex(ValueError, "do not partition"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
+
+    def test_type11_sources_must_use_a_plugin_id_type02_also_uses(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        sources = result["type11SourceRecords"]
+        known = result["type02SourcePrefixes"]["pluginIdCounts"]
+        self.assertEqual(sources["records"], 3)
+        self.assertTrue(type11_sources_share_the_type02_plugin_space(sources, known))
+
+        # A plug-in id outside the set means the record stride is wrong, because a
+        # correct stride cannot land arbitrary bytes on a sparse 32-bit id.
+        self.assertFalse(
+            type11_sources_share_the_type02_plugin_space(
+                {**sources, "pluginIdCounts": {**sources["pluginIdCounts"], "plugin_DEADBEEF": 1}},
+                known,
+            )
+        )
+        for field in ("recordsOutOfRange", "tooShort"):
+            self.assertFalse(
+                type11_sources_share_the_type02_plugin_space({**sources, field: 1}, known)
+            )
+        self.assertFalse(type11_sources_share_the_type02_plugin_space(sources, {}))
+        self.assertFalse(
+            type11_sources_share_the_type02_plugin_space({**sources, "records": 0}, known)
+        )
+
+    def test_every_type11_body_must_end_on_the_same_word(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        sources = result["type11SourceRecords"]
+        self.assertEqual(sources["endsWithTerminator"], sources["bodies"])
+        self.assertEqual(sources["terminatorCounts"], {"end_00000064": 2})
+        self.assertTrue(type11_bodies_share_one_terminator(sources))
+
+        # One body ending on a different word means the reader is looking at a
+        # different layout, so a majority is not enough -- the count must be exact.
+        self.assertFalse(
+            type11_bodies_share_one_terminator(
+                {**sources, "endsWithTerminator": 1,
+                 "terminatorCounts": {"end_00000064": 1, "end_00000000": 1}}
+            )
+        )
+        # A second word present alongside the terminator still breaks it, even if
+        # every body is somehow counted as terminated.
+        self.assertFalse(
+            type11_bodies_share_one_terminator(
+                {**sources, "terminatorCounts": {"end_00000064": 2, "end_00000001": 1}}
+            )
+        )
+        # An empty corpus must not satisfy the claim vacuously.
+        self.assertFalse(
+            type11_bodies_share_one_terminator(
+                {"bodies": 0, "endsWithTerminator": 0, "terminatorCounts": {}}
+            )
+        )
+
+    def test_a_type11_census_whose_terminators_miss_bodies_is_refused(self) -> None:
+        # Terminator counts that do not cover every body mean some body was walked
+        # without being classified, which would let an unread shape pass as closed.
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType11Sources"]
+        with self.assertRaisesRegex(ValueError, "do not cover every body"):
+            _read_type11_source_census(
+                {**census, "terminatorCounts": {"end_00000064": 1}}, "unit"
+            )
+        with self.assertRaisesRegex(ValueError, "more terminators than bodies"):
+            _read_type11_source_census({**census, "endsWithTerminator": 9}, "unit")
+
+    def test_type08_bodies_must_be_framed_or_named(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        body = result["type08BodyFrames"]
+        self.assertEqual((body["count"], body["exact"], body["failed"]), (3, 2, 1))
+        self.assertTrue(type08_bodies_are_exact_or_named(body))
+
+        # This type does not close, so the gate cannot require every body to frame.
+        # What it must reject is a body that is neither framed nor accounted for.
+        self.assertFalse(type08_bodies_are_exact_or_named({**body, "count": 4}))
+        # An all-fenced corpus proves nothing about the layout and must not pass.
+        self.assertFalse(
+            type08_bodies_are_exact_or_named(
+                {**body, "exact": 0, "failed": 3,
+                 "failureCategories": {"trailer_is_not_five_bytes": 3}}
+            )
+        )
+        # An ambiguous body means the framer could not decide, which is not the same
+        # as a named fence and must not be counted as one.
+        self.assertFalse(type08_bodies_are_exact_or_named({**body, "ambiguous": 1, "count": 4}))
+        # A fence without a reason hides whatever shape the framer did not handle.
+        self.assertFalse(type08_bodies_are_exact_or_named({**body, "failureCategories": {}}))
+        self.assertFalse(type08_bodies_are_exact_or_named({"count": 0, "exact": 0}))
+
+    def test_a_type08_body_census_that_loses_a_body_is_refused(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType08BodyFrame"]
+        with self.assertRaisesRegex(ValueError, "do not partition"):
+            _read_type08_body_frame({**census, "count": 9}, "unit")
+        with self.assertRaisesRegex(ValueError, "do not cover its failures"):
+            _read_type08_body_frame({**census, "failureCategories": {}}, "unit")
+        with self.assertRaisesRegex(ValueError, "negative"):
+            _read_type08_body_frame({**census, "exact": -1}, "unit")
+
+    def test_the_type11_tail_count_must_be_carried_by_the_echoes(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        sources = result["type11SourceRecords"]
+        self.assertTrue(type11_tail_entries_are_counted(sources))
+
+        # More echoes than the count declares means the field is not a count, so a
+        # single such body has to break it.
+        self.assertFalse(
+            type11_tail_entries_are_counted({**sources, "tailEchoesExceedTheCount": 1})
+        )
+        # A body whose first entry does not name a declared source leaves the start
+        # of the run unfixed; that is the evidence the offset rests on.
+        self.assertFalse(
+            type11_tail_entries_are_counted(
+                {**sources, "firstTailEntryNamesADeclaredSource": 1}
+            )
+        )
+        self.assertFalse(
+            type11_tail_entries_are_counted({**sources, "firstTailEntryTooShort": 1})
+        )
+        self.assertFalse(
+            type11_tail_entries_are_counted({**sources, "tailCountOutOfRange": 1})
+        )
+        # The histogram has to account for every body with a tail, or some body was
+        # walked without being classified.
+        self.assertFalse(
+            type11_tail_entries_are_counted(
+                {**sources, "tailEntryCountCounts": {"tailEntries_1": 1}}
+            )
+        )
+        # Fewer echoes than declared is permitted -- later entries are variable-width
+        # so their ids need not land on a four-byte boundary -- and must not fail.
+        self.assertTrue(
+            type11_tail_entries_are_counted({**sources, "tailEntriesEchoed": 2})
+        )
+        # A corpus where every body declares zero entries proves nothing about where
+        # entries begin, so it must not pass vacuously.
+        self.assertFalse(
+            type11_tail_entries_are_counted(
+                {
+                    **sources,
+                    "tailEntryCountCounts": {"tailEntries_0": 2},
+                    "firstTailEntryNamesADeclaredSource": 0,
+                }
+            )
+        )
+        self.assertFalse(type11_tail_entries_are_counted({**sources, "bodiesWithATail": 0}))
+
+    def test_a_type11_census_that_echoes_more_than_it_declares_is_refused(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType11Sources"]
+        with self.assertRaisesRegex(ValueError, "echoes more tail entries"):
+            _read_type11_source_census({**census, "tailEntriesEchoed": 99}, "unit")
+        with self.assertRaisesRegex(ValueError, "tail outcomes exceed the body count"):
+            _read_type11_source_census({**census, "noTailAfterTheRun": 99}, "unit")
+
+    def test_type11_histograms_must_sum_to_the_record_total(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        for field in ("pluginIdCounts", "streamTypeCounts"):
+            broken = copy.deepcopy(audio_audit)
+            for scope in (
+                broken["rows"][0]["package"],
+                broken["rows"][0]["package"]["bnkStructures"][0],
+            ):
+                scope["hircType11Sources"][field] = {"x_01": 1}
+            with self.assertRaisesRegex(ValueError, "do not sum to the record total"):
+                aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
+
+    def test_music_head_references_resolve_for_every_body(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["musicHeadReferences"]
+        self.assertEqual(head["bodies"], 4)
+        self.assertEqual(head["resolved"], 3)
+        self.assertEqual(head["unknownHeadShape"], 1)
+        self.assertEqual(head["bodiesByType"], {"type0A": 2, "type0C": 1, "type0D": 1})
+        # A body outside the claim is excluded from the numerator and kept in the
+        # published total, so the shortfall stays visible rather than vanishing.
+        self.assertTrue(music_head_references_are_closed(head))
+        self.assertFalse(
+            music_head_references_are_closed({**head, "unknownHeadShape": 0})
+        )
+
+    def test_a_single_unnamed_body_stops_the_music_head_claim(self) -> None:
+        # The claim is that every body names a same-bank object. One that does not
+        # falsifies it outright, so none of these outcomes may be tolerated.
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        for field in ("unresolved", "zero", "unknownDiscriminant", "tooShort"):
+            broken = copy.deepcopy(audio_audit)
+            for scope in (
+                broken["rows"][0]["package"],
+                broken["rows"][0]["package"]["bnkStructures"][0],
+            ):
+                scope["hircMusicHeadReferences"]["resolved"] = 2
+                scope["hircMusicHeadReferences"][field] = (
+                    scope["hircMusicHeadReferences"][field] + 1
+                )
+            head = aggregate_current_hirc_actions(
+                outer, expected_files, excluded_files, broken
+            )["musicHeadReferences"]
+            self.assertFalse(music_head_references_are_closed(head), field)
+
+    def test_music_head_outcomes_must_partition_and_offsets_must_follow_the_byte(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+
+        dropped = copy.deepcopy(audio_audit)
+        for scope in (
+            dropped["rows"][0]["package"],
+            dropped["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircMusicHeadReferences"]["resolved"] = 1
+        with self.assertRaisesRegex(ValueError, "do not partition"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, dropped)
+
+        # The offset histogram is not free-standing: it must be derivable from the
+        # discriminant byte, or the "offset follows from a byte" claim is untested.
+        drifted = copy.deepcopy(audio_audit)
+        for scope in (
+            drifted["rows"][0]["package"],
+            drifted["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircMusicHeadReferences"]["offsetCounts"] = {"offset_5": 2, "offset_9": 1}
+        with self.assertRaisesRegex(ValueError, "do not follow from the discriminant"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, drifted)
+
+        unobserved = copy.deepcopy(audio_audit)
+        for scope in (
+            unobserved["rows"][0]["package"],
+            unobserved["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircMusicHeadReferences"]["discriminantCounts"] = {"byte2_00": 2, "byte2_07": 1}
+        with self.assertRaisesRegex(ValueError, "unobserved discriminant"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, unobserved)
+
+        mismatched = copy.deepcopy(audio_audit)
+        for scope in (
+            mismatched["rows"][0]["package"],
+            mismatched["rows"][0]["package"]["bnkStructures"][0],
+        ):
+            scope["hircMusicHeadReferences"]["bodiesByType"] = {"type0A": 2}
+        with self.assertRaisesRegex(ValueError, "per-type counts disagree"):
+            aggregate_current_hirc_actions(outer, expected_files, excluded_files, mismatched)
+
+    def test_type22_reuses_group_i_and_keeps_only_its_residuals(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        bodies = result["type22BodyFrames"]
+        self.assertEqual(bodies["exact"], 2)
+        self.assertEqual(bodies["frameClosure"], "all-bodies-exact")
+        self.assertTrue(body_lane_corpus_is_closed(bodies))
+        residuals = " ".join(bodies["unresolvedWidths"])
+        self.assertIn("group I", residuals)
+        # It shares only group I, so the rest of the node frame's open questions
+        # are not statements about this type.
+        self.assertNotIn("group B", residuals)
+        self.assertNotIn("group H", residuals)
+
+    def test_type22_per_element_selector_families_must_match_their_counters(self) -> None:
+        # These families carry one observation per counted element, not per body, so
+        # they reconcile against their own counter rather than the body total.
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        for family, group in (("propertyKey_00", "propertyEntries"), ("groupIKeyWidth_1", "groupIEntries")):
+            broken = copy.deepcopy(audio_audit)
+            for scope in (
+                broken["rows"][0]["package"],
+                broken["rows"][0]["package"]["bnkStructures"][0],
+            ):
+                scope["hircType22BodyFrame"]["selectorCounts"][family] += 1
+            with self.assertRaisesRegex(ValueError, f"does not match {group}"):
+                aggregate_current_hirc_actions(outer, expected_files, excluded_files, broken)
 
     def test_type14_body_is_framed_without_the_shared_node_frame(self) -> None:
         outer, expected_files, excluded_files, audio_audit = valid_action_fixture()

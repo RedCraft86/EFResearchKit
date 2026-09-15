@@ -582,12 +582,82 @@ never reported as a full one.
 python -m scripts.audio_semantics.hirc_named_reach --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
 ```
 
+It gates the type `0x02` media join: every distinct source id is tested against the
+media ids the AKPK sectors declare, unioned across the whole corpus rather than per
+package. The gate does not check a rate -- it requires that no plug-in id appears
+both naming media and naming nothing, and that both sides are non-empty.
+
+It gates numeric types `0x13`, `0x14` and `0x15` as one group: all 18 bodies
+consumed exactly. Because those corpora are tiny, the gate also requires a nonempty
+second block somewhere, so the eight-byte value width is witnessed rather than
+merely fitted.
+
+It gates numeric type `0x09` too: the node frame opens all 5,158 bodies, and 4,973
+close exactly after a counted four-byte run, a zero second count and one byte. The
+other 185 are fenced. A better reading (5,154) is recorded in the recovery memory
+but has never been implemented, so this census is intentionally the weaker,
+verified one.
+
+It gates numeric types `0x11` and `0x10` together, since they share one grammar:
+2,983 of 3,098 bodies consumed exactly, 115 fenced. Every fenced body carries a
+named reason and the gate requires the reasons to account for all of them --
+`tiedOptionalBlockWidth` for 92 `0x11` bodies whose optional block ties between 21
+and 27 bytes, and `type10_variant7F` for 23 `0x10` bodies whose tail group I cannot
+parse. Failures are forbidden; fencing everything is refused.
+
+It gates numeric type `0x08`'s leading word too: null, or exactly one same-bank
+object, never a non-null value naming nothing.
+
+Numeric type `0x08`'s **body** is now framed byte-exact in 96 of its 161 bodies:
+a reference, the counted key/value block `0x16` uses, a one-entry list whose key
+sizes its value, a fixed nine-byte signature, a zero word, a counted run of
+six-byte entries, and five zero bytes. It is deliberately not one of the
+closure-gated body lanes -- a lane publishes a closed-form byte total and this
+type has none. Its own gate forbids the three things a partial framing must not
+do: leave a body neither framed nor accounted for, report an ambiguous body, or
+pass with nothing framed.
+
+It also gates numeric type `0x0B`'s head: a byte, a 32-bit record count, and that
+many fourteen-byte source records whose plug-in id must be one type `0x02` also
+uses. Both sides of that comparison are raw 32-bit ids produced by the same
+reader, so the check is like-for-like.
+
+The `0x0B` body's outline is now gated end to end even though the body is still
+not framed: the source run, a 32-bit tail-entry count, that many **variable-width**
+entries, and a 32-bit terminator that every one of the 4,325 bodies carries. Two
+checks hold the outline up. The terminator gate is equality with the body count,
+not a rate. The tail gate requires that the first entry's second word name one of
+the body's own declared source ids -- sparse 32-bit values, so arbitrary bytes do
+not produce them -- that no body carry more echoes than it declares, and that the
+bodies declaring zero entries carry none. Nothing inside an entry past its first
+two words is read, so the entry widths remain unknown and `0x0B` has no lane.
+
+The reference-graph report also gates a narrower claim about numeric types `0x0A`,
+`0x0C` and `0x0D`, which are *not* framed: body byte 2 selects an offset (0 -> 9, nonzero
+-> 5) at which a single 32-bit word names exactly one same-bank object, and all
+7,326 of 7,331 such bodies resolve; the five that do not are `0x0C` bodies whose
+first byte is 6, a different head shape, and they stay in the published total
+rather than being removed from the denominator. The offset histogram must follow from the byte
+histogram, and an unobserved byte value counts as unknown rather than being
+assigned a branch.
+
+The `0x16` lane is the smallest and closed almost entirely by reuse: a counted
+key/value block, one byte, then the node frame's group I structure verbatim. Its
+selector families are per-element rather than per-body, so they reconcile against
+their own counters -- the lane framework takes those as an explicit mapping.
+
 The `0x0E` lane is the one body lane that does not share the node frame, so it
 supplies its own residual list, its own unconditional selector families, and a
 closed-form byte identity (`24 * bodies + 12 * elements + 3 * entries + 20 *
 optionalBlocks`) that must hold as an equality. Its prefix length is read from a
 flag byte rather than searched for; a flag value outside the two observed ones
 fails closed rather than guessing a branch.
+
+`hirc_named_reach` also runs a second, broader pass that drops the audio prefix
+vocabulary and judges each numeric type against its computed coincidence rate
+(`literals * population / 2**32`). Types clearing 100x the expectation are named;
+those at their own rate are reported and not claimed. That is how type `0x08` and
+type `0x15` gained names while type `0x02` was rejected.
 
 `hirc_named_reach` is the one audio lane that carries a name. It hashes the exact
 audio-like `stringLiteral` rows from `global-metadata.dat` and joins them to HIRC

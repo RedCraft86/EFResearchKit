@@ -93,6 +93,20 @@ TYPE02_BODY_MINIMUM_FRAME_BYTES = 45
 # smallest body that can frame and the per-body constant in the closed-form total,
 # because everything else in this layout is counted: the two uses are the same
 # quantity by construction, not a coincidence to be split apart.
+TYPE22_BODY_MINIMUM_FRAME_BYTES = 4
+TYPE22_BODY_PROPERTY_BYTES = 5
+# Numeric type 0x16 ends with the node frame's group I structure verbatim, so the
+# group I residuals apply to it and the rest of the node frame's do not.
+TYPE22_BODY_RESIDUALS = (
+    "the counted key/value block is consumed by extent only: keys are one byte, "
+    "values four, and neither is named or interpreted here",
+    "one anonymous byte separates that block from the group I structure and gates "
+    "nothing observed",
+    "the group I key is consumed by extent only, and every key in this type is one "
+    "byte wide, so this corpus does not widen the inherited five-byte cap either",
+    "the twelve-byte group I points are consumed whole; no internal split is claimed",
+)
+
 TYPE14_BODY_MINIMUM_FRAME_BYTES = 24
 TYPE14_BODY_FIXED_HEAD_BYTES = 21
 TYPE14_BODY_OPTIONAL_BLOCK_BYTES = 20
@@ -145,6 +159,7 @@ REFERENCE_CENSUS_FIELDS = (
 REFERENCE_DEPTH_FIELD = "maximumReferenceDepth"
 DEFAULT_TYPE07_BODY_OUTPUT = ROOT / "reports/animestudio/hirc_type07_body_current_latest.json"
 DEFAULT_TYPE14_BODY_OUTPUT = ROOT / "reports/animestudio/hirc_type14_body_current_latest.json"
+DEFAULT_TYPE22_BODY_OUTPUT = ROOT / "reports/animestudio/hirc_type22_body_current_latest.json"
 AUDIO_BLOCKS = frozenset(
     {
         "InitAudio",
@@ -559,6 +574,16 @@ def _read_type02_prefix_metrics(
             f"objects={expected_count} pluginCounts={sum(plugin_counts.values())}"
         )
     metrics["pluginTypeCounts"] = dict(sorted(plugin_counts.items()))
+    raw_plugin_ids = frame.get("pluginIdCounts")
+    if not isinstance(raw_plugin_ids, dict):
+        raise ValueError(f"type 0x02 pluginIdCounts is invalid: {label}")
+    plugin_ids = {str(name): int(count) for name, count in raw_plugin_ids.items()}
+    if sum(plugin_ids.values()) != expected_count:
+        raise ValueError(
+            f"type 0x02 plugin-id count mismatch: {label} "
+            f"objects={expected_count} pluginIdCounts={sum(plugin_ids.values())}"
+        )
+    metrics["pluginIdCounts"] = dict(sorted(plugin_ids.items()))
     return metrics
 
 
@@ -583,6 +608,7 @@ def _read_hirc_body_metrics(
     unconditional_selectors: tuple[str, ...] = SHARED_NODE_FRAME_SELECTOR_FAMILIES,
     conditional_selectors: tuple[str, ...] = SHARED_NODE_FRAME_CONDITIONAL_SELECTORS,
     fixed_bytes_per_body: int | None = None,
+    selector_families_matching_groups: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if expected_count < 0:
         raise ValueError(f"negative {type_label} object count: {label}")
@@ -726,6 +752,19 @@ def _read_hirc_body_metrics(
             raise ValueError(
                 f"{type_label} selector family {prefix} does not match exact bodies: {label} "
                 f"selectors={selector_total} exact={metrics['exact']}"
+            )
+    # Some selector families are per-element, not per-body: one observation for each
+    # counted thing. Those must reconcile against their own group counter, or a
+    # miscounted run would leave the histogram silently disagreeing with it.
+    for prefix, group_name in (selector_families_matching_groups or {}).items():
+        observed = sum(
+            count for name, count in metrics["selectorCounts"].items() if name.startswith(prefix)
+        )
+        expected = metrics["groupCounts"].get(group_name, 0)
+        if observed != expected:
+            raise ValueError(
+                f"{type_label} selector family {prefix} does not match {group_name}: {label} "
+                f"selectors={observed} {group_name}={expected}"
             )
     for prefix in conditional_selectors:
         branch_total = sum(
@@ -1078,6 +1117,7 @@ class _BodyLane:
         unconditional_selectors: tuple[str, ...] = SHARED_NODE_FRAME_SELECTOR_FAMILIES,
         conditional_selectors: tuple[str, ...] = SHARED_NODE_FRAME_CONDITIONAL_SELECTORS,
         fixed_bytes_per_body: int | None = None,
+        selector_families_matching_groups: dict[str, str] | None = None,
         upstream_note: str = "",
         shared_note: str = "",
     ) -> None:
@@ -1097,6 +1137,7 @@ class _BodyLane:
         self.unconditional_selectors = unconditional_selectors
         self.conditional_selectors = conditional_selectors
         self.fixed_bytes_per_body = fixed_bytes_per_body
+        self.selector_families_matching_groups = selector_families_matching_groups or {}
         self.closed_form_total = (
             None
             if fixed_bytes_per_body is None
@@ -1140,6 +1181,7 @@ class _BodyLane:
             unconditional_selectors=self.unconditional_selectors,
             conditional_selectors=self.conditional_selectors,
             fixed_bytes_per_body=self.fixed_bytes_per_body,
+            selector_families_matching_groups=self.selector_families_matching_groups,
         )
 
     def add_package(
@@ -1276,12 +1318,53 @@ def _build_body_lanes() -> dict[str, "_BodyLane"]:
             extra_non_claims=(
                 "source, effect, bus, or parent object identity",
                 "cross-object or cross-bank relationships",
-                "physical media placement or source-plugin semantics",
+                "source-plugin semantics, or which media bytes are placed where; the "
+                "source id's join to shipped media is established separately in the "
+                "reference-graph report and is not claimed by this lane",
             ),
             upstream_note=(
                 "a malformed 14-byte source prefix or plugin parameter range throws in "
                 "the preceding prefix census and aborts the whole package, so it is "
                 "never counted as a failed body by this lane"
+            ),
+        ),
+        "0x16": _BodyLane(
+            "0x16",
+            "hircType22BodyFrame",
+            TYPE22_BODY_MINIMUM_FRAME_BYTES,
+            "numeric type 0x16 bodies are consumed whole, from the first byte to the "
+            "declared object-body end",
+            layout=(
+                "The reader consumes a byte-counted block of properties -- that many "
+                "one-byte keys followed by that many four-byte values, as two parallel "
+                "runs rather than interleaved pairs -- then one anonymous byte, then the "
+                "node frame's group I structure verbatim. Group I is not re-derived here: "
+                "it is the same structure the shipped reader already frames byte-exactly "
+                "on numeric types 0x02, 0x05, 0x06 and 0x07, which is why this type closed "
+                "with almost no new guessing."
+            ),
+            extra_non_claims=(
+                "that a property key names anything, or that its value is a number of "
+                "any particular kind",
+                "that this type's group I entries mean the same thing as another type's",
+            ),
+            base_residuals=TYPE22_BODY_RESIDUALS,
+            base_element_widths={
+                "propertyEntries": TYPE22_BODY_PROPERTY_BYTES,
+                "groupIEntries": 14,
+                "groupIPoints": 12,
+            },
+            unconditional_selectors=(),
+            conditional_selectors=(),
+            # Both families are per-element: one observation per counted property and
+            # per group I entry, so each must equal its own counter.
+            selector_families_matching_groups={
+                "propertyKey_": "propertyEntries",
+                "groupIKeyWidth_": "groupIEntries",
+            },
+            shared_note=(
+                "This lane shares only group I with the node frame, not the whole frame, "
+                "so it carries the group I residuals and none of the others"
             ),
         ),
         "0x0E": _BodyLane(
@@ -1542,6 +1625,7 @@ def aggregate_current_hirc_actions(
     package_type03_counts: Counter[str] = Counter()
     type02_totals: Counter[str] = Counter()
     type02_plugin_counts: Counter[str] = Counter()
+    type02_plugin_ids: Counter[str] = Counter()
     type02_package_counts_by_block: Counter[str] = Counter()
     type02_bank_version_counts: Counter[str] = Counter()
     type02_packages_with_objects = 0
@@ -1557,6 +1641,38 @@ def aggregate_current_hirc_actions(
     type04_banks_with_objects = 0
     type04_non_exact_examples: list[dict[str, Any]] = []
     body_lanes = _build_body_lanes()
+    media_ids: set[int] = set()
+    source_ids_by_plugin: dict[str, set[int]] = {}
+    small_totals: Counter[str] = Counter()
+    small_by_type: Counter[str] = Counter()
+    small_failures: Counter[str] = Counter()
+    t03_totals: Counter[str] = Counter()
+    t03_same: Counter[str] = Counter()
+    t03_other: Counter[str] = Counter()
+    t03_outside: Counter[str] = Counter()
+    type09_totals: Counter[str] = Counter()
+    type09_failures: Counter[str] = Counter()
+    type09_flags: Counter[str] = Counter()
+    type17_totals: Counter[str] = Counter()
+    type17_failures: Counter[str] = Counter()
+    type17_reasons: Counter[str] = Counter()
+    type17_by_type: Counter[str] = Counter()
+    type08_totals: Counter[str] = Counter()
+    type11_totals: Counter[str] = Counter()
+    type11_plugins: Counter[str] = Counter()
+    type11_terminators: Counter[str] = Counter()
+    type08_body_totals: Counter[str] = Counter()
+    type08_body_failures: Counter[str] = Counter()
+    type08_body_unsupported: Counter[str] = Counter()
+    type11_tail_counts: Counter[str] = Counter()
+    type11_lead_words: Counter[str] = Counter()
+    type11_streams: Counter[str] = Counter()
+    type11_record_counts: Counter[str] = Counter()
+    music_head_totals: Counter[str] = Counter()
+    music_head_shapes: Counter[str] = Counter()
+    music_head_by_type: Counter[str] = Counter()
+    music_head_offsets: Counter[str] = Counter()
+    music_head_discriminants: Counter[str] = Counter()
     reference_totals: Counter[str] = Counter()
     reference_edges: Counter[str] = Counter()
     reference_objects: Counter[str] = Counter()
@@ -1589,6 +1705,76 @@ def aggregate_current_hirc_actions(
             type02_max_opaque_tail = max(type02_max_opaque_tail, package_type02["maxOpaqueTailBytes"])
         for plugin_type, count in package_type02["pluginTypeCounts"].items():
             type02_plugin_counts[plugin_type] += count
+        for plugin_id, count in package_type02["pluginIdCounts"].items():
+            type02_plugin_ids[plugin_id] += count
+
+        package_media, package_sources = _read_media_join(
+            package.get("hircMediaJoin"), package_label
+        )
+        media_ids |= package_media
+        for plugin_key, plugin_sources in package_sources.items():
+            source_ids_by_plugin.setdefault(plugin_key, set()).update(plugin_sources)
+
+        package_small = _read_small_type_census(package.get("hircSmallTypes"), package_label)
+        for key in SMALL_TYPE_SCALARS:
+            small_totals[key] += package_small[key]
+        small_by_type.update(package_small["bodiesByType"])
+        small_failures.update(package_small["failureCounts"])
+
+        package_t03 = _read_type03_targets(package.get("hircType03Targets"), package_label)
+        for key in TYPE03_TARGET_SCALARS:
+            t03_totals[key] += package_t03[key]
+        t03_same.update(package_t03["sameBankByActionByte"])
+        t03_other.update(package_t03["otherBankByActionByte"])
+        t03_outside.update(package_t03["outsideByActionByte"])
+
+        package_type09 = _read_type09_census(package.get("hircType09"), package_label)
+        for key in TYPE09_SCALARS:
+            type09_totals[key] += package_type09[key]
+        type09_failures.update(package_type09["failureCounts"])
+        type09_flags.update(package_type09["tailFlagCounts"])
+
+        package_type17 = _read_type17_census(package.get("hircType17"), package_label)
+        for key in TYPE17_SCALARS:
+            type17_totals[key] += package_type17[key]
+        type17_failures.update(package_type17["failureCounts"])
+        type17_reasons.update(package_type17["fenceReasons"])
+        type17_by_type.update(package_type17["bodiesByType"])
+
+        package_type08 = _read_type08_head_census(
+            package.get("hircType08Head"), package_label
+        )
+        for key in TYPE08_HEAD_SCALARS:
+            type08_totals[key] += package_type08[key]
+
+        package_type11 = _read_type11_source_census(
+            package.get("hircType11Sources"), package_label
+        )
+        for key in TYPE11_SOURCE_SCALARS:
+            type11_totals[key] += package_type11[key]
+        type11_plugins.update(package_type11["pluginIdCounts"])
+        type11_streams.update(package_type11["streamTypeCounts"])
+        type11_record_counts.update(package_type11["recordCountCounts"])
+        type11_terminators.update(package_type11["terminatorCounts"])
+        package_type08_body = _read_type08_body_frame(
+            package.get("hircType08BodyFrame"), package_label
+        )
+        for key in TYPE08_BODY_FIELDS:
+            type08_body_totals[key] += package_type08_body[key]
+        type08_body_failures.update(package_type08_body["failureCategories"])
+        type08_body_unsupported.update(package_type08_body["unsupportedCategories"])
+        type11_tail_counts.update(package_type11["tailEntryCountCounts"])
+        type11_lead_words.update(package_type11["firstTailEntryLeadingWordCounts"])
+
+        package_music_head = _read_music_head_census(
+            package.get("hircMusicHeadReferences"), package_label
+        )
+        for key in MUSIC_HEAD_SCALARS:
+            music_head_totals[key] += package_music_head[key]
+        music_head_by_type.update(package_music_head["bodiesByType"])
+        music_head_offsets.update(package_music_head["offsetCounts"])
+        music_head_discriminants.update(package_music_head["discriminantCounts"])
+        music_head_shapes.update(package_music_head["headShapeCounts"])
 
         package_reference = _read_reference_census(
             package.get("hircReferenceCensus"), package_label
@@ -1942,6 +2128,7 @@ def aggregate_current_hirc_actions(
             "minOpaqueTailBytes": type02_min_opaque_tail or 0,
             "maxOpaqueTailBytes": type02_max_opaque_tail,
             "pluginTypeCounts": dict(sorted(type02_plugin_counts.items())),
+            "pluginIdCounts": dict(sorted(type02_plugin_ids.items())),
             "objectCountsByBlock": dict(sorted(type02_package_counts_by_block.items())),
             "bankVersionCounts": dict(sorted(type02_bank_version_counts.items())),
             "wholeBodyCursor": "not-claimed-opaque-tail-remains",
@@ -1977,6 +2164,52 @@ def aggregate_current_hirc_actions(
         "type05BodyFrames": body_lanes["0x05"].publish(),
         "type06BodyFrames": body_lanes["0x06"].publish(),
         "type14BodyFrames": body_lanes["0x0E"].publish(),
+        "type22BodyFrames": body_lanes["0x16"].publish(),
+        "type08HeadWords": {key: int(type08_totals[key]) for key in TYPE08_HEAD_SCALARS},
+        "type08BodyFrames": {
+            **{key: int(type08_body_totals[key]) for key in TYPE08_BODY_FIELDS},
+            "failureCategories": dict(sorted(type08_body_failures.items())),
+            "unsupportedCategories": dict(sorted(type08_body_unsupported.items())),
+        },
+        "type02MediaJoin": _summarise_media_join(media_ids, source_ids_by_plugin),
+        "smallTypeBodies": {
+            **{key: int(small_totals[key]) for key in SMALL_TYPE_SCALARS},
+            "bodiesByType": dict(sorted(small_by_type.items())),
+            "failureCounts": dict(sorted(small_failures.items())),
+        },
+        "type03Targets": {
+            **{key: int(t03_totals[key]) for key in TYPE03_TARGET_SCALARS},
+            "sameBankByActionByte": dict(sorted(t03_same.items())),
+            "otherBankByActionByte": dict(sorted(t03_other.items())),
+            "outsideByActionByte": dict(sorted(t03_outside.items())),
+        },
+        "type09Bodies": {
+            **{key: int(type09_totals[key]) for key in TYPE09_SCALARS},
+            "failureCounts": dict(sorted(type09_failures.items())),
+            "tailFlagCounts": dict(sorted(type09_flags.items())),
+        },
+        "type17Bodies": {
+            **{key: int(type17_totals[key]) for key in TYPE17_SCALARS},
+            "failureCounts": dict(sorted(type17_failures.items())),
+            "fenceReasons": dict(sorted(type17_reasons.items())),
+            "bodiesByType": dict(sorted(type17_by_type.items())),
+        },
+        "type11SourceRecords": {
+            **{key: int(type11_totals[key]) for key in TYPE11_SOURCE_SCALARS},
+            "pluginIdCounts": dict(sorted(type11_plugins.items())),
+            "streamTypeCounts": dict(sorted(type11_streams.items())),
+            "recordCountCounts": dict(sorted(type11_record_counts.items())),
+            "terminatorCounts": dict(sorted(type11_terminators.items())),
+            "tailEntryCountCounts": dict(sorted(type11_tail_counts.items())),
+            "firstTailEntryLeadingWordCounts": dict(sorted(type11_lead_words.items())),
+        },
+        "musicHeadReferences": {
+            **{key: int(music_head_totals[key]) for key in MUSIC_HEAD_SCALARS},
+            "bodiesByType": dict(sorted(music_head_by_type.items())),
+            "headShapeCounts": dict(sorted(music_head_shapes.items())),
+            "offsetCounts": dict(sorted(music_head_offsets.items())),
+            "discriminantCounts": dict(sorted(music_head_discriminants.items())),
+        },
         "type04U32VectorCandidates": {
             "count": type04_count,
             "exact": type04_exact,
@@ -2034,7 +2267,14 @@ def _markdown(report: dict[str, Any]) -> str:
             "|---|---:|",
             operation_rows,
             "",
-            "The parser reports byte framing only. Numeric operation codes remain unnamed; this audit does not establish field ownership, operation meaning, target resolution, runtime execution, event selection, or audibility.",
+            "The parser reports byte framing only. Numeric operation codes remain unnamed; this audit does not establish field ownership, operation meaning, runtime execution, event selection, or audibility.",
+            "",
+            "Target resolution used to be on that list and has been removed, because it "
+            "is now established elsewhere: the reference-graph report classifies this "
+            "type's target word as naming an object in the same bank, in another bank "
+            "of the same package, or nothing the package declares. This audit still "
+            "only frames bytes, but listing target resolution as unestablished would "
+            "now be wrong rather than careful.",
             "",
             f"Corpus gate SHA-256: `{report['corpusGate']['sha256']}`.",
             f"Raw AnimeStudio package audit: `{report['audioAudit']['intermediatePath']}` (SHA-256 `{report['audioAudit']['sha256']}`).",
@@ -2081,7 +2321,14 @@ def _type02_markdown(report: dict[str, Any]) -> str:
             "|---|---:|",
             block_rows,
             "",
-            "The parser bounds a 14-byte source prefix and, for numeric plugin type `0x02`, its length-prefixed parameter range. Remaining body bytes stay opaque. This is byte-boundary evidence only; it does not identify tail fields, physical media placement, runtime selection, or audibility.",
+            "The parser bounds a 14-byte source prefix and, for numeric plugin type `0x02`, its length-prefixed parameter range. Remaining body bytes stay opaque. This is byte-boundary evidence only; it does not identify tail fields, runtime selection, or audibility.",
+            "",
+            "Physical media used to be on that list and no longer belongs there. The "
+            "source id inside this prefix is joined to the media the corpus ships in "
+            "the reference-graph report, where the plug-in id decides whether it "
+            "resolves. This report still does not make that join -- it bounds bytes -- "
+            "but saying media placement is unidentified would now be false rather than "
+            "cautious.",
             "",
             f"Corpus gate SHA-256: `{report['corpusGate']['sha256']}`; AnimeStudio CLI SHA-256 `{report['audioAudit']['toolSha256']}`.",
             f"Raw AnimeStudio package audit: `{report['audioAudit']['intermediatePath']}` (SHA-256 `{report['audioAudit']['sha256']}`).",
@@ -2139,7 +2386,16 @@ def _type04_markdown(report: dict[str, Any]) -> str:
             "|---|---:|",
             block_rows,
             "",
-            "The structural candidate is a one-byte count followed by that many 32-bit-width entries. Exact status means this candidate framing reaches the declared object-body end. Entry values remain unnamed; this census does not establish serialized field ownership, entry identity or meaning, Action relationships, runtime execution, event selection, or audibility.",
+            "The structural candidate is a one-byte count followed by that many 32-bit-width entries. Exact status means this candidate framing reaches the declared object-body end. This census does not establish serialized field ownership, runtime execution, event selection, or audibility.",
+            "",
+            "Two items came off that list because other reports now carry them. These "
+            "entries do resolve to object identities -- the reference-graph report gates "
+            "every one of them to exactly one object declared by the same bank, and the "
+            "type pairs it publishes include this type reaching numeric type `0x03`, so "
+            "saying no Action relationship is established would be wrong. And the "
+            "objects **holding** these vectors are named: the named-reach report gives "
+            "203 of them shipped identifiers. The entry targets themselves remain "
+            "unnamed, which is a narrower and still-true statement.",
             "",
             f"Corpus gate SHA-256: `{report['corpusGate']['sha256']}`; AnimeStudio CLI SHA-256 `{report['audioAudit']['toolSha256']}`.",
             f"Raw AnimeStudio package audit: `{report['audioAudit']['intermediatePath']}` (SHA-256 `{report['audioAudit']['sha256']}`).",
@@ -2343,6 +2599,672 @@ def _read_reference_census(census: Any, label: str) -> dict[str, Any]:
     return metrics
 
 
+MUSIC_HEAD_SCALARS = (
+    "bodies",
+    "resolved",
+    "unresolved",
+    "zero",
+    "unknownDiscriminant",
+    "tooShort",
+    # Bodies whose first byte is not 0. Their head is a different shape, so they are
+    # outside the claim; the count is published rather than removed from the total.
+    "unknownHeadShape",
+)
+# Byte 2 chooses where the word sits. Only these values are observed, and an
+# unobserved one must be counted as unknown rather than assigned a branch.
+MUSIC_HEAD_DISCRIMINANTS = {"byte2_00": 9, "byte2_01": 5, "byte2_02": 5}
+
+
+def _read_music_head_census(census: Any, label: str) -> dict[str, Any]:
+    """Validate one package's or bank's type 0x0A / 0x0D head-reference census."""
+    if census is None:
+        return {key: 0 for key in MUSIC_HEAD_SCALARS} | {
+            "bodiesByType": {}, "offsetCounts": {}, "discriminantCounts": {}, "headShapeCounts": {}
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"music head reference census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in MUSIC_HEAD_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"music head census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"music head census has negative {key}: {label}")
+        out[key] = value
+    for key in ("bodiesByType", "offsetCounts", "discriminantCounts", "headShapeCounts"):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"music head census has invalid {key}: {label}")
+        out[key] = {str(name): int(count) for name, count in raw.items()}
+    # Every body must land in exactly one outcome, or a body has been double
+    # counted or dropped somewhere in the reader.
+    outcomes = (
+        out["resolved"] + out["unresolved"] + out["zero"]
+        + out["unknownDiscriminant"] + out["tooShort"] + out["unknownHeadShape"]
+    )
+    if outcomes != out["bodies"]:
+        raise ValueError(
+            f"music head outcomes do not partition the bodies: {label} "
+            f"outcomes={outcomes} bodies={out['bodies']}"
+        )
+    if sum(out["bodiesByType"].values()) != out["bodies"]:
+        raise ValueError(f"music head per-type counts disagree with the body total: {label}")
+    for name in out["discriminantCounts"]:
+        if name not in MUSIC_HEAD_DISCRIMINANTS:
+            raise ValueError(f"music head census reports an unobserved discriminant: {label} {name}")
+    # The offset histogram must follow from the discriminant histogram, not float free.
+    expected: dict[str, int] = {}
+    for name, count in out["discriminantCounts"].items():
+        key = f"offset_{MUSIC_HEAD_DISCRIMINANTS[name]}"
+        expected[key] = expected.get(key, 0) + count
+    if out["offsetCounts"] and out["offsetCounts"] != expected:
+        raise ValueError(
+            f"music head offsets do not follow from the discriminant byte: {label} "
+            f"offsets={out['offsetCounts']} expected={expected}"
+        )
+    return out
+
+
+def music_head_references_are_closed(corpus: dict[str, Any]) -> bool:
+    """Every type 0x0A and 0x0D body must name exactly one same-bank object.
+
+    The claim is that the offset follows from a byte and the word always resolves.
+    A single body that is zero, unresolved, short, or carries an unobserved
+    discriminant falsifies that, so none of them may be tolerated.
+    """
+    bodies = int(corpus.get("bodies") or 0)
+    # The claim covers bodies whose head shape is the established one. The rest are
+    # published, not deleted, so the denominator stays visible.
+    claimed = bodies - int(corpus.get("unknownHeadShape") or 0)
+    return (
+        claimed > 0
+        and claimed == int(corpus.get("resolved") or 0)
+        and int(corpus.get("unresolved") or 0) == 0
+        and int(corpus.get("zero") or 0) == 0
+        and int(corpus.get("unknownDiscriminant") or 0) == 0
+        and int(corpus.get("tooShort") or 0) == 0
+    )
+
+
+SMALL_TYPE_SCALARS = (
+    "bodies", "exact", "failed", "exactBytes", "bodyBytes",
+    "bodiesWithSecondBlock", "secondBlockEntries",
+)
+
+
+def _read_small_type_census(census: Any, label: str) -> dict[str, Any]:
+    if census is None:
+        return {key: 0 for key in SMALL_TYPE_SCALARS} | {"bodiesByType": {}, "failureCounts": {}}
+    if not isinstance(census, dict):
+        raise ValueError(f"small-type census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in SMALL_TYPE_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"small-type census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"small-type census has negative {key}: {label}")
+        out[key] = value
+    for key in ("bodiesByType", "failureCounts"):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"small-type census has invalid {key}: {label}")
+        out[key] = {str(k): int(v) for k, v in raw.items()}
+    if out["exact"] + out["failed"] != out["bodies"]:
+        raise ValueError(
+            f"small-type outcomes do not partition the bodies: {label} "
+            f"exact={out['exact']} failed={out['failed']} bodies={out['bodies']}"
+        )
+    if sum(out["failureCounts"].values()) != out["failed"]:
+        raise ValueError(f"small-type failure categories do not sum to the failures: {label}")
+    if sum(out["bodiesByType"].values()) != out["bodies"]:
+        raise ValueError(f"small-type per-type counts disagree with the body total: {label}")
+    if out["bodiesWithSecondBlock"] > out["bodies"]:
+        raise ValueError(f"small-type second-block witnesses exceed the bodies: {label}")
+    if out["exactBytes"] > out["bodyBytes"]:
+        raise ValueError(f"small-type exact bytes exceed the body bytes: {label}")
+    return out
+
+
+def small_types_are_closed(corpus: dict[str, Any]) -> bool:
+    """Every 0x13, 0x14 and 0x15 body consumed exactly, with a real width witness.
+
+    These corpora are tiny, so exact consumption alone is weak: a layout fitted to
+    four bodies proves little. The eight-byte value width in the second block is
+    only meaningful if some body actually carries one, so the gate requires a
+    nonempty witness rather than accepting an all-empty corpus.
+    """
+    return (
+        int(corpus.get("bodies") or 0) > 0
+        and int(corpus.get("failed") or 0) == 0
+        and int(corpus.get("exact") or 0) == int(corpus.get("bodies") or 0)
+        and int(corpus.get("bodiesWithSecondBlock") or 0) > 0
+        and int(corpus.get("secondBlockEntries") or 0) > 0
+    )
+
+
+TYPE03_TARGET_SCALARS = ("objects", "zero", "sameBank", "otherBankInPackage", "outsidePackage")
+
+
+def _read_type03_targets(census: Any, label: str) -> dict[str, Any]:
+    if census is None:
+        return {key: 0 for key in TYPE03_TARGET_SCALARS} | {
+            "sameBankByActionByte": {}, "otherBankByActionByte": {}, "outsideByActionByte": {}
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"type 0x03 target census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in TYPE03_TARGET_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x03 target census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x03 target census has negative {key}: {label}")
+        out[key] = value
+    for key in ("sameBankByActionByte", "otherBankByActionByte", "outsideByActionByte"):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type 0x03 target census has invalid {key}: {label}")
+        out[key] = {str(k): int(v) for k, v in raw.items()}
+    landed = out["zero"] + out["sameBank"] + out["otherBankInPackage"] + out["outsidePackage"]
+    if landed != out["objects"]:
+        raise ValueError(
+            f"type 0x03 target outcomes do not partition the objects: {label} "
+            f"landed={landed} objects={out['objects']}"
+        )
+    for key, total in (
+        ("sameBankByActionByte", out["sameBank"]),
+        ("otherBankByActionByte", out["otherBankInPackage"]),
+        ("outsideByActionByte", out["outsidePackage"]),
+    ):
+        if sum(out[key].values()) != total:
+            raise ValueError(f"type 0x03 {key} does not sum to its outcome: {label}")
+    return out
+
+
+def type03_targets_cross_bank_boundaries(corpus: dict[str, Any]) -> bool:
+    """Action targets must be shown to leave their bank, not assumed not to.
+
+    The gated reference vectors are all same-bank, and that was once recorded as a
+    property of the corpus. It is a property of those vectors: action targets do
+    cross banks. This asserts the crossing is observed rather than letting a future
+    reader quietly report zero and leave the old conclusion standing.
+    """
+    return (
+        int(corpus.get("objects") or 0) > 0
+        and int(corpus.get("sameBank") or 0) > 0
+        and int(corpus.get("otherBankInPackage") or 0) > 0
+    )
+
+
+TYPE09_SCALARS = (
+    "bodies", "exact", "unestablishedSecondRun", "failed",
+    "exactBytes", "bodyBytes", "runEntries",
+)
+
+
+def _read_type09_census(census: Any, label: str) -> dict[str, Any]:
+    if census is None:
+        return {key: 0 for key in TYPE09_SCALARS} | {"failureCounts": {}, "tailFlagCounts": {}}
+    if not isinstance(census, dict):
+        raise ValueError(f"type 0x09 census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in TYPE09_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x09 census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x09 census has negative {key}: {label}")
+        out[key] = value
+    for key in ("failureCounts", "tailFlagCounts"):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type 0x09 census has invalid {key}: {label}")
+        out[key] = {str(k): int(v) for k, v in raw.items()}
+    if out["exact"] + out["unestablishedSecondRun"] + out["failed"] != out["bodies"]:
+        raise ValueError(
+            f"type 0x09 outcomes do not partition the bodies: {label} "
+            f"exact={out['exact']} open={out['unestablishedSecondRun']} "
+            f"failed={out['failed']} bodies={out['bodies']}"
+        )
+    if sum(out["failureCounts"].values()) != out["failed"]:
+        raise ValueError(f"type 0x09 failure categories do not sum to the failures: {label}")
+    # One tail flag is read per exactly framed body and nowhere else.
+    if sum(out["tailFlagCounts"].values()) != out["exact"]:
+        raise ValueError(
+            f"type 0x09 tail flags do not match the exact bodies: {label} "
+            f"flags={sum(out['tailFlagCounts'].values())} exact={out['exact']}"
+        )
+    if out["exactBytes"] > out["bodyBytes"]:
+        raise ValueError(f"type 0x09 exact bytes exceed the body bytes: {label}")
+    return out
+
+
+def type09_is_framed_except_the_second_run(corpus: dict[str, Any]) -> bool:
+    """Every type 0x09 body is consumed exactly or fenced for its second run.
+
+    The node frame opens all of them, so a failure here means the reader broke,
+    not that the format is hard; failures are therefore not tolerated at all.
+    """
+    return (
+        int(corpus.get("bodies") or 0) > 0
+        and int(corpus.get("failed") or 0) == 0
+        and int(corpus.get("exact") or 0) > 0
+        and int(corpus.get("exact") or 0) + int(corpus.get("unestablishedSecondRun") or 0)
+        == int(corpus.get("bodies") or 0)
+    )
+
+
+TYPE17_SCALARS = (
+    "bodies", "exact", "fenced", "failed",
+    "exactBytes", "bodyBytes", "runElements", "groupIEntries",
+)
+
+
+def _read_type17_census(census: Any, label: str) -> dict[str, Any]:
+    if census is None:
+        return {key: 0 for key in TYPE17_SCALARS} | {
+            "failureCounts": {}, "fenceReasons": {}, "bodiesByType": {}
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"type 0x11 census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in TYPE17_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x11 census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x11 census has negative {key}: {label}")
+        out[key] = value
+    for key in ("failureCounts", "fenceReasons", "bodiesByType"):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type 0x11 census has invalid {key}: {label}")
+        out[key] = {str(k): int(v) for k, v in raw.items()}
+    # Each fenced body carries exactly one stated reason, so a fence with no reason
+    # would be indistinguishable from a body quietly dropped.
+    if sum(out["fenceReasons"].values()) != out["fenced"]:
+        raise ValueError(
+            f"type 0x11 fence reasons do not sum to the fenced bodies: {label} "
+            f"reasons={sum(out['fenceReasons'].values())} fenced={out['fenced']}"
+        )
+    if sum(out["bodiesByType"].values()) != out["bodies"]:
+        raise ValueError(f"type 0x11 per-type counts disagree with the body total: {label}")
+    if out["exact"] + out["fenced"] + out["failed"] != out["bodies"]:
+        raise ValueError(
+            f"type 0x11 outcomes do not partition the bodies: {label} "
+            f"exact={out['exact']} fenced={out['fenced']} "
+            f"failed={out['failed']} bodies={out['bodies']}"
+        )
+    if sum(out["failureCounts"].values()) != out["failed"]:
+        raise ValueError(f"type 0x11 failure categories do not sum to the failures: {label}")
+    if out["exactBytes"] > out["bodyBytes"]:
+        raise ValueError(f"type 0x11 exact bytes exceed the body bytes: {label}")
+    return out
+
+
+def type17_is_framed_except_the_tied_block(corpus: dict[str, Any]) -> bool:
+    """Every type 0x11 body is either consumed exactly or fenced for the tied width.
+
+    A failure is not tolerated: the only body this reader is allowed to leave
+    unframed is one whose optional-block width the corpus genuinely cannot
+    determine, and that has to be a distinct outcome rather than a failure bucket.
+    """
+    return (
+        int(corpus.get("bodies") or 0) > 0
+        and int(corpus.get("failed") or 0) == 0
+        and int(corpus.get("exact") or 0) > 0
+        and int(corpus.get("exact") or 0) + int(corpus.get("fenced") or 0)
+        == int(corpus.get("bodies") or 0)
+    )
+
+
+def _read_media_join(census: Any, label: str) -> tuple[set[int], dict[str, set[int]]]:
+    """One package's media ids and its type 0x02 source ids per plug-in id.
+
+    The reader deliberately does not join these: a bank's media usually lives in a
+    different package, so the join only means anything once every package is in
+    hand. This returns the raw sets for that union.
+    """
+    if census is None:
+        return set(), {}
+    if not isinstance(census, dict):
+        raise ValueError(f"media join census is not an object: {label}")
+    raw_ids = census.get("mediaIds")
+    if not isinstance(raw_ids, list):
+        raise ValueError(f"media join census has invalid mediaIds: {label}")
+    media = {int(value) for value in raw_ids}
+    declared = int(census.get("mediaEntries") or 0)
+    if declared != len(media):
+        raise ValueError(
+            f"media join entry count disagrees with the id list: {label} "
+            f"declared={declared} ids={len(media)}"
+        )
+    raw_sources = census.get("sourceIdsByPlugin")
+    if not isinstance(raw_sources, dict):
+        raise ValueError(f"media join census has invalid sourceIdsByPlugin: {label}")
+    sources: dict[str, set[int]] = {}
+    for key, values in raw_sources.items():
+        name = str(key)
+        if re.fullmatch(r"plugin_[0-9A-F]{8}", name) is None:
+            raise ValueError(f"media join plug-in key is malformed: {label} {name!r}")
+        if not isinstance(values, list):
+            raise ValueError(f"media join source list is not a list: {label} {name}")
+        sources[name] = {int(value) for value in values}
+    return media, sources
+
+
+def _summarise_media_join(
+    media_ids: set[int], source_ids_by_plugin: dict[str, set[int]]
+) -> dict[str, Any]:
+    """Union the per-package sets and partition the plug-in ids by the outcome."""
+    always: list[str] = []
+    never: list[str] = []
+    split: list[str] = []
+    named_total = 0
+    per_plugin: dict[str, dict[str, int]] = {}
+    all_sources: set[int] = set()
+    for plugin_key in sorted(source_ids_by_plugin):
+        sources = source_ids_by_plugin[plugin_key]
+        all_sources |= sources
+        named = len(sources & media_ids)
+        unnamed = len(sources) - named
+        named_total += named
+        per_plugin[plugin_key] = {"namingMedia": named, "namingNothing": unnamed}
+        if named and unnamed:
+            split.append(plugin_key)
+        elif named:
+            always.append(plugin_key)
+        else:
+            never.append(plugin_key)
+    return {
+        "mediaIds": len(media_ids),
+        "sourceIds": len(all_sources),
+        "sourceIdsNamingMedia": len(all_sources & media_ids),
+        "mediaIdsNeverNamed": len(media_ids - all_sources),
+        "pluginIdsAlwaysNamingMedia": len(always),
+        "pluginIdsNeverNamingMedia": len(never),
+        "pluginIdsSplitAcrossBothOutcomes": split,
+        "byPluginId": per_plugin,
+    }
+
+
+def media_join_is_decided_by_the_plugin_id(corpus: dict[str, Any]) -> bool:
+    """Every plug-in id must be wholly in the media table or wholly out of it.
+
+    A rate would be worthless here. The claim is that the plug-in id decides
+    whether a source id names shipped media, so each plug-in id has to be all
+    named or all unnamed; one plug-in id split across both falsifies it. Both
+    outcomes must also actually occur, or the partition is vacuous.
+    """
+    split = corpus.get("pluginIdsSplitAcrossBothOutcomes")
+    if not isinstance(split, list) or split:
+        return False
+    named = int(corpus.get("pluginIdsAlwaysNamingMedia") or 0)
+    unnamed = int(corpus.get("pluginIdsNeverNamingMedia") or 0)
+    return (
+        named > 0
+        and unnamed > 0
+        and int(corpus.get("sourceIds") or 0) > 0
+        and int(corpus.get("mediaIds") or 0) > 0
+    )
+
+
+TYPE08_HEAD_SCALARS = ("bodies", "resolved", "null", "unresolved", "tooShort")
+
+
+def _read_type08_head_census(census: Any, label: str) -> dict[str, int]:
+    if census is None:
+        return {key: 0 for key in TYPE08_HEAD_SCALARS}
+    if not isinstance(census, dict):
+        raise ValueError(f"type 0x08 head census is not an object: {label}")
+    out: dict[str, int] = {}
+    for key in TYPE08_HEAD_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x08 head census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x08 head census has negative {key}: {label}")
+        out[key] = value
+    outcomes = out["resolved"] + out["null"] + out["unresolved"] + out["tooShort"]
+    if outcomes != out["bodies"]:
+        raise ValueError(
+            f"type 0x08 head outcomes do not partition the bodies: {label} "
+            f"outcomes={outcomes} bodies={out['bodies']}"
+        )
+    return out
+
+
+def type08_head_words_are_null_or_resolve(corpus: dict[str, Any]) -> bool:
+    """The leading word is null or names one same-bank object, never anything else.
+
+    Null is a legitimate outcome for this type, so it is allowed; a non-null word
+    that names nothing is not, because that is what the claim forbids.
+    """
+    return (
+        int(corpus.get("bodies") or 0) > 0
+        and int(corpus.get("unresolved") or 0) == 0
+        and int(corpus.get("tooShort") or 0) == 0
+        and int(corpus.get("resolved") or 0) > 0
+        and int(corpus.get("resolved") or 0) + int(corpus.get("null") or 0)
+        == int(corpus.get("bodies") or 0)
+    )
+
+
+TYPE11_SOURCE_SCALARS = (
+    "bodies", "bodiesWithRecords", "records", "recordsOutOfRange", "tooShort",
+    "endsWithTerminator", "bodiesWithATail", "noTailAfterTheRun",
+    "tailCountOutOfRange", "tailEntriesDeclared", "tailEntriesEchoed",
+    "tailEchoesMatchTheCount", "tailEchoesExceedTheCount",
+    "firstTailEntryNamesADeclaredSource", "firstTailEntryTooShort",
+)
+# Every numeric type 0x0B body observed ends with this 32-bit word.
+TYPE11_TERMINATOR_KEY = "end_00000064"
+
+
+TYPE08_BODY_FIELDS = ("count", "exact", "unsupported", "failed", "ambiguous", "bodyBytes")
+
+
+def _read_type08_body_frame(container: Any, label: str) -> dict[str, Any]:
+    """Validate one package's or bank's type 0x08 whole-body census.
+
+    Type 0x08 does not close, so it is read here rather than through the lane
+    framework: a lane that cannot account for every body has no business
+    publishing a closed-form byte total. What this reader insists on is that the
+    census partitions -- every body is exact, unsupported or failed, and every
+    non-exact body carries a named reason. A census that loses a body would
+    otherwise let an unread shape pass as absent.
+    """
+    if container is None:
+        return {key: 0 for key in TYPE08_BODY_FIELDS} | {
+            "failureCategories": {}, "unsupportedCategories": {},
+        }
+    if not isinstance(container, dict):
+        raise ValueError(f"type 0x08 body census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in TYPE08_BODY_FIELDS:
+        try:
+            value = int(container[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x08 body census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x08 body census has negative {key}: {label}")
+        out[key] = value
+    for key in ("failureCategories", "unsupportedCategories"):
+        raw = container.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type 0x08 body census has invalid {key}: {label}")
+        out[key] = {str(name): int(count) for name, count in raw.items()}
+    if out["exact"] + out["unsupported"] + out["failed"] + out["ambiguous"] != out["count"]:
+        raise ValueError(f"type 0x08 body outcomes do not partition its bodies: {label}")
+    if sum(out["failureCategories"].values()) != out["failed"]:
+        raise ValueError(f"type 0x08 failure categories do not cover its failures: {label}")
+    if sum(out["unsupportedCategories"].values()) != out["unsupported"]:
+        raise ValueError(f"type 0x08 unsupported categories do not cover its bodies: {label}")
+    return out
+
+
+def type08_bodies_are_exact_or_named(corpus: dict[str, Any]) -> bool:
+    """Every type 0x08 body is either framed byte-exact or fenced by a named reason.
+
+    This type is **not** closed and the gate does not pretend otherwise. What it
+    forbids is the thing that would make a partial framing untrustworthy: a body
+    that is neither framed nor accounted for. Requiring at least one exact body
+    keeps an all-fenced corpus from satisfying it, and requiring each non-exact
+    body to carry a reason keeps the framer from quietly skipping shapes it does
+    not handle.
+    """
+    count = int(corpus.get("count") or 0)
+    if count <= 0 or int(corpus.get("exact") or 0) <= 0:
+        return False
+    if int(corpus.get("ambiguous") or 0):
+        return False
+    accounted = (
+        int(corpus.get("exact") or 0)
+        + int(corpus.get("unsupported") or 0)
+        + int(corpus.get("failed") or 0)
+    )
+    if accounted != count:
+        return False
+    return (
+        sum(int(v) for v in (corpus.get("failureCategories") or {}).values())
+        == int(corpus.get("failed") or 0)
+        and sum(int(v) for v in (corpus.get("unsupportedCategories") or {}).values())
+        == int(corpus.get("unsupported") or 0)
+    )
+
+
+def _read_type11_source_census(census: Any, label: str) -> dict[str, Any]:
+    """Validate one package's or bank's type 0x0B source-record census."""
+    if census is None:
+        return {key: 0 for key in TYPE11_SOURCE_SCALARS} | {
+            "pluginIdCounts": {}, "streamTypeCounts": {}, "recordCountCounts": {},
+            "terminatorCounts": {}, "tailEntryCountCounts": {},
+            "firstTailEntryLeadingWordCounts": {},
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"type 0x0B source census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in TYPE11_SOURCE_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x0B source census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x0B source census has negative {key}: {label}")
+        out[key] = value
+    for key in (
+        "pluginIdCounts", "streamTypeCounts", "recordCountCounts", "terminatorCounts",
+        "tailEntryCountCounts", "firstTailEntryLeadingWordCounts",
+    ):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type 0x0B source census has invalid {key}: {label}")
+        out[key] = {str(name): int(count) for name, count in raw.items()}
+    if out["endsWithTerminator"] > out["bodies"]:
+        raise ValueError(
+            f"type 0x0B source census counts more terminators than bodies: {label}"
+        )
+    if out["tailEntriesEchoed"] > out["tailEntriesDeclared"]:
+        raise ValueError(
+            f"type 0x0B census echoes more tail entries than it declares: {label}"
+        )
+    if out["bodiesWithATail"] + out["noTailAfterTheRun"] + out["tailCountOutOfRange"] > out["bodies"]:
+        raise ValueError(
+            f"type 0x0B tail outcomes exceed the body count: {label}"
+        )
+    if sum(out["terminatorCounts"].values()) != out["bodies"]:
+        raise ValueError(
+            f"type 0x0B terminator counts do not cover every body: {label}"
+        )
+    for key in ("pluginIdCounts", "streamTypeCounts"):
+        if sum(out[key].values()) != out["records"]:
+            raise ValueError(
+                f"type 0x0B {key} do not sum to the record total: {label} "
+                f"histogram={sum(out[key].values())} records={out['records']}"
+            )
+    if out["bodiesWithRecords"] > out["bodies"]:
+        raise ValueError(f"type 0x0B bodies with records exceed the body total: {label}")
+    return out
+
+
+def type11_bodies_share_one_terminator(corpus: dict[str, Any]) -> bool:
+    """Every type 0x0B body must end with the same 32-bit word.
+
+    This is the only fixed landmark the type has: its interior is not framed, so a
+    body ending on a different word would mean the reader is looking at a
+    different layout entirely. One exception falsifies it, which is why the check
+    is equality against the body count rather than a rate.
+    """
+    bodies = int(corpus.get("bodies") or 0)
+    ends = int(corpus.get("endsWithTerminator") or 0)
+    counts = corpus.get("terminatorCounts") or {}
+    return bodies > 0 and ends == bodies and set(counts) == {TYPE11_TERMINATOR_KEY}
+
+
+def type11_tail_entries_are_counted(corpus: dict[str, Any]) -> bool:
+    """The word after type 0x0B's source run must be the tail's entry count.
+
+    The entries are variable-width, so the run cannot be walked and "it parsed" is
+    not available as evidence. What is available is that each entry's second word
+    echoes one of the body's own declared source ids -- sparse 32-bit values that
+    arbitrary bytes do not reproduce -- so a body declaring c entries must carry
+    exactly c echoes on four-byte boundaries.
+
+    Three things have to hold together, and each rules out a different way of being
+    wrong. No body may carry *more* echoes than it declares, because a count that
+    under-reports is not a count. Every body that declares at least one entry must
+    have a declared source id at +4 of the first entry, because that fixes where
+    entries begin. And the count must never fall outside its bound. Bodies with
+    fewer echoes than declared are permitted and reported: a later entry whose
+    source id does not land on a four-byte boundary relative to the first is a
+    consequence of the entries being variable-width, not a contradiction.
+    """
+    bodies = int(corpus.get("bodiesWithATail") or 0)
+    if bodies <= 0:
+        return False
+    if int(corpus.get("tailCountOutOfRange") or 0):
+        return False
+    if int(corpus.get("tailEchoesExceedTheCount") or 0):
+        return False
+    counts = corpus.get("tailEntryCountCounts") or {}
+    if sum(int(value) for value in counts.values()) != bodies:
+        return False
+    declaring = bodies - int(counts.get("tailEntries_0", 0) or 0)
+    if declaring <= 0:
+        return False
+    return (
+        int(corpus.get("firstTailEntryNamesADeclaredSource") or 0) == declaring
+        and int(corpus.get("firstTailEntryTooShort") or 0) == 0
+    )
+
+
+def type11_sources_share_the_type02_plugin_space(
+    corpus: dict[str, Any], type02_plugin_counts: dict[str, Any]
+) -> bool:
+    """Every type 0x0B source record must use a plug-in id type 0x02 also uses.
+
+    The claim only has force because plug-in ids are sparse 32-bit values: a wrong
+    record stride would put garbage in this field and it would leave the set at
+    once. So a single record outside the set falsifies the stride, and the gate
+    must refuse rather than report a rate.
+    """
+    if int(corpus.get("records") or 0) <= 0:
+        return False
+    if int(corpus.get("recordsOutOfRange") or 0) or int(corpus.get("tooShort") or 0):
+        return False
+    known = set(type02_plugin_counts)
+    if not known:
+        return False
+    return all(name in known for name in (corpus.get("pluginIdCounts") or {}))
+
+
 def reference_graph_is_closed(corpus: dict[str, Any]) -> bool:
     """Return whether every reference names exactly one unambiguous same-bank object.
 
@@ -2367,6 +3289,352 @@ def reference_graph_is_closed(corpus: dict[str, Any]) -> bool:
 
 def _reference_graph_markdown(report: dict[str, Any]) -> str:
     graph = report["corpus"]["referenceGraph"]
+    media = report["corpus"].get("type02MediaJoin") or {}
+    media_lines = []
+    if media.get("sourceIds"):
+        media_lines = [
+            "",
+            "## Numeric type `0x02` source ids against the shipped media",
+            "",
+            f"- Distinct source ids: {media['sourceIds']:,}; naming a media file this "
+            f"corpus ships: {media['sourceIdsNamingMedia']:,}.",
+            f"- Media files declared: {media['mediaIds']:,}; never named by any source "
+            f"id: {media['mediaIdsNeverNamed']:,}.",
+            "",
+            "| Plug-in id | Source ids naming media | Naming nothing |",
+            "|---|---:|---:|",
+            *(
+                f"| `{name}` | {row['namingMedia']:,} | {row['namingNothing']:,} |"
+                for name, row in sorted(media["byPluginId"].items())
+            ),
+            "",
+            "The overall rate is about 98 percent and is the wrong number to read. "
+            "**The plug-in id decides it, with no exceptions**: "
+            f"{media['pluginIdsAlwaysNamingMedia']} plug-in ids name shipped media in "
+            f"every case and {media['pluginIdsNeverNamingMedia']} name it in none, and "
+            "no plug-in id appears on both sides. The gate requires that partition to "
+            "be exact and refuses a corpus where either side is empty, since a "
+            "partition with nothing on one side claims nothing.",
+            "",
+            "The join is between two independently parsed structures: the source id "
+            "comes from the bounded prefix of a numeric type `0x02` body, the media ids "
+            "from the AKPK bank and sound sectors. It is computed across the whole "
+            "corpus rather than per package, and that matters -- a bank's media almost "
+            "always lives in a *different* package, so a same-package join reports 12 "
+            "matches of 75,958 and means nothing.",
+            "",
+            "What this does not say: which plug-in ids these are, what the ones that "
+            "name no media do instead, or that any of this audio is ever decoded or "
+            "played. It says only that the plug-in id determines whether the source id "
+            "resolves to a file this corpus ships.",
+        ]
+
+    small = report["corpus"].get("smallTypeBodies") or {}
+    small_lines = []
+    if small.get("bodies"):
+        small_lines = [
+            "",
+            "## Numeric types `0x13`, `0x14` and `0x15`: closed, on very few bodies",
+            "",
+            f"- Bodies: {small['bodies']:,}; consumed exactly: {small['exact']:,} "
+            f"({small['exactBytes']:,} of {small['bodyBytes']:,} bytes). Failures: "
+            f"{small['failed']:,}.",
+            "",
+            "| Numeric type | Bodies |",
+            "|---|---:|",
+            *(f"| `{name}` | {count:,} |" for name, count in sorted(small["bodiesByType"].items())),
+            "",
+            "Types `0x13` and `0x14` are a counted block of four-byte values, a counted "
+            "block of **eight**-byte values, then two bytes. Keys and values are parallel "
+            "runs in both blocks, the same shape numeric type `0x16` uses. Type `0x15` "
+            "instead shares the eight-byte header that numeric types `0x10` and `0x11` "
+            "use, and closes with eight further bytes.",
+            "",
+            f"These corpora are tiny -- {small['bodies']:,} bodies in total -- so exact "
+            "consumption is by itself weak evidence: plenty of layouts consume four "
+            "bodies. The number that carries weight is the second-block witness: "
+            f"{small['bodiesWithSecondBlock']:,} bodies actually carry a nonempty second "
+            f"block, totalling {small['secondBlockEntries']:,} entries, and it is those "
+            "that distinguish an eight-byte value width from a four-byte one. The gate "
+            "refuses a corpus where every second block is empty, because then the width "
+            "would be unwitnessed and the layout merely fitted.",
+        ]
+
+    t03 = report["corpus"].get("type03Targets") or {}
+    t03_lines = []
+    if t03.get("objects"):
+        t03_lines = [
+            "",
+            "## Numeric type `0x03`: the one relation that leaves its bank",
+            "",
+            f"- Target words: {t03['objects']:,}; naming an object in the same bank: "
+            f"{t03['sameBank']:,}; in **another bank of the same package**: "
+            f"{t03['otherBankInPackage']:,}.",
+            f"- Naming nothing this package declares: {t03['outsidePackage']:,}; null: "
+            f"{t03['zero']:,}.",
+            "",
+            "| Action byte | Same bank | Other bank | Outside the package |",
+            "|---|---:|---:|---:|",
+            *(
+                f"| `{name}` | {t03['sameBankByActionByte'].get(name, 0):,} | "
+                f"{t03['otherBankByActionByte'].get(name, 0):,} | "
+                f"{t03['outsideByActionByte'].get(name, 0):,} |"
+                for name in sorted(
+                    set(t03["sameBankByActionByte"])
+                    | set(t03["otherBankByActionByte"])
+                    | set(t03["outsideByActionByte"])
+                )
+            ),
+            "",
+            "**This corrects a conclusion stated elsewhere in these reports.** The gated "
+            "reference vectors never leave their bank, and that was described as a "
+            "property of the corpus. It is a property of those vectors: action target "
+            "words do leave, and the crossing is not marginal -- a random 32-bit word "
+            "would land on a declared object about once across all 28,379 targets, and "
+            "1,499 land in another bank of the same package alone.",
+            "",
+            "The first byte of the body clearly matters -- `action_03` almost always "
+            "resolves while `action_04` almost never does -- but it is reported and not "
+            "claimed as a decider: none of these classes is clean the way the type "
+            "`0x02` plug-in partition is, so a rule would be fitted rather than found. "
+            "Targets outside the package are counted as such rather than as unresolved, "
+            "because this reader sees one package and cannot speak for the others.",
+        ]
+
+    type09 = report["corpus"].get("type09Bodies") or {}
+    type09_lines = []
+    if type09.get("bodies"):
+        type09_lines = [
+            "",
+            "## Numeric type `0x09`: the node frame does open it",
+            "",
+            f"- Bodies: {type09['bodies']:,}; consumed exactly to the declared body end: "
+            f"{type09['exact']:,} ({type09['exactBytes']:,} of {type09['bodyBytes']:,} bytes).",
+            f"- Fenced because a second counted run introduces records of an "
+            f"unestablished shape: {type09['unestablishedSecondRun']:,}. Failures: "
+            f"{type09['failed']:,}.",
+            f"- Four-byte run entries: {type09['runEntries']:,}.",
+            "",
+            "The shared node frame opens **every** one of these bodies, which is worth "
+            "stating plainly because this type was previously recorded here as resisting "
+            "it. After the frame comes a counted run of four-byte entries and then a "
+            "second count. Where that second count is zero, one more byte closes the "
+            "body exactly.",
+            "",
+            "Where it is not zero it introduces records this reader cannot frame, so "
+            "those bodies are fenced. Several fixed and variable record shapes were "
+            "tried and none consumed them, so nothing is claimed about that run.",
+        ]
+
+    type17 = report["corpus"].get("type17Bodies") or {}
+    type17_lines = []
+    if type17.get("bodies"):
+        type17_lines = [
+            "",
+            "## Numeric types `0x11` and `0x10`: one grammar, framed except where it is undetermined",
+            "",
+            f"- Bodies: {type17['bodies']:,}; consumed exactly to the declared body end: "
+            f"{type17['exact']:,} ({type17['exactBytes']:,} of {type17['bodyBytes']:,} bytes).",
+            f"- Fenced: {type17['fenced']:,}. Failures: {type17['failed']:,}.",
+            "",
+            "| Fence reason | Bodies |",
+            "|---|---:|",
+            *(f"| `{name}` | {count:,} |" for name, count in sorted(type17["fenceReasons"].items())),
+            "",
+            "| Numeric type | Bodies |",
+            "|---|---:|",
+            *(f"| `{name}` | {count:,} |" for name, count in sorted(type17["bodiesByType"].items())),
+            f"- Group I entries: {type17['groupIEntries']:,}; six-byte run elements: "
+            f"{type17['runElements']:,}.",
+            "",
+            "Numeric types `0x11` and `0x10` share one grammar: an eight-byte header "
+            "whose second word sizes an opaque section, one byte, the node frame's group "
+            "I structure, a sixteen-bit flag, and a counted run of six-byte elements. "
+            "Group I is reused, not re-derived. Type `0x10` was not decoded separately -- "
+            "its header matched, so the existing grammar was tried and it fit.",
+            "",
+            "Every fenced body states why. When the flag is set an extra block "
+            "appears, and **two widths consume every flagged body exactly**: 21 and 27. "
+            "They are the same bytes read two ways, with 27 swallowing the run's single "
+            "element and reading a zero count. The flag is never greater than 1 anywhere "
+            "in this corpus, so no body can separate the two readings, and the width is "
+            "underdetermined rather than merely unknown. Those bodies are therefore not "
+            "framed at all; picking either width would be a coin flip presented as a "
+            "result. Separately, type `0x10` bodies whose third byte is 0x7F end in "
+            "something group I does not describe at any offset tried, so they are fenced "
+            "under their own reason rather than blamed on the shared grammar.",
+        ]
+
+    head08 = report["corpus"].get("type08HeadWords") or {}
+    head08_lines = []
+    if head08.get("bodies"):
+        head08_lines = [
+            "",
+            "## Numeric type `0x08`: a leading word that is null or names one object",
+            "",
+            f"- Bodies: {head08['bodies']:,}; naming one same-bank object: {head08['resolved']:,}; "
+            f"null: {head08['null']:,}.",
+            f"- Naming something that is not in the bank: {head08['unresolved']:,}; too short: "
+            f"{head08['tooShort']:,}.",
+            "",
+            "The claim here is only about its first four "
+            "bytes: they are either all zero or the identity of exactly one object "
+            "declared by the same bank, and never a non-null value that names nothing. "
+            "Null is a real outcome for this type rather than a failure, so it is counted "
+            "on its own instead of being folded into either side; what the gate forbids is "
+            "the third case.",
+        ]
+
+    body08 = report["corpus"].get("type08BodyFrames") or {}
+    body08_lines = []
+    if body08.get("count"):
+        body08_lines = [
+            "",
+            "## Numeric type `0x08`: most bodies now frame byte-exact",
+            "",
+            f"- Bodies: {body08['count']:,}; framed to the declared body end: "
+            f"{body08['exact']:,}; fenced: {body08['failed'] + body08['unsupported']:,}; "
+            f"ambiguous: {body08['ambiguous']:,}.",
+            "",
+            "| Fence reason | Bodies |",
+            "|---|---:|",
+            *(
+                f"| `{name}` | {count:,} |"
+                for name, count in sorted((body08.get("failureCategories") or {}).items())
+            ),
+            *(
+                f"| `{name}` (unsupported) | {count:,} |"
+                for name, count in sorted((body08.get("unsupportedCategories") or {}).items())
+            ),
+            "",
+            "Layout: a 32-bit reference, the counted key/value block numeric type `0x16` "
+            "uses, a one-entry list whose key sizes its value, a fixed nine-byte "
+            "signature, a zero word, a counted run of six-byte entries, and five zero "
+            "bytes. Two details carry the weight. The one-entry list's key **predicts** "
+            "its value width -- `0x15` is followed by 11 bytes and `0x1D` by 27, exactly "
+            "sixteen apart -- so a body with an unobserved key is refused rather than "
+            "walked with a guessed width. And the entry run carries one extra byte when "
+            "its count is nonzero and nothing at all when the count is zero, which is "
+            "fixed by the bodies that declare no entries rather than assumed.",
+            "",
+            "This type is **not closed**, and the gate does not treat it as if it were: "
+            "it has no closed-form byte total and is deliberately not one of the lanes. "
+            "What it does forbid is a body that is neither framed nor accounted for -- "
+            "every non-exact body carries a named reason, at least one body must frame, "
+            "and an all-fenced corpus fails.",
+            "",
+            "A rule that looked right and is **withdrawn**: bodies whose leading "
+            "reference is null appeared to carry an extra 32-bit word before the property "
+            "count. Adding that rule changes the exact count by zero, and not one of the "
+            "four null-reference bodies frames under it, so it was fitted to nothing and "
+            "is not in the reader.",
+        ]
+
+    sources11 = report["corpus"].get("type11SourceRecords") or {}
+    known_plugins = report["corpus"].get("type02PluginIdCounts") or {}
+    source_lines = []
+    if sources11.get("records"):
+        source_lines = [
+            "",
+            "## Numeric type `0x0B`: a counted run of source records",
+            "",
+            f"- Bodies: {sources11['bodies']:,}; declaring at least one record: {sources11['bodiesWithRecords']:,}.",
+            f"- Records: {sources11['records']:,}; out of range {sources11['recordsOutOfRange']:,}; too short {sources11['tooShort']:,}.",
+            "",
+            "| Plug-in id | Records in `0x0B` | Objects in `0x02` |",
+            "|---|---:|---:|",
+            *(
+                f"| `{name}` | {count:,} | {known_plugins.get(name, 0):,} |"
+                for name, count in sorted(sources11["pluginIdCounts"].items())
+            ),
+            "",
+            "Numeric type `0x0B` opens with a byte, a 32-bit record count, and that many "
+            "fourteen-byte records whose first word is a plug-in id. Every one of those ids "
+            "is an id numeric type `0x02` also uses. That is the evidence for the record "
+            "stride, and it carries weight because plug-in ids are sparse 32-bit values "
+            "rather than small integers: a wrong stride would put arbitrary bytes in this "
+            "field and they would leave the set immediately. Records after the first are "
+            "what actually test the stride, and they are in the counts above.",
+            "",
+            "### The tail after the run",
+            "",
+            f"- Every body ends on the same 32-bit word: {sources11['endsWithTerminator']:,} of "
+            f"{sources11['bodies']:,}, observed words "
+            f"{sorted(sources11.get('terminatorCounts') or {})}.",
+            f"- Between the run and that word sits a 32-bit entry count in "
+            f"{sources11['bodiesWithATail']:,} bodies; out of range "
+            f"{sources11['tailCountOutOfRange']:,}; no tail at all "
+            f"{sources11['noTailAfterTheRun']:,}.",
+            f"- Entries declared: {sources11['tailEntriesDeclared']:,}; echoing a declared "
+            f"source id on a four-byte boundary: {sources11['tailEntriesEchoed']:,}; bodies "
+            f"where the two agree exactly: {sources11['tailEchoesMatchTheCount']:,}; bodies "
+            f"carrying more echoes than they declare: "
+            f"{sources11['tailEchoesExceedTheCount']:,}.",
+            f"- First entry names one of the body's own declared sources at +4: "
+            f"{sources11['firstTailEntryNamesADeclaredSource']:,}.",
+            "",
+            "| Declared tail entries | Bodies |",
+            "|---|---:|",
+            *(
+                f"| `{name}` | {count:,} |"
+                for name, count in sorted((sources11.get("tailEntryCountCounts") or {}).items())
+            ),
+            "",
+            "After the source run comes a 32-bit entry count, that many entries, and then "
+            "the terminator. The entries are **variable-width**, so the run is not walked "
+            "and nothing inside an entry past its first two words is read here. What fixes "
+            "where the entries begin is that the second word of the first one echoes a "
+            "source id the same body declared -- across the corpus no other offset in a "
+            "48-byte window echoes at all, and the four bodies declaring zero entries carry "
+            "zero echoes. No body carries more echoes than it declares; the bodies carrying "
+            "fewer are multi-entry bodies whose later ids do not land on a four-byte "
+            "boundary, which is what variable-width entries produce.",
+            "",
+            "An earlier reading of this tail as a run of fixed 88-byte entries is "
+            "**retracted**: it counted bodies as exact because the run finished at EOF, "
+            "which it could only do by swallowing the terminator. The 88 bytes were the "
+            "count plus the modal 84-byte entry, not a stride.",
+        ]
+
+    head = report["corpus"].get("musicHeadReferences") or {}
+    head_lines = []
+    if head:
+        shape_rows = chr(10).join(
+            f"| `{name}` | {count:,} |" for name, count in sorted(head["headShapeCounts"].items())
+        ) or "| _none_ | 0 |"
+        head_lines = [
+            "",
+            "## Numeric types `0x0A`, `0x0C` and `0x0D`: one named object per body",
+            "",
+            f"- Bodies: {head['bodies']:,}; naming exactly one same-bank object: {head['resolved']:,}.",
+            f"- Unresolved {head['unresolved']:,}; zero {head['zero']:,}; unknown discriminant "
+            f"{head['unknownDiscriminant']:,}; too short {head['tooShort']:,}.",
+            f"- Bodies outside the claim because their first byte is not 0: {head['unknownHeadShape']:,}. "
+            "They are excluded and counted here rather than removed from the total, so the "
+            "denominator above stays the whole population.",
+            "",
+            "| Body byte 2 | Bodies | Word offset |",
+            "|---|---:|---:|",
+            *(
+                f"| `{name}` | {count:,} | {9 if name.endswith('00') else 5} |"
+                for name, count in sorted(head["discriminantCounts"].items())
+            ),
+            "",
+            "",
+            "| Body byte 0 | Bodies |",
+            "|---|---:|",
+            shape_rows,
+            "",
+            "These three types are **not framed**: a variable-length region inside them is "
+            "still unisolated, so no layout is claimed here. What is claimed is narrower "
+            "and is gated the same way as the vectors above: body byte 2 selects where a "
+            "single 32-bit word sits, and that word names exactly one object declared by "
+            "the same bank in every body whose first byte is 0. The offset is computed from the byte and never "
+            "searched for, the offset histogram is required to follow from the byte "
+            "histogram, and an unobserved byte value is counted as unknown rather than "
+            "assigned a branch. Nothing here says what the relation means.",
+        ]
+
     cli_fingerprint = report["outer"]["animeStudioCliFingerprint"]
     edge_rows = "\n".join(
         f"| `{edge}` | {count:,} |" for edge, count in graph["edgeCounts"].items()
@@ -2405,9 +3673,27 @@ def _reference_graph_markdown(report: dict[str, Any]) -> str:
                 for name, count in graph["objectCountsByType"].items()
             ) or "| _none_ | 0 | 0 |",
             "",
+            *media_lines,
+            *small_lines,
+            *t03_lines,
+            *type09_lines,
+            *type17_lines,
+            *head08_lines,
+            *body08_lines,
+            *source_lines,
+            *head_lines,
+            "",
             "Every reference is a four-byte value inside a counted vector that the body framers already consume exactly. This report joins those values to the object identities declared by the same bank and reports where each one lands.",
             "",
-            "Resolution is an identity fact and nothing more. A resolved reference does not establish direction, parenthood, containment, membership, ordering, selection, playback, or any name for either endpoint; it establishes only that the value equals the identity of exactly one object declared in the same bank. The type pairs are numeric on both sides. No cross-bank or cross-package relation is claimed, and absence of one here is a property of this corpus, not a rule.",
+            "Resolution is an identity fact and nothing more. A resolved reference does not establish direction, parenthood, containment, membership, ordering, selection, or playback; it establishes only that the value equals the identity of exactly one object declared in the same bank. The type pairs are numeric on both sides.",
+            "",
+            "Two limits of that sentence are worth stating because both have been "
+            "over-read before. It says nothing about names, but names do exist for some "
+            "endpoints -- numeric types `0x04`, `0x08` and `0x15` are named, from a "
+            "different join reported separately. And every one of **these** references "
+            "staying inside its bank is a fact about these counted vectors, **not** "
+            "about the corpus: the numeric type `0x03` target words above leave their "
+            "bank routinely. Do not generalise the vectors' behaviour to the format.",
             "",
             f"Corpus gate SHA-256: `{report['corpusGate']['sha256']}`; AnimeStudio CLI SHA-256 `{report['audioAudit']['toolSha256']}`.",
             f"Raw AnimeStudio package audit: `{report['audioAudit']['intermediatePath']}` (SHA-256 `{report['audioAudit']['sha256']}`).",
@@ -2447,6 +3733,8 @@ def run_current_corpus_audit(
     type06_body_output_markdown: Path | None = None,
     type14_body_output_json: Path = DEFAULT_TYPE14_BODY_OUTPUT,
     type14_body_output_markdown: Path | None = None,
+    type22_body_output_json: Path = DEFAULT_TYPE22_BODY_OUTPUT,
+    type22_body_output_markdown: Path | None = None,
     reference_output_json: Path = DEFAULT_REFERENCE_OUTPUT,
     reference_output_markdown: Path | None = None,
 ) -> dict[str, Any]:
@@ -2487,6 +3775,9 @@ def run_current_corpus_audit(
     type14_body_output_json.parent.mkdir(parents=True, exist_ok=True)
     type14_body_output_markdown = type14_body_output_markdown or type14_body_output_json.with_suffix(".md")
     type14_body_output_markdown.parent.mkdir(parents=True, exist_ok=True)
+    type22_body_output_json.parent.mkdir(parents=True, exist_ok=True)
+    type22_body_output_markdown = type22_body_output_markdown or type22_body_output_json.with_suffix(".md")
+    type22_body_output_markdown.parent.mkdir(parents=True, exist_ok=True)
     reference_output_json.parent.mkdir(parents=True, exist_ok=True)
     reference_output_markdown = reference_output_markdown or reference_output_json.with_suffix(".md")
     reference_output_markdown.parent.mkdir(parents=True, exist_ok=True)
@@ -2622,7 +3913,9 @@ def run_current_corpus_audit(
             "semanticStatus": "structural-only",
             "nonClaims": [
                 "opaque-tail field names or internal cursor",
-                "physical media placement or source-plugin semantics",
+                "source-plugin semantics, or which media bytes are placed where; the "
+                "source id's join to shipped media is established separately in the "
+                "reference-graph report and is not claimed by this lane",
                 "runtime execution, event selection, or audibility",
             ],
         },
@@ -2731,6 +4024,7 @@ def run_current_corpus_audit(
         ("0x05", "type05BodyFrames", type05_body_output_json, type05_body_output_markdown),
         ("0x06", "type06BodyFrames", type06_body_output_json, type06_body_output_markdown),
         ("0x0E", "type14BodyFrames", type14_body_output_json, type14_body_output_markdown),
+        ("0x16", "type22BodyFrames", type22_body_output_json, type22_body_output_markdown),
     )
     lane_failures = [
         failure
@@ -2740,7 +4034,44 @@ def run_current_corpus_audit(
         )) is not None
     ]
     reference_corpus = corpus["referenceGraph"]
-    reference_closed = reference_graph_is_closed(reference_corpus)
+    music_head_corpus = corpus["musicHeadReferences"]
+    music_head_closed = music_head_references_are_closed(music_head_corpus)
+    type11_corpus = corpus["type11SourceRecords"]
+    media_corpus = corpus["type02MediaJoin"]
+    media_closed = media_join_is_decided_by_the_plugin_id(media_corpus)
+    small_corpus = corpus["smallTypeBodies"]
+    small_closed = small_types_are_closed(small_corpus)
+    t03_corpus = corpus["type03Targets"]
+    t03_closed = type03_targets_cross_bank_boundaries(t03_corpus)
+    type09_corpus = corpus["type09Bodies"]
+    type09_closed = type09_is_framed_except_the_second_run(type09_corpus)
+    type17_corpus = corpus["type17Bodies"]
+    type17_closed = type17_is_framed_except_the_tied_block(type17_corpus)
+    type08_corpus = corpus["type08HeadWords"]
+    type08_body_corpus = corpus["type08BodyFrames"]
+    type08_closed = type08_head_words_are_null_or_resolve(type08_corpus)
+    type08_body_named = type08_bodies_are_exact_or_named(
+        report["corpus"].get("type08BodyFrames") or {}
+    )
+    type11_terminator_closed = type11_bodies_share_one_terminator(type11_corpus)
+    type11_tail_counted = type11_tail_entries_are_counted(type11_corpus)
+    type11_closed = type11_sources_share_the_type02_plugin_space(
+        type11_corpus, corpus["type02SourcePrefixes"]["pluginIdCounts"]
+    )
+    reference_closed = (
+        reference_graph_is_closed(reference_corpus)
+        and music_head_closed
+        and type11_closed
+        and type11_terminator_closed
+        and type11_tail_counted
+        and type08_body_named
+        and type08_closed
+        and type17_closed
+        and type09_closed
+        and small_closed
+        and media_closed
+        and t03_closed
+    )
     reference_report = {
         "format": "animestudio-wwise-hirc-reference-graph-audit",
         "schemaVersion": 1,
@@ -2761,13 +4092,25 @@ def run_current_corpus_audit(
                 "perBankCensusRowsSumToPackageRow": True,
             },
             "referenceGraph": reference_corpus,
+            "musicHeadReferences": music_head_corpus,
+            "type11SourceRecords": type11_corpus,
+            "type08HeadWords": type08_corpus,
+            "type08BodyFrames": type08_body_corpus,
+            "type17Bodies": type17_corpus,
+            "type09Bodies": type09_corpus,
+            "type03Targets": t03_corpus,
+            "smallTypeBodies": small_corpus,
+            "type02MediaJoin": media_corpus,
+            "type02PluginIdCounts": corpus["type02SourcePrefixes"]["pluginIdCounts"],
             "audioAuditSummary": corpus["audioAuditSummary"],
         },
         "evidenceBoundary": {
             "layer": 4,
             "claim": (
                 "every four-byte value in the exactly framed anonymous reference vectors "
-                "equals the identity of exactly one HIRC object declared by the same bank"
+                "equals the identity of exactly one HIRC object declared by the same bank, "
+                "and every numeric type 0x0A and 0x0D body names one same-bank object at "
+                "an offset selected by its third byte"
             ),
             "semanticStatus": "structural-only",
             "nonClaims": reference_corpus["nonClaims"],
@@ -2779,6 +4122,84 @@ def run_current_corpus_audit(
     reference_output_markdown.write_text(
         _reference_graph_markdown(reference_report), encoding="utf-8"
     )
+    if not media_closed:
+        lane_failures.append(
+            "the type 0x02 media join is not decided by the plug-in id: "
+            f"split={media_corpus['pluginIdsSplitAcrossBothOutcomes']} "
+            f"always={media_corpus['pluginIdsAlwaysNamingMedia']} "
+            f"never={media_corpus['pluginIdsNeverNamingMedia']}"
+        )
+    if not small_closed:
+        lane_failures.append(
+            "numeric types 0x13/0x14/0x15 are not closed: "
+            f"bodies={small_corpus['bodies']} exact={small_corpus['exact']} "
+            f"failed={small_corpus['failed']} "
+            f"secondBlockWitnesses={small_corpus['bodiesWithSecondBlock']}"
+        )
+    if not t03_closed:
+        lane_failures.append(
+            "type 0x03 targets do not show the cross-bank relation: "
+            f"objects={t03_corpus['objects']} sameBank={t03_corpus['sameBank']} "
+            f"otherBankInPackage={t03_corpus['otherBankInPackage']}"
+        )
+    if not type09_closed:
+        lane_failures.append(
+            "type 0x09 bodies are neither framed nor fenced: "
+            f"bodies={type09_corpus['bodies']} exact={type09_corpus['exact']} "
+            f"open={type09_corpus['unestablishedSecondRun']} failed={type09_corpus['failed']} "
+            f"categories={sorted(type09_corpus['failureCounts'])}"
+        )
+    if not type17_closed:
+        lane_failures.append(
+            "type 0x11 bodies are neither framed nor fenced: "
+            f"bodies={type17_corpus['bodies']} exact={type17_corpus['exact']} "
+            f"fenced={type17_corpus['fenced']} failed={type17_corpus['failed']} "
+            f"categories={sorted(type17_corpus['failureCounts'])}"
+        )
+    if not type08_closed:
+        lane_failures.append(
+            "type 0x08 head words are not null-or-resolved: "
+            f"bodies={type08_corpus['bodies']} resolved={type08_corpus['resolved']} "
+            f"null={type08_corpus['null']} unresolved={type08_corpus['unresolved']} "
+            f"tooShort={type08_corpus['tooShort']}"
+        )
+    if not type08_body_named:
+        body08 = report["corpus"].get("type08BodyFrames") or {}
+        lane_failures.append(
+            "type 0x08 bodies are not all exact or named: "
+            f"count={body08.get('count')} exact={body08.get('exact')} "
+            f"failed={body08.get('failed')} unsupported={body08.get('unsupported')} "
+            f"ambiguous={body08.get('ambiguous')}"
+        )
+    if not type11_tail_counted:
+        lane_failures.append(
+            "type 0x0B tail entries are not counted: "
+            f"withTail={type11_corpus['bodiesWithATail']} "
+            f"outOfRange={type11_corpus['tailCountOutOfRange']} "
+            f"echoesExceed={type11_corpus['tailEchoesExceedTheCount']} "
+            f"firstNames={type11_corpus['firstTailEntryNamesADeclaredSource']} "
+            f"firstShort={type11_corpus['firstTailEntryTooShort']}"
+        )
+    if not type11_terminator_closed:
+        lane_failures.append(
+            "type 0x0B bodies do not share one terminator: "
+            f"bodies={type11_corpus['bodies']} ending={type11_corpus['endsWithTerminator']} "
+            f"words={sorted(type11_corpus.get('terminatorCounts') or {})}"
+        )
+    if not type11_closed:
+        lane_failures.append(
+            "type 0x0B source records do not share the type 0x02 plug-in space: "
+            f"records={type11_corpus['records']} outOfRange={type11_corpus['recordsOutOfRange']} "
+            f"tooShort={type11_corpus['tooShort']} plugins={sorted(type11_corpus['pluginIdCounts'])}"
+        )
+    if not music_head_closed:
+        lane_failures.append(
+            "type 0x0A/0x0D head references are not closed: "
+            f"bodies={music_head_corpus['bodies']} resolved={music_head_corpus['resolved']} "
+            f"unresolved={music_head_corpus['unresolved']} zero={music_head_corpus['zero']} "
+            f"unknownDiscriminant={music_head_corpus['unknownDiscriminant']} "
+            f"tooShort={music_head_corpus['tooShort']}"
+        )
     if not reference_closed:
         lane_failures.append(
             "HIRC reference graph did not close: "
@@ -2811,6 +4232,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--type02-body-output-markdown", type=Path, default=None)
     parser.add_argument("--type07-body-output-json", type=Path, default=DEFAULT_TYPE07_BODY_OUTPUT)
     parser.add_argument("--type14-body-output-json", type=Path, default=DEFAULT_TYPE14_BODY_OUTPUT)
+    parser.add_argument("--type22-body-output-json", type=Path, default=DEFAULT_TYPE22_BODY_OUTPUT)
+    parser.add_argument("--type22-body-output-markdown", type=Path, default=None)
     parser.add_argument("--type14-body-output-markdown", type=Path, default=None)
     parser.add_argument("--type07-body-output-markdown", type=Path, default=None)
     parser.add_argument("--type05-body-output-json", type=Path, default=DEFAULT_TYPE05_BODY_OUTPUT)
@@ -2843,6 +4266,8 @@ def main(argv: list[str] | None = None) -> int:
             type06_body_output_markdown=args.type06_body_output_markdown,
             type14_body_output_json=args.type14_body_output_json,
             type14_body_output_markdown=args.type14_body_output_markdown,
+            type22_body_output_json=args.type22_body_output_json,
+            type22_body_output_markdown=args.type22_body_output_markdown,
             reference_output_json=args.reference_output_json,
             reference_output_markdown=args.reference_output_markdown,
         )
