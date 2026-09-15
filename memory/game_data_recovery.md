@@ -232,12 +232,26 @@ its reader, fixtures, and generated corpus report. Durable current conclusions:
   accepted-header path or the bounded list reader's remaining-byte check. This
   ranks the tail hypotheses offline, but provider/cache selection and an
   executed parent cursor remain unavailable, so no whole SkillData record is
-  closed. A separate ActionGroupData branch probe conditionally matches a
-  `passiveEventActions` AbilityActionMap element to its registered reader: an
-  empty SequenceActionData array reaches the map's static end, while a
-  nonempty sequence stops before its first non-null action-union payload. This
-  does not close the parent list or ActionGroupData; bytes outside these
-  sample-local ranges and before the terminal tail remain opaque.
+  closed. A separate ActionGroupData census replays current positive
+  `passiveEventActions` lists through empty and nonempty SequenceActionData
+  branches. Exact-build dispatch and selected reader bodies align several
+  non-null child unions to their independently pinned member-header counts.
+  The C9 member-eight normal path is consumed only through its scalar prefix,
+  stopping before its first generic SequenceActionData call because runtime
+  provider selection for that nested reader remains unobserved. A separate
+  candidate-only replay may record its three SequenceActionData call ranges
+  against the current native sequence and child-action reader contracts, but
+  those ranges do not advance the authoritative parser cursor or close C9.
+  Other tags without a selected reader remain opaque at their first byte. The
+  offline `memorypack.skill_timeline_cursor` now extends candidates through a
+  child action only when the exact-build native route, per-tag reader contract,
+  and source-hash-verified `memorypack.buff_actions.Reader` agree. Its selected
+  reader endpoints and byte ranges remain candidates; an unsupported nested
+  union stays unconsumed at its first byte. This broadens offline structural
+  prefixes without selecting the runtime provider/cache or closing the parent.
+  `timelineActions` remains a non-advancing count peek, and neither
+  `ActionGroupData` nor whole SkillData is closed. Child fields remain unnamed,
+  and bytes beyond each proven prefix or conditional list endpoint stay opaque.
   The report also verifies the observer's post-call return-address coordinates,
   which are hook locations rather than a live cursor receipt.
   Available TypeTrees do not cover these JsonData files.
@@ -1946,12 +1960,177 @@ Stable conclusions:
   publishes a closed-form byte total and this type has none. Its gate forbids only
   what a partial framing must not do -- leave a body neither framed nor accounted
   for, report an ambiguous body, or pass with nothing framed at all.
+- **The "zero word" after the middle block is a count too.** It is followed by that
+  many **18-byte** elements. It reads as zero in 396 of the 412 bodies of both types,
+  which is exactly why it was checked as a constant; the 16 that declare 1, 2, 3 or 7
+  are what expose it. The width was **solved for**, not guessed: asking which element
+  width lets each of those bodies close gives 18 for all of them, uniquely in 13 of
+  14. That took `0x08` from 128 to **142 of 161**.
+- **Third time this pattern has cost bodies in this layout.** The tail block's unit
+  count, this middle-run count, and (earlier) the second-list count all looked like
+  constants because the overwhelming majority of bodies declare the same value.
+  *Before checking any field as a constant in this layout, look at its value
+  distribution over both types -- a field that is 0 in 96% of bodies and small
+  elsewhere is a count.*
+### The shared frame's constants: closure never settled three of the four
+
+- **Audited every constant in the shared framer by scoring it against every rival
+  value, and closure turns out to be the wrong test for three of them.** The
+  audit was prompted by the terrain retraction, where a claim validated only on
+  degenerate inputs collapsed; the question asked here was the same one -- what do
+  the *passing* bodies have in common?
+- Two rules make the scoring fair, and both matter more than the result:
+  1. **Score a constant only over the bodies that exercise it.** A body declaring a
+     middle run of zero frames identically under every element width. Scoring all
+     412 bodies buries the real margin under 398 that cannot tell the values apart
+     -- and it did: the first cut of this census reported a best rival of 202
+     against the chosen 325, which looked like a near-tie and was an artefact.
+  2. **Reduce on corpus totals, not per package.** A per-package maximum of the best
+     rival is not the corpus-wide best rival.
+- What the corpus says, per constant (`chosen` / `exercising bodies` /
+  `zero-trailer hits` / `best rival's hits` / `rivals that close every body`):
+
+  | constant | chosen | exercising | chosen | best rival | rivals that close all |
+  |---|---:|---:|---:|---:|---:|
+  | `middleBlockBytes` | 9 | 408 | 325 | 0 | **0** |
+  | `entryBytes` | 6 | 267 | 203 | 0 | **6** |
+  | `middleRunElementBytes` | 18 | 14 | 10 | 0 | **2** |
+  | `trailerBytes` | 5 | 408 | 325 | 0 | **12** |
+
+- **Only `middleBlockBytes` is settled by closure.** Six entry widths close all 267
+  bodies that carry an entry run. Three element widths close all 14 that carry a
+  middle run. *Every* trailer length "closes", because a remainder that does not
+  match simply routes the body to the tail block instead of refusing it -- so that
+  constant was never under any test at all.
+- What settles them is the **zero trailer**: landing exactly on five bytes that are
+  all zero. Each chosen value wins that outright and every rival scores **zero**.
+- **This corrects a stated reason, not a result.** The code comment claimed the
+  18-byte element width "was solved for by asking which one lets each of them
+  close". Widths 5 and 11 also close all fourteen. The width is right; the
+  justification recorded for it was insufficient, and a reader trusting it would
+  have believed the constant was better established than it was.
+- Both facts are now **gates**, not remarks. `every_shared_constant_beats_its_rivals`
+  demands a strict margin over the best rival and a nonzero score of its own; and a
+  control gate demands that some rival still close every body, so that if closure
+  ever did become the discriminator the reasoning here would fail loudly rather than
+  rot quietly. Published per candidate in `hircSharedConstants` so the margin is
+  re-measured every run.
+- **The general rule, and it is the same one the terrain codec taught.** A constant
+  fitted by "which value makes the parse close" is only established if the rivals
+  are scored the same way and lose. Fit and discrimination are different claims, and
+  a closure rate reports the first while sounding like the second.
+
+- **The remaining fences.** `0x08`: `tail_block_does_not_end_the_body` 9,
+  `range_tail_block_units` 6, `range_properties` 4. `0x12`:
+  `range_tail_block_units` 4.
+- The `range_tail_block_units` bodies declare **zero** units. Reading two of them by
+  hand gives a tidy structure -- `00 00 00`, a count, a zero byte, that many 3-byte
+  entries with an index running 0, 1, 2, ..., then `01`, a `u32`, a zero byte, a unit
+  count, and that many 12-byte `(u32, u32, float)` units, closing the body exactly.
+  It reproduces those two samples to the byte.
+- **It is wrong, and this was checked before any of it was written into the reader.**
+  Across the ten bodies it closes **1**, and that one's indices are not ascending;
+  five type `0x08` bodies diverge at the byte after the entry run and four type
+  `0x12` bodies one byte earlier. Two samples were enough to invent a layout and not
+  nearly enough to test one.
+- The alternative -- that the *entry run* walk is wrong for these bodies, so the tail
+  does not start where the reader thinks -- is now **eliminated**: trying every run
+  length from 0 to 63 makes the tail frame as a unit block for **none** of the 19
+  bodies still fenced. The tail of these bodies is a different structure, not a
+  misplaced start.
+- **What the fence hides, censused rather than framed.** 40 bodies carry a tail
+  after the entry run, and 27 of them end in a counted run of **twelve-byte
+  records**: two 32-bit floats and a 32-bit code. The run is anchored from the
+  **end**, never walked forward -- the tail must finish with a zero 16-bit word, and
+  the count must sit exactly two bytes before a run of that many records. Zero tails
+  are ambiguous and zero lack a count; the other 13 have no zero word at the end.
+- The discriminator, and the reason this is not just arithmetic that fits: the
+  record's **third field takes only five values across all 80 records** (0, 1, 4, 7
+  and 9). Read at a wrong offset it would be arbitrary 32-bit noise. The first field
+  reads as a float and takes values like -180, -96, -75, -48, -36, -18, 0, 0.6, 1,
+  75, 100 and 180 -- recorded as an observation, not a claim; nothing establishes
+  what any of them measures.
+- **The tail block is framed, and both types now use it.** After the entry run a
+  body either ends on the five zero bytes or carries this block, which finishes it:
+  a 15-byte head, a record count, one byte, that many 12-byte records, and a zero
+  `u16`. That took `0x08` from 96 to **109 of 161** exact and `0x12` from 213 to
+  **245 of 251**.
+- **The "fifteen-byte head" was a one-unit block. The tail is a counted run of
+  units.** Layout: a zero byte, a **unit count**, a zero byte, then that many units,
+  then a zero `u16`. A unit is `u32, zero byte, two bytes, u32, one byte`, then its
+  own record count, one byte, and that many 12-byte records. Reading it this way took
+  `0x08` from 115 to **128 of 161** and `0x12` from 245 to **247 of 251**.
+- Why the old reading looked right: the unit count is 1 in every body that framed
+  under it, so the whole 15 bytes looked constant. *A single-element counted run is
+  indistinguishable from a fixed head -- find a body with two before believing a
+  head is fixed.*
+- This also settles the three bytes I had published as a per-type selector. They are
+  **per unit**, not per type: across the corpus they take `020002`, `060200`,
+  `060300`, `020402`, `020502`, `020100`, `022300`, `043100`. Publishing rather than
+  checking them is what kept that reading recoverable -- a check would have been
+  wrong and would have hidden it.
+- Only the bytes zero in every body of both types are checked (the prefix's `[0]` and
+  `[2]`, and each unit's `[4]`).
+- **The 15-byte head's first word is a reference, and it names a numeric type
+  `0x12` object.** 13 of the 27 located tails have a head of that width. Its word at
+  offset 3 resolves to a same-bank object 5 times; the other 8 name objects the
+  package does not ship, which is the same pattern type `0x03` targets show. The
+  **control** -- the word at offset 10 of the same head, classified identically --
+  resolves **zero** times. Object population 213,138, so chance resolutions across
+  13 draws are expected at 0.000645; observing 5 settles it. Every resolved target
+  is type `0x12`, and the gate fails rather than widening if a second type appears.
+- Two readings of those words are **eliminated**. They are not names: 0 of 26 match
+  an FNV-1 hash of any of the 49,324 distinct `global-metadata.dat` string literals.
+  And the word at offset 10 is not a reference at all -- it is distinct in every
+  body and resolves nowhere.
+- What remains unexplained in the tail: the 14 located tails whose head is wider
+  than 15 bytes, and the bytes of the 15-byte head other than its first word. That
+  is where the next attempt starts -- and the `0x12` link says to attack type `0x12`
+  alongside it rather than separately.
 - **A rule that looked right and is withdrawn.** Bodies whose leading reference is
   null appeared to carry an extra 32-bit word before the property count. Adding
   that rule changes the exact count by **zero**, and not one of the four
   null-reference bodies frames under it. It was fitted to nothing. The general
   lesson: when a special case is suggested by a handful of bodies, check that
   removing it changes the count before keeping it.
+- **Numeric type `0x12` shares `0x08`'s layout, and 213 of its 251 bodies now frame
+  byte-exact.** Reference, counted key/value block, a second list whose key sizes
+  its value, nine bytes, a zero word, the counted run of six-byte entries with its
+  extra byte when the count is nonzero, five zero bytes. Two of the three
+  second-list keys are `0x08`'s own: `0x15` -> 11 bytes, `0x1D` -> 27, plus `0x0A`
+  -> 12. All 38 fenced bodies carry one reason, `trailer_is_not_five_bytes`.
+- **How the widths were found, and why it is not a guess.** Everything after the
+  second list is deterministic, so each body was asked which value width closes it
+  exactly. Every body that closes has **exactly one** such width, and the width is a
+  function of the key alone. Do not fit widths by eye; solve for them this way.
+- **The nine bytes are a field, not a signature -- and `0x08` proves it inside its
+  own type.** Read as `(u8 flag, u32, float)` the corpus carries four variants:
+  `0x08` -> `(2, 1000, -96.0)` in 148 bodies, `(2, 0, -96.0)` in 8 and
+  `(2, 500, -96.0)` in 1; `0x12` -> `(0, 0, -96.3)` in all 251. A magic does not vary
+  in exactly one 32-bit slot, and the values are round decimals.
+- **The two framers are now one.** Dropping the literal signature match and the
+  "second list declares one entry" rule -- neither of which the shared layout
+  justifies -- took `0x08` from 109 to **115 of 161** without moving `0x12`. Both
+  the middle block's value and the second-list count are *published as selectors*
+  rather than checked, because each type is uniform in them and a uniform corpus
+  cannot tell a rule from a habit.
+- **An ambiguity left open on purpose.** Key `0x0A` always arrives with a list count
+  of 3 and a 12-byte value; the other keys always arrive with a count of 1. So "the
+  key decides the width" and "the count multiplies a per-key width of 4, 11 and 27"
+  predict the same bytes everywhere in this corpus. The simpler rule is implemented.
+- **The 38 fenced `0x12` bodies carry `0x08`'s tail.** Same code censuses both. 34
+  of the 38 have their trailing twelve-byte record run located by a unique count
+  (100 records, third field only 4 and 9); zero are ambiguous; 4 have no zero word
+  at the end and are read no further than the entry run. So of 251 bodies, 213 frame
+  outright, 34 more are censused to their trailing run, and **4 remain opaque**.
+- **Where the two types part, and it matters.** `0x12`'s tail-head words were
+  classified exactly as `0x08`'s -- and they resolve to a package object **zero**
+  times, control included. Sharing a layout does not make the same field mean the
+  same thing. Do not carry `0x08`'s "names a `0x12` object" finding across.
+- **What made this fast**: `0x08`'s tail head names a `0x12` object, so the two were
+  attacked together. The reusable lesson is the one `0x16` already taught, now
+  twice confirmed -- *when a small type resists, look for a structure another type
+  already closes*, and here the whole layout was shared, not just a block.
 - The other small types do **not** share `0x08`'s head. Their leading word names
   nothing in 119 of 251 `0x12` bodies, all 453 `0x10` bodies, and all 2,645 `0x11`
   bodies, so offset 0 is simply not a reference field for them. `0x12`'s first
@@ -1986,6 +2165,301 @@ Stable conclusions:
   `0x0A` (2,505/4,158) and `0x0D` (912/2,431), on `unsupported_groupB_nonempty`
   for `0x0B` (4,217/4,325), while `0x0C` "succeeds" on 586/742 but leaves 143-303
   bytes over. Those successes are not evidence: see the next point.
+- **Numeric type `0x0C` carries NAMES at fixed distances from the end of its body.**
+  The words 12 and 24 bytes from the end are FNV name hashes of shipped string
+  literals in **406 of 1,484 draws** over the 742 bodies -- against a chance
+  expectation of **0.017**. Recovered values: `High` (72), `Low` (70), `Loop` (62),
+  `WIN` (42+38), `Start`, `NONE`, `skip`, `General`, `END`, `Normal`, `Default`.
+  146 bodies carry a name at *both* offsets.
+- **Every music body references other objects, and the music types form a
+  hierarchy.** Offering every 32-bit word of every body against the package's object
+  set: **24,515 references across all 7,331 bodies, and not one body comes up
+  empty.** Chance expectation over the 646,465 words offered is about 2. Edges:
+  `0x0C`->`0x0D` 4,429, `0x0A`->`0x0B` 4,325, `0x0D`->`0x0A` 3,610, `0x0A`->`0x0D`
+  3,570, `0x0C`->`0x0A` 3,262, `0x0D`->`0x0C` 2,431, `0x0C`->`0x0C` 1,920,
+  `0x0A`->`0x0C` 588, plus small counts to `0x11`, `0x12` and `0x16`.
+- **`0x0A` -> `0x0B` is one-to-one, and it is the only music edge that is.** 4,325
+  edges reaching 4,325 distinct objects, none twice, out of a population of 4,325:
+  every `0x0B` object is named by exactly one `0x0A` reference and none is missed.
+- **The `0x0A` -> `0x0B` reference has a fixed place, measured from the END.** It
+  sits **69 bytes from the end** in 3,707 of 4,325 cases, then -73 (288), -77 (59),
+  -82 (52): four distances cover **94.9%**. Measured from the *front* the same
+  references spread over 41, 36, 46, 45, 40, 48, 52, ... with no concentration at
+  all. This is the first anchor the music types have had, and it only exists in
+  end-coordinates.
+- The secondary distances are 4 apart (-69, -73, -77), so an optional 4-byte field
+  shifts the anchor -- the same kind of optional field `0x0D`'s lengths and `0x0B`'s
+  entry widths both show.
+- **`0x0A`'s HEAD has a rule: `36 + 5 * body[14]`.** Byte 14 is a count of five-byte
+  elements, and it equals `(headLength - 36) / 5` in **3,441 of 3,441** bodies of
+  the dominant family, including all 2,246 where the count is nonzero. Across the
+  whole type the rule predicts a `0x0B` reference in **3,750 of 4,144** bodies.
+- **Three controls, and they are what make it a finding.** Ignoring the count and
+  reading at a fixed 36 scores **31.1%**; the position four bytes later scores
+  **7.5%**; four bytes earlier scores **0.0%**. So the count is what places the
+  reference, not proximity.
+- **Byte 17 says whether the rule applies, and it is near-perfect.** Where
+  `body[17] == 0` the rule places the reference in **3,744 of the 3,745** bodies
+  that have one to place. Where it is nonzero: 6 of 144. Those 144 have longer
+  heads, at `36 + 7 + 5k` (43, 48, 53) and a second family (52, 54, 59).
+- **Mind the denominator.** Of the 394 bodies the rule "misses", **255 carry no
+  `0x0B` reference at all** -- there is nothing there to find and nothing the rule
+  got wrong. The real miss count is 139. The gate uses the denominator it can
+  actually derive (bodies with `body[17] == 0`, which still includes those 255), so
+  its threshold is 0.90 while the measurement against applicable bodies is 0.9997.
+  The two numbers are not in conflict; they count different things, and the gate
+  says which.
+- **`0x0A` carries a SECOND reference, at offset 9 of its fixed head, and it names
+  only `0x0C` or `0x0D`.** Over the 4,000 conditioned bodies it resolves in
+  **3,999** -- 3,413 to `0x0D`, 586 to `0x0C`, one to nothing. Never a third type.
+- **The fixed 36-byte head is half accounted for.** Conditioned on `body[17] == 0`,
+  **16 of the first 36 bytes take a single value and all 16 are zero**. The varying
+  positions fall in runs at 1, 5..12, 14..16, 18..20, 23..24, 28 and 32..33 -- the
+  8-byte run at 5..12 contains the offset-9 reference, and `u32@1` and `u32@5` are
+  zero in 3,736 and 3,624 of 3,744 bodies respectively.
+- **The five-byte head element is fully read: a zero byte, a 16-bit value and two
+  zero pad bytes.** Over the 3,052 elements in confirmed bodies: **0** with a
+  nonzero leading byte, **0** with nonzero padding, and the value takes only
+  **0, 1, 2, 3, 4** (598 / 2,240 / 186 / 26 / 2). So each element carries one small
+  enumeration and nothing else.
+- **The element census must be conditioned on the rule being confirmed, not merely
+  on the discriminant.** Under `body[17] == 0` alone the same measurement gives 61
+  nonzero leading bytes, 77 nonzero pads and 31 distinct values -- because a body
+  whose reference is not where the rule says has no element boundary, so those bytes
+  are being read at arbitrary offsets. Condition on the confirmed rule and every
+  violation disappears.
+- So `0x0A`'s head now reads end to end: 36 fixed bytes (16 of them constant zeros),
+  then `body[14]` elements of `00 <u16 0..4> 00 00`, then the `0x0B` reference.
+  What it leaves: the remaining varying fields inside the 36, the 144 bodies with a
+  nonzero byte 17, and the 255 with no `0x0B` reference.
+- **Byte 17 flags the longer head but does NOT determine its length** -- 36 distinct
+  values over 126 bodies, 6 of them mapping to two different extras. It is a flag.
+- **The count for the second run is `body[21]`, and the rule generalises.**
+  `head = 36 + 5*body[14] + (7 + 5*body[21] if body[17] != 0 else 0)`.
+  Byte 21 equals the second run's element count in **76 of 76** bodies of the
+  `7 + 5k` family, all 56 with a nonzero count included. Over the whole type the
+  generalised rule predicts the reference in **3,833 of 3,841** applicable bodies --
+  **99.79%** -- against 3,744 for the single-run form.
+- **The `0x0B` reference is an OPTIONAL four-byte field, and the 255 bodies without
+  one are not anomalies.** Measured from the end of the head, **all 255 have a tail
+  of exactly 65 bytes**, while the bodies that carry a reference sit at 69 (3,383)
+  and longer. 69 - 65 = 4: the reference itself. Those bodies still carry the
+  offset-9 head word (247 to `0x0D`, 8 to `0x0C`), so they are ordinary bodies with
+  one field absent.
+- That closes two of the three populations the head rule had excluded: 144 with a
+  second counted run (framed), 255 with the reference absent (explained).
+- **The third shape is a fixed 16-byte block, and `body[21]`'s MAGNITUDE selects
+  it.** Where byte 17 is nonzero, byte 21 read as a count gives the five-byte run --
+  but in some bodies it is part of a 32-bit value instead, taking 65, 97, 111 or
+  243, and those carry a fixed 16-byte block. A count here is never above a handful,
+  so the magnitude separates them cleanly: `byte21 <= 16` gives the run in 76 of 76
+  bodies, `byte21 > 16` gives the block in 31 of 37.
+- The complete rule:
+  `head = 36 + 5*body[14] + (0 if body[17]==0 else 7 + 5*body[21] if body[21] <= 16 else 16)`.
+  It predicts the reference in **3,875 of 3,903** applicable bodies, and the
+  population it cannot reach at all drops from 62 to **14**.
+- Searching for a *count* in those bodies found nothing above 80% under
+  `base + width*byte` for base 0/7/12 and width 1/5. The answer was not a count --
+  it was a fixed block selected by how big a byte is. *When "find the count" stops
+  working, ask what the byte is when it is not a count.*
+- Why byte 21 was invisible before: in the single-run family it is one of the 16
+  **constant zero** bytes of the fixed head, so the second term vanishes and the
+  general rule reduces to the special one. *A count that is zero in the population
+  you are looking at is indistinguishable from padding.*
+- **Every one of `0x0A`'s 4,158 bodies is now in a named category.**
+  **3,875** have their `0x0B` reference placed by the head rule; **255** carry no
+  reference at all, which the 65-vs-69 tail length explains as an absent optional
+  field; and **28** are a residue the rule cannot place.
+- The 28 are characterised, not just counted: their `body[14]` takes values like 35
+  and 61 that are not counts (the implied extra comes out negative), `body[17]` is
+  zero in 7 of them even though the head is long, and their actual head offsets
+  cluster at 48, 51, 53, 54 and 59. A fourth shape, or variant bodies; 0.67% of the
+  type either way.
+- **`u32@5` is a CROSS-PACKAGE reference, and it names numeric type `0x08`
+  objects.** It is zero in almost every body; the 120 nonzero words take **four**
+  distinct values and **none of them resolves inside its own package** -- which is
+  why an earlier pass recorded it as "resolves nowhere". Joined against the whole
+  corpus every one resolves: `0xF1339B46` (62), `0x4106E10A` (26), `0xEB239E75` (24)
+  and `0xFD63C75F` (8) are all type `0x08` objects, plus one `0x0B` in a variant.
+- **The lesson: "resolves nowhere" may mean the wrong id set was used.** The reader
+  works per package, so a package-local set cannot see a cross-package edge. Before
+  concluding a word is not a reference, try the corpus-wide set.
+- **`float@16` in the fixed head is a bounded, whole-numbered value with a -96
+  floor.** Range **[-96, 98]**, whole in 3,146 of the 3,594 in range, modes 0.0
+  (1,622), 98.0 (192), 2.0 (176), -10.0 (175), -15.0 (122). The floor is the same
+  -96 the `0x08`/`0x12` middle block carries. Gated at 1,856 nonzero whole values
+  against an **overlapping** control window at offset 14 that carries **0**.
+- The control overlaps the field by two bytes on purpose -- a window sharing most of
+  its bytes is the hardest one to beat -- and it had to be judged on *both*
+  properties, not just the range: at offset 14 the bytes read as a denormal near
+  zero, which is trivially inside any band. **A range test alone accepts everything;
+  the control has to be scored exactly like the candidate.**
+- **What the 20 varying bytes of the fixed head actually hold** (conditioned on
+  `byte17 == 0` and the rule confirmed, 3,744 bodies): `u32@5` takes only **5
+  distinct values** and is zero in 3,624 -- an enumeration or a rare id, not a
+  reference (it resolves nowhere). `u32@9` is the `0x0C`/`0x0D` reference.
+  `byte@13` is constant zero. `byte@14` is the element count (0/1/2). `byte@15` and
+  `byte@16` are small (0, 2, 5, 6). `byte@18`, `@19`, `@20` have 21, 23 and 8
+  distinct values and look like parts of one 32-bit value. `byte@23` and `@24` are
+  mixed. `byte@28` and `byte@33` are **booleans** (0/1, split 1,888/1,856 and
+  3,146/598). `byte@32` takes 0, 1, 2, 3.
+- **Twenty bytes past the reference sits an AUTHORED float, and its values look
+  like tempo.** Over the 3,744 conditioned bodies it is finite in all of them,
+  **whole in 3,727** (99.5%) and inside `[50, 200]` in 3,435 (91.7%). Its range is
+  55 to 190 and its modes are **120.0** (1,557), 130, 110, 90.
+- A float that is an exact integer 99.5% of the time is **authored, not computed** --
+  that is the gated claim. That its range and modes are those of musical tempo, in
+  the music object hierarchy, is recorded as an **observation**: it is the obvious
+  reading and nothing here proves it.
+- **`tail+8` is the opposite kind of field, and that contrast is the proof the
+  offsets are right.** Whole in **202 of 3,744** against `tail+20`'s 3,727. Over the
+  tail-69 subset it is whole in **0 of 3,321**. Two adjacent floats behaving that
+  differently is what a real field boundary looks like; a reader slicing one
+  quantity at two arbitrary places would get similar behaviour from both. The gate
+  checks the contrast, not just the field.
+- `tail+8` runs 3.366 to 6.533 with 85 distinct values (mode 4.477) and is **not a
+  function of `tail+20`**: 12 of the 72 distinct `tail+20` values carry more than one
+  `tail+8`, and no ratio, product or log relation between them is constant. Whatever
+  it is, it is independent.
+- **The tail's first 29 bytes are now fully accounted for** (tail-69 bodies, 3,321):
+  `+0` the `0x0B` reference; `+4` a `u32` zero in 1,886 and taking 50 other values;
+  `+8` the never-whole float; `+12` and `+16` `u32`s zero in 3,317 of 3,321; `+20`
+  the authored float; `+24..27` four bytes reading `04 04 <0|1> 00` -- only **5
+  distinct** 32-bit values across the corpus, so a packed flag record and not a
+  number; `+28` constant zero. Seven 32-bit fields and a byte.
+- **The 4-byte insertion sits immediately after the reference, before the float.**
+  Tracking two fields by their signatures across the two tail lengths pins it: the
+  never-whole float moves from `+8` to `+12` in **all 217** long-tail bodies, and the
+  authored float from `+20` to `+24` in **all 217**. The reference stays at `+0`. So
+  everything from `+8` onward shifts by exactly 4 and the extra field lands in the
+  `+4..+7` region.
+- That also rules out my own guess. I expected the insertion at `+12` or `+16`
+  because those are zero in 3,317 of 3,321 -- the shape an optional field usually
+  hides in. It is not there. **A field's being almost always zero says it could be
+  optional, not that it is**; tracking a field with a distinctive signature across
+  the two populations answers the question and a zero-rate does not.
+- `+4` is also the one field whose behaviour differs between the two: zero in 1,886
+  of 3,321 short tails and **never zero** in the 217 long ones.
+- **`tail+4` is a 32-bit FIXED-POINT FRACTION of one.** Its nonzero values land on
+  simple rationals to within a few parts in 10^10: `0x55555555` = 1/3,
+  `0xAAAAAAAB` = 2/3, `0x92492492` = 4/7, `0xE8BA2E8B` = 10/11, `0x89D89D8A` = 7/13,
+  `0x71C71C71` = 4/9, `0x0F0F0F0F` = 1/17, plus 27/49, 13/19, 4/23, 20/37. Over the
+  corpus **1,399 of 1,804** nonzero values match a denominator <= 64; the same test
+  on `tail+8` (a float) matches **114 of 3,614**. A 24x gap.
+- Read it as bytes or as a rational, never as an integer or a float: as a `u32` it
+  looks like arbitrary large numbers, and as a float it is nonsense. That is the
+  second field in this tail whose meaning only appears in the right representation,
+  after `tail+24`'s packed `04 04 <0|1> 00`.
+- **The tail's optional 4-byte field is localized, and it is not counted.** Aligning
+  the 3,321 tail-69 bodies against the 217 tail-73 bodies: from the **end** their
+  constant profiles agree at **every one of 69 positions**, so the longer tail is the
+  shorter one with four bytes inserted, not a different shape. From the **front**
+  they agree to `tail+28` and diverge at `tail+29`. So the extra four bytes sit
+  **within the first 29 bytes after the `0x0B` reference**.
+- The constant word `0x5BBBD648` moves with the end, as expected: bytes 187 and 91
+  sit at `tail+58,+59` in the 69-byte tails and at `tail+62,+63` in the 73-byte ones.
+- **No byte inside the tail counts the extension either.** Best match for
+  `tail == 69 + 4*byte` over the tail's own 69 positions is `tail+30` at 3,492 of
+  3,585 -- but only **171 of the 264** bodies where the count would be nonzero, which
+  is the giveaway. The high total is carried by zero bytes matching a zero count.
+  *Always report the informative subset alongside the total.*
+- **No single head byte predicts the tail length.** Tails are 69 (3,321), 73 (217),
+  77 (44), 82 (32) -- steps of 4 -- and `69 + 4*byte` matches at best **2,829 of
+  3,744** (byte 33), with byte 32 at 2,168 and byte 16 at 2,783. So the tail's
+  optional fields are counted from **inside the tail**, not from the head. Do not
+  spend another pass looking for a head byte that sizes the tail.
+- **Conditioning on the anchor makes the tail legible.** Restricted to the 3,419
+  `0x0A` bodies with exactly one `0x0B` reference and it at -69, **21 of the last 69
+  byte positions are constant** -- against **6 of 101** over the unconditioned
+  population. Constants include the word `0x5BBBD648` at -13, `0x00000002` at -30,
+  `0x0298DF12` at -26, `0x02` at -23 and -30, and zero runs at -27..-29, -39..-42,
+  -48..-49.
+- The varying positions in that window fall in runs of **8 and 4 bytes** (-2..-9,
+  -15..-22, -31..-38, -43..-46), i.e. whole 32-bit fields. So the region from the
+  anchor to the end looks like a fixed record with `u32` slots, and that is where a
+  `0x0A` framing attempt should start -- backwards from the end, conditioned on the
+  anchor, never forwards from the head.
+- **The two edges that looked the same are eliminated.** `0x0D`->`0x0C` has an edge
+  total of exactly 2,431 -- the `0x0D` body count, which is what made it look like a
+  bijection -- and reaches **578 of 742** objects, 382 of them repeatedly.
+  `0x0C`->`0x0D` reaches every one of its 2,431 targets but reaches **1,628** of
+  them twice.
+- So a one-to-one claim needs **all three** measurements and an edge total supplies
+  none of them: distinct targets equal to the population, no target reached twice,
+  and the edge total equal to both. Two of the three neighbours here pass one or two
+  of those conditions and fail the rest.
+- The method that works when a type will not frame: **do not look for the reference,
+  offer every word.** Object ids are sparse enough that the id space does the
+  discrimination. It found three references per `0x0D` body where framing found one.
+- **This is the first semantic recovery inside the music types**, and the way in was
+  anchoring from the **end**. Their heads are variable -- only three byte positions
+  from the front take a single value across the corpus -- but the tail is not:
+  `0x0A` carries the constant word `0x5BBBD648` thirteen bytes from the end in all
+  4,158 bodies; `0x0C` holds the constant bytes `0x64` (100) at -2 and `0x32` (50)
+  at -4 in all 742; `0x0D` has **30** constant byte positions in its last 120, and
+  every one of them is `0x00`. *When a type's head resists, tabulate from the end.*
+- **Type `0x0D`'s body lengths are `165 + 34a + 5b`.** 2,273 of 2,431 fit, 130 do
+  not, 28 are ambiguous; the modal `(a, b)` are `(1,0)` 906, `(1,1)` 410, `(2,0)`
+  352, `(2,1)` 239, `(1,2)` 78, `(0,0)` 41. The 5 matches the optional field
+  `0x0B`'s entry widths also show (84/89, 132/137, 168/173).
+- **The arithmetic check that makes this worth believing.** 34 and 5 are coprime, so
+  every `d >= 132` is representable for free (Frobenius number 131) and a fit there
+  means nothing. Only **91** of the 2,431 bodies are in that range; **2,210** fit
+  uniquely with `d < 132`, where roughly half the integers are representable at all.
+  And it is type-specific: `0x0A` does **not** fit this shape (3,807 of 4,158 fail
+  against base 101), so it is not just small-coefficient coverage.
+- **The bytes do NOT back the "34-byte repeating element" reading, and it is
+  withdrawn as a structural claim.** Each length group is internally very uniform --
+  157 of 165 positions take a single value in the 165-group, 159 of 199 in the
+  199-group -- but the groups do **not** align with each other. Comparing their
+  fixed-position profiles gives only 70/89 to 91/141 agreement end-aligned and
+  similar front-aligned, where a base-plus-inserted-element layout would give
+  agreement everywhere both profiles are constrained.
+- A trap inside that measurement: restricting the comparison to a window where both
+  profiles happen to be constrained gives **1.0** at several different insertion
+  points, including two that contradict each other. Score an alignment over the
+  whole overlap, never over a window chosen after seeing the data.
+- So `165 + 34a + 5b` is a real regularity **of the lengths** and nothing more. The
+  length groups are different shapes, not one shape with a repeated block.
+- **Count the constants, and do not read a distinct-value count as a byte value.**
+  The first version of this tabulation printed a constant as two hex digits and a
+  varying position as its number of distinct values, in the same column. A position
+  with 64 distinct values printed as `64` and was read as the constant byte `0x64`.
+  `0x0D` has no `100` or `50` anywhere near its end -- that was the bug, not the
+  data. Print a sigil for varying positions.
+- The census is in the maintained reader and gated, but the gate **skips when no
+  names are supplied**: the corpus gate's reader run does not load the metadata
+  literals -- the named-reach tool does -- and a census with nothing tested means
+  the question was never asked, not that the answer is no.
+- **The twelve-byte curve record is NOT in the music types.** Scanning every offset
+  of all 7,331 bodies for a `u32` count followed by that many `(float, float,
+  interp <= 9)` records finds it in 33 of 4,158 `0x0A`, 18 of 742 `0x0C` and **0 of
+  2,431 `0x0D`**. At those rates, over a scan of every offset, these are chance
+  fits. The record is in `0x08`, `0x12` and `0x0B`; the music types are the first
+  miss, so the cross-type heuristic has a boundary.
+- **The trap that nearly made this a finding, and it is the second time this
+  session.** The same scan without a variation requirement reports the record in
+  **2,423 of 2,431** `0x0D` bodies. Every one of those is a run of **zero bytes**:
+  zeros are finite floats and zero is a valid interpolation code, so a zero-filled
+  region satisfies every bound for free. The earlier music-type tail match failed
+  the same way with `entries_0`.
+- **General rule, now written down because it has cost two false results.** Before a
+  structural test's hit rate means anything, check it against the degenerate input
+  that satisfies it trivially -- a run of zeros, a count of zero, a single-element
+  list. If the degenerate case passes, the rate is measuring how much of the corpus
+  is degenerate, not how well the structure fits.
+- **Two fresh eliminations on the music types (2026-09-15). Read these before
+  trying the next idea.**
+  (a) *Their head is not a fixed skeleton.* Tabulating every byte position across
+  the whole corpus, only offsets 0, 3 and 4 take a single value in `0x0A` and
+  `0x0D` (plus offset 34), and `0x0C` has none at all in its first five. A head read
+  off one body -- "nine zero bytes, then the reference, then zeros, then a flag" --
+  looks convincing and is over-fitting. Tabulate positions first.
+  (b) *They do not share the `0x08`/`0x12` tail.* The tail block fits 2 of 7,331
+  bodies. The entry-run-plus-five-zeros tail appears to fit 2,344 `0x0D` bodies --
+  and every one of those is `entries_0`, which is just "the last six bytes are
+  zero". A count of zero makes that test vacuous; check the count distribution
+  before believing a tail match.
 - **Do not try to locate the frame by searching for a start offset.** Every music
   body admits many offsets at which the node frame parses cleanly -- typically 2
   to 12, and up to 12 for `0x0B`. The frame is permissive enough that "it parsed"
@@ -2062,8 +2536,36 @@ Stable conclusions:
   the *modal* 84-byte entry, not a stride; entry widths are 84, 89, 120, 132, 168,
   137, ... The "248 entries name something other than a declared source" figure
   came from that same wrong stride and is withdrawn with it.
-- Still **not** established for `0x0B`: anything inside an entry past its first two
-  words, and therefore the entry widths themselves. Eleven readings of the entry
+- **Inside a `0x0B` entry, three more fields are count-shaped.** Tabulating every
+  32-bit slot across the 4,019 single-entry bodies (the entry is everything between
+  the entry count and the terminator):
+  `u32@0` is the flag (0 in 4,005, 1 in 14), `u32@4` is the source id, **`u32@8` is
+  zero in all 4,019**, and then `u32@44` is 1/2/3 and never 0 (3,891/113/14),
+  `u32@48` is 0/1/2/3 (2,833/903/253/...) and `u32@56` is 0/3/4/... -- the same
+  "mostly one small value" shape that turned out to be a count three times in the
+  `0x08`/`0x12` layout.
+- **The elements they count are variable-length, so this is not yet a frame.**
+  Solving `48 + c44 * w == entryWidth` gives a unique `w` for 3,618 of 4,019 bodies
+  but `w` itself ranges over 36, 41, 43, 47, 72, 77, 84, 89, 96, 108 -- so `u32@44`
+  counts something whose size is decided inside it, exactly like the tail's units.
+- **The same twelve-byte record the `0x08`/`0x12` tail carries is inside `0x0B`'s
+  entries too**, and it is now censused and gated. Where `u32@56` is nonzero,
+  `u32@60` is a record count and the records start at offset 64: two floats and a
+  32-bit interpolation code. Over the corpus: 775 entries of 4,019 carry them, 3,124
+  declare none, 120 have an unusable count, **0 run past the end**, and the 1,759
+  records' codes are **0 through 9 with no gaps and nothing above 9**.
+- That contiguous ten-value enum is the discriminator. A 32-bit field read at a
+  wrong offset would be noise, so the gate refuses any code outside a small range.
+  The first float takes 0.0 (793), 0.11, 0.13, 0.1, 2.33, ... -- an observation, not
+  a claim; nothing here establishes what it measures.
+- So the twelve-byte curve record is now confirmed in **three** numeric types --
+  `0x08`, `0x12` and `0x0B`. When a new type resists, look for it.
+- Two regularities worth carrying in: entry widths come in pairs five bytes apart
+  (84/89, 132/137, 168/173) with identical counts, so some five-byte field is
+  optional; and once a base is chosen the remaining widths differ by multiples of 12,
+  which is the record size the `0x08`/`0x12` tail also uses.
+- Still **not** established for `0x0B`: the entry element layout, and therefore the
+  entry widths themselves. Eleven readings of the entry
   interior have been eliminated. The latest: the entry does not end with a node
   frame (768 of 4,019 single-entry bodies admit no closing frame at any offset),
   and the 53 + 12k head widths that *do* close are a fit rather than a layout --

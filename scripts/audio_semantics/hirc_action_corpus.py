@@ -1662,14 +1662,52 @@ def aggregate_current_hirc_actions(
     type11_plugins: Counter[str] = Counter()
     type11_terminators: Counter[str] = Counter()
     type08_body_totals: Counter[str] = Counter()
+    type08_body_selectors: Counter[str] = Counter()
+    type12_body_totals: Counter[str] = Counter()
+    type12_body_failures: Counter[str] = Counter()
+    type12_body_unsupported: Counter[str] = Counter()
+    type12_body_selectors: Counter[str] = Counter()
+    type08_tail_totals: Counter[str] = Counter()
+    type08_tail_counts: Counter[str] = Counter()
+    type08_tail_codes: Counter[str] = Counter()
+    type12_tail_totals: Counter[str] = Counter()
+    type12_tail_counts: Counter[str] = Counter()
+    type12_tail_codes: Counter[str] = Counter()
+    type12_word_totals: Counter[str] = Counter()
+    type12_word_targets: Counter[str] = Counter()
+    type12_word_controls: Counter[str] = Counter()
+    type08_word_totals: Counter[str] = Counter()
+    type08_word_targets: Counter[str] = Counter()
+    type08_word_controls: Counter[str] = Counter()
     type08_body_failures: Counter[str] = Counter()
     type08_body_unsupported: Counter[str] = Counter()
     type11_tail_counts: Counter[str] = Counter()
+    type11_interps: Counter[str] = Counter()
     type11_lead_words: Counter[str] = Counter()
     type11_streams: Counter[str] = Counter()
     type11_record_counts: Counter[str] = Counter()
     music_head_totals: Counter[str] = Counter()
     music_head_shapes: Counter[str] = Counter()
+    music_tail_named: Counter[str] = Counter()
+    music_tail_tested: Counter[str] = Counter()
+    music_ref_totals: Counter[str] = Counter()
+    music_ref_per_body: Counter[str] = Counter()
+    music_ref_edges: Counter[str] = Counter()
+    shared_constant_bodies = 0
+    shared_constant_maps: dict[str, dict[str, int]] = {
+        key: {} for key in SHARED_CONSTANT_MAPS
+    }
+    music_ref_distinct: Counter[str] = Counter()
+    music_ref_twice: Counter[str] = Counter()
+    music_ref_population: Counter[str] = Counter()
+    music_ref_places: Counter[str] = Counter()
+    type0a_head_totals: Counter[str] = Counter()
+    type0a_head_scores: Counter[str] = Counter()
+    type0a_head_conditioned: Counter[str] = Counter()
+    type0a_head_words: Counter[str] = Counter()
+    type0a_element_values: Counter[str] = Counter()
+    type0a_tail_bytes: Counter[str] = Counter()
+    type0a_word_five_values: Counter[str] = Counter()
     music_head_by_type: Counter[str] = Counter()
     music_head_offsets: Counter[str] = Counter()
     music_head_discriminants: Counter[str] = Counter()
@@ -1762,8 +1800,60 @@ def aggregate_current_hirc_actions(
         for key in TYPE08_BODY_FIELDS:
             type08_body_totals[key] += package_type08_body[key]
         type08_body_failures.update(package_type08_body["failureCategories"])
+        type08_body_selectors.update(
+            (package.get("hircType08BodyFrame") or {}).get("selectorCounts") or {}
+        )
+        package_type12_body = _read_type12_body_frame(
+            package.get("hircType12BodyFrame"), package_label
+        )
+        for key in TYPE08_BODY_FIELDS:
+            type12_body_totals[key] += package_type12_body[key]
+        type12_body_failures.update(package_type12_body["failureCategories"])
+        type12_body_unsupported.update(package_type12_body["unsupportedCategories"])
+        type12_body_selectors.update(
+            (package.get("hircType12BodyFrame") or {}).get("selectorCounts") or {}
+        )
+        package_type08_tail = _read_type08_tail_census(
+            package.get("hircType08Tail"), package_label
+        )
+        for key in TYPE08_TAIL_SCALARS:
+            type08_tail_totals[key] += package_type08_tail[key]
+        type08_tail_counts.update(package_type08_tail["recordCountCounts"])
+        type08_tail_codes.update(package_type08_tail["thirdFieldCounts"])
+        package_type12_tail = _read_type12_tail_census(
+            package.get("hircType12Tail"), package_label
+        )
+        for key in TYPE08_TAIL_SCALARS:
+            type12_tail_totals[key] += package_type12_tail[key]
+        type12_tail_counts.update(package_type12_tail["recordCountCounts"])
+        type12_tail_codes.update(package_type12_tail["thirdFieldCounts"])
+        package_type12_words = _read_type08_tail_word_census(
+            package.get("hircType12TailWords"), package_label
+        )
+        for key in TYPE08_TAIL_WORD_SCALARS:
+            if key == "packagePopulation":
+                type12_word_totals[key] = max(
+                    type12_word_totals[key], package_type12_words[key]
+                )
+                continue
+            type12_word_totals[key] += package_type12_words[key]
+        type12_word_targets.update(package_type12_words["firstWordTargetTypeCounts"])
+        type12_word_controls.update(package_type12_words["secondWordTargetTypeCounts"])
+        package_type08_words = _read_type08_tail_word_census(
+            package.get("hircType08TailWords"), package_label
+        )
+        for key in TYPE08_TAIL_WORD_SCALARS:
+            if key == "packagePopulation":
+                type08_word_totals[key] = max(
+                    type08_word_totals[key], package_type08_words[key]
+                )
+                continue
+            type08_word_totals[key] += package_type08_words[key]
+        type08_word_targets.update(package_type08_words["firstWordTargetTypeCounts"])
+        type08_word_controls.update(package_type08_words["secondWordTargetTypeCounts"])
         type08_body_unsupported.update(package_type08_body["unsupportedCategories"])
         type11_tail_counts.update(package_type11["tailEntryCountCounts"])
+        type11_interps.update(package_type11["interpolationCounts"])
         type11_lead_words.update(package_type11["firstTailEntryLeadingWordCounts"])
 
         package_music_head = _read_music_head_census(
@@ -1775,6 +1865,60 @@ def aggregate_current_hirc_actions(
         music_head_offsets.update(package_music_head["offsetCounts"])
         music_head_discriminants.update(package_music_head["discriminantCounts"])
         music_head_shapes.update(package_music_head["headShapeCounts"])
+        music_tail_named.update(package_music_head["tailWordNamedByOffset"])
+        music_tail_tested.update(package_music_head["tailWordTestedByOffset"])
+        package_music_refs = _read_music_reference_census(
+            package.get("hircMusicReferences"), package_label
+        )
+        for key in MUSIC_REFERENCE_SCALARS:
+            if key == "packagePopulation":
+                music_ref_totals[key] = max(music_ref_totals[key], package_music_refs[key])
+                continue
+            music_ref_totals[key] += package_music_refs[key]
+        music_ref_per_body.update(package_music_refs["referencesPerBody"])
+        music_ref_edges.update(package_music_refs["edgeCounts"])
+        music_ref_distinct.update(package_music_refs["distinctTargets"])
+        music_ref_twice.update(package_music_refs["targetsReachedTwice"])
+        music_ref_population.update(package_music_refs["targetPopulation"])
+        music_ref_places.update(package_music_refs["edgeDistanceFromEnd"])
+        package_shared = _read_shared_constant_census(
+            package.get("hircSharedConstants"), package_label
+        )
+        shared_constant_bodies += package_shared["bodies"]
+        for key in SHARED_CONSTANT_MAPS:
+            for name, value in package_shared[key].items():
+                if key == "chosen":
+                    # The framer's own constant, identical in every package. A sum
+                    # here would be nonsense, so it is asserted instead.
+                    if shared_constant_maps[key].setdefault(name, value) != value:
+                        raise ValueError(
+                            f"packages disagree about shared constant {name}"
+                        )
+                else:
+                    shared_constant_maps[key][name] = (
+                        shared_constant_maps[key].get(name, 0) + value
+                    )
+        package_head0a = _read_type0a_head_census(
+            package.get("hircType0AHead"), package_label
+        )
+        type0a_head_totals["bodies"] += package_head0a["bodies"]
+        type0a_head_totals["bodiesWhereTheRuleApplies"] += package_head0a["bodiesWhereTheRuleApplies"]
+        type0a_head_scores.update(package_head0a["namesTheSourceType"])
+        type0a_head_conditioned.update(package_head0a["namesTheSourceTypeWhereTheRuleApplies"])
+        type0a_head_words.update(package_head0a["headWordTargets"])
+        for key in (
+            "elementTotal", "elementLeadingByteNotZero", "elementPadNotZero",
+            "tailFloats", "tailFloatsInBand", "tailFloatsWhole",
+            "neighbourFloats", "neighbourFloatsWhole",
+            "fractionCandidates", "fractionsWithASmallDenominator",
+            "fractionControls", "fractionControlsWithASmallDenominator",
+            "decibelBodies", "decibelsInRange", "decibelsWhole", "decibelControlsInRange",
+            "wordFiveNonZero", "wordFiveInPackage",
+        ):
+            type0a_head_totals[key] += package_head0a[key]
+        type0a_element_values.update(package_head0a["elementValueCounts"])
+        type0a_tail_bytes.update(package_head0a["tailBytesByOutcome"])
+        type0a_word_five_values.update(package_head0a["wordFiveValues"])
 
         package_reference = _read_reference_census(
             package.get("hircReferenceCensus"), package_label
@@ -2166,10 +2310,37 @@ def aggregate_current_hirc_actions(
         "type14BodyFrames": body_lanes["0x0E"].publish(),
         "type22BodyFrames": body_lanes["0x16"].publish(),
         "type08HeadWords": {key: int(type08_totals[key]) for key in TYPE08_HEAD_SCALARS},
+        "type12TailHeadWords": {
+            **{key: int(type12_word_totals[key]) for key in TYPE08_TAIL_WORD_SCALARS},
+            "firstWordTargetTypeCounts": dict(sorted(type12_word_targets.items())),
+            "secondWordTargetTypeCounts": dict(sorted(type12_word_controls.items())),
+        },
+        "type08TailHeadWords": {
+            **{key: int(type08_word_totals[key]) for key in TYPE08_TAIL_WORD_SCALARS},
+            "firstWordTargetTypeCounts": dict(sorted(type08_word_targets.items())),
+            "secondWordTargetTypeCounts": dict(sorted(type08_word_controls.items())),
+        },
+        "type12TailRecords": {
+            **{key: int(type12_tail_totals[key]) for key in TYPE08_TAIL_SCALARS},
+            "recordCountCounts": dict(sorted(type12_tail_counts.items())),
+            "thirdFieldCounts": dict(sorted(type12_tail_codes.items())),
+        },
+        "type08TailRecords": {
+            **{key: int(type08_tail_totals[key]) for key in TYPE08_TAIL_SCALARS},
+            "recordCountCounts": dict(sorted(type08_tail_counts.items())),
+            "thirdFieldCounts": dict(sorted(type08_tail_codes.items())),
+        },
+        "type12BodyFrames": {
+            **{key: int(type12_body_totals[key]) for key in TYPE08_BODY_FIELDS},
+            "failureCategories": dict(sorted(type12_body_failures.items())),
+            "unsupportedCategories": dict(sorted(type12_body_unsupported.items())),
+            "selectorCounts": dict(sorted(type12_body_selectors.items())),
+        },
         "type08BodyFrames": {
             **{key: int(type08_body_totals[key]) for key in TYPE08_BODY_FIELDS},
             "failureCategories": dict(sorted(type08_body_failures.items())),
             "unsupportedCategories": dict(sorted(type08_body_unsupported.items())),
+            "selectorCounts": dict(sorted(type08_body_selectors.items())),
         },
         "type02MediaJoin": _summarise_media_join(media_ids, source_ids_by_plugin),
         "smallTypeBodies": {
@@ -2201,7 +2372,59 @@ def aggregate_current_hirc_actions(
             "recordCountCounts": dict(sorted(type11_record_counts.items())),
             "terminatorCounts": dict(sorted(type11_terminators.items())),
             "tailEntryCountCounts": dict(sorted(type11_tail_counts.items())),
+            "interpolationCounts": dict(sorted(type11_interps.items())),
             "firstTailEntryLeadingWordCounts": dict(sorted(type11_lead_words.items())),
+        },
+        "sharedFrameConstants": {
+            "bodies": int(shared_constant_bodies),
+            **{
+                key: dict(sorted(shared_constant_maps[key].items()))
+                for key in SHARED_CONSTANT_MAPS
+            },
+            "ranking": _rank_shared_constants({
+                "bodies": int(shared_constant_bodies),
+                **{
+                    key: dict(shared_constant_maps[key])
+                    for key in SHARED_CONSTANT_MAPS
+                },
+            }),
+        },
+        "type0AHead": {
+            "bodies": int(type0a_head_totals["bodies"]),
+            "bodiesWhereTheRuleApplies": int(type0a_head_totals["bodiesWhereTheRuleApplies"]),
+            "namesTheSourceType": dict(sorted(type0a_head_scores.items())),
+            "namesTheSourceTypeWhereTheRuleApplies": dict(sorted(type0a_head_conditioned.items())),
+            "headWordTargets": dict(sorted(type0a_head_words.items())),
+            "elementTotal": int(type0a_head_totals["elementTotal"]),
+            "elementLeadingByteNotZero": int(type0a_head_totals["elementLeadingByteNotZero"]),
+            "elementPadNotZero": int(type0a_head_totals["elementPadNotZero"]),
+            "elementValueCounts": dict(sorted(type0a_element_values.items())),
+            "tailBytesByOutcome": dict(sorted(type0a_tail_bytes.items())),
+            "tailFloats": int(type0a_head_totals["tailFloats"]),
+            "tailFloatsInBand": int(type0a_head_totals["tailFloatsInBand"]),
+            "tailFloatsWhole": int(type0a_head_totals["tailFloatsWhole"]),
+            "neighbourFloats": int(type0a_head_totals["neighbourFloats"]),
+            "neighbourFloatsWhole": int(type0a_head_totals["neighbourFloatsWhole"]),
+            "fractionCandidates": int(type0a_head_totals["fractionCandidates"]),
+            "fractionsWithASmallDenominator": int(type0a_head_totals["fractionsWithASmallDenominator"]),
+            "fractionControls": int(type0a_head_totals["fractionControls"]),
+            "fractionControlsWithASmallDenominator": int(type0a_head_totals["fractionControlsWithASmallDenominator"]),
+            "decibelBodies": int(type0a_head_totals["decibelBodies"]),
+            "decibelsInRange": int(type0a_head_totals["decibelsInRange"]),
+            "decibelsWhole": int(type0a_head_totals["decibelsWhole"]),
+            "decibelControlsInRange": int(type0a_head_totals["decibelControlsInRange"]),
+            "wordFiveNonZero": int(type0a_head_totals["wordFiveNonZero"]),
+            "wordFiveInPackage": int(type0a_head_totals["wordFiveInPackage"]),
+            "wordFiveValues": dict(sorted(type0a_word_five_values.items())),
+        },
+        "musicReferences": {
+            **{key: int(music_ref_totals[key]) for key in MUSIC_REFERENCE_SCALARS},
+            "referencesPerBody": dict(sorted(music_ref_per_body.items())),
+            "edgeCounts": dict(sorted(music_ref_edges.items())),
+            "distinctTargets": dict(sorted(music_ref_distinct.items())),
+            "targetsReachedTwice": dict(sorted(music_ref_twice.items())),
+            "targetPopulation": dict(sorted(music_ref_population.items())),
+            "edgeDistanceFromEnd": dict(sorted(music_ref_places.items())),
         },
         "musicHeadReferences": {
             **{key: int(music_head_totals[key]) for key in MUSIC_HEAD_SCALARS},
@@ -2209,6 +2432,8 @@ def aggregate_current_hirc_actions(
             "headShapeCounts": dict(sorted(music_head_shapes.items())),
             "offsetCounts": dict(sorted(music_head_offsets.items())),
             "discriminantCounts": dict(sorted(music_head_discriminants.items())),
+            "tailWordNamedByOffset": dict(sorted(music_tail_named.items())),
+            "tailWordTestedByOffset": dict(sorted(music_tail_tested.items())),
         },
         "type04U32VectorCandidates": {
             "count": type04_count,
@@ -2599,6 +2824,9 @@ def _read_reference_census(census: Any, label: str) -> dict[str, Any]:
     return metrics
 
 
+# Name hashes are sparse against the 32-bit range, so a rate this far above the
+# chance expectation is the evidence. One in a hundred would not be.
+MUSIC_TAIL_NAMED_MINIMUM_RATE = 0.05
 MUSIC_HEAD_SCALARS = (
     "bodies",
     "resolved",
@@ -2609,6 +2837,7 @@ MUSIC_HEAD_SCALARS = (
     # Bodies whose first byte is not 0. Their head is a different shape, so they are
     # outside the claim; the count is published rather than removed from the total.
     "unknownHeadShape",
+    "tailWordsTested", "tailWordsNamed", "bodiesTooShortForTailWords",
 )
 # Byte 2 chooses where the word sits. Only these values are observed, and an
 # unobserved one must be counted as unknown rather than assigned a branch.
@@ -2632,7 +2861,10 @@ def _read_music_head_census(census: Any, label: str) -> dict[str, Any]:
         if value < 0:
             raise ValueError(f"music head census has negative {key}: {label}")
         out[key] = value
-    for key in ("bodiesByType", "offsetCounts", "discriminantCounts", "headShapeCounts"):
+    for key in (
+        "bodiesByType", "offsetCounts", "discriminantCounts", "headShapeCounts",
+        "tailWordNamedByOffset", "tailWordTestedByOffset",
+    ):
         raw = census.get(key)
         if not isinstance(raw, dict):
             raise ValueError(f"music head census has invalid {key}: {label}")
@@ -2664,6 +2896,678 @@ def _read_music_head_census(census: Any, label: str) -> dict[str, Any]:
             f"offsets={out['offsetCounts']} expected={expected}"
         )
     return out
+
+
+MUSIC_REFERENCE_SCALARS = (
+    "bodies", "packagePopulation", "wordsOffered", "references", "bodiesWithNoReference",
+)
+# How far above the chance expectation the reference count must sit. Every word of
+# every body is offered, so the expectation is not negligible and has to be beaten
+# by a wide margin rather than merely exceeded.
+MUSIC_REFERENCE_CHANCE_MULTIPLE = 100
+
+
+def _read_music_reference_census(census: Any, label: str) -> dict[str, Any]:
+    """Validate one package's music reference classification."""
+    if census is None:
+        return {key: 0 for key in MUSIC_REFERENCE_SCALARS} | {
+            "referencesPerBody": {}, "edgeCounts": {}, "distinctTargets": {},
+            "targetsReachedTwice": {}, "targetPopulation": {},
+            "edgeDistanceFromEnd": {},
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"music reference census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in MUSIC_REFERENCE_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"music reference census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"music reference census has negative {key}: {label}")
+        out[key] = value
+    for key in (
+        "referencesPerBody", "edgeCounts", "distinctTargets", "targetsReachedTwice",
+        "targetPopulation", "edgeDistanceFromEnd",
+    ):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"music reference census has invalid {key}: {label}")
+        out[key] = {str(name): int(count) for name, count in raw.items()}
+    if sum(out["referencesPerBody"].values()) != out["bodies"]:
+        raise ValueError(f"music reference per-body histogram does not cover its bodies: {label}")
+    if sum(out["edgeCounts"].values()) > out["references"]:
+        raise ValueError(f"music reference edges exceed its references: {label}")
+    if out["references"] > out["wordsOffered"]:
+        raise ValueError(f"music reference census resolves more words than it offered: {label}")
+    return out
+
+
+# Numeric type 0x0A's head-length rule must beat every control by this much. The
+# rule is worth nothing unless the count is what places the reference.
+TYPE0A_HEAD_RULE_MINIMUM = 0.75
+# Conditioned on the discriminant the bar is higher, but not as high as the rule
+# itself measures. The denominator the reader can compute -- bodies whose byte 17 is
+# zero -- includes 255 that carry no type 0x0B reference at all, so there is nothing
+# there for the rule to find and nothing it got wrong. Measured against the bodies
+# that do carry one, the rule places it in 3,744 of 3,745; measured here it is
+# 3,744 of 4,000. The gate uses the number it can actually derive.
+TYPE0A_HEAD_CONDITIONED_MINIMUM = 0.90
+TYPE0A_HEAD_CONTROL_MAXIMUM = 0.50
+
+
+SHARED_CONSTANT_MAPS = (
+    "chosen", "bodiesExercising", "zeroTrailerByCandidate", "closesByCandidate",
+)
+
+
+def _read_shared_constant_census(census: Any, label: str) -> dict[str, Any]:
+    """Validate one package's shared-frame constant scoring."""
+    if census is None:
+        return {"bodies": 0} | {key: {} for key in SHARED_CONSTANT_MAPS}
+    if not isinstance(census, dict):
+        raise ValueError(f"shared constant census is not an object: {label}")
+    try:
+        bodies = int(census["bodies"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"shared constant census has invalid bodies: {label}") from exc
+    if bodies < 0:
+        raise ValueError(f"shared constant census has negative bodies: {label}")
+    out: dict[str, Any] = {"bodies": bodies}
+    for key in SHARED_CONSTANT_MAPS:
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"shared constant census has invalid {key}: {label}")
+        out[key] = {str(name): int(value) for name, value in raw.items()}
+    names = set(out["chosen"])
+    if bodies and set(out["bodiesExercising"]) != names:
+        raise ValueError(
+            f"shared constant census does not report an exercising set for every "
+            f"constant: {label}"
+        )
+    for name, count in out["bodiesExercising"].items():
+        if count > bodies:
+            raise ValueError(
+                f"shared constant {name} exercises more bodies than exist: {label}"
+            )
+    for key in ("zeroTrailerByCandidate", "closesByCandidate"):
+        for entry, value in out[key].items():
+            name = entry.rsplit("_", 1)[0]
+            if names and name not in names:
+                raise ValueError(
+                    f"shared constant census scores an unknown constant {entry}: {label}"
+                )
+            if value > out["bodiesExercising"].get(name, 0):
+                raise ValueError(
+                    f"shared constant {entry} scores above its exercising set: {label}"
+                )
+    return out
+
+
+def _rank_shared_constants(corpus: dict[str, Any]) -> dict[str, dict[str, int]]:
+    """Per constant: the chosen value's score, the best rival's, and the rival count.
+
+    The reduction happens here rather than per package because the winner can only
+    be decided on corpus totals. A value that wins in every package individually and
+    a value that wins overall are not the same statement, and the second is the one
+    worth making.
+    """
+    chosen = corpus.get("chosen") or {}
+    exercising = corpus.get("bodiesExercising") or {}
+    zero = corpus.get("zeroTrailerByCandidate") or {}
+    closes = corpus.get("closesByCandidate") or {}
+    ranked: dict[str, dict[str, int]] = {}
+    for name, value in chosen.items():
+        live = int(exercising.get(name) or 0)
+        mine = int(zero.get(f"{name}_{value}") or 0)
+        best_rival = 0
+        rivals_that_close = 0
+        for entry, score in zero.items():
+            candidate_name, _, candidate = entry.rpartition("_")
+            if candidate_name != name or candidate == str(value):
+                continue
+            best_rival = max(best_rival, int(score))
+            if live and int(closes.get(entry) or 0) == live:
+                rivals_that_close += 1
+        ranked[name] = {
+            "chosen": int(value),
+            "exercising": live,
+            "chosenZeroTrailer": mine,
+            "bestRivalZeroTrailer": best_rival,
+            "rivalsThatCloseEveryBody": rivals_that_close,
+        }
+    return ranked
+
+
+def every_shared_constant_beats_its_rivals(corpus: dict[str, Any]) -> bool:
+    """Each constant in the shared framer must out-score every alternative value.
+
+    The test is deliberately not "does the body close". Three of these four
+    constants have rivals that close every body that exercises them: several entry
+    widths do, three element widths do, and every trailer length does, because a
+    remainder that does not match simply routes the body to the tail block instead
+    of refusing it. A constant fitted on closure alone would be one of several, and
+    nothing would say which.
+
+    What separates them is the zero trailer -- landing exactly on a run of five
+    bytes that are all zero. That is a coincidence a wrong width does not produce,
+    and each chosen value wins it outright.
+
+    Each constant is scored only over the bodies that exercise it, because a body
+    declaring a count of zero frames identically under every candidate width and
+    would bury the margin under bodies that cannot tell the values apart.
+
+    So the gate demands a strict margin over the best rival, not a tie and not a
+    majority, and it demands the chosen value score at all: a constant that lands no
+    body on the trailer has not been tested by this, however many rivals it beats.
+    """
+    if int(corpus.get("bodies") or 0) <= 0:
+        return False
+    ranked = _rank_shared_constants(corpus)
+    if not ranked:
+        return False
+    for row in ranked.values():
+        if row["exercising"] <= 0 or row["chosenZeroTrailer"] <= 0:
+            return False
+        if row["chosenZeroTrailer"] <= row["bestRivalZeroTrailer"]:
+            return False
+    return True
+
+
+def the_shared_constants_are_not_settled_by_closure(corpus: dict[str, Any]) -> bool:
+    """At least one constant must have a rival that closes every exercising body.
+
+    This is the control for the gate above, and it is stated as a requirement so it
+    cannot quietly stop being true. If no rival ever closed every body then closure
+    would be the discriminator after all, the zero-trailer test would be doing no
+    work, and the reasoning recorded around these constants would be wrong. The
+    corpus says otherwise today; the gate makes that a fact under test rather than a
+    remark in a comment.
+    """
+    ranked = _rank_shared_constants(corpus)
+    if not ranked:
+        return False
+    return any(row["rivalsThatCloseEveryBody"] > 0 for row in ranked.values())
+
+
+def _read_type0a_head_census(census: Any, label: str) -> dict[str, Any]:
+    """Validate one package's type 0x0A head-rule census."""
+    if census is None:
+        return {
+            "bodies": 0, "bodiesWhereTheRuleApplies": 0, "elementTotal": 0,
+            "elementLeadingByteNotZero": 0, "elementPadNotZero": 0,
+            "namesTheSourceType": {}, "namesTheSourceTypeWhereTheRuleApplies": {},
+            "headWordTargets": {}, "elementValueCounts": {}, "tailBytesByOutcome": {},
+            "tailFloats": 0, "tailFloatsInBand": 0, "tailFloatsWhole": 0,
+            "neighbourFloats": 0, "neighbourFloatsWhole": 0,
+            "fractionCandidates": 0, "fractionsWithASmallDenominator": 0,
+            "fractionControls": 0, "fractionControlsWithASmallDenominator": 0,
+            "decibelBodies": 0, "decibelsInRange": 0, "decibelsWhole": 0,
+            "decibelControlsInRange": 0, "wordFiveNonZero": 0, "wordFiveInPackage": 0,
+            "wordFiveValues": {},
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"type 0x0A head census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in (
+        "bodies", "bodiesWhereTheRuleApplies", "elementTotal",
+        "elementLeadingByteNotZero", "elementPadNotZero",
+        "tailFloats", "tailFloatsInBand", "tailFloatsWhole",
+        "neighbourFloats", "neighbourFloatsWhole",
+        "fractionCandidates", "fractionsWithASmallDenominator",
+        "fractionControls", "fractionControlsWithASmallDenominator",
+        "decibelBodies", "decibelsInRange", "decibelsWhole", "decibelControlsInRange",
+        "wordFiveNonZero", "wordFiveInPackage",
+    ):
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x0A head census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x0A head census has negative {key}: {label}")
+        out[key] = value
+    if out["bodiesWhereTheRuleApplies"] > out["bodies"]:
+        raise ValueError(f"type 0x0A head census applies to more bodies than it has: {label}")
+    for key, ceiling in (
+        ("namesTheSourceType", "bodies"),
+        ("namesTheSourceTypeWhereTheRuleApplies", "bodiesWhereTheRuleApplies"),
+        ("headWordTargets", "bodiesWhereTheRuleApplies"),
+    ):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type 0x0A head census has invalid {key}: {label}")
+        scores = {str(name): int(count) for name, count in raw.items()}
+        for name, count in scores.items():
+            if count > out[ceiling]:
+                raise ValueError(
+                    f"type 0x0A head census scores {name} above its {ceiling}: {label}"
+                )
+        out[key] = scores
+    raw = census.get("wordFiveValues")
+    if not isinstance(raw, dict):
+        raise ValueError(f"type 0x0A head census has invalid wordFiveValues: {label}")
+    out["wordFiveValues"] = {str(name): int(count) for name, count in raw.items()}
+    if sum(out["wordFiveValues"].values()) != out["wordFiveNonZero"]:
+        raise ValueError(
+            f"type 0x0A word-five values do not cover its nonzero words: {label}"
+        )
+    raw = census.get("tailBytesByOutcome")
+    if not isinstance(raw, dict):
+        raise ValueError(f"type 0x0A head census has invalid tailBytesByOutcome: {label}")
+    out["tailBytesByOutcome"] = {str(name): int(count) for name, count in raw.items()}
+    raw = census.get("elementValueCounts")
+    if not isinstance(raw, dict):
+        raise ValueError(f"type 0x0A head census has invalid elementValueCounts: {label}")
+    out["elementValueCounts"] = {str(name): int(count) for name, count in raw.items()}
+    if sum(out["elementValueCounts"].values()) != out["elementTotal"]:
+        raise ValueError(
+            f"type 0x0A element values do not cover its elements: {label}"
+        )
+    return out
+
+
+# The float twenty bytes past the reference. Authored values, not computed ones:
+# nearly every one is a whole number.
+TYPE0A_TAIL_FLOAT_WHOLE_SHARE = 0.98
+TYPE0A_TAIL_FLOAT_BAND_SHARE = 0.85
+# Its neighbour twelve bytes earlier is the opposite kind of field. The gap between
+# the two whole-number rates is the evidence that the offset is the right one.
+TYPE0A_NEIGHBOUR_WHOLE_CEILING = 0.25
+
+
+def the_type0a_tail_float_is_an_authored_value(corpus: dict[str, Any]) -> bool:
+    """The float twenty bytes past the reference is whole, and sits in a narrow band.
+
+    Two independent properties, and the first is the strong one. A computed float --
+    a duration, a ratio, an accumulated offset -- lands on exact integers by
+    accident; this one is a whole number in 3,727 of 3,744 bodies. That is what an
+    authored parameter looks like.
+
+    The band is the weaker property and is checked at a lower bar, because the
+    outliers are real: 309 bodies sit outside it. Nothing here says what the value
+    measures, only that it is authored and bounded.
+
+    The third check is the neighbour twelve bytes earlier, and it is what says the
+    offset is right rather than merely productive. That field is the opposite kind:
+    whole in 202 of 3,744 against this one's 3,727. Two adjacent floats behaving
+    that differently is what a real field boundary looks like; if the reader were
+    slicing the same quantity at two arbitrary places they would behave alike.
+    """
+    total = int(corpus.get("tailFloats") or 0)
+    if total <= 0:
+        return False
+    whole = int(corpus.get("tailFloatsWhole") or 0)
+    band = int(corpus.get("tailFloatsInBand") or 0)
+    if whole > total or band > total:
+        return False
+    if not (
+        whole / total >= TYPE0A_TAIL_FLOAT_WHOLE_SHARE
+        and band / total >= TYPE0A_TAIL_FLOAT_BAND_SHARE
+    ):
+        return False
+    neighbours = int(corpus.get("neighbourFloats") or 0)
+    if neighbours <= 0:
+        return False
+    neighbour_whole = int(corpus.get("neighbourFloatsWhole") or 0)
+    if neighbour_whole > neighbours:
+        return False
+    return neighbour_whole / neighbours <= TYPE0A_NEIGHBOUR_WHOLE_CEILING
+
+
+# The word five bytes into the head never names an object its own package ships.
+TYPE0A_WORD_FIVE_MAXIMUM_VALUES = 16
+
+
+def the_type0a_word_five_points_outside_its_package(corpus: dict[str, Any]) -> bool:
+    """The word five bytes into the head names objects, but never local ones.
+
+    Where it is nonzero it takes a handful of values, and **not one of them** names
+    an object the package it sits in declares. That is not the absence of a
+    relationship: over the whole corpus every one of those values resolves, and to a
+    numeric type 0x08 object. It is the first cross-package reference these types
+    have shown.
+
+    What this checks is the local half, because that is what a per-package reader can
+    see: nonzero words exist, they are few, and none resolves locally. The
+    corpus-wide join that gives them meaning is recorded in the recovery notes, not
+    re-derived here.
+    """
+    nonzero = int(corpus.get("wordFiveNonZero") or 0)
+    if nonzero <= 0:
+        return False
+    if int(corpus.get("wordFiveInPackage") or 0):
+        return False
+    values = corpus.get("wordFiveValues") or {}
+    if not values or len(values) > TYPE0A_WORD_FIVE_MAXIMUM_VALUES:
+        return False
+    return sum(int(v) for v in values.values()) == nonzero
+
+
+# Inside the fixed head: a bounded whole-numbered float, against an overlapping
+# control window that must not behave the same way.
+TYPE0A_DECIBEL_SHARE = 0.30
+TYPE0A_DECIBEL_CONTROL_CEILING = 0.01
+
+
+def the_type0a_head_carries_a_bounded_whole_float(corpus: dict[str, Any]) -> bool:
+    """A float inside the fixed head is bounded and whole-numbered.
+
+    Its range runs from -96 to 98 and its values are whole: 98, 2, -10, -15, -6.
+    The floor is the same -96 the numeric type 0x08 and 0x12 middle block carries,
+    which is why the band is stated rather than fitted.
+
+    The control window overlaps this one by two bytes. That is deliberate: a nearby
+    window that shares most of its bytes is the hardest control to pass, and it
+    carries no nonzero whole value in range at all. Zero is not a constant is a
+    claim, it is a bare check, and it is judged on the same two properties as the
+    candidate -- a denormal near zero is trivially inside any band, so range alone
+    would accept everything.
+    """
+    bodies = int(corpus.get("decibelBodies") or 0)
+    if bodies <= 0:
+        return False
+    whole = int(corpus.get("decibelsWhole") or 0)
+    controls = int(corpus.get("decibelControlsInRange") or 0)
+    if whole > bodies or controls > bodies:
+        return False
+    return (
+        whole / bodies >= TYPE0A_DECIBEL_SHARE
+        and controls / bodies <= TYPE0A_DECIBEL_CONTROL_CEILING
+    )
+
+
+# Four bytes past the reference: a fixed-point fraction, tested against the same
+# field twelve bytes later as a control.
+TYPE0A_FRACTION_SHARE = 0.60
+TYPE0A_FRACTION_CONTROL_CEILING = 0.20
+
+
+def the_type0a_tail_word_is_a_fixed_point_fraction(corpus: dict[str, Any]) -> bool:
+    """The word four bytes past the reference is a fraction of one, not an integer.
+
+    Its nonzero values land on simple rationals -- 1/3, 2/3, 4/7, 10/11, 7/13 -- to
+    within a few parts in 10^10 of 2^32. A value that is merely "some 32-bit number"
+    does not do that: hitting a rational with a denominator under 64 to that
+    precision is not something arbitrary bytes manage.
+
+    The control is the same test applied to the word twelve bytes later, which is a
+    float. It has to fail by a wide margin, because a test that accepts any 32-bit
+    value would accept both.
+    """
+    candidates = int(corpus.get("fractionCandidates") or 0)
+    controls = int(corpus.get("fractionControls") or 0)
+    if candidates <= 0 or controls <= 0:
+        return False
+    hits = int(corpus.get("fractionsWithASmallDenominator") or 0)
+    control_hits = int(corpus.get("fractionControlsWithASmallDenominator") or 0)
+    if hits > candidates or control_hits > controls:
+        return False
+    return (
+        hits / candidates >= TYPE0A_FRACTION_SHARE
+        and control_hits / controls <= TYPE0A_FRACTION_CONTROL_CEILING
+    )
+
+
+# The reference is an optional four-byte field, so a body without it is exactly
+# four bytes shorter after the head.
+TYPE0A_REFERENCE_FIELD_BYTES = 4
+# 255 of the 263 bodies without a reference share one tail length; the rest come
+# from the flagged families where the head rule lands elsewhere.
+TYPE0A_REFERENCE_ABSENT_SHARE = 0.90
+
+
+def the_type0a_reference_is_an_optional_four_byte_field(corpus: dict[str, Any]) -> bool:
+    """Bodies without the reference are exactly four bytes shorter after the head.
+
+    The 255 bodies that carry no type 0x0B reference are not anomalies and this is
+    what shows it: measured from the end of the head they are all one length, and
+    that length is four less than the commonest length of the bodies that do carry
+    one. The reference is an optional field and its absence is the whole difference.
+
+    The dominant length has to carry nearly all of the bodies without a reference:
+    255 of the 263 sit at one value, and the eight that do not come from the flagged
+    families where the head rule lands elsewhere. Bodies *with* a reference are
+    allowed many lengths, because the tail beyond the reference is not claimed here.
+    """
+    outcomes = {
+        str(k): int(v) for k, v in (corpus.get("tailBytesByOutcome") or {}).items()
+    }
+    without = {k: v for k, v in outcomes.items() if k.startswith("withoutReference_")}
+    with_ref = {k: v for k, v in outcomes.items() if k.startswith("withReference_")}
+    if not without or not with_ref:
+        return False
+    dominant = max(without, key=lambda k: without[k])
+    if without[dominant] / sum(without.values()) < TYPE0A_REFERENCE_ABSENT_SHARE:
+        return False
+    absent = int(dominant.rsplit("_", 1)[1])
+    present = int(max(with_ref, key=lambda k: with_ref[k]).rsplit("_", 1)[1])
+    return present - absent == TYPE0A_REFERENCE_FIELD_BYTES
+
+
+# The five-byte head element: a zero byte, a 16-bit value and two zero pad bytes.
+# The value is a small enumeration, never an id or a length.
+TYPE0A_ELEMENT_VALUE_CEILING = 16
+
+
+def the_type0a_head_elements_are_padded_small_values(corpus: dict[str, Any]) -> bool:
+    """Each five-byte head element is a zero byte, a small value and two zero bytes.
+
+    This accounts for the whole `5k` part of the head, which the head-length rule
+    only measured the size of. Three things have to hold together, and each rules out
+    a different misreading: the leading byte is zero in every element, the two bytes
+    after the value are zero in every element, and the value itself stays inside a
+    small range rather than being an id or a length that happens to be short.
+
+    A single element breaking any of them means the element boundary is wrong, so
+    these are equalities rather than rates.
+    """
+    total = int(corpus.get("elementTotal") or 0)
+    if total <= 0:
+        return False
+    if int(corpus.get("elementLeadingByteNotZero") or 0):
+        return False
+    if int(corpus.get("elementPadNotZero") or 0):
+        return False
+    values = corpus.get("elementValueCounts") or {}
+    if not values:
+        return False
+    for name in values:
+        try:
+            value = int(str(name).split("_", 1)[1])
+        except (IndexError, ValueError):
+            return False
+        if value > TYPE0A_ELEMENT_VALUE_CEILING:
+            return False
+    return sum(int(v) for v in values.values()) == total
+
+
+# The only two numeric types the word inside numeric type 0x0A's head ever names.
+TYPE0A_HEAD_WORD_TARGETS = ("type0C", "type0D")
+# It resolves in 3,999 of 4,000 conditioned bodies. Near-total, not total.
+TYPE0A_HEAD_WORD_MINIMUM = 0.99
+
+
+def the_type0a_head_word_always_names_one_of_two_types(corpus: dict[str, Any]) -> bool:
+    """The word at offset 9 of a type 0x0A head names a 0x0C or 0x0D object.
+
+    This is a second reference, distinct from the one the head-length rule places.
+    Over the bodies the discriminant selects it resolves in 3,999 of 4,000 -- not
+    all of them, and the claim is written to say so rather than round up.
+
+    What is exact is the target set: every word that resolves names one of exactly
+    two numeric types. A third would be a different and wider finding, so it fails
+    here rather than being absorbed.
+    """
+    applies = int(corpus.get("bodiesWhereTheRuleApplies") or 0)
+    if applies <= 0:
+        return False
+    targets = {str(k): int(v) for k, v in (corpus.get("headWordTargets") or {}).items()}
+    if not targets:
+        return False
+    if set(targets) - set(TYPE0A_HEAD_WORD_TARGETS) - {"nothing"}:
+        return False
+    resolved = sum(v for k, v in targets.items() if k != "nothing")
+    if resolved <= 0 or sum(targets.values()) != applies:
+        return False
+    return resolved / applies >= TYPE0A_HEAD_WORD_MINIMUM
+
+
+def the_type0a_head_rule_beats_its_controls(corpus: dict[str, Any]) -> bool:
+    """Numeric type 0x0A's head is a fixed part plus a counted run of five-byte elements.
+
+    The rule places the reference that follows the head, so it can be tested by
+    asking what sits there. On its own that proves little: a formula that lands on a
+    reference nine times in ten might be finding a reference that is simply always
+    nearby.
+
+    Three controls settle it. A fixed offset that ignores the count asks whether the
+    count matters at all. The two neighbouring positions ask whether the rule names
+    the place or merely its neighbourhood. The rule must clear a high bar and every
+    control must fall well below it.
+    """
+    bodies = int(corpus.get("bodies") or 0)
+    if bodies <= 0:
+        return False
+    scores = corpus.get("namesTheSourceType") or {}
+    predicted = int(scores.get("predicted") or 0) / bodies
+    if predicted < TYPE0A_HEAD_RULE_MINIMUM:
+        return False
+    for control in ("fixedOffset", "predictedPlusFour", "predictedMinusFour"):
+        if int(scores.get(control) or 0) / bodies > TYPE0A_HEAD_CONTROL_MAXIMUM:
+            return False
+    # Byte 17 says whether the rule applies at all, and conditioning on it is what
+    # separates "the rule is wrong here" from "there was nothing here to find".
+    applies = int(corpus.get("bodiesWhereTheRuleApplies") or 0)
+    if applies <= 0:
+        return False
+    conditioned = corpus.get("namesTheSourceTypeWhereTheRuleApplies") or {}
+    hit = int(conditioned.get("predicted") or 0)
+    return hit / applies >= TYPE0A_HEAD_CONDITIONED_MINIMUM
+
+
+# The one music edge whose targets are partitioned rather than merely reached.
+MUSIC_PARTITIONING_EDGE = "type0A_to_type0B"
+# How concentrated that edge's position must be. These types have no comparable
+# coordinate from the front, so a distance from the end is the only anchor a future
+# framing attempt can use -- and it is only an anchor if it is concentrated.
+MUSIC_EDGE_POSITION_SHARE = 0.75
+MUSIC_EDGE_POSITION_PLACES = 4
+
+
+def the_music_partition_edge_sits_at_a_few_places(corpus: dict[str, Any]) -> bool:
+    """The one-to-one music reference sits at a handful of distances from the end.
+
+    The music heads are variable, so a distance from the front is not comparable
+    across bodies and an offset measured there says nothing. Measured from the end,
+    this edge concentrates: a few distances account for the large majority.
+
+    The check is that a small number of places carry most of the references. A
+    reference scattered over dozens of distances would still be a reference and
+    would still pass every other music gate -- it just would not be an anchor, and
+    an anchor is what this measurement exists to provide.
+    """
+    places = {
+        name.split("_at", 1)[1]: int(count)
+        for name, count in (corpus.get("edgeDistanceFromEnd") or {}).items()
+        if name.startswith(MUSIC_PARTITIONING_EDGE + "_at")
+    }
+    total = sum(places.values())
+    if total <= 0:
+        return False
+    top = sorted(places.values(), reverse=True)[:MUSIC_EDGE_POSITION_PLACES]
+    return sum(top) / total >= MUSIC_EDGE_POSITION_SHARE
+
+
+def the_music_partition_edge_is_one_to_one(corpus: dict[str, Any]) -> bool:
+    """Every numeric type 0x0B object is reached by exactly one type 0x0A reference.
+
+    An edge total that equals a population is not evidence of a one-to-one relation;
+    this project has been burned by exactly that coincidence. What settles it is the
+    target side: the edge must reach as many distinct objects as the type declares,
+    reach none of them twice, and leave none of them unreached.
+
+    The neighbouring edges show why all three are needed. 0x0C -> 0x0D also reaches
+    every object of its target type, but reaches 1,628 of them more than once.
+    0x0D -> 0x0C has an edge total of exactly 2,431 -- the number of 0x0D bodies,
+    which looks like a bijection -- and reaches only 578 of 742 objects, 382 of them
+    repeatedly.
+    """
+    edges = corpus.get("edgeCounts") or {}
+    distinct = corpus.get("distinctTargets") or {}
+    twice = corpus.get("targetsReachedTwice") or {}
+    population = corpus.get("targetPopulation") or {}
+    total = int(edges.get(MUSIC_PARTITIONING_EDGE) or 0)
+    reached = int(distinct.get(MUSIC_PARTITIONING_EDGE) or 0)
+    declared = int(population.get(MUSIC_PARTITIONING_EDGE) or 0)
+    if total <= 0 or declared <= 0:
+        return False
+    if int(twice.get(MUSIC_PARTITIONING_EDGE) or 0):
+        return False
+    return reached == declared == total
+
+
+def music_bodies_all_carry_references(corpus: dict[str, Any]) -> bool:
+    """Every music body names at least one object the package ships.
+
+    These types are not framed, so a reference cannot be read from a known offset.
+    Every word of every body is offered instead, and the id space decides: a package
+    declares on the order of a thousand objects against the 32-bit range, so the
+    chance resolutions expected across the whole corpus are a couple of words. The
+    gate demands the observed count beat that by a wide margin, not merely exceed it,
+    because offering every word is a generous test and has to be paid for.
+
+    It also demands that **no** body come up empty. A total can be carried by a few
+    reference-rich bodies; "every one of them" cannot, and it is the stronger claim.
+    """
+    bodies = int(corpus.get("bodies") or 0)
+    references = int(corpus.get("references") or 0)
+    offered = int(corpus.get("wordsOffered") or 0)
+    population = int(corpus.get("packagePopulation") or 0)
+    if bodies <= 0 or references <= 0 or offered <= 0 or population <= 0:
+        return False
+    if int(corpus.get("bodiesWithNoReference") or 0):
+        return False
+    if not (corpus.get("edgeCounts") or {}):
+        return False
+    expected = offered * population / 2 ** 32
+    return references >= expected * MUSIC_REFERENCE_CHANCE_MULTIPLE
+
+
+def music_tail_words_are_named(corpus: dict[str, Any]) -> bool:
+    """Two words at fixed distances from the end of a music body carry name hashes.
+
+    These types' heads are variable -- across the corpus only three byte positions
+    from the front take a single value -- so nothing can be located from there. The
+    end is different, and two 32-bit words sit at fixed distances from it.
+
+    The evidence is the arithmetic, not the rate by itself: under fifty thousand
+    name hashes against the 32-bit range means chance matches over the whole corpus
+    are expected far below one, so hundreds of matches cannot be coincidence. The
+    gate still asks for a rate well clear of zero, because a handful of matches in a
+    corpus this size would be the one thing chance could produce.
+
+    Nothing here claims what the names mean, or that an unnamed word is malformed:
+    most of these words are not names, and that is reported rather than treated as a
+    failure.
+
+    The check only applies when names were supplied. This corpus gate's reader run
+    does not load the metadata literals -- the named-reach tool does -- so a census
+    with nothing tested means the question was never asked, which is not the same as
+    the answer being no. Returning true there would be wrong too, so the caller is
+    told to skip rather than judge.
+    """
+    tested = int(corpus.get("tailWordsTested") or 0)
+    if tested <= 0:
+        return True
+    named = int(corpus.get("tailWordsNamed") or 0)
+    if named <= 0:
+        return False
+    by_offset = corpus.get("tailWordNamedByOffset") or {}
+    if not by_offset:
+        return False
+    if sum(int(value) for value in by_offset.values()) != named:
+        return False
+    return named / tested >= MUSIC_TAIL_NAMED_MINIMUM_RATE
 
 
 def music_head_references_are_closed(corpus: dict[str, Any]) -> bool:
@@ -3063,7 +3967,13 @@ TYPE11_SOURCE_SCALARS = (
     "tailCountOutOfRange", "tailEntriesDeclared", "tailEntriesEchoed",
     "tailEchoesMatchTheCount", "tailEchoesExceedTheCount",
     "firstTailEntryNamesADeclaredSource", "firstTailEntryTooShort",
+    "entriesInspected", "entriesWithNoRecords", "entriesWhoseRecordsFit",
+    "entriesWhoseCountIsNotUsable", "entriesWhoseRecordsRunPastTheEnd",
+    "curveRecords",
 )
+# The interpolation code inside a twelve-byte curve record. Read at a wrong offset
+# it would be arbitrary 32-bit noise, so the ceiling is the discriminator.
+TYPE11_INTERPOLATION_CEILING = 32
 # Every numeric type 0x0B body observed ends with this 32-bit word.
 TYPE11_TERMINATOR_KEY = "end_00000064"
 
@@ -3071,8 +3981,190 @@ TYPE11_TERMINATOR_KEY = "end_00000064"
 TYPE08_BODY_FIELDS = ("count", "exact", "unsupported", "failed", "ambiguous", "bodyBytes")
 
 
-def _read_type08_body_frame(container: Any, label: str) -> dict[str, Any]:
-    """Validate one package's or bank's type 0x08 whole-body census.
+TYPE08_TAIL_SCALARS = (
+    "bodies", "notWalkable", "framedByTheReader", "tails", "noZeroWordAtTheEnd",
+    "noCountBeforeTheRecords", "countIsAmbiguous", "tailsWithAUniqueCount",
+    "records", "unexplainedHeadBytes", "headsOfTheObservedWidth",
+    "headIsNotTheObservedWidth",
+)
+# The third field of each tail record. Arbitrary bytes read at a wrong offset would
+# spread over the 32-bit range; these do not, which is what makes the alignment
+# evidence rather than arithmetic.
+TYPE08_TAIL_CODE_CEILING = 64
+
+
+TYPE08_TAIL_WORD_SCALARS = (
+    "heads", "packagePopulation", "firstWordSameBank", "firstWordOtherBankInPackage",
+    "firstWordOutsidePackage", "secondWordResolves",
+)
+
+
+def _read_type08_tail_word_census(census: Any, label: str) -> dict[str, Any]:
+    """Validate one package's classification of the type 0x08 tail-head words."""
+    if census is None:
+        return {key: 0 for key in TYPE08_TAIL_WORD_SCALARS} | {
+            "firstWordTargetTypeCounts": {}, "secondWordTargetTypeCounts": {},
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"type 0x08 tail-word census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in TYPE08_TAIL_WORD_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type 0x08 tail-word census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type 0x08 tail-word census has negative {key}: {label}")
+        out[key] = value
+    for key in ("firstWordTargetTypeCounts", "secondWordTargetTypeCounts"):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type 0x08 tail-word census has invalid {key}: {label}")
+        out[key] = {str(name): int(count) for name, count in raw.items()}
+    outcomes = (
+        out["firstWordSameBank"]
+        + out["firstWordOtherBankInPackage"]
+        + out["firstWordOutsidePackage"]
+    )
+    if outcomes != out["heads"]:
+        raise ValueError(f"type 0x08 tail-word outcomes do not partition its heads: {label}")
+    resolved = out["firstWordSameBank"] + out["firstWordOtherBankInPackage"]
+    if sum(out["firstWordTargetTypeCounts"].values()) != resolved:
+        raise ValueError(
+            f"type 0x08 tail-word target types do not cover its resolved words: {label}"
+        )
+    if sum(out["secondWordTargetTypeCounts"].values()) != out["secondWordResolves"]:
+        raise ValueError(
+            f"type 0x08 tail-word control types do not cover its resolved controls: {label}"
+        )
+    return out
+
+
+def type08_tail_head_names_one_object_type(corpus: dict[str, Any]) -> bool:
+    """The first word of the type 0x08 tail head is a reference, and it names one type.
+
+    Object ids are sparse against the 32-bit range, so the arithmetic is what decides
+    this rather than the hit rate. With a package population on the order of a
+    thousand and a few dozen draws, chance hits across the whole corpus are expected
+    far below one; any resolution at all is therefore informative, and several are
+    decisive.
+
+    The control is what makes it a test rather than a story. A second word sits at a
+    fixed offset in the same head and is classified the same way. If the first word's
+    hits came from reading a 32-bit value at an arbitrary place, the control would
+    resolve at the same rate -- so the control resolving even once fails this.
+
+    Resolved targets must also share a single numeric type. A reference that named
+    several would still be a reference, but the claim here is the narrower one, and
+    it must fail rather than be quietly widened.
+    """
+    heads = int(corpus.get("heads") or 0)
+    if heads <= 0:
+        return False
+    resolved = (
+        int(corpus.get("firstWordSameBank") or 0)
+        + int(corpus.get("firstWordOtherBankInPackage") or 0)
+    )
+    if resolved <= 0:
+        return False
+    if int(corpus.get("secondWordResolves") or 0):
+        return False
+    targets = corpus.get("firstWordTargetTypeCounts") or {}
+    if len(targets) != 1:
+        return False
+    return sum(int(value) for value in targets.values()) == resolved
+
+
+def _read_tail_census(census: Any, label: str, type_label: str) -> dict[str, Any]:
+    """Validate one package's or bank's tail census for a type that carries one."""
+    if census is None:
+        return {key: 0 for key in TYPE08_TAIL_SCALARS} | {
+            "recordCountCounts": {}, "thirdFieldCounts": {},
+        }
+    if not isinstance(census, dict):
+        raise ValueError(f"type {type_label} tail census is not an object: {label}")
+    out: dict[str, Any] = {}
+    for key in TYPE08_TAIL_SCALARS:
+        try:
+            value = int(census[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"type {type_label} tail census has invalid {key}: {label}") from exc
+        if value < 0:
+            raise ValueError(f"type {type_label} tail census has negative {key}: {label}")
+        out[key] = value
+    for key in ("recordCountCounts", "thirdFieldCounts"):
+        raw = census.get(key)
+        if not isinstance(raw, dict):
+            raise ValueError(f"type {type_label} tail census has invalid {key}: {label}")
+        out[key] = {str(name): int(count) for name, count in raw.items()}
+    if out["notWalkable"] + out["framedByTheReader"] + out["tails"] != out["bodies"]:
+        raise ValueError(f"type {type_label} tail outcomes do not partition its bodies: {label}")
+    resolved = (
+        out["noZeroWordAtTheEnd"]
+        + out["noCountBeforeTheRecords"]
+        + out["countIsAmbiguous"]
+        + out["tailsWithAUniqueCount"]
+    )
+    if resolved != out["tails"]:
+        raise ValueError(f"type {type_label} tail outcomes do not partition its tails: {label}")
+    if sum(out["recordCountCounts"].values()) != out["tailsWithAUniqueCount"]:
+        raise ValueError(f"type {type_label} tail record counts do not cover its tails: {label}")
+    if sum(out["thirdFieldCounts"].values()) != out["records"]:
+        raise ValueError(f"type {type_label} tail codes do not cover its records: {label}")
+    return out
+
+
+def _read_type08_tail_census(census: Any, label: str) -> dict[str, Any]:
+    return _read_tail_census(census, label, "0x08")
+
+
+def _read_type12_tail_census(census: Any, label: str) -> dict[str, Any]:
+    return _read_tail_census(census, label, "0x12")
+
+
+def tail_records_are_located_by_a_unique_count(corpus: dict[str, Any]) -> bool:
+    """The fenced type 0x08 tails end in a counted run this reader can locate.
+
+    The tail is **not** framed: the bytes before its trailing run are unexplained,
+    and the run is found by anchoring on the end rather than by walking forward.
+    So the check has to rule out the ways that anchoring could be meaningless.
+
+    An ambiguous count is one of them -- two lengths that both fit make the
+    alignment arithmetic, not evidence -- so any ambiguity fails. A tail with no
+    count at all is another, and those are permitted but counted, because a tail the
+    reader cannot locate is a real outcome and hiding it would overstate the reach.
+
+    The discriminator is each record's third field. Read at a wrong offset it would
+    be arbitrary 32-bit noise; here it must stay inside a small range, and that is
+    what separates this from a coincidence of lengths.
+    """
+    tails = int(corpus.get("tails") or 0)
+    located = int(corpus.get("tailsWithAUniqueCount") or 0)
+    if tails <= 0 or located <= 0:
+        return False
+    if int(corpus.get("countIsAmbiguous") or 0):
+        return False
+    codes = corpus.get("thirdFieldCounts") or {}
+    if not codes:
+        return False
+    for name in codes:
+        try:
+            code = int(str(name).split("_", 1)[1])
+        except (IndexError, ValueError):
+            return False
+        if code > TYPE08_TAIL_CODE_CEILING:
+            return False
+    return sum(int(value) for value in codes.values()) == int(corpus.get("records") or 0)
+
+
+# Numeric types 0x08 and 0x12 carry the same tail, so they share one check. Both
+# names are kept so a failure message can say which type broke.
+type08_tail_records_are_located_by_a_unique_count = tail_records_are_located_by_a_unique_count
+type12_tail_records_are_located_by_a_unique_count = tail_records_are_located_by_a_unique_count
+
+
+def _read_partial_body_frame(container: Any, label: str, type_label: str) -> dict[str, Any]:
+    """Validate one package's or bank's whole-body census for a type that does not close.
 
     Type 0x08 does not close, so it is read here rather than through the lane
     framework: a lane that cannot account for every body has no business
@@ -3086,32 +4178,40 @@ def _read_type08_body_frame(container: Any, label: str) -> dict[str, Any]:
             "failureCategories": {}, "unsupportedCategories": {},
         }
     if not isinstance(container, dict):
-        raise ValueError(f"type 0x08 body census is not an object: {label}")
+        raise ValueError(f"type {type_label} body census is not an object: {label}")
     out: dict[str, Any] = {}
     for key in TYPE08_BODY_FIELDS:
         try:
             value = int(container[key])
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"type 0x08 body census has invalid {key}: {label}") from exc
+            raise ValueError(f"type {type_label} body census has invalid {key}: {label}") from exc
         if value < 0:
-            raise ValueError(f"type 0x08 body census has negative {key}: {label}")
+            raise ValueError(f"type {type_label} body census has negative {key}: {label}")
         out[key] = value
     for key in ("failureCategories", "unsupportedCategories"):
         raw = container.get(key)
         if not isinstance(raw, dict):
-            raise ValueError(f"type 0x08 body census has invalid {key}: {label}")
+            raise ValueError(f"type {type_label} body census has invalid {key}: {label}")
         out[key] = {str(name): int(count) for name, count in raw.items()}
     if out["exact"] + out["unsupported"] + out["failed"] + out["ambiguous"] != out["count"]:
-        raise ValueError(f"type 0x08 body outcomes do not partition its bodies: {label}")
+        raise ValueError(f"type {type_label} body outcomes do not partition its bodies: {label}")
     if sum(out["failureCategories"].values()) != out["failed"]:
-        raise ValueError(f"type 0x08 failure categories do not cover its failures: {label}")
+        raise ValueError(f"type {type_label} failure categories do not cover its failures: {label}")
     if sum(out["unsupportedCategories"].values()) != out["unsupported"]:
-        raise ValueError(f"type 0x08 unsupported categories do not cover its bodies: {label}")
+        raise ValueError(f"type {type_label} unsupported categories do not cover its bodies: {label}")
     return out
 
 
-def type08_bodies_are_exact_or_named(corpus: dict[str, Any]) -> bool:
-    """Every type 0x08 body is either framed byte-exact or fenced by a named reason.
+def _read_type08_body_frame(container: Any, label: str) -> dict[str, Any]:
+    return _read_partial_body_frame(container, label, "0x08")
+
+
+def _read_type12_body_frame(container: Any, label: str) -> dict[str, Any]:
+    return _read_partial_body_frame(container, label, "0x12")
+
+
+def partial_bodies_are_exact_or_named(corpus: dict[str, Any]) -> bool:
+    """Every body is either framed byte-exact or fenced by a named reason.
 
     This type is **not** closed and the gate does not pretend otherwise. What it
     forbids is the thing that would make a partial framing untrustworthy: a body
@@ -3140,13 +4240,19 @@ def type08_bodies_are_exact_or_named(corpus: dict[str, Any]) -> bool:
     )
 
 
+# Numeric types 0x08 and 0x12 share one layout, so they share one gate. Keeping the
+# two names is deliberate: a failure message has to say which type broke.
+type08_bodies_are_exact_or_named = partial_bodies_are_exact_or_named
+type12_bodies_are_exact_or_named = partial_bodies_are_exact_or_named
+
+
 def _read_type11_source_census(census: Any, label: str) -> dict[str, Any]:
     """Validate one package's or bank's type 0x0B source-record census."""
     if census is None:
         return {key: 0 for key in TYPE11_SOURCE_SCALARS} | {
             "pluginIdCounts": {}, "streamTypeCounts": {}, "recordCountCounts": {},
             "terminatorCounts": {}, "tailEntryCountCounts": {},
-            "firstTailEntryLeadingWordCounts": {},
+            "firstTailEntryLeadingWordCounts": {}, "interpolationCounts": {},
         }
     if not isinstance(census, dict):
         raise ValueError(f"type 0x0B source census is not an object: {label}")
@@ -3161,7 +4267,7 @@ def _read_type11_source_census(census: Any, label: str) -> dict[str, Any]:
         out[key] = value
     for key in (
         "pluginIdCounts", "streamTypeCounts", "recordCountCounts", "terminatorCounts",
-        "tailEntryCountCounts", "firstTailEntryLeadingWordCounts",
+        "tailEntryCountCounts", "firstTailEntryLeadingWordCounts", "interpolationCounts",
     ):
         raw = census.get(key)
         if not isinstance(raw, dict):
@@ -3192,6 +4298,34 @@ def _read_type11_source_census(census: Any, label: str) -> dict[str, Any]:
     if out["bodiesWithRecords"] > out["bodies"]:
         raise ValueError(f"type 0x0B bodies with records exceed the body total: {label}")
     return out
+
+
+def type11_entries_carry_the_shared_curve_record(corpus: dict[str, Any]) -> bool:
+    """The records inside a type 0x0B tail entry are the shared twelve-byte record.
+
+    The entry is not framed, so the records are read at a fixed offset inside it and
+    nothing here claims the bytes around them. What makes that offset evidence
+    rather than arithmetic is the third field: read at a wrong place it would be
+    arbitrary 32-bit noise, so every one of them must stay inside a small range.
+
+    Entries the reader cannot use -- an unusable count, records that would run past
+    the end -- are permitted and counted, because an entry it cannot read is a real
+    outcome; what is not permitted is reading one and getting a wild code out.
+    """
+    fit = int(corpus.get("entriesWhoseRecordsFit") or 0)
+    if fit <= 0 or int(corpus.get("curveRecords") or 0) <= 0:
+        return False
+    codes = corpus.get("interpolationCounts") or {}
+    if not codes:
+        return False
+    for name in codes:
+        try:
+            code = int(str(name).split("_", 1)[1])
+        except (IndexError, ValueError):
+            return False
+        if code > TYPE11_INTERPOLATION_CEILING:
+            return False
+    return sum(int(value) for value in codes.values()) == int(corpus.get("curveRecords") or 0)
 
 
 def type11_bodies_share_one_terminator(corpus: dict[str, Any]) -> bool:
@@ -3530,6 +4664,183 @@ def _reference_graph_markdown(report: dict[str, Any]) -> str:
             "is not in the reader.",
         ]
 
+    tail08 = report["corpus"].get("type08TailRecords") or {}
+    tail08_lines = []
+    if tail08.get("tails"):
+        tail08_lines = [
+            "",
+            "### What the fence hides: a counted run of twelve-byte records",
+            "",
+            f"- Bodies the reader can walk to the entry run: "
+            f"{tail08['framedByTheReader'] + tail08['tails']:,} of {tail08['bodies']:,}; "
+            f"framed outright: {tail08['framedByTheReader']:,}; carrying a tail: "
+            f"{tail08['tails']:,}.",
+            f"- Tails whose trailing run is located by a unique count: "
+            f"{tail08['tailsWithAUniqueCount']:,}; ambiguous: {tail08['countIsAmbiguous']:,}; "
+            f"no count before the records: {tail08['noCountBeforeTheRecords']:,}; no zero "
+            f"word at the end: {tail08['noZeroWordAtTheEnd']:,}.",
+            f"- Records: {tail08['records']:,}. Bytes before them that remain unexplained: "
+            f"{tail08['unexplainedHeadBytes']:,}.",
+            "",
+            "| Records in a tail | Tails |",
+            "|---|---:|",
+            *(
+                f"| `{name}` | {count:,} |"
+                for name, count in sorted((tail08.get("recordCountCounts") or {}).items())
+            ),
+            "",
+            "| Third field | Records |",
+            "|---|---:|",
+            *(
+                f"| `{name}` | {count:,} |"
+                for name, count in sorted(
+                    (tail08.get("thirdFieldCounts") or {}).items(),
+                    key=lambda pair: int(pair[0].split("_", 1)[1]),
+                )
+            ),
+            "",
+            "This is a census, **not** a frame. The bytes before the run are not "
+            "understood, so the run is anchored from the *end*: the tail must finish "
+            "with a zero 16-bit word, and the count must sit exactly two bytes before a "
+            "run of that many twelve-byte records. A tail where two lengths both fit is "
+            "reported ambiguous and not counted -- and none is.",
+            "",
+            "What makes the alignment evidence rather than arithmetic is the third "
+            "field. Read at a wrong offset it would be arbitrary 32-bit noise; across "
+            "every record in the corpus it takes **five** values. The first field of each "
+            "record reads as a float and takes values like -180, -96, -75, -48, -36, -18, "
+            "0, 0.6, 1, 75, 100 and 180 -- which is noted as an observation, not a claim: "
+            "nothing here establishes what any of them measures.",
+        ]
+
+    body12 = report["corpus"].get("type12BodyFrames") or {}
+    body12_lines = []
+    if body12.get("count"):
+        selectors12 = body12.get("selectorCounts") or {}
+        body12_lines = [
+            "",
+            "## Numeric type `0x12` shares numeric type `0x08`'s layout",
+            "",
+            f"- Bodies: {body12['count']:,}; framed to the declared body end: "
+            f"{body12['exact']:,}; fenced: {body12['failed'] + body12['unsupported']:,}; "
+            f"ambiguous: {body12['ambiguous']:,}.",
+            "",
+            "| Fence reason | Bodies |",
+            "|---|---:|",
+            *(
+                f"| `{name}` | {count:,} |"
+                for name, count in sorted((body12.get("failureCategories") or {}).items())
+            ),
+            "",
+            "| Second-list key | Bodies |",
+            "|---|---:|",
+            *(
+                f"| `{name}` | {count:,} |"
+                for name, count in sorted(selectors12.items())
+                if name.startswith("secondListKey_")
+            ),
+            "",
+            "The layout is the one numeric type `0x08` already uses: a reference, a "
+            "counted key/value block, a second list whose key sizes its value, nine "
+            "bytes, a zero word, the counted run of six-byte entries with its extra "
+            "byte when the count is nonzero, and five zero bytes. Two of the three "
+            "second-list keys and their widths -- `0x15` at 11 bytes and `0x1D` at 27 "
+            "-- are `0x08`'s.",
+            "",
+            "The widths were **solved for, not guessed**. Everything after the second "
+            "list is deterministic, so each body was asked which value width makes it "
+            "close exactly; every body that closes has exactly one such width, and the "
+            "width is a function of the key alone.",
+            "",
+            "One thing this does **not** decide. Key `0x0A` always arrives with a list "
+            "count of 3 and a twelve-byte value, and the other two keys always arrive "
+            "with a count of 1. So \"the key decides the width\" and \"the count "
+            "multiplies a per-key width of 4, 11 and 27\" predict the same bytes "
+            "everywhere in this corpus. The simpler rule is implemented; the ambiguity "
+            "is recorded rather than resolved, and a body with a count this corpus has "
+            "not shown would separate them.",
+            "",
+            "Numeric type `0x08` reaches into this type: the first word of `0x08`'s "
+            "tail head names a `0x12` object. The two were framed together for that "
+            "reason, and neither would have closed as fast alone.",
+        ]
+
+    tail12 = report["corpus"].get("type12TailRecords") or {}
+    words12 = report["corpus"].get("type12TailHeadWords") or {}
+    tail12_lines = []
+    if tail12.get("tails"):
+        tail12_lines = [
+            "",
+            "### The fenced `0x12` bodies carry `0x08`'s tail",
+            "",
+            f"- Tails: {tail12['tails']:,}; located by a unique count: "
+            f"{tail12['tailsWithAUniqueCount']:,}; ambiguous: {tail12['countIsAmbiguous']:,}; "
+            f"no count before the records: {tail12['noCountBeforeTheRecords']:,}; no zero "
+            f"word at the end: {tail12['noZeroWordAtTheEnd']:,}.",
+            f"- Records: {tail12['records']:,}; third field values: "
+            f"{sorted((tail12.get('thirdFieldCounts') or {}))}.",
+            f"- So of {tail12['bodies']:,} bodies, {tail12['framedByTheReader']:,} frame "
+            f"outright and {tail12['tailsWithAUniqueCount']:,} more have their trailing "
+            f"run located; {tail12['noZeroWordAtTheEnd']:,} are read no further than the "
+            f"entry run.",
+            "",
+            "The same code censuses both types' tails, because the tail is the same "
+            "structure. It is still a census and not a frame: the bytes before the run "
+            "are unexplained in both.",
+            "",
+            "**And here the two types part.** Classified exactly as `0x08`'s are, "
+            f"`0x12`'s {words12.get('heads', 0):,} tail-head words resolve to a package "
+            f"object {int(words12.get('firstWordSameBank') or 0) + int(words12.get('firstWordOtherBankInPackage') or 0):,} "
+            f"times -- and so does the control. Sharing a layout does not make the same "
+            "field mean the same thing, and nothing here says `0x12`'s tail head "
+            "references anything.",
+        ]
+
+    words08 = report["corpus"].get("type08TailHeadWords") or {}
+    words08_lines = []
+    if words08.get("heads"):
+        resolved = (
+            int(words08["firstWordSameBank"]) + int(words08["firstWordOtherBankInPackage"])
+        )
+        population = int(words08["packagePopulation"])
+        expected = int(words08["heads"]) * population / 2 ** 32
+        words08_lines = [
+            "",
+            "### The tail head's first word is a reference to a numeric type `0x12` object",
+            "",
+            f"- Heads of the width where the words can be tested: {words08['heads']:,} "
+            f"(the other {report['corpus']['type08TailRecords']['headIsNotTheObservedWidth']:,} "
+            f"located tails are wider and are not read).",
+            f"- First word: resolves in the same bank {words08['firstWordSameBank']:,}, in "
+            f"another bank of the package {words08['firstWordOtherBankInPackage']:,}, "
+            f"outside the package {words08['firstWordOutsidePackage']:,}.",
+            f"- **Control**: the second word of the same head, classified identically, "
+            f"resolves {words08['secondWordResolves']:,} times.",
+            f"- Object population to hit: {population:,}, so chance resolutions across all "
+            f"{words08['heads']:,} draws are expected at **{expected:.6f}**. Observed: "
+            f"{resolved:,}.",
+            "",
+            "| Numeric type named | Words |",
+            "|---|---:|",
+            *(
+                f"| `{name}` | {count:,} |"
+                for name, count in sorted(
+                    (words08.get("firstWordTargetTypeCounts") or {}).items()
+                )
+            ),
+            "",
+            "Object ids are sparse against the 32-bit range, so the arithmetic decides "
+            "this rather than the hit rate: expecting well under one chance resolution "
+            "and observing several is decisive, and the words that do not resolve name "
+            "objects this package does not ship -- the same pattern numeric type `0x03` "
+            "targets already show. The control is what makes it a test: a 32-bit value "
+            "read at an arbitrary offset would resolve at the same rate, and this one "
+            "resolves never.",
+            "",
+            "Every resolved target is the same numeric type. That is the claim, and the "
+            "gate fails rather than widening it if a second type ever appears.",
+        ]
+
     sources11 = report["corpus"].get("type11SourceRecords") or {}
     known_plugins = report["corpus"].get("type02PluginIdCounts") or {}
     source_lines = []
@@ -3680,6 +4991,10 @@ def _reference_graph_markdown(report: dict[str, Any]) -> str:
             *type17_lines,
             *head08_lines,
             *body08_lines,
+            *tail08_lines,
+            *words08_lines,
+            *body12_lines,
+            *tail12_lines,
             *source_lines,
             *head_lines,
             "",
@@ -4035,6 +5350,13 @@ def run_current_corpus_audit(
     ]
     reference_corpus = corpus["referenceGraph"]
     music_head_corpus = corpus["musicHeadReferences"]
+    music_ref_corpus = corpus["musicReferences"]
+    type0a_head_corpus = corpus["type0AHead"]
+    shared_const_corpus = corpus["sharedFrameConstants"]
+    shared_const_ok = every_shared_constant_beats_its_rivals(shared_const_corpus)
+    shared_const_control = the_shared_constants_are_not_settled_by_closure(
+        shared_const_corpus
+    )
     music_head_closed = music_head_references_are_closed(music_head_corpus)
     type11_corpus = corpus["type11SourceRecords"]
     media_corpus = corpus["type02MediaJoin"]
@@ -4049,10 +5371,65 @@ def run_current_corpus_audit(
     type17_closed = type17_is_framed_except_the_tied_block(type17_corpus)
     type08_corpus = corpus["type08HeadWords"]
     type08_body_corpus = corpus["type08BodyFrames"]
+    type12_body_corpus = corpus["type12BodyFrames"]
+    type08_tail_corpus = corpus["type08TailRecords"]
+    type08_word_corpus = corpus["type08TailHeadWords"]
+    type12_tail_corpus = corpus["type12TailRecords"]
+    type12_word_corpus = corpus["type12TailHeadWords"]
     type08_closed = type08_head_words_are_null_or_resolve(type08_corpus)
+    type12_tail_located = type12_tail_records_are_located_by_a_unique_count(
+        report["corpus"].get("type12TailRecords") or {}
+    )
+    type12_body_named = type12_bodies_are_exact_or_named(
+        report["corpus"].get("type12BodyFrames") or {}
+    )
+    type08_head_named = type08_tail_head_names_one_object_type(
+        report["corpus"].get("type08TailHeadWords") or {}
+    )
+    type08_tail_located = type08_tail_records_are_located_by_a_unique_count(
+        report["corpus"].get("type08TailRecords") or {}
+    )
     type08_body_named = type08_bodies_are_exact_or_named(
         report["corpus"].get("type08BodyFrames") or {}
     )
+    # True when no names were supplied: see the check's own note.
+    type0a_word_five = the_type0a_word_five_points_outside_its_package(
+        report["corpus"].get("type0AHead") or {}
+    )
+    type0a_decibel = the_type0a_head_carries_a_bounded_whole_float(
+        report["corpus"].get("type0AHead") or {}
+    )
+    type0a_fraction = the_type0a_tail_word_is_a_fixed_point_fraction(
+        report["corpus"].get("type0AHead") or {}
+    )
+    type0a_float = the_type0a_tail_float_is_an_authored_value(
+        report["corpus"].get("type0AHead") or {}
+    )
+    type0a_optional = the_type0a_reference_is_an_optional_four_byte_field(
+        report["corpus"].get("type0AHead") or {}
+    )
+    type0a_elements = the_type0a_head_elements_are_padded_small_values(
+        report["corpus"].get("type0AHead") or {}
+    )
+    type0a_word = the_type0a_head_word_always_names_one_of_two_types(
+        report["corpus"].get("type0AHead") or {}
+    )
+    type0a_head = the_type0a_head_rule_beats_its_controls(
+        report["corpus"].get("type0AHead") or {}
+    )
+    music_anchor = the_music_partition_edge_sits_at_a_few_places(
+        report["corpus"].get("musicReferences") or {}
+    )
+    music_partition = the_music_partition_edge_is_one_to_one(
+        report["corpus"].get("musicReferences") or {}
+    )
+    music_refs_ok = music_bodies_all_carry_references(
+        report["corpus"].get("musicReferences") or {}
+    )
+    music_named = music_tail_words_are_named(
+        report["corpus"].get("musicHeadReferences") or {}
+    )
+    type11_curves = type11_entries_carry_the_shared_curve_record(type11_corpus)
     type11_terminator_closed = type11_bodies_share_one_terminator(type11_corpus)
     type11_tail_counted = type11_tail_entries_are_counted(type11_corpus)
     type11_closed = type11_sources_share_the_type02_plugin_space(
@@ -4064,7 +5441,26 @@ def run_current_corpus_audit(
         and type11_closed
         and type11_terminator_closed
         and type11_tail_counted
+        and type11_curves
+        and music_named
+        and music_refs_ok
+        and shared_const_ok
+        and shared_const_control
+        and music_partition
+        and music_anchor
+        and type0a_head
+        and type0a_word
+        and type0a_elements
+        and type0a_optional
+        and type0a_float
+        and type0a_fraction
+        and type0a_decibel
+        and type0a_word_five
         and type08_body_named
+        and type08_tail_located
+        and type08_head_named
+        and type12_body_named
+        and type12_tail_located
         and type08_closed
         and type17_closed
         and type09_closed
@@ -4093,9 +5489,17 @@ def run_current_corpus_audit(
             },
             "referenceGraph": reference_corpus,
             "musicHeadReferences": music_head_corpus,
+            "musicReferences": music_ref_corpus,
+            "type0AHead": type0a_head_corpus,
+            "sharedFrameConstants": shared_const_corpus,
             "type11SourceRecords": type11_corpus,
             "type08HeadWords": type08_corpus,
             "type08BodyFrames": type08_body_corpus,
+            "type12BodyFrames": type12_body_corpus,
+            "type08TailRecords": type08_tail_corpus,
+            "type08TailHeadWords": type08_word_corpus,
+            "type12TailRecords": type12_tail_corpus,
+            "type12TailHeadWords": type12_word_corpus,
             "type17Bodies": type17_corpus,
             "type09Bodies": type09_corpus,
             "type03Targets": t03_corpus,
@@ -4163,6 +5567,39 @@ def run_current_corpus_audit(
             f"null={type08_corpus['null']} unresolved={type08_corpus['unresolved']} "
             f"tooShort={type08_corpus['tooShort']}"
         )
+    if not type12_tail_located:
+        tail12 = report["corpus"].get("type12TailRecords") or {}
+        lane_failures.append(
+            "type 0x12 tail records are not located by a unique count: "
+            f"tails={tail12.get('tails')} located={tail12.get('tailsWithAUniqueCount')} "
+            f"ambiguous={tail12.get('countIsAmbiguous')} "
+            f"codes={sorted(tail12.get('thirdFieldCounts') or {})}"
+        )
+    if not type12_body_named:
+        body12 = report["corpus"].get("type12BodyFrames") or {}
+        lane_failures.append(
+            "type 0x12 bodies are not all exact or named: "
+            f"count={body12.get('count')} exact={body12.get('exact')} "
+            f"failed={body12.get('failed')} unsupported={body12.get('unsupported')} "
+            f"ambiguous={body12.get('ambiguous')}"
+        )
+    if not type08_head_named:
+        words08 = report["corpus"].get("type08TailHeadWords") or {}
+        lane_failures.append(
+            "type 0x08 tail head does not name one object type: "
+            f"heads={words08.get('heads')} sameBank={words08.get('firstWordSameBank')} "
+            f"otherBank={words08.get('firstWordOtherBankInPackage')} "
+            f"control={words08.get('secondWordResolves')} "
+            f"targets={sorted(words08.get('firstWordTargetTypeCounts') or {})}"
+        )
+    if not type08_tail_located:
+        tail08 = report["corpus"].get("type08TailRecords") or {}
+        lane_failures.append(
+            "type 0x08 tail records are not located by a unique count: "
+            f"tails={tail08.get('tails')} located={tail08.get('tailsWithAUniqueCount')} "
+            f"ambiguous={tail08.get('countIsAmbiguous')} "
+            f"codes={sorted(tail08.get('thirdFieldCounts') or {})}"
+        )
     if not type08_body_named:
         body08 = report["corpus"].get("type08BodyFrames") or {}
         lane_failures.append(
@@ -4170,6 +5607,117 @@ def run_current_corpus_audit(
             f"count={body08.get('count')} exact={body08.get('exact')} "
             f"failed={body08.get('failed')} unsupported={body08.get('unsupported')} "
             f"ambiguous={body08.get('ambiguous')}"
+        )
+    if not type0a_word_five:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A word five does not point outside its package: "
+            f"nonzero={head0a.get('wordFiveNonZero')} "
+            f"inPackage={head0a.get('wordFiveInPackage')} "
+            f"values={sorted(head0a.get('wordFiveValues') or {})}"
+        )
+    if not type0a_decibel:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A head does not carry a bounded whole float: "
+            f"bodies={head0a.get('decibelBodies')} whole={head0a.get('decibelsWhole')} "
+            f"inRange={head0a.get('decibelsInRange')} "
+            f"control={head0a.get('decibelControlsInRange')}"
+        )
+    if not type0a_fraction:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A tail word is not a fixed-point fraction: "
+            f"candidates={head0a.get('fractionCandidates')} "
+            f"hits={head0a.get('fractionsWithASmallDenominator')} "
+            f"controls={head0a.get('fractionControls')} "
+            f"controlHits={head0a.get('fractionControlsWithASmallDenominator')}"
+        )
+    if not type0a_float:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A tail float is not an authored value: "
+            f"floats={head0a.get('tailFloats')} whole={head0a.get('tailFloatsWhole')} "
+            f"inBand={head0a.get('tailFloatsInBand')}"
+        )
+    if not type0a_optional:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A reference is not an optional four-byte field: "
+            f"tails={head0a.get('tailBytesByOutcome')}"
+        )
+    if not type0a_elements:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A head elements are not padded small values: "
+            f"elements={head0a.get('elementTotal')} "
+            f"leadNotZero={head0a.get('elementLeadingByteNotZero')} "
+            f"padNotZero={head0a.get('elementPadNotZero')} "
+            f"values={sorted(head0a.get('elementValueCounts') or {})}"
+        )
+    if not type0a_word:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A head word does not always name one of two types: "
+            f"applies={head0a.get('bodiesWhereTheRuleApplies')} "
+            f"targets={head0a.get('headWordTargets')}"
+        )
+    if not type0a_head:
+        head0a = report["corpus"].get("type0AHead") or {}
+        lane_failures.append(
+            "the type 0x0A head rule does not beat its controls: "
+            f"bodies={head0a.get('bodies')} scores={head0a.get('namesTheSourceType')}"
+        )
+    if not music_anchor:
+        refs = report["corpus"].get("musicReferences") or {}
+        places = {k: v for k, v in (refs.get("edgeDistanceFromEnd") or {}).items()
+                  if k.startswith(MUSIC_PARTITIONING_EDGE + "_at")}
+        lane_failures.append(
+            "the music partition edge is not concentrated: "
+            f"places={len(places)} top={sorted(places.items(), key=lambda x: -x[1])[:4]}"
+        )
+    if not music_partition:
+        refs = report["corpus"].get("musicReferences") or {}
+        lane_failures.append(
+            "the music partition edge is not one to one: "
+            f"edges={(refs.get('edgeCounts') or {}).get(MUSIC_PARTITIONING_EDGE)} "
+            f"distinct={(refs.get('distinctTargets') or {}).get(MUSIC_PARTITIONING_EDGE)} "
+            f"twice={(refs.get('targetsReachedTwice') or {}).get(MUSIC_PARTITIONING_EDGE)} "
+            f"population={(refs.get('targetPopulation') or {}).get(MUSIC_PARTITIONING_EDGE)}"
+        )
+    if not shared_const_ok:
+        const = report["corpus"].get("sharedFrameConstants") or {}
+        lane_failures.append(
+            "a shared-frame constant does not beat its rivals: "
+            f"ranking={const.get('ranking')}"
+        )
+    if not shared_const_control:
+        const = report["corpus"].get("sharedFrameConstants") or {}
+        lane_failures.append(
+            "no shared-frame constant has a rival that closes every body, so closure "
+            "would be the discriminator and the zero-trailer test is doing no work: "
+            f"ranking={const.get('ranking')}"
+        )
+    if not music_refs_ok:
+        refs = report["corpus"].get("musicReferences") or {}
+        lane_failures.append(
+            "music bodies do not all carry references: "
+            f"bodies={refs.get('bodies')} references={refs.get('references')} "
+            f"empty={refs.get('bodiesWithNoReference')} offered={refs.get('wordsOffered')}"
+        )
+    if not music_named:
+        music = report["corpus"].get("musicHeadReferences") or {}
+        lane_failures.append(
+            "music tail words are not named: "
+            f"tested={music.get('tailWordsTested')} named={music.get('tailWordsNamed')} "
+            f"byOffset={music.get('tailWordNamedByOffset')}"
+        )
+    if not type11_curves:
+        lane_failures.append(
+            "type 0x0B entries do not carry the shared curve record: "
+            f"fit={type11_corpus['entriesWhoseRecordsFit']} "
+            f"records={type11_corpus['curveRecords']} "
+            f"codes={sorted(type11_corpus.get('interpolationCounts') or {})}"
         )
     if not type11_tail_counted:
         lane_failures.append(

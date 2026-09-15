@@ -9,6 +9,10 @@ import unittest
 from pathlib import Path
 
 from scripts.audio_semantics.hirc_action_corpus import (
+    _read_shared_constant_census,
+    _rank_shared_constants,
+    every_shared_constant_beats_its_rivals,
+    the_shared_constants_are_not_settled_by_closure,
     type03_targets_cross_bank_boundaries,
     media_join_is_decided_by_the_plugin_id,
     small_types_are_closed,
@@ -17,7 +21,30 @@ from scripts.audio_semantics.hirc_action_corpus import (
     type08_head_words_are_null_or_resolve,
     type11_sources_share_the_type02_plugin_space,
     type11_bodies_share_one_terminator,
+    type11_entries_carry_the_shared_curve_record,
+    music_tail_words_are_named,
+    music_bodies_all_carry_references,
+    the_music_partition_edge_is_one_to_one,
+    the_music_partition_edge_sits_at_a_few_places,
+    the_type0a_head_rule_beats_its_controls,
+    the_type0a_head_word_always_names_one_of_two_types,
+    the_type0a_head_elements_are_padded_small_values,
+    the_type0a_reference_is_an_optional_four_byte_field,
+    the_type0a_tail_float_is_an_authored_value,
+    the_type0a_tail_word_is_a_fixed_point_fraction,
+    the_type0a_head_carries_a_bounded_whole_float,
+    the_type0a_word_five_points_outside_its_package,
+    _read_type0a_head_census,
+    _read_music_reference_census,
     type08_bodies_are_exact_or_named,
+    type12_bodies_are_exact_or_named,
+    _read_type12_body_frame,
+    type08_tail_records_are_located_by_a_unique_count,
+    type12_tail_records_are_located_by_a_unique_count,
+    _read_type12_tail_census,
+    type08_tail_head_names_one_object_type,
+    _read_type08_tail_word_census,
+    _read_type08_tail_census,
     _read_type08_body_frame,
     type11_tail_entries_are_counted,
     _read_type11_source_census,
@@ -241,6 +268,56 @@ def valid_action_fixture():
         "bodyBytes": 180,
         "failureCategories": {"trailer_is_not_five_bytes": 1},
         "unsupportedCategories": {},
+        "selectorCounts": {"tailBlockSelector_020002": 1},
+    }
+    type08_tail = {
+        "bodies": 3,
+        "notWalkable": 0,
+        "framedByTheReader": 2,
+        "tails": 1,
+        "noZeroWordAtTheEnd": 0,
+        "noCountBeforeTheRecords": 0,
+        "countIsAmbiguous": 0,
+        "tailsWithAUniqueCount": 1,
+        "records": 2,
+        "unexplainedHeadBytes": 15,
+        "recordCountCounts": {"records_2": 1},
+        "thirdFieldCounts": {"code_4": 1, "code_9": 1},
+        "headsOfTheObservedWidth": 1,
+        "headIsNotTheObservedWidth": 0,
+    }
+    type12_body = {
+        "count": 4,
+        "exact": 3,
+        "unsupported": 0,
+        "failed": 1,
+        "ambiguous": 0,
+        "bodyBytes": 240,
+        "failureCategories": {"trailer_is_not_five_bytes": 1},
+        "unsupportedCategories": {},
+        "selectorCounts": {"secondListKey_15": 2, "secondListKey_0A": 1},
+    }
+    # Numeric type 0x12's tail head resolves nowhere, control included -- the two
+    # types share a layout but not this field's meaning.
+    type12_tail_words = {
+        "heads": 1,
+        "packagePopulation": 200,
+        "firstWordSameBank": 0,
+        "firstWordOtherBankInPackage": 0,
+        "firstWordOutsidePackage": 1,
+        "secondWordResolves": 0,
+        "firstWordTargetTypeCounts": {},
+        "secondWordTargetTypeCounts": {},
+    }
+    type08_tail_words = {
+        "heads": 1,
+        "packagePopulation": 200,
+        "firstWordSameBank": 1,
+        "firstWordOtherBankInPackage": 0,
+        "firstWordOutsidePackage": 0,
+        "secondWordResolves": 0,
+        "firstWordTargetTypeCounts": {"type12": 1},
+        "secondWordTargetTypeCounts": {},
     }
     type11_sources = {
         "bodies": 2,
@@ -262,10 +339,77 @@ def valid_action_fixture():
         "tailEchoesExceedTheCount": 0,
         "firstTailEntryNamesADeclaredSource": 2,
         "firstTailEntryTooShort": 0,
+        "entriesInspected": 2,
+        "entriesWithNoRecords": 1,
+        "entriesWhoseRecordsFit": 1,
+        "entriesWhoseCountIsNotUsable": 0,
+        "entriesWhoseRecordsRunPastTheEnd": 0,
+        "curveRecords": 2,
+        "interpolationCounts": {"interp_1": 1, "interp_9": 1},
         "tailEntryCountCounts": {"tailEntries_1": 1, "tailEntries_2": 1},
         "firstTailEntryLeadingWordCounts": {"lead_00000000": 2},
     }
+    type0a_head = {
+        "bodies": 10,
+        "bodiesWhereTheRuleApplies": 9,
+        "namesTheSourceType": {
+            "predicted": 9,
+            "fixedOffset": 3,
+            "predictedPlusFour": 1,
+            "predictedMinusFour": 0,
+        },
+        "namesTheSourceTypeWhereTheRuleApplies": {
+            "predicted": 9,
+            "fixedOffset": 3,
+            "predictedPlusFour": 1,
+            "predictedMinusFour": 0,
+        },
+        "headWordTargets": {"type0D": 7, "type0C": 2},
+        "elementTotal": 6,
+        "elementLeadingByteNotZero": 0,
+        "elementPadNotZero": 0,
+        "elementValueCounts": {"value_0": 2, "value_1": 3, "value_2": 1},
+        "tailBytesByOutcome": {"withReference_69": 8, "withoutReference_65": 2},
+        "tailFloats": 100,
+        "tailFloatsInBand": 92,
+        "tailFloatsWhole": 99,
+        "neighbourFloats": 100,
+        "neighbourFloatsWhole": 5,
+        "fractionCandidates": 100,
+        "fractionsWithASmallDenominator": 78,
+        "fractionControls": 200,
+        "fractionControlsWithASmallDenominator": 6,
+        "decibelBodies": 100,
+        "decibelsInRange": 96,
+        "decibelsWhole": 50,
+        "decibelControlsInRange": 0,
+        "wordFiveNonZero": 6,
+        "wordFiveInPackage": 0,
+        "wordFiveValues": {"word_F1339B46": 4, "word_4106E10A": 2},
+    }
+    music_refs = {
+        "bodies": 4,
+        "packagePopulation": 200,
+        "wordsOffered": 400,
+        "references": 9,
+        "bodiesWithNoReference": 0,
+        "referencesPerBody": {"refs_2": 3, "refs_3": 1},
+        "edgeCounts": {"type0C_to_type0D": 5, "type0A_to_type0B": 4},
+        "distinctTargets": {"type0C_to_type0D": 3, "type0A_to_type0B": 4},
+        "targetsReachedTwice": {"type0C_to_type0D": 2, "type0A_to_type0B": 0},
+        "targetPopulation": {"type0C_to_type0D": 3, "type0A_to_type0B": 4},
+        "edgeDistanceFromEnd": {
+            "type0A_to_type0B_at-69": 3,
+            "type0A_to_type0B_at-73": 1,
+            "type0C_to_type0D_at-40": 5,
+        },
+    }
     music_head = {
+        "tailWordsTested": 8,
+        "tailWordsNamed": 3,
+        "bodiesTooShortForTailWords": 0,
+        "tailWordNamedByOffset": {"minus12": 1, "minus24": 2},
+        "tailWordTestedByOffset": {"minus12": 4, "minus24": 4},
         "bodies": 4,
         "resolved": 3,
         "unresolved": 0,
@@ -416,9 +560,16 @@ def valid_action_fixture():
                     "hircType14BodyFrame": copy.deepcopy(type14_body),
                     "hircType22BodyFrame": copy.deepcopy(type22_body),
                     "hircMusicHeadReferences": copy.deepcopy(music_head),
+                    "hircMusicReferences": copy.deepcopy(music_refs),
+                    "hircType0AHead": copy.deepcopy(type0a_head),
                     "hircType11Sources": copy.deepcopy(type11_sources),
                     "hircType08Head": copy.deepcopy(type08_head),
                     "hircType08BodyFrame": copy.deepcopy(type08_body),
+                    "hircType08Tail": copy.deepcopy(type08_tail),
+                    "hircType08TailWords": copy.deepcopy(type08_tail_words),
+                    "hircType12BodyFrame": copy.deepcopy(type12_body),
+                    "hircType12Tail": copy.deepcopy(type08_tail),
+                    "hircType12TailWords": copy.deepcopy(type12_tail_words),
                     "hircType17": copy.deepcopy(type17_bodies),
                     "hircType09": copy.deepcopy(type09_bodies),
                     "hircType03Targets": copy.deepcopy(type03_targets),
@@ -449,6 +600,7 @@ def valid_action_fixture():
                             "hircType11Sources": copy.deepcopy(type11_sources),
                             "hircType08Head": copy.deepcopy(type08_head),
                             "hircType08BodyFrame": copy.deepcopy(type08_body),
+                            "hircType08Tail": copy.deepcopy(type08_tail),
                             "hircType17": copy.deepcopy(type17_bodies),
                             "hircType09": copy.deepcopy(type09_bodies),
                             "hircType03Targets": copy.deepcopy(type03_targets),
@@ -1478,6 +1630,412 @@ class HircActionCorpusTests(unittest.TestCase):
             type11_sources_share_the_type02_plugin_space({**sources, "records": 0}, known)
         )
 
+    def test_the_type0a_word_five_never_names_a_local_object(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertTrue(the_type0a_word_five_points_outside_its_package(head))
+
+        # One local resolution would make this an ordinary reference rather than the
+        # cross-package one the corpus join shows it to be.
+        self.assertFalse(
+            the_type0a_word_five_points_outside_its_package({**head, "wordFiveInPackage": 1})
+        )
+        # No nonzero words means nothing was tested, which is not the same as a
+        # negative result.
+        self.assertFalse(
+            the_type0a_word_five_points_outside_its_package(
+                {**head, "wordFiveNonZero": 0, "wordFiveValues": {}}
+            )
+        )
+        # The histogram has to account for every nonzero word.
+        self.assertFalse(
+            the_type0a_word_five_points_outside_its_package({**head, "wordFiveNonZero": 9})
+        )
+
+    def test_the_type0a_head_float_beats_an_overlapping_control_window(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertTrue(the_type0a_head_carries_a_bounded_whole_float(head))
+
+        # The control window overlaps the field by two bytes, which is the hardest
+        # control to pass. If it carried whole values in range too, the reader would
+        # be finding a property of the neighbourhood rather than of the field.
+        self.assertFalse(
+            the_type0a_head_carries_a_bounded_whole_float({**head, "decibelControlsInRange": 40})
+        )
+        self.assertFalse(
+            the_type0a_head_carries_a_bounded_whole_float({**head, "decibelsWhole": 5})
+        )
+        # Counting more whole values than bodies is incoherent.
+        self.assertFalse(
+            the_type0a_head_carries_a_bounded_whole_float({**head, "decibelsWhole": 101})
+        )
+        self.assertFalse(
+            the_type0a_head_carries_a_bounded_whole_float({**head, "decibelBodies": 0})
+        )
+
+    def test_the_type0a_tail_word_reads_as_a_fraction_and_its_control_does_not(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertTrue(the_type0a_tail_word_is_a_fixed_point_fraction(head))
+
+        # A test that accepted any 32-bit value would accept the control too, so the
+        # control failing is what makes the result mean anything.
+        self.assertFalse(
+            the_type0a_tail_word_is_a_fixed_point_fraction(
+                {**head, "fractionControlsWithASmallDenominator": 150}
+            )
+        )
+        self.assertFalse(
+            the_type0a_tail_word_is_a_fixed_point_fraction(
+                {**head, "fractionsWithASmallDenominator": 20}
+            )
+        )
+        # Claiming more hits than candidates is incoherent, not merely wrong.
+        self.assertFalse(
+            the_type0a_tail_word_is_a_fixed_point_fraction(
+                {**head, "fractionsWithASmallDenominator": 101}
+            )
+        )
+        self.assertFalse(
+            the_type0a_tail_word_is_a_fixed_point_fraction({**head, "fractionControls": 0})
+        )
+
+    def test_the_type0a_tail_float_must_be_whole_far_more_often_than_bounded(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertTrue(the_type0a_tail_float_is_an_authored_value(head))
+
+        # Whole numbers are the strong property: a computed float lands on exact
+        # integers by accident, so a drop there has to fail even while the band holds.
+        self.assertFalse(
+            the_type0a_tail_float_is_an_authored_value({**head, "tailFloatsWhole": 80})
+        )
+        # The band is the weaker property and is checked at a lower bar, because the
+        # outliers are real -- but it still has to hold.
+        self.assertFalse(
+            the_type0a_tail_float_is_an_authored_value({**head, "tailFloatsInBand": 50})
+        )
+        # A census claiming more whole or in-band values than floats it read is
+        # incoherent rather than merely wrong.
+        self.assertFalse(
+            the_type0a_tail_float_is_an_authored_value({**head, "tailFloatsWhole": 101})
+        )
+        self.assertFalse(the_type0a_tail_float_is_an_authored_value({**head, "tailFloats": 0}))
+        # The neighbour twelve bytes earlier is the control for the offset itself. If
+        # it behaved the same way, the reader would be slicing one quantity at two
+        # arbitrary places rather than reading two fields.
+        self.assertFalse(
+            the_type0a_tail_float_is_an_authored_value({**head, "neighbourFloatsWhole": 99})
+        )
+        self.assertFalse(
+            the_type0a_tail_float_is_an_authored_value({**head, "neighbourFloats": 0})
+        )
+
+    def test_the_type0a_reference_is_an_optional_four_byte_field(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertTrue(the_type0a_reference_is_an_optional_four_byte_field(head))
+
+        # The whole point is the four-byte difference. Any other gap means the bodies
+        # without a reference differ in something else as well.
+        self.assertFalse(
+            the_type0a_reference_is_an_optional_four_byte_field(
+                {**head, "tailBytesByOutcome": {"withReference_69": 8, "withoutReference_61": 2}}
+            )
+        )
+        # Bodies with a reference may take many tail lengths -- the tail past the
+        # reference is not claimed -- so several must not break it.
+        self.assertTrue(
+            the_type0a_reference_is_an_optional_four_byte_field(
+                {**head, "tailBytesByOutcome":
+                    {"withReference_69": 8, "withReference_73": 3, "withoutReference_65": 2}}
+            )
+        )
+        # Bodies without one must concentrate on a single length.
+        self.assertFalse(
+            the_type0a_reference_is_an_optional_four_byte_field(
+                {**head, "tailBytesByOutcome":
+                    {"withReference_69": 8, "withoutReference_65": 2, "withoutReference_39": 2}}
+            )
+        )
+        self.assertFalse(
+            the_type0a_reference_is_an_optional_four_byte_field(
+                {**head, "tailBytesByOutcome": {"withReference_69": 8}}
+            )
+        )
+
+    def test_the_type0a_head_elements_are_a_zero_byte_a_small_value_and_padding(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertEqual(head["elementTotal"], 6)
+        self.assertTrue(the_type0a_head_elements_are_padded_small_values(head))
+
+        # One element breaking the shape means the element boundary is wrong, so
+        # these are equalities and not rates.
+        self.assertFalse(
+            the_type0a_head_elements_are_padded_small_values(
+                {**head, "elementLeadingByteNotZero": 1}
+            )
+        )
+        self.assertFalse(
+            the_type0a_head_elements_are_padded_small_values({**head, "elementPadNotZero": 1})
+        )
+        # A value outside the small range would mean the field is an id or a length
+        # rather than the enumeration it looks like.
+        self.assertFalse(
+            the_type0a_head_elements_are_padded_small_values(
+                {**head, "elementValueCounts": {"value_0": 2, "value_1": 3, "value_46456": 1}}
+            )
+        )
+        # The histogram has to cover every element the census counted.
+        self.assertFalse(
+            the_type0a_head_elements_are_padded_small_values({**head, "elementTotal": 9})
+        )
+        self.assertFalse(
+            the_type0a_head_elements_are_padded_small_values(
+                {**head, "elementTotal": 0, "elementValueCounts": {}}
+            )
+        )
+
+    def test_the_type0a_head_word_names_exactly_two_types(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertTrue(the_type0a_head_word_always_names_one_of_two_types(head))
+
+        # A third target type is a wider finding than this one, so it fails here
+        # rather than being absorbed into it.
+        self.assertFalse(
+            the_type0a_head_word_always_names_one_of_two_types(
+                {**head, "headWordTargets": {"type0D": 6, "type0C": 2, "type0B": 1}}
+            )
+        )
+        # Unresolved words are permitted -- the corpus has 1 in 4,000 -- but only at
+        # that rate. At this fixture's scale one unresolved body is more than 1%, so
+        # the same shape that passes on the corpus fails here, which is the threshold
+        # doing its job rather than a quirk.
+        self.assertFalse(
+            the_type0a_head_word_always_names_one_of_two_types(
+                {**head, "headWordTargets": {"type0D": 7, "type0C": 1, "nothing": 1}}
+            )
+        )
+        self.assertTrue(
+            the_type0a_head_word_always_names_one_of_two_types(
+                {**head, "bodiesWhereTheRuleApplies": 1000,
+                 "headWordTargets": {"type0D": 900, "type0C": 99, "nothing": 1}}
+            )
+        )
+        self.assertFalse(
+            the_type0a_head_word_always_names_one_of_two_types(
+                {**head, "headWordTargets": {"type0D": 3, "nothing": 6}}
+            )
+        )
+        self.assertFalse(
+            the_type0a_head_word_always_names_one_of_two_types({**head, "headWordTargets": {}})
+        )
+
+    def test_the_type0a_head_rule_must_beat_a_fixed_offset_and_its_neighbours(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        head = result["type0AHead"]
+        self.assertTrue(the_type0a_head_rule_beats_its_controls(head))
+
+        # A formula that lands on a reference nine times in ten might just be finding
+        # a reference that is always nearby. If ignoring the count scores as well,
+        # the count is not what places it.
+        self.assertFalse(
+            the_type0a_head_rule_beats_its_controls(
+                {**head, "namesTheSourceType": {**head["namesTheSourceType"], "fixedOffset": 9}}
+            )
+        )
+        # Same for a neighbour: naming the neighbourhood is not naming the place.
+        self.assertFalse(
+            the_type0a_head_rule_beats_its_controls(
+                {**head, "namesTheSourceType": {**head["namesTheSourceType"], "predictedPlusFour": 8}}
+            )
+        )
+        # And the rule itself has to clear a high bar, not merely beat the controls.
+        self.assertFalse(
+            the_type0a_head_rule_beats_its_controls(
+                {**head, "namesTheSourceType": {**head["namesTheSourceType"], "predicted": 4}}
+            )
+        )
+        self.assertFalse(the_type0a_head_rule_beats_its_controls({**head, "bodies": 0}))
+        # The unconditioned rate can clear its bar while the conditioned one does not,
+        # and the conditioned one is the claim.
+        self.assertFalse(
+            the_type0a_head_rule_beats_its_controls(
+                {**head, "namesTheSourceTypeWhereTheRuleApplies":
+                    {**head["namesTheSourceTypeWhereTheRuleApplies"], "predicted": 4}}
+            )
+        )
+        self.assertFalse(
+            the_type0a_head_rule_beats_its_controls({**head, "bodiesWhereTheRuleApplies": 0})
+        )
+
+    def test_a_type0a_head_census_scoring_above_its_bodies_is_refused(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType0AHead"]
+        with self.assertRaisesRegex(ValueError, "above its bodies"):
+            _read_type0a_head_census({**census, "bodies": 2, "bodiesWhereTheRuleApplies": 2}, "unit")
+        with self.assertRaisesRegex(ValueError, "applies to more bodies than it has"):
+            _read_type0a_head_census({**census, "bodiesWhereTheRuleApplies": 99}, "unit")
+
+    def test_the_music_reference_position_must_be_concentrated_to_be_an_anchor(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        refs = result["musicReferences"]
+        self.assertTrue(the_music_partition_edge_sits_at_a_few_places(refs))
+
+        # A reference scattered over dozens of distances is still a reference and
+        # still passes every other music check. It is just not an anchor, and an
+        # anchor is the only thing this measurement exists to provide.
+        scattered = {f"type0A_to_type0B_at-{n}": 1 for n in range(40)}
+        self.assertFalse(
+            the_music_partition_edge_sits_at_a_few_places(
+                {**refs, "edgeDistanceFromEnd": scattered}
+            )
+        )
+        # Positions recorded for other edges must not be counted toward this one.
+        self.assertFalse(
+            the_music_partition_edge_sits_at_a_few_places(
+                {**refs, "edgeDistanceFromEnd": {"type0C_to_type0D_at-40": 5}}
+            )
+        )
+
+    def test_the_one_to_one_music_edge_needs_all_three_conditions(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        refs = result["musicReferences"]
+        self.assertTrue(the_music_partition_edge_is_one_to_one(refs))
+
+        # An edge total equal to a population is not evidence of a bijection -- the
+        # 0x0D -> 0x0C edge has exactly that and reaches 578 of 742 objects. Reaching
+        # every object still is not enough either: 0x0C -> 0x0D reaches all of its
+        # targets and reaches 1,628 of them twice.
+        self.assertFalse(
+            the_music_partition_edge_is_one_to_one(
+                {**refs, "targetsReachedTwice": {"type0A_to_type0B": 1}}
+            )
+        )
+        # Leaving objects unreached breaks it from the other side.
+        self.assertFalse(
+            the_music_partition_edge_is_one_to_one(
+                {**refs, "distinctTargets": {"type0A_to_type0B": 3}}
+            )
+        )
+        # And an edge total above the distinct count means some source named a target
+        # twice even if no target was reached twice overall.
+        self.assertFalse(
+            the_music_partition_edge_is_one_to_one(
+                {**refs, "edgeCounts": {"type0A_to_type0B": 5}}
+            )
+        )
+        self.assertFalse(the_music_partition_edge_is_one_to_one({**refs, "edgeCounts": {}}))
+
+    def test_every_music_body_must_carry_at_least_one_reference(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        refs = result["musicReferences"]
+        self.assertEqual(refs["bodiesWithNoReference"], 0)
+        self.assertTrue(music_bodies_all_carry_references(refs))
+
+        # A total can be carried by a few reference-rich bodies; "every one of them"
+        # cannot, and it is the claim.
+        self.assertFalse(
+            music_bodies_all_carry_references({**refs, "bodiesWithNoReference": 1})
+        )
+        # Every word of every body is offered, so the chance expectation is not
+        # negligible and has to be beaten by a wide margin, not merely exceeded.
+        self.assertFalse(
+            music_bodies_all_carry_references(
+                {**refs, "wordsOffered": 10 ** 9, "packagePopulation": 10 ** 6}
+            )
+        )
+        # Without target types the edges say nothing about the relationships.
+        self.assertFalse(music_bodies_all_carry_references({**refs, "edgeCounts": {}}))
+        self.assertFalse(music_bodies_all_carry_references({**refs, "references": 0}))
+
+    def test_a_music_reference_census_that_loses_a_body_is_refused(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircMusicReferences"]
+        with self.assertRaisesRegex(ValueError, "does not cover its bodies"):
+            _read_music_reference_census({**census, "bodies": 9}, "unit")
+        with self.assertRaisesRegex(ValueError, "edges exceed its references"):
+            _read_music_reference_census({**census, "references": 1}, "unit")
+        with self.assertRaisesRegex(ValueError, "resolves more words than it offered"):
+            _read_music_reference_census({**census, "wordsOffered": 2}, "unit")
+
+    def test_music_tail_words_are_judged_only_when_names_were_supplied(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        music = result["musicHeadReferences"]
+        self.assertEqual(music["tailWordsNamed"], 3)
+        self.assertTrue(music_tail_words_are_named(music))
+
+        # A census with nothing tested means the question was never asked -- this
+        # corpus gate's reader run does not load the metadata literals. That must
+        # skip, not fail, and it must not be read as the answer being no either.
+        self.assertTrue(
+            music_tail_words_are_named(
+                {**music, "tailWordsTested": 0, "tailWordsNamed": 0,
+                 "tailWordNamedByOffset": {}}
+            )
+        )
+        # Asked and answered no, though, is a failure: name hashes are sparse enough
+        # that hundreds of matches cannot be chance, so zero is not the shape of this
+        # finding.
+        self.assertFalse(
+            music_tail_words_are_named(
+                {**music, "tailWordsNamed": 0, "tailWordNamedByOffset": {}}
+            )
+        )
+        # A handful of matches in a corpus this size is the one thing chance could
+        # produce, so the rate has to be clear of zero rather than merely nonzero.
+        self.assertFalse(
+            music_tail_words_are_named(
+                {**music, "tailWordsTested": 4000, "tailWordsNamed": 3}
+            )
+        )
+        # The per-offset histogram has to account for every match claimed.
+        self.assertFalse(
+            music_tail_words_are_named({**music, "tailWordNamedByOffset": {"minus12": 1}})
+        )
+
+    def test_type11_entries_carry_the_shared_twelve_byte_curve_record(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        sources = result["type11SourceRecords"]
+        self.assertEqual(sources["curveRecords"], 2)
+        self.assertTrue(type11_entries_carry_the_shared_curve_record(sources))
+
+        # The interpolation code is the discriminator. Read at a wrong offset it
+        # would be arbitrary 32-bit noise, so one wild value means the records are
+        # not where the reader thinks they are.
+        self.assertFalse(
+            type11_entries_carry_the_shared_curve_record(
+                {**sources, "interpolationCounts": {"interp_1": 1, "interp_305419896": 1}}
+            )
+        )
+        # Nothing read proves nothing about the offset.
+        self.assertFalse(
+            type11_entries_carry_the_shared_curve_record(
+                {**sources, "entriesWhoseRecordsFit": 0, "curveRecords": 0,
+                 "interpolationCounts": {}}
+            )
+        )
+        # The histogram has to account for every record the census claims to have read.
+        self.assertFalse(
+            type11_entries_carry_the_shared_curve_record({**sources, "curveRecords": 9})
+        )
+
     def test_every_type11_body_must_end_on_the_same_word(self) -> None:
         outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
         result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
@@ -1519,6 +2077,144 @@ class HircActionCorpusTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "more terminators than bodies"):
             _read_type11_source_census({**census, "endsWithTerminator": 9}, "unit")
+
+    def test_type12_tails_are_located_by_the_same_check_as_type08(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        tail = result["type12TailRecords"]
+        self.assertTrue(type12_tail_records_are_located_by_a_unique_count(tail))
+        # One check, two types, because it is one structure. An ambiguous count has to
+        # break it for either type.
+        self.assertFalse(
+            type12_tail_records_are_located_by_a_unique_count({**tail, "countIsAmbiguous": 1})
+        )
+        # Sharing a layout does not make the same field mean the same thing: this
+        # type's tail-head words resolve nowhere, and the report must say so rather
+        # than inherit 0x08's finding.
+        words = result["type12TailHeadWords"]
+        self.assertEqual(words["firstWordTargetTypeCounts"], {})
+        self.assertEqual(words["secondWordResolves"], 0)
+
+    def test_a_type12_tail_census_names_its_own_type_when_it_refuses(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType12Tail"]
+        with self.assertRaisesRegex(ValueError, "type 0x12 tail outcomes do not partition"):
+            _read_type12_tail_census({**census, "bodies": 9}, "unit")
+
+    def test_the_type08_tail_head_word_must_beat_its_own_control(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        words = result["type08TailHeadWords"]
+        self.assertEqual(words["firstWordTargetTypeCounts"], {"type12": 1})
+        self.assertTrue(type08_tail_head_names_one_object_type(words))
+
+        # The control is the whole test. A 32-bit value read at an arbitrary offset
+        # would resolve at the same rate as the field under test, so the control
+        # resolving even once means the hits prove nothing.
+        self.assertFalse(
+            type08_tail_head_names_one_object_type({**words, "secondWordResolves": 1})
+        )
+        # No resolution at all is not evidence of a reference.
+        self.assertFalse(
+            type08_tail_head_names_one_object_type(
+                {**words, "firstWordSameBank": 0, "firstWordOutsidePackage": 1,
+                 "firstWordTargetTypeCounts": {}}
+            )
+        )
+        # A second target type would be a wider claim than this one, so it must fail
+        # rather than be quietly absorbed.
+        self.assertFalse(
+            type08_tail_head_names_one_object_type(
+                {**words, "firstWordTargetTypeCounts": {"type12": 1, "type02": 1}}
+            )
+        )
+        self.assertFalse(type08_tail_head_names_one_object_type({**words, "heads": 0}))
+
+    def test_a_type08_tail_word_census_that_loses_a_word_is_refused(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType08TailWords"]
+        with self.assertRaisesRegex(ValueError, "do not partition its heads"):
+            _read_type08_tail_word_census({**census, "heads": 4}, "unit")
+        with self.assertRaisesRegex(ValueError, "do not cover its resolved words"):
+            _read_type08_tail_word_census({**census, "firstWordTargetTypeCounts": {}}, "unit")
+        with self.assertRaisesRegex(ValueError, "do not cover its resolved controls"):
+            _read_type08_tail_word_census({**census, "secondWordResolves": 2}, "unit")
+
+    def test_the_type08_tail_run_must_be_located_unambiguously(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        tail = result["type08TailRecords"]
+        self.assertEqual((tail["tails"], tail["tailsWithAUniqueCount"]), (1, 1))
+        self.assertTrue(type08_tail_records_are_located_by_a_unique_count(tail))
+
+        # Two lengths that both fit make the alignment arithmetic rather than
+        # evidence, so a single ambiguous tail has to break the claim.
+        self.assertFalse(
+            type08_tail_records_are_located_by_a_unique_count({**tail, "countIsAmbiguous": 1})
+        )
+        # The third field is the discriminator: read at a wrong offset it would be
+        # arbitrary 32-bit noise, so a large value means the run is not where the
+        # reader thinks it is.
+        self.assertFalse(
+            type08_tail_records_are_located_by_a_unique_count(
+                {**tail, "thirdFieldCounts": {"code_4": 1, "code_305419896": 1}}
+            )
+        )
+        # Nothing located proves nothing, and neither does a corpus with no tails.
+        self.assertFalse(
+            type08_tail_records_are_located_by_a_unique_count(
+                {**tail, "tailsWithAUniqueCount": 0, "noCountBeforeTheRecords": 1}
+            )
+        )
+        self.assertFalse(type08_tail_records_are_located_by_a_unique_count({**tail, "tails": 0}))
+        # The code histogram has to account for every record it claims to have read.
+        self.assertFalse(
+            type08_tail_records_are_located_by_a_unique_count({**tail, "records": 9})
+        )
+
+    def test_a_type08_tail_census_that_loses_a_tail_is_refused(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType08Tail"]
+        with self.assertRaisesRegex(ValueError, "do not partition its bodies"):
+            _read_type08_tail_census({**census, "bodies": 9}, "unit")
+        with self.assertRaisesRegex(ValueError, "do not partition its tails"):
+            _read_type08_tail_census({**census, "tails": 2, "bodies": 4}, "unit")
+        with self.assertRaisesRegex(ValueError, "do not cover its tails"):
+            _read_type08_tail_census({**census, "recordCountCounts": {}}, "unit")
+        with self.assertRaisesRegex(ValueError, "do not cover its records"):
+            _read_type08_tail_census({**census, "thirdFieldCounts": {"code_4": 1}}, "unit")
+
+    def test_type12_bodies_must_be_framed_or_named(self) -> None:
+        outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
+        result = aggregate_current_hirc_actions(outer, expected_files, excluded_files, audio_audit)
+        body = result["type12BodyFrames"]
+        self.assertEqual((body["count"], body["exact"], body["failed"]), (4, 3, 1))
+        self.assertTrue(type12_bodies_are_exact_or_named(body))
+        # The second-list keys this type uses are published so the width table is
+        # visible in the report rather than only in the reader.
+        self.assertEqual(body["selectorCounts"]["secondListKey_0A"], 1)
+
+        # 0x12 shares 0x08's gate because it shares 0x08's layout; it must reject the
+        # same three shapes -- a body neither framed nor accounted for, an ambiguous
+        # body, and a corpus where nothing framed.
+        self.assertFalse(type12_bodies_are_exact_or_named({**body, "count": 5}))
+        self.assertFalse(type12_bodies_are_exact_or_named({**body, "ambiguous": 1, "count": 5}))
+        self.assertFalse(
+            type12_bodies_are_exact_or_named(
+                {**body, "exact": 0, "failed": 4,
+                 "failureCategories": {"trailer_is_not_five_bytes": 4}}
+            )
+        )
+
+    def test_a_type12_body_census_that_loses_a_body_is_refused(self) -> None:
+        _, _, _, audio_audit = valid_action_fixture()
+        census = audio_audit["rows"][0]["package"]["hircType12BodyFrame"]
+        # The message has to name the type: two types share this reader, and a failure
+        # that does not say which one broke is not actionable.
+        with self.assertRaisesRegex(ValueError, "type 0x12 body outcomes do not partition"):
+            _read_type12_body_frame({**census, "count": 9}, "unit")
+        with self.assertRaisesRegex(ValueError, "type 0x12 failure categories"):
+            _read_type12_body_frame({**census, "failureCategories": {}}, "unit")
 
     def test_type08_bodies_must_be_framed_or_named(self) -> None:
         outer, expected_files, excluded_files, audio_audit = valid_action_fixture()
@@ -2139,3 +2835,104 @@ class HircActionCorpusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SharedFrameConstantTests(unittest.TestCase):
+    """The constants in the shared framer must out-score their alternatives."""
+
+    def census(self, **overrides):
+        # Two constants, each with three candidate values. The chosen value wins the
+        # zero trailer outright; a rival closes every body but lands nothing there.
+        base = {
+            "bodies": 412,
+            "chosen": {"entryBytes": 6, "middleRunElementBytes": 18},
+            "bodiesExercising": {"entryBytes": 267, "middleRunElementBytes": 14},
+            "closesByCandidate": {
+                "entryBytes_5": 267, "entryBytes_6": 267, "entryBytes_9": 174,
+                "middleRunElementBytes_11": 14, "middleRunElementBytes_18": 14,
+                "middleRunElementBytes_19": 13,
+            },
+            "zeroTrailerByCandidate": {
+                "entryBytes_5": 0, "entryBytes_6": 203, "entryBytes_9": 0,
+                "middleRunElementBytes_11": 0, "middleRunElementBytes_18": 10,
+                "middleRunElementBytes_19": 0,
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(every_shared_constant_beats_its_rivals(self.census()))
+        self.assertTrue(the_shared_constants_are_not_settled_by_closure(self.census()))
+
+    def test_the_ranking_reduces_on_corpus_totals(self) -> None:
+        ranked = _rank_shared_constants(self.census())
+        self.assertEqual(ranked["entryBytes"]["chosenZeroTrailer"], 203)
+        self.assertEqual(ranked["entryBytes"]["bestRivalZeroTrailer"], 0)
+        # entryBytes_5 closes all 267 without landing on the trailer: that is the
+        # rival that makes closure useless as a discriminator.
+        self.assertEqual(ranked["entryBytes"]["rivalsThatCloseEveryBody"], 1)
+
+    def test_a_tie_with_a_rival_is_not_a_win(self) -> None:
+        census = self.census()
+        census["zeroTrailerByCandidate"]["entryBytes_5"] = 203
+        self.assertFalse(every_shared_constant_beats_its_rivals(census))
+
+    def test_a_constant_that_lands_nothing_on_the_trailer_is_untested(self) -> None:
+        # Beating every rival by zero to zero is not evidence.
+        census = self.census()
+        census["zeroTrailerByCandidate"]["middleRunElementBytes_18"] = 0
+        self.assertFalse(every_shared_constant_beats_its_rivals(census))
+
+    def test_a_constant_no_body_exercises_is_untested(self) -> None:
+        census = self.census()
+        census["bodiesExercising"]["middleRunElementBytes"] = 0
+        census["zeroTrailerByCandidate"]["middleRunElementBytes_18"] = 0
+        self.assertFalse(every_shared_constant_beats_its_rivals(census))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(every_shared_constant_beats_its_rivals({}))
+        self.assertFalse(every_shared_constant_beats_its_rivals(self.census(bodies=0)))
+        self.assertFalse(every_shared_constant_beats_its_rivals(self.census(chosen={})))
+
+    def test_the_control_fails_when_closure_would_have_sufficed(self) -> None:
+        # If no rival closes every exercising body then closure discriminates after
+        # all, the zero-trailer test is doing no work, and the reasoning recorded
+        # around these constants is wrong. That has to fail loudly, not pass quietly.
+        census = self.census()
+        census["closesByCandidate"] = {
+            key: (value if key.endswith(("_6", "_18")) else 1)
+            for key, value in census["closesByCandidate"].items()
+        }
+        self.assertFalse(the_shared_constants_are_not_settled_by_closure(census))
+        self.assertFalse(the_shared_constants_are_not_settled_by_closure({}))
+
+    def test_the_reader_rejects_a_malformed_census(self) -> None:
+        for bad in ({"bodies": -1}, {"bodies": 4, "chosen": []}, {"bodies": 4}):
+            with self.assertRaises(ValueError):
+                _read_shared_constant_census(bad, "pkg")
+
+    def test_the_reader_rejects_a_census_that_skips_a_constant(self) -> None:
+        census = self.census()
+        census["bodiesExercising"] = {"entryBytes": 267}
+        with self.assertRaises(ValueError):
+            _read_shared_constant_census(census, "pkg")
+
+    def test_the_reader_rejects_a_score_above_its_exercising_set(self) -> None:
+        census = self.census()
+        census["zeroTrailerByCandidate"]["middleRunElementBytes_18"] = 99
+        with self.assertRaises(ValueError):
+            _read_shared_constant_census(census, "pkg")
+
+    def test_the_reader_rejects_an_exercising_set_larger_than_the_corpus(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_shared_constant_census(self.census(bodies=5), "pkg")
+
+    def test_the_reader_rejects_a_score_for_an_unknown_constant(self) -> None:
+        census = self.census()
+        census["zeroTrailerByCandidate"]["mysteryBytes_3"] = 1
+        with self.assertRaises(ValueError):
+            _read_shared_constant_census(census, "pkg")
+
+    def test_an_absent_census_reads_as_empty_rather_than_raising(self) -> None:
+        self.assertEqual(_read_shared_constant_census(None, "pkg")["bodies"], 0)
