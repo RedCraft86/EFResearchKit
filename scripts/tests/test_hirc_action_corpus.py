@@ -10,7 +10,55 @@ from pathlib import Path
 
 from scripts.audio_semantics.hirc_action_corpus import (
     _read_shared_constant_census,
+    TYPE11_ELEMENT_MAPS,
+    TYPE11_ELEMENT_SCALARS,
     _rank_shared_constants,
+    _read_type11_element_census,
+    TYPE11_BODY_MINIMUM_EXACT,
+    the_type11_body_frame_covers_most_of_its_corpus,
+    the_extended_trailer_is_opened_by_the_trailing_block,
+    the_trailer_branches_partition_the_framed_bodies,
+    the_trailer_close_block_ends_in_eight_zeros,
+    the_trailing_section_closes_only_multi_entry_bodies,
+    TYPE11_HEADER_SCALARS,
+    _read_hierarchy_census,
+    _read_music_mutuality_census,
+    _read_type0a_anchor_census,
+    _read_type0a_array_census,
+    the_type0a_reference_is_a_counted_array,
+    _read_parent_field_census,
+    _read_type0c_array_census,
+    _read_type0c_hierarchy_census,
+    TYPE0C_ARRAY_MAPS,
+    TYPE0C_ARRAY_SCALARS,
+    the_type0c_reference_array_is_located,
+    the_type0c_region_flag_places_the_next_block,
+    the_parent_field_inverts_the_reference_graph,
+    the_type0c_parent_relation_repeats_the_same_shape,
+    edges_per_distinct_distance,
+    end_distance_alignment,
+    the_music_types_split_into_located_and_scattered_references,
+    the_type0a_end_anchor_beats_every_neighbouring_distance,
+    the_type0a_to_type0b_edge_is_aligned_to_the_body_end,
+    music_references_resolve_inside_their_own_bank,
+    the_music_relation_is_symmetric,
+    _read_type11_header_census,
+    almost_every_bank_contributes_one_tree,
+    numeric_type_12_is_a_leaf,
+    the_hierarchy_runs_opposite_to_the_main_reference_graph,
+    the_shared_hierarchy_is_a_forest,
+    the_type11_curve_records_carry_interpolation_codes,
+    the_type11_entry_header_carries_a_bounded_float,
+    the_type11_entry_header_names_one_of_its_own_sources,
+    the_type11_element_count_is_a_count,
+    the_type11_element_frame_beats_its_rivals,
+    the_type11_entry_header_fields_beat_their_controls,
+    the_type11_element_frame_is_not_settled_by_empty_elements,
+    the_type11_trailer_anchor_beats_its_rivals,
+    the_type11_trailer_is_not_settled_by_parsing,
+    every_group_reports_the_bodies_behind_it,
+    summarise_group_evidence,
+    thinly_seen_groups,
     every_shared_constant_beats_its_rivals,
     the_shared_constants_are_not_settled_by_closure,
     type03_targets_cross_bank_boundaries,
@@ -2936,3 +2984,1463 @@ class SharedFrameConstantTests(unittest.TestCase):
 
     def test_an_absent_census_reads_as_empty_rather_than_raising(self) -> None:
         self.assertEqual(_read_shared_constant_census(None, "pkg")["bodies"], 0)
+
+
+class GroupEvidenceTests(unittest.TestCase):
+    """An entry total is not evidence until the bodies behind it are counted."""
+
+    def lanes(self, **overrides):
+        base = {
+            "type07": {
+                "anonymousGroupCounts": {"groupEItems": 20, "groupCEntries": 83014},
+                "anonymousGroupBodies": {"groupEItems": 4, "groupCEntries": 33202},
+                "anonymousGroupMaxInOneBody": {"groupEItems": 9, "groupCEntries": 11},
+            },
+            "type05": {
+                "anonymousGroupCounts": {"groupEItems": 1118, "groupCEntries": 24348},
+                "anonymousGroupBodies": {"groupEItems": 165, "groupCEntries": 14653},
+                "anonymousGroupMaxInOneBody": {"groupEItems": 19, "groupCEntries": 9},
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_a_lane_counting_groups_must_count_their_bodies(self) -> None:
+        self.assertTrue(every_group_reports_the_bodies_behind_it(self.lanes()))
+        stale = self.lanes()
+        stale["type07"] = {"anonymousGroupCounts": {"groupEItems": 20}}
+        self.assertFalse(every_group_reports_the_bodies_behind_it(stale))
+
+    def test_a_lane_with_no_groups_is_not_required_to_report_bodies(self) -> None:
+        lanes = self.lanes(type08={"anonymousGroupCounts": {}})
+        self.assertTrue(every_group_reports_the_bodies_behind_it(lanes))
+
+    def test_a_report_with_no_groups_at_all_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(every_group_reports_the_bodies_behind_it({}))
+        self.assertFalse(every_group_reports_the_bodies_behind_it(
+            {"type08": {"anonymousGroupCounts": {"groupEItems": 0}}}
+        ))
+
+    def test_thin_groups_are_named_per_lane(self) -> None:
+        # Group E's layout is well established corpus-wide and has been seen four
+        # times in type 0x07. Both are true and the second is the one a reader
+        # judging that lane needs.
+        thin = thinly_seen_groups(self.lanes())
+        self.assertEqual(thin, {"type07": {"groupEItems": 4}})
+
+    def test_the_pooled_total_can_be_healthy_while_a_lane_is_thin(self) -> None:
+        summary = summarise_group_evidence(self.lanes())
+        self.assertEqual(summary["bodiesPerGroupPooled"]["groupEItems"], 169)
+        self.assertEqual(summary["thinlySeenPooled"], {})
+        self.assertEqual(summary["thinlySeenByLane"], {"type07": {"groupEItems": 4}})
+
+    def test_the_widest_single_body_is_a_maximum_not_a_sum(self) -> None:
+        # The number that distinguishes "a hundred bodies with one entry" from
+        # "one body with a hundred entries" must not be added up across lanes.
+        summary = summarise_group_evidence(self.lanes())
+        self.assertEqual(summary["widestSingleBodyPerGroup"]["groupEItems"], 19)
+
+    def test_an_empty_lane_set_summarises_without_raising(self) -> None:
+        summary = summarise_group_evidence({})
+        self.assertEqual(summary["bodiesPerGroupPooled"], {})
+        self.assertEqual(summary["thinlySeenByLane"], {})
+
+
+class Type11ElementTrailerTests(unittest.TestCase):
+    """The element trailer must be established by its residue, not by parsing."""
+
+    def census(self, **overrides):
+        base = {
+            "elements": 3891,
+            "anchorSelectsOneTrailer": {
+                "trailer_17_22": 3877, "trailer_18_23": 3875, "trailer_19_24": 3782,
+                "trailer_19_25": 3327, "trailer_20_25": 3418, "trailer_21_26": 721,
+            },
+            "anchorLeavesWholeRecords": {
+                "trailer_17_22": 32, "trailer_19_24": 3594, "trailer_19_25": 3108,
+                "trailer_20_25": 6, "trailer_21_26": 4,
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_type11_trailer_anchor_beats_its_rivals(self.census()))
+        self.assertTrue(the_type11_trailer_is_not_settled_by_parsing(self.census()))
+
+    def test_a_rival_sharing_an_endpoint_is_not_held_to_the_wide_margin(self) -> None:
+        # (19, 25) scores 3,108 only because 19 is right and most elements take the
+        # short trailer. Demanding a tenfold margin over it would fail a correct
+        # reading -- which is exactly what the first version of this gate did.
+        census = self.census()
+        self.assertGreater(census["anchorLeavesWholeRecords"]["trailer_19_25"],
+                           census["anchorLeavesWholeRecords"]["trailer_19_24"] / 10)
+        self.assertTrue(the_type11_trailer_anchor_beats_its_rivals(census))
+
+    def test_an_independent_rival_that_scores_well_fails_the_gate(self) -> None:
+        census = self.census()
+        census["anchorLeavesWholeRecords"]["trailer_20_25"] = 1000
+        self.assertFalse(the_type11_trailer_anchor_beats_its_rivals(census))
+
+    def test_any_rival_beating_the_chosen_anchor_fails(self) -> None:
+        census = self.census()
+        census["anchorLeavesWholeRecords"]["trailer_19_25"] = 3594
+        self.assertFalse(the_type11_trailer_anchor_beats_its_rivals(census))
+
+    def test_an_anchor_that_leaves_nothing_structured_fails(self) -> None:
+        census = self.census()
+        census["anchorLeavesWholeRecords"]["trailer_19_24"] = 0
+        self.assertFalse(the_type11_trailer_anchor_beats_its_rivals(census))
+        self.assertFalse(the_type11_trailer_anchor_beats_its_rivals(self.census(elements=0)))
+        self.assertFalse(the_type11_trailer_anchor_beats_its_rivals({}))
+
+    def test_the_control_fails_when_parsing_would_have_sufficed(self) -> None:
+        # If the chosen anchor also parsed more elements than every rival, parsing
+        # would be the discriminator and the residue test would be doing no work.
+        census = self.census()
+        census["anchorSelectsOneTrailer"] = {
+            "trailer_19_24": 3782, "trailer_17_22": 10, "trailer_18_23": 10,
+        }
+        self.assertFalse(the_type11_trailer_is_not_settled_by_parsing(census))
+        self.assertFalse(the_type11_trailer_is_not_settled_by_parsing({}))
+
+    def test_the_reader_rejects_incoherent_counts(self) -> None:
+        base = {key: 0 for key in TYPE11_ELEMENT_SCALARS}
+        base.update({key: {} for key in TYPE11_ELEMENT_MAPS})
+        for field, value in (
+            ("elements", 5), ("framed", 5), ("elementsWithRecords", 5),
+            ("countFieldAgrees", 5),
+        ):
+            bad = dict(base, **{field: value})
+            bad.update({key: {} for key in TYPE11_ELEMENT_MAPS})
+            with self.assertRaises(ValueError):
+                _read_type11_element_census(bad, "pkg")
+
+    def test_the_reader_rejects_an_anchor_scoring_above_its_own_selection(self) -> None:
+        base = {key: 0 for key in TYPE11_ELEMENT_SCALARS}
+        base.update({key: {} for key in TYPE11_ELEMENT_MAPS})
+        base["anchorSelectsOneTrailer"] = {"trailer_19_24": 3}
+        base["anchorLeavesWholeRecords"] = {"trailer_19_24": 4}
+        with self.assertRaises(ValueError):
+            _read_type11_element_census(base, "pkg")
+
+    def test_an_absent_census_reads_as_empty(self) -> None:
+        self.assertEqual(_read_type11_element_census(None, "pkg")["elements"], 0)
+
+
+class Type11ElementFrameTests(unittest.TestCase):
+    """The element frame must be scored over the elements that exercise it."""
+
+    def census(self, **overrides):
+        base = {
+            "elementsWithRuns": 1151,
+            "frameClosesWithRuns": {
+                "frame_5_11_7_12": 1103, "frame_17_11_7_0": 17, "frame_5_11_11_12": 2,
+            },
+            "frameCloses": {
+                "frame_5_11_7_12": 3594, "frame_17_11_7_0": 2508,
+                "frame_5_11_11_12": 2493, "frame_5_10_7_12": 2491,
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_type11_element_frame_beats_its_rivals(self.census()))
+        self.assertTrue(
+            the_type11_element_frame_is_not_settled_by_empty_elements(self.census())
+        )
+
+    def test_scoring_over_every_element_would_hide_the_margin(self) -> None:
+        # The whole point of the exercising subset. Over all elements the chosen
+        # frame beats its best rival 3,594 to 2,508 -- a ratio of 1.4, which no
+        # tenfold margin survives. Over the elements that walk a run it is 1,103 to
+        # 17. Same frame, same corpus, completely different strength of claim.
+        census = self.census()
+        over_all = census["frameCloses"]
+        self.assertLess(over_all["frame_5_11_7_12"], over_all["frame_17_11_7_0"] * 10)
+        with_runs = census["frameClosesWithRuns"]
+        self.assertGreater(with_runs["frame_5_11_7_12"], with_runs["frame_17_11_7_0"] * 10)
+
+    def test_a_rival_closing_the_run_bearing_elements_fails_the_gate(self) -> None:
+        census = self.census()
+        census["frameClosesWithRuns"]["frame_17_11_7_0"] = 900
+        self.assertFalse(the_type11_element_frame_beats_its_rivals(census))
+
+    def test_a_frame_that_closes_a_minority_fails(self) -> None:
+        census = self.census()
+        census["frameClosesWithRuns"]["frame_5_11_7_12"] = 400
+        self.assertFalse(the_type11_element_frame_beats_its_rivals(census))
+
+    def test_an_empty_or_unexercised_census_fails(self) -> None:
+        self.assertFalse(the_type11_element_frame_beats_its_rivals({}))
+        self.assertFalse(the_type11_element_frame_beats_its_rivals(
+            self.census(elementsWithRuns=0)
+        ))
+        self.assertFalse(the_type11_element_frame_beats_its_rivals(
+            self.census(frameClosesWithRuns={"frame_5_11_7_12": 1103})
+        ))
+
+    def test_the_control_needs_a_rival_that_is_inflated_by_empty_elements(self) -> None:
+        # If no rival closed many elements overall while closing almost none that
+        # walk a run, the run walk would not be shown to carry the result.
+        census = self.census()
+        census["frameCloses"] = {"frame_5_11_7_12": 3594, "frame_17_11_7_0": 20}
+        self.assertFalse(
+            the_type11_element_frame_is_not_settled_by_empty_elements(census)
+        )
+        self.assertFalse(the_type11_element_frame_is_not_settled_by_empty_elements({}))
+
+    def test_the_reader_rejects_a_frame_closing_more_than_it_could(self) -> None:
+        base = {key: 0 for key in TYPE11_ELEMENT_SCALARS}
+        base.update({key: {} for key in TYPE11_ELEMENT_MAPS})
+        base["elements"] = 10
+        base["elementsWithRuns"] = 4
+        base["frameCloses"] = {"frame_5_11_7_12": 8}
+        base["frameClosesWithRuns"] = {"frame_5_11_7_12": 6}
+        with self.assertRaises(ValueError):
+            _read_type11_element_census(base, "pkg")
+
+
+SELECTORS = {
+    "leadingFlag_00": 3861,
+    "elementTrailerFlag_0": 3108,
+    "elementTrailerFlag_1": 575,
+    "elementTrailerFlag_2": 32,
+    "extendedTrailerFlag_0": 98,
+    "extendedTrailerFlag_1": 48,
+    "extendedTrailerPlainFlag_0": 146,
+}
+
+
+class Type11ExtendedTrailerTests(unittest.TestCase):
+    """Numeric type 0x0B's second element-trailer shape, and what opens it."""
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_extended_trailer_is_opened_by_the_trailing_block(SELECTORS)
+        )
+
+    def test_one_observed_flag_is_a_point_not_a_line(self) -> None:
+        # The whole reason the maximum extended flag is 1 and not larger. With only
+        # k = 0 seen there is nothing to establish a step from, and the gate must not
+        # let a single value stand in for a rule.
+        one = dict(SELECTORS)
+        one.pop("extendedTrailerFlag_1")
+        one["extendedTrailerPlainFlag_0"] = 98
+        self.assertFalse(the_extended_trailer_is_opened_by_the_trailing_block(one))
+
+    def test_an_unexercised_flag_fails(self) -> None:
+        self.assertFalse(the_extended_trailer_is_opened_by_the_trailing_block(
+            dict(SELECTORS, extendedTrailerFlag_1=0)
+        ))
+
+    def test_an_extended_element_carrying_another_plain_flag_fails(self) -> None:
+        # The observation the reader records but does not enforce. If an element ever
+        # takes the extended branch at plain flag 1, the branch is selected by
+        # something this reading does not know about and the gate must say so.
+        self.assertFalse(the_extended_trailer_is_opened_by_the_trailing_block(
+            dict(SELECTORS, extendedTrailerPlainFlag_0=140,
+                 extendedTrailerPlainFlag_1=6)
+        ))
+
+    def test_plain_and_extended_counts_that_disagree_fail(self) -> None:
+        self.assertFalse(the_extended_trailer_is_opened_by_the_trailing_block(
+            dict(SELECTORS, extendedTrailerPlainFlag_0=145)
+        ))
+
+    def test_an_absent_branch_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_extended_trailer_is_opened_by_the_trailing_block({}))
+        self.assertFalse(the_extended_trailer_is_opened_by_the_trailing_block(
+            {"elementTrailerFlag_0": 3108}
+        ))
+
+    def test_a_malformed_selector_map_fails(self) -> None:
+        self.assertFalse(the_extended_trailer_is_opened_by_the_trailing_block(None))
+        self.assertFalse(
+            the_extended_trailer_is_opened_by_the_trailing_block([("a", 1)])
+        )
+
+
+class Type11TrailerPartitionTests(unittest.TestCase):
+    """The second trailer shape must add bodies rather than poach them."""
+
+    CORPUS = {"count": 4325, "exact": 3937,
+              "groupCounts": {"entryElements": 3899}}
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_trailer_branches_partition_the_framed_bodies(
+            dict(SELECTORS, elementTrailerFlag_0=3146), self.CORPUS
+        ))
+
+    def test_a_clean_transfer_between_branches_is_not_detected(self) -> None:
+        # The limit of this check, asserted rather than left implicit. If the
+        # extended branch took 100 bodies the plain branch used to close, the sum
+        # would be unchanged and this gate would pass. It is here so that nobody
+        # reads the passing gate as evidence the coverage gain was real -- that
+        # comes from the plain flag counts being unmoved, not from this sum.
+        transferred = dict(
+            SELECTORS, elementTrailerFlag_0=3046,
+            extendedTrailerFlag_0=198, extendedTrailerPlainFlag_0=246,
+        )
+        self.assertTrue(the_trailer_branches_partition_the_framed_bodies(
+            transferred, self.CORPUS
+        ))
+
+    def test_an_element_counted_in_neither_branch_fails(self) -> None:
+        self.assertFalse(the_trailer_branches_partition_the_framed_bodies(
+            dict(SELECTORS, elementTrailerFlag_0=3100), self.CORPUS
+        ))
+
+    def test_a_corpus_without_an_element_count_fails(self) -> None:
+        # The premise this gate stands on. It used to compare against the framed body
+        # count, which was the same number only while every body had one element.
+        self.assertFalse(the_trailer_branches_partition_the_framed_bodies(
+            dict(SELECTORS, elementTrailerFlag_0=3146), {"count": 4325, "exact": 3937}
+        ))
+
+    def test_an_element_counted_in_both_branches_fails(self) -> None:
+        self.assertFalse(the_trailer_branches_partition_the_framed_bodies(
+            dict(SELECTORS, elementTrailerFlag_0=3146, extendedTrailerFlag_1=58),
+            self.CORPUS,
+        ))
+
+    def test_an_empty_branch_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_trailer_branches_partition_the_framed_bodies(
+            {"elementTrailerFlag_0": 3715},
+            {"count": 4325, "exact": 3715,
+             "groupCounts": {"entryElements": 3715}},
+        ))
+        self.assertFalse(the_trailer_branches_partition_the_framed_bodies({}, {}))
+
+    def test_malformed_input_fails(self) -> None:
+        self.assertFalse(
+            the_trailer_branches_partition_the_framed_bodies(None, {"exact": 1})
+        )
+        self.assertFalse(
+            the_trailer_branches_partition_the_framed_bodies(SELECTORS, None)
+        )
+
+
+SECTION_GROUPS = {"entries": 3937, "trailingSections": 76}
+SECTION_SELECTORS = {
+    "trailingSectionOpens_0": 66,
+    "trailingSectionOpens_1": 10,
+    "trailingSectionFlag_0": 68,
+    "trailingSectionFlag_1": 8,
+}
+
+
+class Type11TrailingSectionTests(unittest.TestCase):
+    """The section that closes a multi-entry body, and the coincidences it refuses."""
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_trailing_section_closes_only_multi_entry_bodies(
+            SECTION_GROUPS, SECTION_SELECTORS, {"count": 4325, "exact": 3937}
+        ))
+
+    def test_a_section_whose_block_the_trailer_rule_does_not_know_fails(self) -> None:
+        # The 24 residues that a length-only control would close. Their opening byte
+        # is 0xAF, 0x55 or 0x59, so accepting them means the reader has stopped
+        # requiring the section's own bytes to agree with the trailer rule and is
+        # matching on total length alone.
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            dict(SECTION_GROUPS, trailingSections=100),
+            dict(SECTION_SELECTORS, trailingSectionOpens_0=66,
+                 trailingSectionOpens_175=24, trailingSectionFlag_0=92),
+            {"count": 4325, "exact": 3961},
+        ))
+
+    def test_a_section_with_an_out_of_range_flag_fails(self) -> None:
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            dict(SECTION_GROUPS, trailingSections=77),
+            dict(SECTION_SELECTORS, trailingSectionOpens_0=67,
+                 trailingSectionFlag_9=1),
+            {"count": 4325, "exact": 3938},
+        ))
+
+    def test_counts_that_do_not_cover_the_sections_fail(self) -> None:
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            dict(SECTION_GROUPS, trailingSections=80),
+            SECTION_SELECTORS, {"count": 4325, "exact": 3937},
+        ))
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            SECTION_GROUPS,
+            {k: v for k, v in SECTION_SELECTORS.items() if "Flag" not in k},
+            {"count": 4325, "exact": 3937},
+        ))
+
+    def test_no_sections_at_all_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            {"entries": 3861}, {}, {"count": 4325, "exact": 3861}
+        ))
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            {}, {}, {}
+        ))
+
+    def test_malformed_input_fails(self) -> None:
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            None, SECTION_SELECTORS, {}
+        ))
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            SECTION_GROUPS, None, {}
+        ))
+        self.assertFalse(the_trailing_section_closes_only_multi_entry_bodies(
+            SECTION_GROUPS, SECTION_SELECTORS, None
+        ))
+
+
+class Type11CloseBlockTests(unittest.TestCase):
+    """Every element trailer ends with four variable bytes and eight zero ones."""
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_trailer_close_block_ends_in_eight_zeros(
+            {"finalCloseBlocks": 3937,
+             "finalCloseBlocksEndingInEightZeros": 3937,
+             "interiorCloseBlocks": 38,
+             "interiorCloseBlocksEndingInEightZeros": 0,
+             "closeBlockControlsEndingInEightZeros": 0}
+        ))
+
+    def test_a_single_block_without_the_zeros_fails(self) -> None:
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
+            {"finalCloseBlocks": 3937,
+             "finalCloseBlocksEndingInEightZeros": 3936,
+             "interiorCloseBlocks": 38,
+             "interiorCloseBlocksEndingInEightZeros": 0,
+             "closeBlockControlsEndingInEightZeros": 0}
+        ))
+
+    def test_a_control_that_scores_as_well_fails(self) -> None:
+        # The check that stops this being a statement about long zero runs in
+        # general. If the same width four bytes earlier is also mostly zeros, the
+        # eight zeros say nothing about this particular block.
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
+            {"finalCloseBlocks": 3937,
+             "finalCloseBlocksEndingInEightZeros": 3937,
+             "interiorCloseBlocks": 38,
+             "interiorCloseBlocksEndingInEightZeros": 0,
+             "closeBlockControlsEndingInEightZeros": 3400}
+        ))
+
+    def test_interior_blocks_scoring_like_final_ones_fails(self) -> None:
+        # The contrast this gate exists for. While every framed body had exactly one
+        # element there were no interior blocks, so "the trailer ends in eight zeros"
+        # and "the body ends in eight zeros" were the same claim. Now they are not:
+        # final blocks score 3,937 of 3,937 and interior ones 0 of 38, which makes it
+        # a property of the block that closes the body. If interior blocks scored the
+        # same way the claim would be about trailers in general and this must fail.
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
+            {"finalCloseBlocks": 3937,
+             "finalCloseBlocksEndingInEightZeros": 3937,
+             "interiorCloseBlocks": 38,
+             "interiorCloseBlocksEndingInEightZeros": 38,
+             "closeBlockControlsEndingInEightZeros": 0}
+        ))
+
+    def test_no_interior_blocks_at_all_fails_for_want_of_a_contrast(self) -> None:
+        # The state the reader was in before multi-element bodies framed. The gate
+        # refuses rather than passing, because without interior blocks there is
+        # nothing to contrast the final ones against.
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
+            {"finalCloseBlocks": 3861,
+             "finalCloseBlocksEndingInEightZeros": 3861,
+             "interiorCloseBlocks": 0,
+             "interiorCloseBlocksEndingInEightZeros": 0,
+             "closeBlockControlsEndingInEightZeros": 0}
+        ))
+
+    def test_an_empty_census_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros({}))
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(
+            {"finalCloseBlocks": 0, "finalCloseBlocksEndingInEightZeros": 0,
+             "interiorCloseBlocks": 0,
+             "interiorCloseBlocksEndingInEightZeros": 0,
+             "closeBlockControlsEndingInEightZeros": 0}
+        ))
+
+    def test_malformed_input_fails(self) -> None:
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros(None))
+        self.assertFalse(the_trailer_close_block_ends_in_eight_zeros("blocks"))
+
+
+class Type11BodyLaneTests(unittest.TestCase):
+    """Numeric type 0x0B's body frame has a floor, not a closure requirement."""
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_type11_body_frame_covers_most_of_its_corpus(
+            {"count": 4325, "exact": 3715, "failed": 610, "ambiguous": 0}
+        ))
+
+    def test_a_halved_coverage_fails(self) -> None:
+        # The regression this gate exists to catch. Nothing else in the report reads
+        # this number, so a change that quietly halved it would look like a pass.
+        self.assertFalse(the_type11_body_frame_covers_most_of_its_corpus(
+            {"count": 4325, "exact": 1800, "failed": 2525, "ambiguous": 0}
+        ))
+
+    def test_an_ambiguous_body_fails_outright(self) -> None:
+        self.assertFalse(the_type11_body_frame_covers_most_of_its_corpus(
+            {"count": 4325, "exact": 3715, "ambiguous": 1}
+        ))
+
+    def test_an_empty_lane_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_type11_body_frame_covers_most_of_its_corpus({}))
+        self.assertFalse(the_type11_body_frame_covers_most_of_its_corpus(
+            {"count": 0, "exact": 0}
+        ))
+        self.assertFalse(the_type11_body_frame_covers_most_of_its_corpus(
+            {"count": 100, "exact": 0}
+        ))
+
+    def test_the_floor_sits_below_the_measured_rate(self) -> None:
+        # A gate set at exactly today's value fails on the next legitimate change to
+        # a neighbouring reader and teaches nothing when it does.
+        self.assertLess(TYPE11_BODY_MINIMUM_EXACT, 3715 / 4325)
+
+
+class Type11EntryHeaderTests(unittest.TestCase):
+    """Entry-header readings must each beat a neighbouring word."""
+
+    def census(self, **overrides):
+        base = {
+            "entries": 3715,
+            "rangeTested": 1404, "rangeIsSymmetric": 1218, "rangeIsOrdered": 1264,
+            "rangeControlTested": 1391, "rangeControlIsSymmetric": 0,
+            "rangeControlIsOrdered": 1078,
+            "fractionsTested": 2804, "fractionsAreSmall": 2735,
+            "fractionControlsTested": 3715, "fractionControlsAreSmall": 0,
+            "elementCountValues": {"elements_1": 3715},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_type11_entry_header_fields_beat_their_controls(self.census()))
+    def test_a_control_that_scores_as_well_fails(self) -> None:
+        self.assertFalse(the_type11_entry_header_fields_beat_their_controls(
+            self.census(rangeControlIsSymmetric=1200)
+        ))
+        self.assertFalse(the_type11_entry_header_fields_beat_their_controls(
+            self.census(fractionControlsAreSmall=3000)
+        ))
+
+    def test_a_reading_that_holds_for_a_minority_fails(self) -> None:
+        self.assertFalse(the_type11_entry_header_fields_beat_their_controls(
+            self.census(rangeIsSymmetric=400)
+        ))
+        self.assertFalse(the_type11_entry_header_fields_beat_their_controls(
+            self.census(fractionsAreSmall=1500)
+        ))
+
+    def test_an_untested_reading_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_type11_entry_header_fields_beat_their_controls({}))
+        self.assertFalse(the_type11_entry_header_fields_beat_their_controls(
+            self.census(rangeTested=0, rangeIsSymmetric=0)
+        ))
+        self.assertFalse(the_type11_entry_header_fields_beat_their_controls(
+            self.census(fractionControlsTested=0)
+        ))
+
+    def test_the_element_count_is_exercised_at_more_than_one_value(self) -> None:
+        # The gate this replaced held while the count was 1 in every framed entry and
+        # said that the failure would be the good news. It was: the trailing section
+        # brought multi-entry bodies into the frame, the count is now read at 0, 1, 2
+        # and 3, and the walk consumes exactly that many elements each time.
+        self.assertFalse(the_type11_element_count_is_a_count(self.census()))
+        self.assertTrue(the_type11_element_count_is_a_count(
+            self.census(elementCountValues={
+                "elements_0": 130, "elements_1": 3871,
+                "elements_2": 8, "elements_3": 4,
+            })
+        ))
+        self.assertFalse(the_type11_element_count_is_a_count({}))
+
+    def test_the_reader_rejects_hits_above_what_was_tested(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type11_header_census(self.census(rangeIsSymmetric=9999), "pkg")
+
+    def test_the_reader_rejects_a_histogram_that_misses_entries(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type11_header_census(
+                self.census(elementCountValues={"elements_1": 3}), "pkg"
+            )
+
+    def test_an_absent_census_reads_as_empty(self) -> None:
+        self.assertEqual(_read_type11_header_census(None, "pkg")["entries"], 0)
+
+
+class Type11CurveRecordTests(unittest.TestCase):
+    """The run's split is settled by what the records contain, not by length."""
+
+    def census(self, **overrides):
+        base = {
+            "curveRecords": 4086, "curveCodesInRange": 4086,
+            "curveControlsTested": 9376, "curveControlsInRange": 377,
+            "curveCodes": {
+                "code_0": 77, "code_1": 485, "code_2": 25, "code_3": 8, "code_4": 1003,
+                "code_5": 74, "code_6": 14, "code_7": 280, "code_8": 103, "code_9": 2017,
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_type11_curve_records_carry_interpolation_codes(self.census())
+        )
+
+    def test_one_record_out_of_range_fails(self) -> None:
+        # The enum is contiguous and complete, so a single miss means the boundary
+        # is wrong somewhere, not that one record is odd.
+        self.assertFalse(the_type11_curve_records_carry_interpolation_codes(
+            self.census(curveCodesInRange=4085)
+        ))
+
+    def test_codes_piling_on_one_value_fail(self) -> None:
+        # A wrong offset over a zero-filled region would put every code on 0 and
+        # pass a range test. Spanning the enum is what a real code field does.
+        self.assertFalse(the_type11_curve_records_carry_interpolation_codes(
+            self.census(curveCodes={"code_0": 4086})
+        ))
+
+    def test_a_control_that_scores_as_well_fails(self) -> None:
+        self.assertFalse(the_type11_curve_records_carry_interpolation_codes(
+            self.census(curveControlsInRange=9000)
+        ))
+
+    def test_an_untested_census_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_type11_curve_records_carry_interpolation_codes({}))
+        self.assertFalse(the_type11_curve_records_carry_interpolation_codes(
+            self.census(curveRecords=0, curveCodesInRange=0)
+        ))
+        self.assertFalse(the_type11_curve_records_carry_interpolation_codes(
+            self.census(curveControlsTested=0, curveControlsInRange=0)
+        ))
+
+    def test_the_reader_rejects_a_code_histogram_that_misses_records(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type11_header_census(
+                {key: 0 for key in TYPE11_HEADER_SCALARS}
+                | {"elementCountValues": {}, "curveCodes": {"code_0": 3}},
+                "pkg",
+            )
+
+
+class SharedHierarchyTests(unittest.TestCase):
+    """The parent relation 0x08 and 0x12 declare is a forest with a type discipline."""
+
+    def census(self, **overrides):
+        base = {
+            "banks": 121, "objects": 412, "cycles": 0,
+            "rootsWithNoParent": 4, "rootsNamingOutsideTheBank": 119,
+            "rootsPerBank": {"roots_1": 120, "roots_3": 1},
+            "rootTypes": {"type08": 4},
+            "outsideBankTypes": {"type12": 119},
+            "internalTypes": {"type08": 68, "type12": 2},
+            "leafTypes": {"type08": 93, "type12": 249},
+            "depths": {"depth_0": 123, "depth_2": 126, "depth_3": 64, "depth_4": 32,
+                       "depth_5": 23, "depth_6": 21, "depth_1": 18, "depth_7": 5},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_shared_hierarchy_is_a_forest(self.census()))
+        self.assertTrue(almost_every_bank_contributes_one_tree(self.census()))
+        self.assertTrue(numeric_type_12_is_a_leaf(self.census()))
+
+    def test_one_cycle_fails(self) -> None:
+        # A cycle would mean the leading word is not a parent at all, so this is
+        # equality with zero rather than a rate.
+        self.assertFalse(the_shared_hierarchy_is_a_forest(self.census(cycles=1)))
+
+    def test_a_forest_of_isolated_nodes_fails(self) -> None:
+        # Acyclicity is free when nothing is connected. The gate demands the
+        # relation actually relate things.
+        self.assertFalse(the_shared_hierarchy_is_a_forest(
+            self.census(depths={"depth_0": 412})
+        ))
+
+    def test_scattered_roots_fail(self) -> None:
+        self.assertFalse(almost_every_bank_contributes_one_tree(
+            self.census(rootsPerBank={"roots_1": 40, "roots_5": 81})
+        ))
+        self.assertFalse(almost_every_bank_contributes_one_tree({}))
+
+    def test_an_out_of_bank_parent_is_not_a_counterexample_to_the_leaf_claim(self) -> None:
+        # The distinction the first version of this gate got wrong. 119 type 0x12
+        # objects name a parent outside their bank; that makes them roots of a bank
+        # fragment, not internal nodes, and the leaf claim survives.
+        census = self.census()
+        self.assertEqual(census["outsideBankTypes"], {"type12": 119})
+        self.assertTrue(numeric_type_12_is_a_leaf(census))
+
+    def test_type_12_gaining_children_fails(self) -> None:
+        self.assertFalse(numeric_type_12_is_a_leaf(
+            self.census(internalTypes={"type08": 68, "type12": 200})
+        ))
+
+    def test_a_parentless_type_12_fails(self) -> None:
+        # Every object with no parent at all is a 0x08. A 0x12 at the top would mean
+        # the two types do not occupy fixed positions after all.
+        self.assertFalse(numeric_type_12_is_a_leaf(
+            self.census(rootTypes={"type08": 4, "type12": 1})
+        ))
+
+    def test_an_empty_census_fails_rather_than_passing_vacuously(self) -> None:
+        for gate in (the_shared_hierarchy_is_a_forest,
+                     almost_every_bank_contributes_one_tree,
+                     numeric_type_12_is_a_leaf):
+            self.assertFalse(gate({}))
+
+    def test_the_reader_rejects_counts_that_do_not_partition(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_hierarchy_census(
+                self.census(leafTypes={"type08": 93, "type12": 1}), "pkg"
+            )
+        with self.assertRaises(ValueError):
+            _read_hierarchy_census(self.census(rootsWithNoParent=9), "pkg")
+
+
+class HierarchyDirectionTests(unittest.TestCase):
+    """The 0x08/0x12 relation points the opposite way to the main reference graph."""
+
+    def census(self, **overrides):
+        base = {
+            "parentsWithSeveralChildren": 50,
+            "childrenPerParent": {
+                "children_1": 20, "children_2": 21, "children_3": 7, "children_4": 9,
+                "children_5": 2, "children_6": 2, "children_7": 1, "children_8": 1,
+                "children_9": 1, "children_11": 1, "children_13": 3, "children_16": 2,
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_hierarchy_runs_opposite_to_the_main_reference_graph(self.census())
+        )
+
+    def test_one_child_per_parent_fails(self) -> None:
+        # That is the main reference graph's shape: every target named exactly once.
+        # If this relation ever looked like that, the claim that it runs the other
+        # way would need re-arguing rather than quietly standing.
+        self.assertFalse(the_hierarchy_runs_opposite_to_the_main_reference_graph(
+            self.census(parentsWithSeveralChildren=0,
+                        childrenPerParent={"children_1": 70})
+        ))
+
+    def test_a_thin_majority_with_no_wide_parent_fails(self) -> None:
+        self.assertFalse(the_hierarchy_runs_opposite_to_the_main_reference_graph(
+            self.census(parentsWithSeveralChildren=40,
+                        childrenPerParent={"children_1": 30, "children_2": 40})
+        ))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_hierarchy_runs_opposite_to_the_main_reference_graph({}))
+        self.assertFalse(the_hierarchy_runs_opposite_to_the_main_reference_graph(
+            self.census(childrenPerParent={})
+        ))
+
+    def test_more_wide_parents_than_parents_fails(self) -> None:
+        self.assertFalse(the_hierarchy_runs_opposite_to_the_main_reference_graph(
+            self.census(parentsWithSeveralChildren=999)
+        ))
+
+
+class MusicMutualityTests(unittest.TestCase):
+    """The music relation is the format's third kind: symmetric."""
+
+    def census(self, **overrides):
+        base = {
+            "sameBankEdges": 24430, "edgesIntoUnscannedObjects": 4598,
+            "edgesBetweenScannedObjects": 19832, "mutualEdges": 14652,
+            "mutualEdgeKinds": {
+                "type0A_with_type0C": 588, "type0A_with_type0D": 3570,
+                "type0C_with_type0A": 588, "type0C_with_type0C": 1474,
+                "type0C_with_type0D": 2431, "type0D_with_type0A": 3570,
+                "type0D_with_type0C": 2431,
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_music_relation_is_symmetric(self.census()))
+        self.assertTrue(music_references_resolve_inside_their_own_bank(
+            self.census(), {"references": 24515}
+        ))
+
+    def test_a_one_way_relation_fails(self) -> None:
+        # That would make it a hierarchy like the format's other two relations, and
+        # the reading that these edges cannot be parenthood would need re-arguing.
+        self.assertFalse(the_music_relation_is_symmetric(
+            self.census(mutualEdges=200)
+        ))
+
+    def test_unaskable_edges_are_not_counted_against_the_rate(self) -> None:
+        # An edge into an unscanned object cannot carry a reverse edge, so counting
+        # it as one-way would mix "not mutual" with "not askable".
+        c = self.census()
+        self.assertEqual(
+            c["edgesIntoUnscannedObjects"] + c["edgesBetweenScannedObjects"],
+            c["sameBankEdges"],
+        )
+        self.assertTrue(the_music_relation_is_symmetric(c))
+
+    def test_mutuality_confined_to_one_type_pair_fails(self) -> None:
+        self.assertFalse(the_music_relation_is_symmetric(
+            self.census(mutualEdgeKinds={"type0A_with_type0D": 14652})
+        ))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_music_relation_is_symmetric({}))
+        self.assertFalse(the_music_relation_is_symmetric(
+            self.census(edgesBetweenScannedObjects=0, mutualEdges=0)
+        ))
+
+    def test_references_leaving_the_bank_fail_the_closure(self) -> None:
+        self.assertFalse(music_references_resolve_inside_their_own_bank(
+            self.census(sameBankEdges=12000), {"references": 24515}
+        ))
+        self.assertFalse(music_references_resolve_inside_their_own_bank({}, {}))
+
+    def test_the_reader_rejects_counts_that_do_not_partition(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_music_mutuality_census(self.census(sameBankEdges=99), "pkg")
+        with self.assertRaises(ValueError):
+            _read_music_mutuality_census(self.census(mutualEdges=99999), "pkg")
+
+
+class Type0AEndAnchorTests(unittest.TestCase):
+    """A fixed distance from the end is a rule only if the non-anchors find nothing."""
+
+    def census(self, **overrides):
+        base = {
+            "bodies": 4158,
+            "anchorNamesTheTargetType": 3995,
+            "controlsNameTheTargetType": 0,
+            "anchorHits": {"minus_69": 3707, "minus_73": 288},
+            "controlHits": {},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_type0a_end_anchor_beats_every_neighbouring_distance(self.census())
+        )
+
+    def test_controls_finding_references_fail(self) -> None:
+        self.assertFalse(the_type0a_end_anchor_beats_every_neighbouring_distance(
+            self.census(controlsNameTheTargetType=900, controlHits={"minus_70": 900})
+        ))
+
+    def test_an_anchor_covering_a_minority_fails(self) -> None:
+        self.assertFalse(the_type0a_end_anchor_beats_every_neighbouring_distance(
+            self.census(anchorNamesTheTargetType=900,
+                        anchorHits={"minus_69": 900})
+        ))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_type0a_end_anchor_beats_every_neighbouring_distance({}))
+        self.assertFalse(the_type0a_end_anchor_beats_every_neighbouring_distance(
+            self.census(bodies=0)
+        ))
+
+    def test_the_anchor_total_may_exceed_the_body_count(self) -> None:
+        # A body can carry a reference at more than one anchor distance, so the sum
+        # is not a per-body total. Each distance individually cannot exceed it, and
+        # that is what the reader checks.
+        c = self.census()
+        self.assertGreater(sum(c["anchorHits"].values()), 0)
+        self.assertLess(max(c["anchorHits"].values()), c["bodies"])
+        _read_type0a_anchor_census(c, "pkg")
+
+    def test_the_reader_rejects_one_distance_exceeding_the_body_count(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type0a_anchor_census(
+                self.census(anchorNamesTheTargetType=9000,
+                            anchorHits={"minus_69": 9000}), "pkg"
+            )
+
+    def test_the_reader_rejects_hits_that_do_not_add_up(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type0a_anchor_census(
+                self.census(anchorHits={"minus_69": 3707}), "pkg"
+            )
+
+
+class Type0AEdgeAlignmentTests(unittest.TestCase):
+    """One edge is aligned to the body end; the rest of the corpus is not."""
+
+    def census(self, **overrides):
+        # Two edge kinds: the aligned one, and a scattered one standing in for the
+        # rest of the corpus.
+        base = {
+            "edgeDistanceFromEnd": {
+                "type0A_to_type0B_at-69": 3707,
+                "type0A_to_type0B_at-73": 288,
+                "type0A_to_type0B_at-82": 52,
+                "type0C_to_type0D_at-190": 900,
+                "type0C_to_type0D_at-163": 800,
+                "type0C_to_type0D_at-101": 174,
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_type0a_to_type0b_edge_is_aligned_to_the_body_end(self.census())
+        )
+
+    def test_the_alignment_is_read_off_the_published_distances(self) -> None:
+        rows = end_distance_alignment(self.census()["edgeDistanceFromEnd"])
+        self.assertEqual(rows["type0A_to_type0B"]["total"], 4047)
+        self.assertEqual(rows["type0A_to_type0B"]["aligned"], 3995)
+        # -190 and -163 are not 1 mod 4; -101 is.
+        self.assertEqual(rows["type0C_to_type0D"]["aligned"], 174)
+
+    def test_an_unaligned_edge_fails(self) -> None:
+        census = self.census(edgeDistanceFromEnd={
+            "type0A_to_type0B_at-70": 3707,
+            "type0C_to_type0D_at-190": 900,
+        })
+        self.assertFalse(
+            the_type0a_to_type0b_edge_is_aligned_to_the_body_end(census)
+        )
+
+    def test_a_corpus_where_everything_is_aligned_fails(self) -> None:
+        # If every reference were aligned, the observation would be vacuous -- it
+        # would be a property of the format's field widths, not of this edge.
+        census = self.census(edgeDistanceFromEnd={
+            "type0A_to_type0B_at-69": 3707,
+            "type0C_to_type0D_at-101": 900,
+            "type0D_to_type0A_at-97": 800,
+        })
+        self.assertFalse(
+            the_type0a_to_type0b_edge_is_aligned_to_the_body_end(census)
+        )
+
+    def test_a_corpus_with_only_this_edge_fails(self) -> None:
+        # Nothing to compare against is not evidence.
+        self.assertFalse(the_type0a_to_type0b_edge_is_aligned_to_the_body_end(
+            {"edgeDistanceFromEnd": {"type0A_to_type0B_at-69": 3707}}
+        ))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_type0a_to_type0b_edge_is_aligned_to_the_body_end({}))
+        self.assertEqual(end_distance_alignment({}), {})
+
+    def test_malformed_keys_are_skipped_rather_than_crashing(self) -> None:
+        rows = end_distance_alignment({"nonsense": 5, "type0A_to_type0B_at-x": 7})
+        self.assertEqual(rows, {})
+
+
+class MusicEdgeLocationTests(unittest.TestCase):
+    """Types 0x0A and 0x0D place their references in fields; 0x0C uses a list."""
+
+    def census(self, **overrides):
+        # Three located edge kinds and two scattered ones, at the measured ratios.
+        distances = {}
+        for i in range(32):
+            distances[f"type0A_to_type0B_at-{69 + 4 * i}"] = 135
+        for i in range(83):
+            distances[f"type0D_to_type0A_at-{163 + i}"] = 43
+        for i in range(56):
+            distances[f"type0D_to_type0C_at-{190 + i}"] = 43
+        for i in range(2131):
+            distances[f"type0C_to_type0D_at-{150 + i}"] = 2
+        for i in range(2089):
+            distances[f"type0C_to_type0A_at-{218 + i}"] = 2
+        base = {"edgeDistanceFromEnd": distances}
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_music_types_split_into_located_and_scattered_references(self.census())
+        )
+
+    def test_the_ratio_is_read_off_the_published_distances(self) -> None:
+        rows = edges_per_distinct_distance(self.census()["edgeDistanceFromEnd"])
+        self.assertEqual(rows["type0A_to_type0B"]["distances"], 32)
+        self.assertEqual(rows["type0C_to_type0D"]["distances"], 2131)
+        self.assertAlmostEqual(
+            rows["type0C_to_type0D"]["edges"] / rows["type0C_to_type0D"]["distances"],
+            2.0,
+        )
+
+    def test_a_located_edge_becoming_scattered_fails(self) -> None:
+        census = self.census()
+        for key in list(census["edgeDistanceFromEnd"]):
+            if key.startswith("type0A_to_type0B"):
+                del census["edgeDistanceFromEnd"][key]
+        for i in range(2000):
+            census["edgeDistanceFromEnd"][f"type0A_to_type0B_at-{69 + i}"] = 2
+        self.assertFalse(
+            the_music_types_split_into_located_and_scattered_references(census)
+        )
+
+    def test_a_scattered_edge_becoming_located_fails(self) -> None:
+        census = self.census()
+        for key in list(census["edgeDistanceFromEnd"]):
+            if key.startswith("type0C_to_type0D"):
+                del census["edgeDistanceFromEnd"][key]
+        census["edgeDistanceFromEnd"]["type0C_to_type0D_at-150"] = 4429
+        self.assertFalse(
+            the_music_types_split_into_located_and_scattered_references(census)
+        )
+
+    def test_small_edge_kinds_are_excluded_rather_than_forced(self) -> None:
+        # The two edges into type 0x11 score about 6 per distance, between the
+        # groups. A hundred-odd samples cannot say which side they belong to.
+        census = self.census()
+        for i in range(19):
+            census["edgeDistanceFromEnd"][f"type0A_to_type11_at-{112 + i}"] = 6
+        self.assertTrue(
+            the_music_types_split_into_located_and_scattered_references(census)
+        )
+
+    def test_an_empty_or_one_sided_census_fails(self) -> None:
+        self.assertFalse(the_music_types_split_into_located_and_scattered_references({}))
+        self.assertEqual(edges_per_distinct_distance({}), {})
+        one_sided = {"edgeDistanceFromEnd": {
+            f"type0A_to_type0B_at-{69 + 4 * i}": 135 for i in range(32)
+        }}
+        self.assertFalse(
+            the_music_types_split_into_located_and_scattered_references(one_sided)
+        )
+
+
+class Type0CHierarchyTests(unittest.TestCase):
+    """A fourth located relation, with the shape the 0x08/0x12 one has."""
+
+    def census(self, **overrides):
+        base = {
+            "banks": 5, "objects": 7331, "objectsNamingAParent": 7084,
+            "rootsWithNoParent": 192, "parentsOutsideTheBank": 55, "cycles": 0,
+            "parentsWithSeveralChildren": 1538,
+            "depths": {"depth_0": 247, "depth_1": 361, "depth_2": 1006,
+                       "depth_3": 1626, "depth_4": 1916, "depth_5": 1560,
+                       "depth_6": 485, "depth_7": 96, "depth_8": 24, "depth_9": 10},
+            "childrenPerParent": {"children_1": 1528, "children_2": 1014,
+                                  "children_3": 285, "children_4": 71,
+                                  "children_5": 37, "children_16": 131},
+            "edgeTypes": {"type0A_to_type0D": 3461, "type0D_to_type0C": 2321,
+                          "type0C_to_type0C": 716, "type0A_to_type0C": 586},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_type0c_parent_relation_repeats_the_same_shape(self.census())
+        )
+
+    def test_one_cycle_fails(self) -> None:
+        self.assertFalse(the_type0c_parent_relation_repeats_the_same_shape(
+            self.census(cycles=1)
+        ))
+
+    def test_a_shallow_relation_fails(self) -> None:
+        # Acyclicity is free when nothing is connected, so the relation must reach
+        # past depth one for most of its objects.
+        self.assertFalse(the_type0c_parent_relation_repeats_the_same_shape(
+            self.census(depths={"depth_0": 7000, "depth_1": 331})
+        ))
+
+    def test_one_child_per_parent_fails(self) -> None:
+        # That would be the main reference graph's direction, not this one's.
+        self.assertFalse(the_type0c_parent_relation_repeats_the_same_shape(
+            self.census(parentsWithSeveralChildren=0,
+                        childrenPerParent={"children_1": 3066})
+        ))
+
+    def test_a_relation_most_objects_do_not_use_fails(self) -> None:
+        self.assertFalse(the_type0c_parent_relation_repeats_the_same_shape(
+            self.census(objectsNamingAParent=100, rootsWithNoParent=7176)
+        ))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_type0c_parent_relation_repeats_the_same_shape({}))
+        self.assertFalse(the_type0c_parent_relation_repeats_the_same_shape(
+            self.census(objects=0)
+        ))
+
+    def test_a_relation_confined_to_one_type_pair_fails(self) -> None:
+        # 0x0C nesting inside itself alone would be a far weaker claim than the
+        # chain 0x0A -> 0x0D -> 0x0C -> 0x0C that the corpus actually shows.
+        self.assertFalse(the_type0c_parent_relation_repeats_the_same_shape(
+            self.census(edgeTypes={"type0C_to_type0C": 7084})
+        ))
+
+    def test_the_reader_rejects_parent_kinds_that_do_not_partition(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type0c_hierarchy_census(self.census(rootsWithNoParent=999), "pkg")
+
+    def test_an_absent_census_reads_as_empty(self) -> None:
+        self.assertEqual(_read_type0c_hierarchy_census(None, "pkg")["objects"], 0)
+
+
+class ParentFieldInverseTests(unittest.TestCase):
+    """The parent field and the reference graph must be exact inverses."""
+
+    def census(self, **overrides):
+        base = {
+            "checkable": 199445, "parentNamesTheChildBack": 199445,
+            "parentDoesNotNameTheChild": 0,
+            "namesSomethingOutsideTheBank": 1598, "parentDeclaresNoChildren": 10448,
+            "edgeTypes": {
+                "type02_to_type05": 129413, "type07_to_type07": 28425,
+                "type05_to_type06": 17572, "type05_to_type07": 7138,
+                "type02_to_type07": 6881, "type06_to_type07": 3653,
+                "type09_to_type07": 3308,
+            },
+            "disagreementTypes": {},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_parent_field_inverts_the_reference_graph(self.census()))
+
+    def test_a_single_disagreement_fails(self) -> None:
+        # Equality, not a rate: one disagreement means one of the two readings has
+        # drifted, and which one is then worth knowing.
+        self.assertFalse(the_parent_field_inverts_the_reference_graph(self.census(
+            parentNamesTheChildBack=199444, parentDoesNotNameTheChild=1,
+            disagreementTypes={"type02_under_type05": 1},
+        )))
+
+    def test_a_relation_confined_to_a_few_type_pairs_fails(self) -> None:
+        self.assertFalse(the_parent_field_inverts_the_reference_graph(self.census(
+            edgeTypes={"type02_to_type05": 199445}
+        )))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_parent_field_inverts_the_reference_graph({}))
+        self.assertFalse(the_parent_field_inverts_the_reference_graph(
+            self.census(checkable=0, parentNamesTheChildBack=0)
+        ))
+
+    def test_the_reader_rejects_outcomes_that_do_not_cover_the_checkable(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_parent_field_census(
+                self.census(parentNamesTheChildBack=5), "pkg"
+            )
+
+    def test_the_reader_rejects_disagreement_types_that_do_not_add_up(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_parent_field_census(
+                self.census(disagreementTypes={"type02_under_type05": 3}), "pkg"
+            )
+
+    def test_an_absent_census_reads_as_empty(self) -> None:
+        self.assertEqual(_read_parent_field_census(None, "pkg")["checkable"], 0)
+
+
+class Type11BoundedFloatTests(unittest.TestCase):
+    """A float field is established by its neighbours failing, not by its own values."""
+
+    def census(self, **overrides):
+        base = {
+            "boundedFloatsTested": 3715, "boundedFloatsInBand": 3715,
+            "floatControlsTested": 4806, "floatControlsInBand": 420,
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_type11_entry_header_carries_a_bounded_float(self.census())
+        )
+
+    def test_controls_that_also_look_like_floats_fail(self) -> None:
+        # Almost any 32-bit word is a finite float, so the claim rests entirely on
+        # the neighbouring words not landing in the band.
+        self.assertFalse(the_type11_entry_header_carries_a_bounded_float(
+            self.census(floatControlsInBand=4000)
+        ))
+
+    def test_a_field_that_often_leaves_the_band_fails(self) -> None:
+        self.assertFalse(the_type11_entry_header_carries_a_bounded_float(
+            self.census(boundedFloatsInBand=2000)
+        ))
+
+    def test_an_untested_census_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_type11_entry_header_carries_a_bounded_float({}))
+        self.assertFalse(the_type11_entry_header_carries_a_bounded_float(
+            self.census(boundedFloatsTested=0, boundedFloatsInBand=0)
+        ))
+        self.assertFalse(the_type11_entry_header_carries_a_bounded_float(
+            self.census(floatControlsTested=0, floatControlsInBand=0)
+        ))
+
+    def test_the_reader_rejects_more_in_band_than_tested(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type11_header_census(
+                {key: 0 for key in TYPE11_HEADER_SCALARS}
+                | {"elementCountValues": {}, "curveCodes": {},
+                   "boundedFloatsTested": 1, "boundedFloatsInBand": 5},
+                "pkg",
+            )
+
+
+class Type0ACountedArrayTests(unittest.TestCase):
+    """The reference is a counted array, and the count is right every time."""
+
+    def census(self, **overrides):
+        base = {
+            "bodies": 4158, "bodiesWithNoReference": 255, "noRoomForACount": 0,
+            "checkable": 3903, "countMatchesTheRun": 3903, "countDoesNotMatch": 0,
+            "runLengths": {"references_1": 3565, "references_2": 271,
+                           "references_3": 58, "references_4": 5, "references_6": 4},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_type0a_reference_is_a_counted_array(self.census()))
+
+    def test_a_single_mismatch_fails(self) -> None:
+        # A count read from a wrongly chosen offset gives a number unrelated to how
+        # many references follow, so one disagreement means the step-back is wrong.
+        self.assertFalse(the_type0a_reference_is_a_counted_array(self.census(
+            countMatchesTheRun=3902, countDoesNotMatch=1
+        )))
+
+    def test_an_all_single_element_corpus_fails(self) -> None:
+        # If every array held one element, a count and the constant 1 would be
+        # indistinguishable -- which is the degenerate case for this claim.
+        self.assertFalse(the_type0a_reference_is_a_counted_array(self.census(
+            countMatchesTheRun=3903, runLengths={"references_1": 3903}
+        )))
+
+    def test_two_run_lengths_are_not_enough(self) -> None:
+        self.assertFalse(the_type0a_reference_is_a_counted_array(self.census(
+            countMatchesTheRun=3903,
+            runLengths={"references_1": 3600, "references_2": 303},
+        )))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_type0a_reference_is_a_counted_array({}))
+        self.assertFalse(the_type0a_reference_is_a_counted_array(
+            self.census(checkable=0, countMatchesTheRun=0, runLengths={})
+        ))
+
+    def test_the_reader_rejects_a_census_that_does_not_partition_its_bodies(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type0a_array_census(self.census(bodies=99), "pkg")
+
+    def test_the_reader_rejects_run_lengths_that_do_not_cover_the_matches(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type0a_array_census(
+                self.census(runLengths={"references_1": 3}), "pkg"
+            )
+
+    def test_an_absent_census_reads_as_empty(self) -> None:
+        self.assertEqual(_read_type0a_array_census(None, "pkg")["bodies"], 0)
+
+
+class Type11EntryCountTests(unittest.TestCase):
+    """The entry count is as untested as the element count, and for the same reason."""
+
+    def base(self, **overrides):
+        c = {"elementCountValues": {"elements_1": 3715},
+             "entryCountValues": {"entries_1": 3715}}
+        c.update(overrides)
+        return c
+
+    def test_a_single_observed_value_is_a_constant_not_a_count(self) -> None:
+        # The whole content of the replacement. One value cannot separate "a count"
+        # from "the constant 1", so it must not pass.
+        self.assertFalse(the_type11_element_count_is_a_count(self.base()))
+
+    def test_two_observed_values_separate_a_count_from_a_constant(self) -> None:
+        self.assertTrue(the_type11_element_count_is_a_count(
+            self.base(elementCountValues={"elements_0": 130, "elements_1": 3871})
+        ))
+
+    def test_a_second_value_that_is_never_seen_does_not_count(self) -> None:
+        # A histogram entry of zero is a name, not an observation.
+        self.assertFalse(the_type11_element_count_is_a_count(
+            self.base(elementCountValues={"elements_1": 3871, "elements_2": 0})
+        ))
+
+    def test_a_malformed_histogram_fails(self) -> None:
+        self.assertFalse(the_type11_element_count_is_a_count(
+            self.base(elementCountValues={"elements_many": 4})
+        ))
+        self.assertFalse(the_type11_element_count_is_a_count(
+            self.base(elementCountValues=[])
+        ))
+
+class Type0CReferenceArrayTests(unittest.TestCase):
+    """The array is located; the rival bases are what make that a location."""
+
+    def census(self, **overrides):
+        base = {
+            "bodies": 742, "tooShort": 0, "selectorOutOfRange": 0,
+            "countPastTheEnd": 0, "countOutOfRange": 38, "arrayPastTheEnd": 0,
+            "arraysTested": 704, "arraysFullyResolving": 704,
+            "rivalArraysTested": 4928, "rivalArraysFullyResolving": 0,
+            "selectorValues": {"selector_0": 595, "selector_1": 122,
+                               "selector_2": 23, "selector_6": 2},
+            "arrayLengths": {"entries_1": 80, "entries_2": 270, "entries_3": 148,
+                             "entries_4": 60, "entries_9": 70, "entries_5": 24},
+            "targetTypes": {"type0D": 1942, "type0C": 644, "type0A": 394},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_type0c_reference_array_is_located(self.census()))
+
+    def test_rivals_that_also_resolve_fail(self) -> None:
+        # A count that happens to be small and an array that happens to resolve is
+        # not something a wrong offset produces -- if it were, the offset would not
+        # be a location.
+        self.assertFalse(the_type0c_reference_array_is_located(
+            self.census(rivalArraysFullyResolving=600)
+        ))
+
+    def test_arrays_that_do_not_resolve_fail(self) -> None:
+        self.assertFalse(the_type0c_reference_array_is_located(
+            self.census(arraysFullyResolving=400)
+        ))
+
+    def test_one_array_length_is_not_enough(self) -> None:
+        # All-length-one arrays could not tell a count from the constant 1.
+        self.assertFalse(the_type0c_reference_array_is_located(
+            self.census(arrayLengths={"entries_1": 704})
+        ))
+
+    def test_rivals_must_have_been_attempted(self) -> None:
+        # Zero rival attempts is not a clean sweep, it is an unrun control.
+        self.assertFalse(the_type0c_reference_array_is_located(
+            self.census(rivalArraysTested=0)
+        ))
+
+    def test_an_empty_census_fails(self) -> None:
+        self.assertFalse(the_type0c_reference_array_is_located({}))
+        self.assertFalse(the_type0c_reference_array_is_located(
+            self.census(arraysTested=0, arraysFullyResolving=0)
+        ))
+
+    def test_the_reader_rejects_more_resolving_than_tested(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type0c_array_census(self.census(arraysFullyResolving=9999), "pkg")
+        with self.assertRaises(ValueError):
+            _read_type0c_array_census(self.census(arrayLengths={"entries_1": 3}), "pkg")
+
+    def test_an_absent_census_reads_as_empty(self) -> None:
+        self.assertEqual(_read_type0c_array_census(None, "pkg")["bodies"], 0)
+
+
+class Type0CRegionFlagTests(unittest.TestCase):
+    """A flag inside the region — not in the header — places the next block."""
+
+    def census(self, **overrides):
+        base = {
+            "regionGapsTested": 686, "regionGapsPredicted": 646,
+            "regionFlagAboveTheObservedRange": 18,
+            "regionFlags": {"flag_0": 446, "flag_1": 240, "flag_2": 14, "flag_4": 4},
+        }
+        base.update(overrides)
+        return base
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(the_type0c_region_flag_places_the_next_block(self.census()))
+
+    def test_both_flag_values_must_occur(self) -> None:
+        # With only flag 0 present the "+ 27 * flag" half of the rule is untested,
+        # and a constant 99 would score identically.
+        self.assertFalse(the_type0c_region_flag_places_the_next_block(
+            self.census(regionFlags={"flag_0": 686})
+        ))
+        self.assertFalse(the_type0c_region_flag_places_the_next_block(
+            self.census(regionFlags={"flag_1": 686})
+        ))
+
+    def test_a_rule_that_misses_often_fails(self) -> None:
+        self.assertFalse(the_type0c_region_flag_places_the_next_block(
+            self.census(regionGapsPredicted=400)
+        ))
+
+    def test_an_untested_census_fails(self) -> None:
+        self.assertFalse(the_type0c_region_flag_places_the_next_block({}))
+        self.assertFalse(the_type0c_region_flag_places_the_next_block(
+            self.census(regionGapsTested=0, regionGapsPredicted=0)
+        ))
+
+    def test_the_threshold_sits_below_the_measurement(self) -> None:
+        # 646 of 686 is 94.2%; the gate asks for 90% so it guards against regression
+        # rather than tripping on the next legitimate change.
+        self.assertGreater(646 / 686, 0.90)
+        self.assertLess(0.90, 646 / 686)
+
+    def test_the_reader_rejects_more_predicted_than_tested(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type0c_array_census(
+                {k: 0 for k in TYPE0C_ARRAY_SCALARS}
+                | {k: {} for k in TYPE0C_ARRAY_MAPS}
+                | {"regionGapsTested": 1, "regionGapsPredicted": 5},
+                "pkg",
+            )
+
+
+class Type11SourceJoinTests(unittest.TestCase):
+    """The entry header's word at 4 names a source the same body declares."""
+
+    MEASURED = {"sourceJoinTested": 4013, "sourceJoinMatched": 3937,
+                "sourceJoinBodies": 3937, "sourceJoinBodiesWithAMatch": 3937}
+
+    def test_the_measured_corpus_passes(self) -> None:
+        self.assertTrue(
+            the_type11_entry_header_names_one_of_its_own_sources(self.MEASURED)
+        )
+
+    def test_the_old_per_header_equality_would_now_read_as_a_regression(self) -> None:
+        # The reason this gate counts bodies. Per header it is 3,937 of 4,013, and
+        # the 76 shortfall is exactly the 76 two-entry bodies in which one of the two
+        # headers names a declared source and the other does not. That is structure,
+        # not decay, and an equality gate over headers would hide it as a failure.
+        self.assertNotEqual(
+            self.MEASURED["sourceJoinMatched"], self.MEASURED["sourceJoinTested"]
+        )
+        self.assertTrue(
+            the_type11_entry_header_names_one_of_its_own_sources(self.MEASURED)
+        )
+
+    def test_a_body_with_no_entry_naming_a_source_fails(self) -> None:
+        self.assertFalse(the_type11_entry_header_names_one_of_its_own_sources(
+            dict(self.MEASURED, sourceJoinBodiesWithAMatch=3936)
+        ))
+
+    def test_a_join_that_is_the_minority_per_header_fails(self) -> None:
+        # Every body having one match is not enough on its own: if most headers did
+        # not join, "exactly one of two" would be being read into a field that mostly
+        # does not join at all.
+        self.assertFalse(the_type11_entry_header_names_one_of_its_own_sources(
+            dict(self.MEASURED, sourceJoinTested=40000, sourceJoinMatched=3937)
+        ))
+
+    def test_an_untested_join_fails_rather_than_passing_vacuously(self) -> None:
+        self.assertFalse(the_type11_entry_header_names_one_of_its_own_sources({}))
+        self.assertFalse(the_type11_entry_header_names_one_of_its_own_sources(
+            {"sourceJoinTested": 0, "sourceJoinMatched": 0,
+             "sourceJoinBodies": 0, "sourceJoinBodiesWithAMatch": 0}
+        ))
+
+    def test_the_reader_rejects_more_matches_than_tests(self) -> None:
+        with self.assertRaises(ValueError):
+            _read_type11_header_census(
+                {k: 0 for k in TYPE11_HEADER_SCALARS}
+                | {"elementCountValues": {}, "curveCodes": {},
+                   "sourceJoinTested": 1, "sourceJoinMatched": 9},
+                "pkg",
+            )

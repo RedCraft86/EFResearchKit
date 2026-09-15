@@ -127,6 +127,422 @@ NAMED_TYPE_MINIMUM_RATIO = 100.0
 HASH_SPACE = float(1 << 32)
 
 
+def source_values_from_audit(audit: dict[str, Any]) -> dict[str, dict[str, set[int]]]:
+    """Distinct source-record values per type, at the id field and either side of it.
+
+    Unioned across packages for the same reason the media are: a source record names
+    media that a different package declares, so the join has to cross the file
+    boundary. Joining inside one package scores 12 of 147,262 and answers nothing.
+    """
+    out: dict[str, dict[str, set[int]]] = {}
+    keys = ("idValuesByType", "idValuesBeforeByType", "idValuesAfterByType")
+    for row in audit.get("rows", []):
+        if row.get("status") != "verified":
+            continue
+        package = row.get("package")
+        if not isinstance(package, dict):
+            continue
+        # The census is published inside the media-join block, next to the media ids
+        # it has to be joined against. Read it from there rather than moving it: the
+        # two belong together and the audit shape is already committed.
+        join = package.get("hircMediaJoin")
+        census = join.get("hircSourceRecords") if isinstance(join, dict) else None
+        if not isinstance(census, dict):
+            continue
+        for key in keys:
+            block = census.get(key)
+            if block is None:
+                continue
+            if not isinstance(block, dict):
+                raise ValueError(f"source record census has invalid {key}")
+            for type_key, values in block.items():
+                if not isinstance(values, list):
+                    raise ValueError(f"source record census has invalid {key}")
+                out.setdefault(str(type_key), {}).setdefault(key, set()).update(
+                    int(value) for value in values)
+    return out
+
+
+def media_attribution(
+    media: set[int], by_type: dict[str, dict[str, set[int]]]
+) -> dict[str, Any]:
+    """How much of the shipped media some source record accounts for.
+
+    The id field is scored against the words one byte either side, over the same
+    pooled media. A field that resolves at one offset and nowhere near it is located;
+    a field that resolves at several is a coincidence with a wide net.
+    """
+    owned: set[int] = set()
+    per_type: dict[str, int] = {}
+    controls = {"idValuesBeforeByType": 0, "idValuesAfterByType": 0}
+    for type_key, blocks in sorted(by_type.items()):
+        hit = blocks.get("idValuesByType", set()) & media
+        per_type[type_key] = len(hit)
+        owned |= hit
+        for control in controls:
+            controls[control] += len(blocks.get(control, set()) & media)
+    return {
+        "mediaIdsDeclared": len(media),
+        "mediaIdsNamedBySomeRecord": len(owned),
+        "mediaIdsNamedByNoRecord": len(media - owned),
+        "mediaIdsNamedByType": per_type,
+        "controlMediaIdsNamedByNeighbouringWords": dict(sorted(controls.items())),
+    }
+
+
+def media_attribution_is_discriminated(attribution: dict[str, Any]) -> bool:
+    """The attribution is a located field, not a wide net, and it covers the corpus.
+
+    Two things must hold and they guard different failures.
+
+    The id field must account for essentially all of the shipped media. It does:
+    61,325 of 61,333, with 60,049 named by numeric type 0x02 and 1,279 by 0x0B, and
+    only 8 named by no record at all.
+
+    And the words one byte either side must not. If a shifted read resolved to media
+    at a comparable rate the join would be telling us that 32-bit values in this
+    region often look like media ids, which is a fact about the id space rather than
+    about the field.
+    """
+    if not isinstance(attribution, dict):
+        return False
+    declared = int(attribution.get("mediaIdsDeclared") or 0)
+    named = int(attribution.get("mediaIdsNamedBySomeRecord") or 0)
+    if declared <= 0 or named <= 0:
+        return False
+    if named * 100 < declared * 99:
+        return False
+    by_type = attribution.get("mediaIdsNamedByType")
+    if not isinstance(by_type, dict) or len(by_type) < 2:
+        # One contributing type cannot show that the record is shared, which is the
+        # whole content of this census.
+        return False
+    if any(int(value) <= 0 for value in by_type.values()):
+        return False
+    controls = attribution.get("controlMediaIdsNamedByNeighbouringWords")
+    if not isinstance(controls, dict) or not controls:
+        return False
+    return all(int(value) * 100 < named for value in controls.values())
+
+
+MUSIC_REACH_SCALARS = (
+    "musicObjects", "entryEdges", "banksWithAnEntry", "reachedObjects",
+    "reachedSourceIdCount", "edges", "edgeSources", "rootsWithNoIncomingEdge",
+    "entriesWithOutgoingEdges", "entriesThatAreRoots",
+)
+
+
+def music_reach_from_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    """Sum the music-reach census over every verified package."""
+    totals = {key: 0 for key in MUSIC_REACH_SCALARS}
+    kinds: Counter[str] = Counter()
+    roots: Counter[str] = Counter()
+    reached: Counter[str] = Counter()
+    for row in audit.get("rows", []):
+        if row.get("status") != "verified":
+            continue
+        package = row.get("package")
+        if not isinstance(package, dict):
+            continue
+        # Published inside the action-target block, because the only edges that enter
+        # the music family are action target words and the two are read together.
+        targets = package.get("hircType03Targets")
+        census = targets.get("hircMusicReach") if isinstance(targets, dict) else None
+        if census is None:
+            continue
+        if not isinstance(census, dict):
+            raise ValueError("music reach census is not an object")
+        for key in MUSIC_REACH_SCALARS:
+            try:
+                value = int(census[key])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"music reach census has invalid {key}") from exc
+            if value < 0:
+                raise ValueError(f"music reach census has negative {key}")
+            totals[key] += value
+        kinds.update(census.get("entryKinds") or {})
+        roots.update(census.get("rootTypes") or {})
+        reached.update(census.get("reachedTypes") or {})
+    totals["entryKinds"] = dict(sorted(kinds.items()))
+    totals["rootTypes"] = dict(sorted(roots.items()))
+    totals["reachedTypes"] = dict(sorted(reached.items()))
+    return totals
+
+
+def the_music_family_is_not_entered_from_the_object_graph(
+    reach: dict[str, Any]
+) -> bool:
+    """Nothing in the HIRC object graph reaches the music family's media.
+
+    This is a negative result stated as a gate, so that the day it stops being true
+    is a day something fires rather than a day nobody notices.
+
+    The music types are their own component. The main reference graph's 230,247 edges
+    carry no music type at either end; the parent field's 199,445 carry none either.
+    The family has 11,656 objects and 7,305 downward edges of its own, so a walk
+    inside it has plenty to follow -- that is what makes the next number meaningful
+    rather than an artefact of an empty edge set.
+
+    Entering it from outside there are **5** edges in the whole corpus, all of them an
+    action target word landing on numeric type 0x0C. All 5 land on objects that are
+    roots, none of the 5 has an outgoing edge, and together they reach **0** source
+    ids. The family's 1,279 media are reached by nothing.
+
+    The gate therefore asserts three things at once: the walk has edges to follow, the
+    entry count is negligible against the family's size, and no media are reached. If
+    a later reading finds the real entry point, `reachedSourceIdCount` becomes
+    positive and this fails. **That failure is the good news** -- change this then,
+    and not before.
+
+    What it does not say: that music is unreachable at runtime. It says no relation
+    this reader has resolved reaches it, which is a smaller claim and the only one
+    the bytes support.
+    """
+    if not isinstance(reach, dict):
+        return False
+    objects = int(reach.get("musicObjects") or 0)
+    edges = int(reach.get("edges") or 0)
+    if objects <= 0 or edges <= 0:
+        # An empty family, or one with no internal edges, cannot support the claim:
+        # "nothing reaches it" would then be a statement about the walk.
+        return False
+    if int(reach.get("reachedSourceIdCount") or 0) != 0:
+        return False
+    return int(reach.get("entryEdges") or 0) * 1000 < objects
+
+
+STMG_SCALARS = (
+    "sections", "sectionBytes", "sectionsTooShort", "countOutOfRange",
+    "runPastTheEnd", "sectionsFramed", "declaredRecords", "distinctRecordIds",
+    "rivalStridesTested", "rivalStridesWithDistinctIds",
+    "runsFollowedByAPlausibleCount", "bytesFramed", "bytesUnframed",
+    "tailTrailingBytesNotZero", "tailRunNotFound", "tailRunsCheckable",
+    "tailCountDoesNotMatchTheRun", "tailRunsFramed", "tailRecords",
+    "tailDistinctIds", "tailFloatsTested", "tailFloatsBounded",
+    "tailRivalStridesTested", "tailRivalStridesWithDistinctIds",
+    "tailRivalStridesWithTheZeroRun",
+    "entryBlocks", "entryBlockBytes", "entryBlocksTooShort",
+    "entryCountOutOfRange", "entryHeadPastTheEnd", "entryRecordCountOutOfRange",
+    "entryRecordsPastTheEnd", "entryBlocksNotClosing", "entryBlocksFramed",
+    "entries", "distinctEntryIds", "entryRecords",
+    "entryRecordsCarryingTheMarker",
+)
+STMG_WORD_SCALARS = (
+    "sections", "sectionBytes", "hircObjects", "wordsTested",
+    "wordsNamingAnObject",
+)
+# Numeric types 0x08 and 0x12 are the two that form the bus forest. Nothing else may
+# appear among the objects the unparsed sections name without this being revisited.
+BUS_TYPES = ("type08", "type12")
+
+
+def _sum_census(audit: dict[str, Any], key: str, scalars: tuple[str, ...],
+                maps: tuple[str, ...]) -> dict[str, Any]:
+    """Sum one per-package census over every verified package."""
+    totals: dict[str, Any] = {name: 0 for name in scalars}
+    merged = {name: Counter() for name in maps}
+    for row in audit.get("rows", []):
+        if row.get("status") != "verified":
+            continue
+        package = row.get("package")
+        if not isinstance(package, dict):
+            continue
+        census = package.get(key)
+        if census is None:
+            continue
+        if not isinstance(census, dict):
+            raise ValueError(f"{key} census is not an object")
+        for name in scalars:
+            try:
+                value = int(census[name])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"{key} census has invalid {name}") from exc
+            if value < 0:
+                raise ValueError(f"{key} census has negative {name}")
+            totals[name] += value
+        for name in maps:
+            merged[name].update(census.get(name) or {})
+    for name in maps:
+        totals[name] = dict(sorted(merged[name].items()))
+    return totals
+
+
+def stmg_from_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    return _sum_census(audit, "stmg", STMG_SCALARS, ("recordValues", "tailSelectors", "entryRecordCounts"))
+
+
+def stmg_words_from_audit(audit: dict[str, Any]) -> dict[str, Any]:
+    return _sum_census(
+        audit, "stmgWords", STMG_WORD_SCALARS, ("typesNamed", "wordsTestedByTag"))
+
+
+def the_stmg_record_stride_beats_its_rivals(stmg: dict[str, Any]) -> bool:
+    """STMG's first record run is 12 bytes wide, and the width is discriminated.
+
+    STMG appears **once** in the whole corpus, so closure is not available as evidence
+    and none is claimed from it. Two checks stand in for it, and neither needs the
+    section to close:
+
+    - **Distinctness.** At a stride of 12 the 309 record ids are all different. At
+      every other stride from 8 to 20 they collapse, to between 107 and 220 distinct
+      values. A stride that is not the record width reads each id from a sliding mix
+      of two fields, and those collide.
+    - **What follows.** At 12 the word directly after the run is 15 -- a small count
+      that begins a further block. Every other stride lands on zero or on an arbitrary
+      large value.
+
+    Only the leading block is framed: 3,722 bytes of 10,118. The remaining 6,396 are
+    reported as unframed rather than guessed at, because with one instance there is
+    nothing to check a guess against.
+    """
+    if not isinstance(stmg, dict):
+        return False
+    framed = int(stmg.get("sectionsFramed") or 0)
+    declared = int(stmg.get("declaredRecords") or 0)
+    if framed <= 0 or declared <= 0:
+        return False
+    if int(stmg.get("distinctRecordIds") or 0) != declared:
+        return False
+    tested = int(stmg.get("rivalStridesTested") or 0)
+    if tested <= 0:
+        # No rival was scored, so "12 is right" is an assertion rather than a result.
+        return False
+    if int(stmg.get("rivalStridesWithDistinctIds") or 0) != 0:
+        return False
+    if int(stmg.get("runsFollowedByAPlausibleCount") or 0) != framed:
+        return False
+    # Fail-closed: a section that could not be framed must be counted somewhere.
+    fences = sum(int(stmg.get(name) or 0) for name in
+                 ("sectionsTooShort", "countOutOfRange", "runPastTheEnd"))
+    return framed + fences == int(stmg.get("sections") or 0)
+
+
+def the_stmg_tail_run_is_located_by_its_count(stmg: dict[str, Any]) -> bool:
+    """STMG's trailing run is framed backward, and its count is what locates it.
+
+    It has to be backward: the block between STMG's two runs is variable-length and is
+    not framed, so the trailing run's start cannot be computed forward.
+
+    The record-shape walk **bounds** the run but does not locate it -- it reaches 270
+    records where the count is 269, because the three bytes it checks happen to be zero
+    one record early. The boundary is settled by the count instead: over every length
+    from 1 to 480 exactly **one** has a preceding word equal to itself. So the run is
+    located to the byte, and a section where several lengths matched would be fenced
+    rather than resolved by preference.
+
+    Then the shape is discriminated the same way the leading run's was. All 269 ids are
+    distinct and all 269 carry the three zero bytes at +9; every rival stride from 14
+    to 24 gives neither. All 807 floats across the three float fields are finite and
+    bounded.
+
+    739 bytes remain unframed and are reported as such.
+    """
+    if not isinstance(stmg, dict):
+        return False
+    framed = int(stmg.get("tailRunsFramed") or 0)
+    records = int(stmg.get("tailRecords") or 0)
+    if framed <= 0 or records <= 0:
+        return False
+    if int(stmg.get("tailDistinctIds") or 0) != records:
+        return False
+    tested = int(stmg.get("tailRivalStridesTested") or 0)
+    if tested <= 0:
+        return False
+    if int(stmg.get("tailRivalStridesWithDistinctIds") or 0) != 0:
+        return False
+    if int(stmg.get("tailRivalStridesWithTheZeroRun") or 0) != 0:
+        return False
+    floats = int(stmg.get("tailFloatsTested") or 0)
+    if floats <= 0 or int(stmg.get("tailFloatsBounded") or 0) != floats:
+        return False
+    # Fail-closed: a section is framed or fenced, never quietly neither.
+    fences = sum(int(stmg.get(name) or 0) for name in
+                 ("tailTrailingBytesNotZero", "tailRunNotFound",
+                  "tailCountDoesNotMatchTheRun"))
+    return framed + fences == int(stmg.get("sectionsFramed") or 0)
+
+
+def the_stmg_section_closes_byte_exactly(stmg: dict[str, Any]) -> bool:
+    """STMG is framed end to end: 10,118 of 10,118 bytes, nothing left over.
+
+    Three blocks, each located by different evidence because each had a different
+    thing available:
+
+    - The **leading run** is located forward by a count, and its 12-byte stride is
+      discriminated by id distinctness against eleven rivals.
+    - The **trailing run** is located backward by a count -- the only run length from 1
+      to 480 whose preceding word equals it -- because the block before it is
+      variable-length and the start cannot be computed forward.
+    - The **middle block** is then bounded on both sides, which is what makes it
+      framable at all from a single section. Searching every shape of the form "head
+      with a u32 count inside, then n records, then a tail" over roughly 745,000
+      candidates, exactly **one** consumes the block in exactly 15 entries.
+
+    The content agrees independently of the search: 15 distinct entry ids out of 15,
+    and the marker byte at record `+8` is 9 in all 45 records. *A shape found by
+    exhaustion needs content that the exhaustion did not select for.*
+
+    The gate is byte-exact closure. STMG appears once in the corpus, so a partial
+    frame could always be made to look reasonable; closure cannot.
+    """
+    if not isinstance(stmg, dict):
+        return False
+    declared = int(stmg.get("sectionBytes") or 0)
+    if declared <= 0 or int(stmg.get("sections") or 0) <= 0:
+        return False
+    if int(stmg.get("bytesFramed") or 0) != declared:
+        return False
+    if int(stmg.get("bytesUnframed") or 0) != 0:
+        return False
+    blocks = int(stmg.get("entryBlocks") or 0)
+    framed = int(stmg.get("entryBlocksFramed") or 0)
+    if blocks <= 0 or framed != blocks:
+        return False
+    entries = int(stmg.get("entries") or 0)
+    if entries <= 0 or int(stmg.get("distinctEntryIds") or 0) != entries:
+        return False
+    records = int(stmg.get("entryRecords") or 0)
+    if records <= 0:
+        return False
+    # The content check the shape search did not select for.
+    return int(stmg.get("entryRecordsCarryingTheMarker") or 0) == records
+
+
+def the_unparsed_sections_name_only_buses(words: dict[str, Any]) -> bool:
+    """The sections nothing parses reference buses, and no music object at all.
+
+    Every byte of the bank format that is not HIRC lives in four sections: STMG,
+    INIT, ENVS and PLAT. Sliding a 32-bit window over all of them, 63 words name a
+    HIRC object against **0.59 expected by chance** -- so the references are real --
+    and every one of them is a bus, numeric type 0x08 or 0x12. All 63 are in STMG;
+    INIT, ENVS and PLAT name nothing.
+
+    Together with the object graph this closes the question the previous batch left
+    open. Nothing anywhere in the bank format references a music object from outside
+    the music family.
+
+    Written so that its expiry fires: if a music type ever appears here, the entry
+    point has been found and this fails. **That failure is the good news.**
+    """
+    if not isinstance(words, dict):
+        return False
+    tested = int(words.get("wordsTested") or 0)
+    objects = int(words.get("hircObjects") or 0)
+    named = int(words.get("wordsNamingAnObject") or 0)
+    if tested <= 0 or objects <= 0 or named <= 0:
+        return False
+    # Chance is computable here rather than a matter of taste.
+    chance = tested * objects / float(1 << 32)
+    if named < chance * 10:
+        return False
+    types = words.get("typesNamed")
+    if not isinstance(types, dict) or not types:
+        return False
+    if sum(int(value) for value in types.values()) != named:
+        return False
+    return all(name.rsplit("_", 1)[-1] in BUS_TYPES for name in types)
+
+
 def broad_literals(metadata_path: Path) -> list[str]:
     """Identifier-shaped managed literals, without the audio prefix vocabulary."""
     from scripts.audio_semantics.identifiers import (  # noqa: PLC0415
@@ -487,6 +903,11 @@ def run(
     )
     problems = check_identification(summary)
     media = media_ids_from_audit(audit)
+    source_values = source_values_from_audit(audit)
+    attribution = media_attribution(media, source_values)
+    music_reach = music_reach_from_audit(audit)
+    stmg = stmg_from_audit(audit)
+    stmg_words = stmg_words_from_audit(audit)
     if not media:
         problems.append("the audit declares no media ids, so the media join cannot be checked")
 
@@ -578,6 +999,58 @@ def run(
     table["populationsWithNoMatch"] = sorted(
         name for name, size in populations.items() if size and not wide_matches.get(name)
     )
+    if not the_stmg_record_stride_beats_its_rivals(stmg):
+        problems.append(
+            "the STMG record run no longer discriminates its stride: "
+            f"framed={stmg.get('sectionsFramed')} of {stmg.get('sections')} "
+            f"declared={stmg.get('declaredRecords')} "
+            f"distinct={stmg.get('distinctRecordIds')} "
+            f"rivals={stmg.get('rivalStridesWithDistinctIds')}"
+            f"/{stmg.get('rivalStridesTested')}"
+        )
+    if not the_stmg_tail_run_is_located_by_its_count(stmg):
+        problems.append(
+            "the STMG trailing run is no longer located by its count: "
+            f"framed={stmg.get('tailRunsFramed')} records={stmg.get('tailRecords')} "
+            f"distinct={stmg.get('tailDistinctIds')} "
+            f"rivals={stmg.get('tailRivalStridesWithDistinctIds')}"
+            f"/{stmg.get('tailRivalStridesTested')} "
+            f"floats={stmg.get('tailFloatsBounded')}/{stmg.get('tailFloatsTested')}"
+        )
+    if not the_stmg_section_closes_byte_exactly(stmg):
+        problems.append(
+            "STMG no longer closes byte-exactly: "
+            f"framed={stmg.get('bytesFramed')} of {stmg.get('sectionBytes')} "
+            f"unframed={stmg.get('bytesUnframed')} "
+            f"entries={stmg.get('distinctEntryIds')}/{stmg.get('entries')} "
+            f"marker={stmg.get('entryRecordsCarryingTheMarker')}"
+            f"/{stmg.get('entryRecords')}"
+        )
+    if not the_unparsed_sections_name_only_buses(stmg_words):
+        problems.append(
+            "the unparsed sections no longer name only buses, which means either the "
+            "references have gone or a music entry point has finally been found: "
+            f"named={stmg_words.get('wordsNamingAnObject')} of "
+            f"{stmg_words.get('wordsTested')} words; "
+            f"types={stmg_words.get('typesNamed')}"
+        )
+    if not the_music_family_is_not_entered_from_the_object_graph(music_reach):
+        problems.append(
+            "the music family's isolation no longer holds, which means either the "
+            "walk lost its edges or an entry point has finally been found: "
+            f"objects={music_reach.get('musicObjects')} "
+            f"edges={music_reach.get('edges')} "
+            f"entryEdges={music_reach.get('entryEdges')} "
+            f"reachedSourceIds={music_reach.get('reachedSourceIdCount')}"
+        )
+    if not media_attribution_is_discriminated(attribution):
+        problems.append(
+            "the media attribution is not discriminated: "
+            f"named={attribution['mediaIdsNamedBySomeRecord']} of "
+            f"{attribution['mediaIdsDeclared']} "
+            f"byType={attribution['mediaIdsNamedByType']} "
+            f"controls={attribution['controlMediaIdsNamedByNeighbouringWords']}"
+        )
     if not broad_naming_is_discriminated(table):
         problems.append(
             "the broad naming pass does not discriminate: "
@@ -609,6 +1082,10 @@ def run(
         "mediaReachedByIdentifier": media_reached,
         "reachedSourceIdsNamingNoMedia": unmatched_reached,
         "broadNaming": table,
+        "mediaAttribution": attribution,
+        "musicReach": music_reach,
+        "stmg": stmg,
+        "unparsedSectionWords": stmg_words,
         "mediaSummary": {
             "declaredMediaIds": len(media),
             "identifiersReachingMedia": sum(1 for v in media_reached.values() if v),

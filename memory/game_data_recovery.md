@@ -1940,6 +1940,118 @@ Stable conclusions:
   resolve, 4 are null, 0 unresolved. Null is a real outcome for this type, so the
   gate permits it and forbids only the third case; an all-null corpus would make
   the claim vacuous and does not count as closed either.
+- **What that reference points AT, measured: `0x12` mostly names `0x08`.** Over both
+  types' 412 bodies: `0x12` -> `0x08` **201**, `0x08` -> `0x08` **154**, `0x12` ->
+  `0x12` **48**, plus 3 and 2 naming type `0x15` and 4 nulls. So the two types form a
+  hierarchy with `0x08` beneath `0x12`, and `0x08` also nests within itself. No edge
+  from either to `0x0B`.
+
+### The first structure above byte layout: `0x08`/`0x12` form a forest
+
+The leading word of every `0x08` and `0x12` body names another object. Followed as a
+parent relation **per bank**, over 121 banks and 412 objects:
+
+- **Zero cycles.** No object is its own ancestor anywhere in the corpus. A cycle
+  would have meant the leading word is not a parent at all, so this is gated as
+  equality with zero.
+- **Depth runs to 7**, mode 2: `0`:123, `2`:126, `3`:64, `4`:32, `5`:23, `6`:21,
+  `1`:18, `7`:5. It is a real hierarchy, not a flat list -- which the gate checks,
+  because acyclicity is free when nothing is connected.
+- **`0x08` is above, `0x12` below.** Internal nodes: `0x08` **68**, `0x12` **2**.
+  Leaves: `0x08` 93, `0x12` **249**. The four objects with *no parent at all* are all
+  `0x08`.
+- **120 of 121 banks contribute exactly one tree**; one bank contributes three.
+
+**The distinction that a first version of this gate got wrong.** An object with **no
+parent** is a root of the relation; an object naming a parent that is merely **not in
+this bank** is a root only of that bank's fragment. There are 119 of the second kind
+and **all 119 are `0x12`**. Scored together they looked like 119 `0x12` roots, which
+contradicts `0x12` being a leaf; scored apart they say something else entirely --
+**a `0x12` object's parent usually lives in a different bank.** Corpus-wide those
+references resolve: `0x12` -> `0x08` 201, `0x08` -> `0x08` 154, `0x12` -> `0x12` 48.
+
+*Building this graph on deduplicated object ids gives 3 trees over 278 objects
+instead of 121 over 412, because ids repeat across banks. A relation is only as
+well-defined as the scope its endpoints are resolved in.*
+
+### Three relation kinds, told apart by in-degree and symmetry
+
+| relation | edges | a target is named by | reverse edge present | reading |
+|---|---:|---|---:|---|
+| main reference graph | 230,247 | exactly one referrer | -- | owner -> owned |
+| `0x08`/`0x12` leading word | 275 | many children | -- | child -> parent |
+| music types (`0A`,`0C`,`0D`) | 24,430 | many | **73.9%** | **mutual, neither** |
+
+- **The music relation is symmetric.** Of 24,430 same-bank edges, 4,598 point at an
+  object that was never scanned (only `0A`, `0C` and `0D` bodies are) and so cannot be
+  asked the question; of the 19,832 that can, **14,652 have their reverse present**.
+  Mutual across every type pair: `0A`<->`0D` 3,570 each way, `0C`<->`0D` 2,431,
+  `0C`<->`0A` 588, `0C`<->`0C` 1,474.
+- **So these edges cannot be read as parenthood in either direction**, and the music
+  types do not form a hierarchy the way the other two relations do.
+- **Not cliques either.** Neighbours of a node are linked to each other **0.1%** of
+  the time, which rules out the reading that these bodies simply share a list of
+  sibling ids.
+- The graph has 7,341 back edges, which is exactly what a mostly-symmetric relation
+  produces -- every mutual pair is a two-cycle. *Running a cycle check on a relation
+  before checking whether it is symmetric answers the wrong question.*
+- **Two corrections to my own earlier statements, both measured.**
+  1. I said a shape analysis of the music edges "would be measuring the noise as much
+     as the structure". Wrong by three orders of magnitude: expected chance matches
+     are `646,465 x 213,138 / 2^32` = **32**, which is **0.13%** of 24,515.
+  2. I assumed package-wide resolution was inflating the count. Also wrong --
+     **24,430 of 24,515 music references are same-bank**, a difference of 85. Only
+     0.35% leave the bank, against 119 of 275 for the `0x08`/`0x12` relation, which
+     is the one that really does reach across banks.
+
+#### The two reference relations in this format run in OPPOSITE directions
+
+Both are forests, so shape alone does not tell them apart. **In-degree does.**
+
+| | edges | a target is named by |
+|---|---:|---|
+| main reference graph (`05`->`02`, `07`->`07`, `04`->`03`, ...) | 230,247 | **exactly one** referrer, always |
+| `0x08`/`0x12` leading word | 275 | **many** children -- 50 of 70 parents have two or more, and one has 16 |
+
+- The main graph's `targetsWithMultipleReferrers` is **0 over 230,247 edges**. Every
+  object there is named exactly once, which is what an **owner -> owned** edge looks
+  like: a `0x05` object owns its `0x02` objects and no other object owns them.
+- The `0x08` relation is the reverse: many children name one parent, which is what a
+  **child -> parent** edge looks like.
+- So the format carries downward ownership in one place and upward attachment in
+  another, and the two must not be merged into one graph. **The `0x08`/`0x12`
+  leading word is deliberately NOT in the main reference graph**, and adding it would
+  break that graph's one-referrer-per-target closure -- which is a reason to keep them
+  apart, not a defect.
+- Gated by `the_hierarchy_runs_opposite_to_the_main_reference_graph`, which asserts
+  the contrast rather than assuming it: the two relations are built by different code
+  and nothing else would notice if one drifted into the other's shape.
+- *Two relations can have the same shape and opposite meaning. Direction is not
+  visible in "is it a forest"; it is visible in how many times a target is named.*
+
+Gated by `the_shared_hierarchy_is_a_forest`, `almost_every_bank_contributes_one_tree`
+and `numeric_type_12_is_a_leaf`. Nothing here claims what the relation *means* -- only
+that it is a forest, that the two types occupy fixed positions in it, and that the
+`0x12` end reaches across banks.
+
+#### The curve record's values cannot be tested for propagation in this corpus
+
+- The shuffle test that retired the fraction link has **no power** on the curve
+  record, and this is a property of the corpus rather than a result about the data.
+  Of the 408 reference edges inside `0x08`/`0x12`, only **17** have curve records at
+  *both* ends.
+- Worse, the obvious statistic is degenerate: "the two ends share an interpolation
+  code" scores **17 of 17 on the real pairing and 17 of 17 shuffled**, because the
+  alphabet is ten values of which two (9 and 4) cover about 87% of all records. Any
+  two bodies share a code. Requiring a whole matching record gives 15 against 13 --
+  seventeen samples, no power.
+- *Before running a shuffle control, check that the statistic can tell the pairings
+  apart at all. A test that scores identically on shuffled data has not produced a
+  negative result; it has produced no result.*
+- What the distributions do show, as corroboration rather than a link: the codes have
+  the same two dominant values everywhere. `0x08`/`0x12` tail units run 9 at 44.9%
+  and 4 at 41.7% of 314 records; `0x0B` element runs 9 at 49.4% and 4 at 24.5% of
+  4,086. Same enum, same defaults, different mix.
 - **`0x08` now frames byte-exact in 96 of its 161 bodies.** Layout, end to end:
   a 32-bit reference, the counted key/value block type `0x16` uses (a count, that
   many one-byte keys, that many four-byte values as parallel runs), a one-entry
@@ -1972,6 +2084,49 @@ Stable conclusions:
   *Before checking any field as a constant in this layout, look at its value
   distribution over both types -- a field that is 0 in 96% of bodies and small
   elsewhere is a count.*
+### What "142,815 of 142,815 exact" does and does not establish
+
+- **Six body lanes report 100% exact. That rate is real, but it is not one claim --
+  it is a dozen claims of very different strength sharing a number.** The nine-group
+  frame is optional almost everywhere: most bodies skip most groups, so a lane can
+  frame every body exactly while one of its groups has been seen a handful of times.
+- The reports published **group entry totals** and nothing else, and an entry total
+  cannot be read on its own. `groupAEntries: 11` in type `0x06` might be eleven
+  bodies with one entry or one body with eleven. Those are completely different
+  amounts of evidence and only the first says anything about a layout.
+- So every lane now also publishes **how many exact bodies exercise each group** and
+  **the largest count any single body declares**, recorded at the one choke-point
+  every framer passes through (`RecordHircBodyFrame`), so no lane can be added
+  without it.
+- **Pooled across all six lanes, nothing is thin.** The least-seen real group is
+  group E at **324 bodies**; group C is at 85,397. The nine-group frame is well
+  supported.
+- **Per lane, several groups are very thin:**
+
+  | lane | group | bodies |
+  |---|---|---:|
+  | `0x07` | group E items/vertices | **4** |
+  | `0x06` | group A entries | **11** |
+  | `0x05` | group H states/state elements | **12** |
+  | `0x06` | group H groups/props/states | **14** |
+
+- **Both numbers are true and the second is the one a reader needs.** Pooling is
+  legitimate *only because* the nine groups are the same layout wherever they appear
+  -- which is itself the claim under test, not a premise. "Group E's layout is
+  established" rests on 324 bodies. "Type `0x07` frames group E correctly" rests on
+  **four**. The `widestSingleBodyPerGroup` column is what rules out the one-fat-body
+  case: group H's states are widest-1 or widest-2, so the 12 and 14 really are that
+  many separate observations.
+- Gated by `every_group_reports_the_bodies_behind_it`: a lane that counts group
+  entries without counting the bodies behind them is refused, and a report with no
+  groups at all fails rather than passing vacuously. The thin groups themselves are
+  **reported, not gated** -- the corpus contains what it contains, and the point is
+  to make the weak claim legible rather than to fail on it.
+- **The rule this adds.** A completion rate over a corpus of mostly-optional
+  structure is an average of claims, not a claim. Before reading one as evidence,
+  ask which parts of the layout the passing bodies actually exercised -- and count
+  bodies, not entries, because one body can carry a whole total.
+
 ### The shared frame's constants: closure never settled three of the four
 
 - **Audited every constant in the shared framer by scoring it against every rival
@@ -2020,9 +2175,97 @@ Stable conclusions:
   are scored the same way and lose. Fit and discrimination are different claims, and
   a closure rate reports the first while sounding like the second.
 
-- **The remaining fences.** `0x08`: `tail_block_does_not_end_the_body` 9,
-  `range_tail_block_units` 6, `range_properties` 4. `0x12`:
-  `range_tail_block_units` 4.
+### The fences are closed: `0x12` is complete, `0x08` is 160 of 161
+
+Two readings closed 22 of the 23 fenced bodies. Both were *missing* structure, not
+mis-sized structure, which is why widening ranges had never helped.
+
+**1. A null leading reference carries a second 32-bit word.** Four `0x08` bodies
+open `00 00 00 00` and then a word before the property count. Read without it they
+ask for 74, 205 or 167 properties in a body far too short to hold them; read with
+it, the second list's key lands on `0x15` in all four. That is the evidence -- where
+the rest of the frame lands, not whether the count looks plausible. (An earlier
+version of this idea was withdrawn because it "changed the exact count by zero".
+It did, at the time, because these four were also failing later for the tail-block
+reason below; fixing one without the other shows nothing.)
+
+**2. A tail block ends with a section, and the old reading hardcoded its absence.**
+The block is:
+
+```
+u8 zero, u8 unitCount, u8 zero          -- unitCount may be 0
+unitCount x unit                         -- 12 head bytes, records, a byte, records
+u8 entryCount
+  entryCount == 0: one byte closes the body
+  entryCount >  0: entries, then u8 one, u32 reference, u8 zero, u8 recordCount
+                   recordCount x record
+```
+
+- An **entry** is 3 bytes, or 4 when the high bit of its first byte is set. The same
+  high-bit width trick the format uses elsewhere. In bodies carrying several, the
+  entries' first bytes run 0, 1, 2, ... .
+- A **record** is `u32 id, u8 valueCount, u8 zero, valueCount x u16, valueCount x
+  float`. `valueCount` is 1 in 36 of 38 records, **which is exactly why the record
+  looked like a fixed 12 bytes** -- 4+1+1+2+4 = 12. Two records declare 2 and are 18
+  bytes.
+- **The two bytes the old code took for a fixed closing word were `entryCount = 0`
+  plus its one closing byte.** So it framed the 64 bodies whose section is absent
+  and none of the 18 whose section is present. A hardcoded constant standing in for
+  an optional structure, for the second time this session -- the terrain codec's
+  "closing run of exactly five literals" was the same mistake.
+
+**Result.** `0x08` 142 -> **160 of 161**; `0x12` 247 -> **251 of 251, complete**.
+
+### `0x08` IS CLOSED TOO: 161 of 161, and `0x12` 251 of 251
+
+The last body's tail unit carries **three** bytes after its 12-byte head rather than
+two, with the record count in the **middle**. The flag is the **high bit on head byte
+6**: 111 units read `(count, pad)` with the bit clear, 1 reads `(pad, count, pad)`
+with it set, and there are no counter-examples either way.
+
+**One unit is thin evidence and the closure is not what carries this.** What does is
+the content. Under the wide reading that body's **eight records all become curve
+records** -- interpolation codes 9, 9, 9, 9, 5, 4, 4, 4, with values like (0.0, 1.0),
+(0.005, 0.0), (100.0, 0.0), (60.0, 0.0) and (1.0, 0.0) -- and the body lands exactly
+on its two-byte absent section. Under the narrow reading they are noise. *Eight
+independent twelve-byte windows agreeing on a ten-value enum is the evidence; the one
+unit is not.*
+
+How it was finally found, after several wrong attempts: **the unit heads repeat.**
+Unit 0's head begins `48 6a 10 56` and so does unit 1's -- and under the narrow
+reading unit 1 appeared to start one byte earlier, at a `00` followed by those same
+four bytes. A walk that lands one byte before a structure it has already seen is off
+by one, and the repeated head is what makes that visible. *When a walk desynchronises,
+look for the next occurrence of something it has already parsed correctly.*
+
+Superseded by this: the earlier guesses that the head is 13 bytes, and that the count
+is "whichever of the two bytes is nonzero". The head is 12 bytes and the gap is what
+widens.
+
+**The one body left, now characterised by content rather than by guesswork.**
+
+- The two bytes after each tail unit's 12-byte head are a record count and a pad.
+  Across all **110** units in the corpus: **109** read `(n, 0)` and **one** reads
+  `(0, 3)`. Neither order is ever ambiguous -- **no unit has both bytes nonzero and
+  none has both zero** -- so in 109 units the count is first and in one it is second.
+- **The `(0, 3)` unit's three records are genuine curve records**, which is what makes
+  the reading content-verified rather than size-fitted: `(0.0, 1.0, code 9)`,
+  `(0.005, 0.0, code 9)`, `(100.0, 0.0, code 9)`. Reading the count as 0 skips them.
+- **But "the count is whichever byte is nonzero" does not close the body.** It fixes
+  the first unit and then the *second* unit's head fails its `b[+4] == 0` check, so
+  the body needs more than the count. The corpus goes 160/161 either way, with the
+  fence merely moving from `truncated_tailSectionEntry` to `unit_shape`.
+- The earlier guess -- a 13-byte head signalled by the high bit on head byte 6 -- is
+  superseded: the head is 12 bytes and the pair after it is what varies.
+- *A rule that fixes the symptom you were looking at and breaks the next check has not
+  been validated by the thing it fixed. Re-run the whole walk, not the failing step.*
+
+**How these were found**, because the method is reusable: dump each fenced body
+from its failure cursor to the end and read the bytes. Both structures were legible
+by eye within a couple of samples -- the records end in recognisable floats
+(`00 00 80 3f` = 1.0, `00 00 c8 42` = 100.0), which anchors the record boundary, and
+from there the counts fall out. Widening a range would never have found either.
+
 - The `range_tail_block_units` bodies declare **zero** units. Reading two of them by
   hand gives a tidy structure -- `00 00 00`, a count, a zero byte, that many 3-byte
   entries with an index running 0, 1, 2, ..., then `01`, a `u32`, a zero byte, a unit
@@ -2273,8 +2516,328 @@ Stable conclusions:
 - The 28 are characterised, not just counted: their `body[14]` takes values like 35
   and 61 that are not counts (the implied extra comes out negative), `body[17]` is
   zero in 7 of them even though the head is long, and their actual head offsets
-  cluster at 48, 51, 53, 54 and 59. A fourth shape, or variant bodies; 0.67% of the
-  type either way.
+  cluster at 48, 51, 53, 54 and 59. A fourth shape, or variant bodies.
+
+### `0x0A` IS CLOSED: the reference is a counted array, and the count is always right
+
+```
+u32 count
+count x u32  -- type 0x0B object ids, four bytes apart
+```
+
+- **The word immediately before the first reference is a count, and it equals the
+  number of references that follow in ALL 3,903 bodies that carry one.** Zero
+  mismatches. Run lengths: 1 in 3,565 bodies, 2 in 271, 3 in 58, 4 in 5, 6 in 4.
+- **Numeric type `0x0A` now has no unexplained bodies**: 3,903 counted arrays plus 255
+  carrying no reference is its whole population of 4,158. The residue that stood at
+  28, then at 3, is **zero**.
+- **This supersedes the three-branch head rule and the two end anchors rather than
+  competing with them.** Each was locating the first element of an array whose length
+  it had no way to see; where they disagreed or reached nothing, the array was simply
+  longer than one. The 28-body residue and the 3 that survived the anchors were
+  bodies with 2 and 3 references.
+- The gate is equality, and it also requires the run lengths to vary: a corpus where
+  every array held one element could not tell a count from the constant 1 -- the same
+  trap that left `0x0B`'s element count untested.
+- *Three separate rules, each partly right, were describing one simpler thing. When
+  rules accumulate around a field -- a head rule with three branches, then two end
+  anchors, then a residue -- suspect that the field is a different shape, not that
+  the rules need a fourth case.*
+
+#### The end anchor takes the 28-body residue down to 3
+
+- **The reference sits at one of a small set of distances from the END: `-69` in
+  3,707 bodies and `-73` in 288.** The head rule works from the front and needs three
+  of the body's bytes to be counts; the anchor needs nothing, so it reaches what the
+  head rule cannot.
+- **Combined, the type is accounted for: 3,875 placed by the head rule, 25 more by
+  the anchor alone, 255 with no reference at all (the absent optional field), and
+  three left.** The 28-body residue is now **3**.
+- **The control is the whole evidence, and it is perfect.** A fixed distance from the
+  end lands on *something* in every body, so a hit count says nothing. Every distance
+  within five bytes that is *not* an anchor -- `-64` to `-68`, `-70`, `-71`, `-72`,
+  `-74`, `-75` -- names a type `0x0B` object in **zero** bodies.
+### The hierarchy is carried TWICE: a parent field inverse to the reference graph
+
+- **Numeric types `0x02`, `0x05`, `0x06`, `0x07` and `0x09` name their owner at a
+  fixed front offset** -- 8 for all but `0x02`, which uses 22.
+- **Over 199,445 checkable cases the child's declared parent names the child back,
+  with ZERO disagreements**, across 13 type pairs: `02`->`05` 129,413, `07`->`07`
+  28,425, `05`->`06` 17,572, `05`->`07` 7,138, `02`->`07` 6,881, `06`->`07` 3,653,
+  `09`->`07` 3,308, and smaller.
+- The two readings come from **entirely different bytes**: the parent field is one
+  word at a fixed offset, the reference graph is framed from each body's own counted
+  runs. Their agreeing is the strongest cross-check this format allows, and it is
+  gated as equality rather than a rate.
+- **Two offsets the sweep also found are NOT parents, and the inverse test is what
+  established that.**
+  * `0x04` at offset 1 names a `0x03`, and the graph has `0x04` naming `0x03` too --
+    the **same** direction, so it is that edge and not its inverse. 22,317 of its
+    22,335 cases disagreed.
+  * The music types at offset 9 are likewise downward.
+- *A field that names a plausible object is not a parent until something independent
+  says which way it points.* Both of these look exactly like the real parent fields
+  and are not; nothing but the inverse test separates them.
+
+### CORRECTION: the music offset-9 reference was already known
+
+The previous two entries presented the music parent at front offset 9 as a
+discovery. **It was not.** The reader has censused it all along as
+`musicHeadReferences`: 7,084 bodies at offset 9, 242 at offset 5, selected by byte 2,
+7,326 of 7,331 resolved. I rediscovered a field the report prints every run.
+
+What the sweep did add, and what stands:
+- the **non-music** parent fields, which are new;
+- the **inverse test**, which is new and is what tells a parent from a child;
+- the target types and forest shape of the music relation, which the existing census
+  records the offset of but not the structure.
+
+*Before presenting a located field as new, grep the reader for the offset.* The
+sweep's value was the types nobody had swept, not the one already covered.
+
+### THE MUSIC HIERARCHY: every music type has a parent at front offset 9
+
+**All four music types name another object at front offset 9**, and the targets
+chain:
+
+```
+0x0A --(3,461)--> 0x0D --(2,321)--> 0x0C --(716)--> 0x0C
+  |                                   ^
+  +--------------(586)----------------+
+```
+
+- Coverage: `0x0A` 97% of its bodies, `0x0C` 96%, `0x0D` 95%. Over the whole music
+  corpus **7,084 of 7,331 objects (96.6%) name a parent**, 192 have none, 55 name one
+  in another bank.
+- Walked per bank: **zero cycles**, depth to **9** with a mode of 4, and **1,538 of
+  3,066 parents named by several children** apiece (up to 16+).
+- **That is the shape the `0x08`/`0x12` relation has** -- a forest, child-to-parent,
+  many children per parent -- in an unrelated family of types, at a different offset,
+  and spanning three types rather than one. What it means is still not claimed; that
+  the pattern recurs is the finding.
+- **`0x0B` completes the picture from the other side**: 2,713 of its 4,325 bodies
+  name a `0x0A` at front offset **83**, which is the reverse of the `0A`->`0B` edge
+  the head rule and end anchor place. The mutual music edges measured earlier are that
+  pairing, seen from the aggregate.
+- The sweep that found all of this is one measurement: **for each type, which front
+  offsets carry a reference in more than 30% of bodies?** It took minutes and answered
+  a question three previous passes had got wrong by measuring from the end.
+- **How it was found, and it corrects the framing of the previous entry.** The census
+  measures distance from the **end**, and from the end `0x0C` looks entirely unlocated
+  -- 3,757 distinct distances for 9,634 references. Measured from the **front** it is
+  3,193 distinct offsets, just as scattered, **except that one offset carries 716 of
+  them.** A type can be unlocated in aggregate and still have a located field; the
+  aggregate hides it.
+- *Measure locality from both ends. A field at a fixed front offset is invisible to an
+  end-distance census whenever body lengths vary, and every type here has variable
+  bodies.*
+- For the record, `0x0A` is more concentrated from the front too: **32** distinct
+  front offsets against 77 end distances. The end anchor at `-69` is real and
+  controlled, but the front is where these references are actually placed.
+
+### `0x0C`'s list is LOCATED: a counted array at `32 + 5 * body[14]`
+
+```
+body[14]                 -- a count of five-byte optional fields
+u32 count   at 32 + 5*body[14]
+count x u32 at 36 + 5*body[14]   -- object ids
+```
+
+- **704 of the 704 arrays found there resolve completely** -- every entry naming an
+  object in the same bank. 38 bodies have a count outside 1..64 and are not tested.
+- Lengths spread 1 to 9+: `2`:270, `3`:148, `1`:80, `9`:70, `4`:60, `5`:24, `7`:22,
+  `6`:20, `8`:10. Targets: `0D` 1,942, `0C` 644, `0A` 394.
+- Selector values: 0 in 595 bodies, 1 in 122, 2 in 23, 6 in 2.
+- **The control is total: 0 of 4,928 rival attempts resolve.** Read at base 28, 30,
+  31, 33, 34, 36 or 40 the same test never even finds a usable count, let alone an
+  array that resolves.
+- **Base and step are settled by different evidence.** The base by resolution -- 32
+  works and its neighbours find nothing. The step by *coverage* -- a step of 5 finds
+  an array in 704 bodies where 0, 4, 6 and 8 find one in 564, and the 140 extra are
+  exactly the bodies whose selector byte is nonzero. *A step that did not match the
+  data would not reach more bodies; it would reach the same ones and fail on them.*
+- This **locates a field**, not the type. Most bodies still carry references after
+  the array -- 9 or more in 246 bodies, and 4,928 references in total across the type,
+  targeting `0D` 5,470 times, `0A` 1,306 and `0C` 1,214.
+- **ELIMINATED: there is no second counted array.** Applying the same step-back move
+  after the first array appears to work in 438 bodies -- until you look at the counts.
+  **Every one of them is 1**, and the run after it is length 1 in 702 of 704 bodies.
+  A count of one before a single reference is satisfied by any word holding 1, so the
+  match is worth nothing. The gap from the array's end to the next reference is also
+  large and variable -- 99 bytes in 406 bodies, 126 in 240, 107 in 32 -- so whatever
+  holds the remaining references is not adjacent to the array.
+- **The remaining references are NOT scattered either -- they start at a computed
+  position.** Measuring the first reference after the array as
+  `offset - 4*arrayLength - 5*selector` gives **135 in 406 bodies and 162 in 240** --
+  **646 of 704, or 92%** -- with every other value in single digits. So the next block
+  begins at `135 + 4n + 5k` or `162 + 4n + 5k`, the two differing by 27.
+- **The selector is INSIDE the region, at `arrayEnd + 96`.** Dumping the 99- and
+  126-byte regions side by side shows them **identical for 96 bytes**, then diverging:
+  a flag byte, and 27 further bytes when it is 1. So
+  `nextBlock = arrayEnd + 99 + 27 * flag`, holding in **646 of 686** bodies (94.2%).
+- *That is why scanning the body header found nothing.* The only "pure" bytes there
+  were 9 to 12 at 86%, and those **are** the parent reference -- objects under a
+  common parent sharing a layout, not a flag. **A selector that turns out to be an
+  identifier is not a selector, and a selector need not be in the header at all.**
+- **The multiplier stops at 1.** Flag 2 exists in 14 bodies and puts the next block at
+  155, 167 or 215, not the 153 a repeat would predict. So it gates one block rather
+  than counting them, and the gate refuses values above 1 instead of extrapolating.
+- The 40 misses are all flag 0 with gaps of 107, 190 or 355 -- the rule places the
+  block, but something else can lengthen the region further.
+
+#### What the 96-byte region holds, and a constant shared across three types
+
+| offset | distinct | commonest |
+|---|---:|---|
+| `+0` | 11 | `0` in 674 |
+| `+4` | 13 | **`0x408F4000` = float 4.4766 in 670** |
+| `+8`, `+12` | **1** | constant `0` in all 704 |
+| `+16` | 12 | **`0x42F00000` = float 120.0 in 670** |
+| `+20` | 4 | bytes `04 04 00 00` in 666 |
+| `+84` | **1** | constant `0` in all 704 |
+
+- From offset **27** the region carries a run of 32-bit words -- 4, 1, **-1**, 1,
+  **-1**, 0, 4, 0, 7, 0, 1 -- so the region is **not aligned throughout**: an aligned
+  prefix, then a run starting at a 3-byte offset. Reading it as u32s from 0 gives
+  nonsense like `0x01FFFFFF`, which is a misaligned view of `01 00 00 00 ff ff ff ff`.
+- **`0x408F4000` is a constant shared across the music hierarchy and absent from its
+  leaf**: `0x0C`'s region `+4` **670 of 704**, `0x0A`'s `+8` **1,565 of 4,144**, and
+  it appears somewhere in **2,056 of 2,431** `0x0D` bodies -- but in only **4 of
+  4,325** `0x0B` bodies.
+- That is the same value that dominates `0x0A`'s float block and appears as the top
+  value of its `+4` field. So a single authored default is reused by `0x0A`, `0x0C`
+  and `0x0D` -- the three types that form the parent chain -- and not by `0x0B`, which
+  hangs off it. Nothing here says what it means.
+- *A constant's distribution across types is evidence about which types share a
+  concept. It costs one query and does not require framing anything.*
+
+**The region's internal layout, from where its sentinels sit.** The four-byte `-1`
+values land at region `+35` and `+43` in **700 of 704** bodies, and **every one is at
+an offset congruent to 3 mod 4**. The floats at `+4` and `+16` are at `0 mod 4`. Two
+grids, three bytes apart, so:
+
+```
+5 x u32      at  0 .. 19     -- includes the 4.4766 and 120.0 constants
+3-byte field at 20 .. 22     -- `04 04 00` in most bodies
+18 x u32     at 23 .. 94     -- includes the two -1 sentinels at 35 and 43
+1 byte       at 95
+flag         at 96           -- gates the 27-byte block
+```
+
+- 23 + 4x18 = 95 exactly, so the 3-byte field at 20 is what shifts the grid and the
+  region divides with nothing left over.
+- **38 of the 96 bytes are constant across all 704 regions**, in runs at 7-17, 24-26,
+  40-42, 49-50, 52-54, 57-58, 64-66, 73-74, 80-82 and 84-87.
+**Read at the recovered alignment, the region's 23 words are legible:**
+
+| offset | reading | evidence |
+|---|---|---|
+| `+4` | **float** | plausible in **704 of 704**; 4.4766 in 670 |
+| `+16` | **float** | plausible in **704 of 704**; 120.0 in 670 |
+| `+8`, `+12` | **constant zero** | 704 of 704 each |
+| `+31`, `+35` | **`1` then `-1`** | 700 each -- a value/sentinel pair |
+| `+39`, `+43` | **`1` then `-1`** | 700 each -- a second pair |
+| `+27` | small int, 30 distinct | 698 of 704 are <= 64 |
+| `+51` | small int, `4` | 558 |
+| `+71` | `0x400` = 1024 | 646 |
+| `+91` | `0x100` = 256 | 698 |
+| `+23`, `+63`, `+75`, `+79`, `+83`, `+87` | zero in almost all | |
+
+- The float test has its control built in: at `+4` and `+16` it passes **704 of 704**,
+  and at `+0`, `+8` and `+12` -- the same grid, four bytes away -- it passes **none**,
+  because those hold zero. Two float fields, not twenty-three.
+- The two `(1, -1)` pairs eight bytes apart are the clearest structure in the region.
+  Nothing here says what they select.
+
+- *Misaligned-looking words are a symptom, not a fact. Reading this region as u32s
+  from its start produced values like `0x01FFFFFF` and `0x00FFFFFF`, which are not
+  values at all -- they are a `-1` seen through a three-byte shift. Finding where a
+  known sentinel actually sits is the cheapest way to recover a grid.*
+- So `0x0C` is better described than "a variable-length list": a parent at 9, a
+  counted array at `36 + 5k`, and a further block at a position computed from the
+  array's length. What that block contains, and what chooses 135 over 162, are open.
+- *The move that found the array is the same move that produced this false positive.
+  What separates them is the length spread: the first array's lengths run 1 to 9 and
+  the second's are all 1. A counted-array claim is only as good as the variation in
+  its counts.*
+- It came from applying the move that closed `0x0A` -- find a reference, step back
+  four bytes, look for a count -- to a different type. That move has now worked twice
+  and failed once (the `0x0B` residue), which is a better record than any of the
+  width-enumeration attempts.
+
+### `0x0C` keeps its references in a list; `0A` and `0D` keep theirs in fields
+
+Asked of a census the reader has published for many runs: **how many distinct end
+distances does each edge kind use?** A reference read from a fixed field lands at the
+same distance body after body; one inside a variable-length list lands wherever the
+preceding content leaves it.
+
+| source | edges | bodies | edges/body | distinct distances | **edges per distance** |
+|---|---:|---:|---:|---:|---:|
+| `0x0A` | 8,701 | 4,158 | 2.1 | 112 | **77.7** |
+| `0x0D` | 6,173 | 2,431 | 2.5 | 162 | **38.1** |
+| `0x0C` | 9,641 | **742** | **13.0** | **5,021** | **1.9** |
+
+- Per edge kind the separation is total and has an empty middle: `0A`->`0B` 135.2,
+  `0A`->`0D` 81.1, `0A`->`0C` 73.5, `0D`->`0A` 43.5, `0D`->`0C` 43.4 --- then nothing
+  --- `0C`->`0C` 2.5, `0C`->`0D` 2.1, `0C`->`0A` 1.6.
+- **So `0x0C`'s references are not at fixed offsets and `0x0A`'s and `0x0D`'s are.**
+  That is why a fixed-offset rule was findable for `0A`->`0B` and has never been
+  findable for anything out of `0C`: there is no offset to find.
+- **Correction to the "about 13 per body" reading, which was mine and was wrong.**
+  13.0 is a mean over a wildly skewed distribution: the **median is 4** and the
+  maximum is **2,172**. Ten of the 742 bodies carry **5,217 of the 9,634 references**.
+  Nor is it a list -- only **6 of 742** bodies have all their reference positions
+  mutually 4-aligned, and the same id typically appears at **4** scattered positions
+  (mean 5.5, max 74), at gaps like 111, 264 and 201 within one 703-byte body. So a
+  `0x0C` body mentions a handful of targets repeatedly, rather than listing many.
+- **The split itself survives that.** Excluding the ten outlier bodies takes `0x0C`
+  from 1.9 to **3.7** edges per distance, still an order of magnitude below `0x0D`'s
+  38.1 and `0x0A`'s 82.9. *Check whether a ratio is carried by a handful of rows
+  before building on it -- and quote the median beside the mean whenever the maximum
+  is three orders of magnitude above it.*
+- **The two edges into type `0x11` are NOT classified.** 118 and 130 references across
+  19 and 22 distances gives about 6 per distance, which is between the groups. A
+  hundred-odd samples cannot say which side they belong to, and the first version of
+  this gate failed on correct data by trying to force them. *A discriminator with an
+  empty middle still needs a minimum sample size, or the small cases land in the gap
+  and get assigned by the threshold rather than by the data.*
+- Read off `edgeDistanceFromEnd` again. **Two findings in a row have come from asking
+  new questions of an unchanged census rather than from new probes** -- alignment
+  modulo four, and now distinct-distance counts. When a lead runs dry, re-read what is
+  already published before collecting more.
+
+#### The rule is ALIGNMENT, not a list of anchor distances
+
+- Enumerating anchors would have been fitting, and I nearly did it. Scanning every
+  end distance shows **30** at which some body carries a `0x0B` reference, most with
+  a handful of bodies: 81:9, 84:2, 85:4, 86:6, 87:6, 91:2, 112:2, 165:2. Adding those
+  to an "anchor set" is just recording where the references happened to be.
+- **The structure is that the distance from the end is 4-byte aligned.** 4,161 of the
+  4,325 `0x0A` -> `0x0B` references -- **96.2%** -- sit at a distance congruent to 1
+  modulo 4, with `-69` carrying 3,707 of them and the rest trailing off through 73,
+  77, 81, 85, 89, 93, 97, 101.
+- **Two controls, and both are needed.**
+  1. *Aligned from the FRONT instead*: **47.7%**. Body lengths are spread across all
+     four residues (2:1844, 1:1612, 3:635, 0:67), so the two questions are genuinely
+     different and the end is the one that answers.
+  2. *Every other music edge kind, measured identically in the same bodies*:
+     `0C`->`0D` **3.9%**, `0C`->`0A` **4.5%**, `0D`->`0C` 14.7%, `0D`->`0A` 47.3%,
+     `0A`->`0D` 43.0%. Corpus-wide 36.9%. So alignment is a property of **this edge**,
+     not of the format or of the measurement.
+- The generalisation I hoped for -- that all music references are end-aligned --
+  **fails**, and its failure is what makes the `0A`->`0B` number mean something. *An
+  attempted generalisation that fails is worth as much as one that succeeds: the
+  cases it fails on become the control the original claim never had.*
+- Read off `edgeDistanceFromEnd`, which the reader had been publishing all along.
+  **The question was answerable from data already in the report**; no new collection
+  was needed, only the idea of taking each distance modulo four.
+
+- **A neighbouring offset is only a control if it is not itself part of the
+  structure.** The first version of this gate scored `-73` as a control and failed on
+  correct data. The head rule's own distance distribution -- 69, 73, 77, 82, 93, 125
+  -- was already saying `-73` belongs to the family; I had the evidence and used it
+  as its own refutation.
 - **`u32@5` is a CROSS-PACKAGE reference, and it names numeric type `0x08`
   objects.** It is zero in almost every body; the 120 nonzero words take **four**
   distinct values and **none of them resolves inside its own package** -- which is
@@ -2564,13 +3127,667 @@ Stable conclusions:
   (84/89, 132/137, 168/173) with identical counts, so some five-byte field is
   optional; and once a base is chosen the remaining widths differ by multiples of 12,
   which is the record size the `0x08`/`0x12` tail also uses.
-- Still **not** established for `0x0B`: the entry element layout, and therefore the
-  entry widths themselves. Eleven readings of the entry
-  interior have been eliminated. The latest: the entry does not end with a node
-  frame (768 of 4,019 single-entry bodies admit no closing frame at any offset),
-  and the 53 + 12k head widths that *do* close are a fit rather than a layout --
-  no field in the first 53 bytes carries k (best agreement 34 of 834 bodies with
-  k > 0, which is noise). So `0x0B` still has no lane.
+### `0x0B`'s element ends with a self-sizing trailer, and that explains the widths
+
+- **The element's trailer chooses its own length from its first byte: `0` means 19
+  bytes, `1` means 24.** That five-byte difference is the five-byte step the entry
+  widths have shown all along -- 84/89, 132/137, 168/173 -- and it is an optional
+  field's two forms, not two layouts.
+- **What the trailer leaves behind is `17 + 12k`**: a 17-byte head and a run of
+  twelve-byte records, the same record `0x08`, `0x12` and `0x0B`'s curves carry.
+  Over the 3,891 bodies with exactly one entry and one element: **3,594 frame**
+  (3,238 short trailer, 544 long), 109 are ambiguous, 188 leave a body that is not a
+  whole number of records.
+- **The evidence is the residue, not the parse.** Rival anchors pick exactly one
+  trailer for just as many elements -- `-18/-23` picks one for **3,875**, more than
+  the chosen `-19/-24`'s 3,782. Parsing separates nothing. But the bodies each
+  anchor leaves behind do:
+
+  | anchor | picks one trailer | leaves `17 + 12k` |
+  |---|---:|---:|
+  | `-17/-22` | 3,877 | 32 |
+  | `-18/-23` | 3,875 | **0** |
+  | **`-19/-24`** | 3,782 | **3,594** |
+  | `-20/-25` | 3,418 | 6 |
+  | `-21/-26` | 721 | 4 |
+
+- **Rivals are not all independent, and the first version of this gate got that
+  wrong.** `-19/-25` scores 3,108, which failed a tenfold-margin test -- but it
+  scores that only because `-19` is right and most elements take the short trailer.
+  An anchor sharing an endpoint is a near-duplicate, not an alternative. The gate now
+  demands the chosen anchor win outright against every rival and by a wide margin
+  against rivals sharing **neither** endpoint. *When scoring a two-part reading
+  against rivals, rivals that share a part inherit its score; hold only the
+  genuinely different ones to the wide margin.*
+### `0x0B` has a whole-body frame: 3,937 of 4,325
+
+```
+u8  flag
+u32 sourceCount, that many 14-byte source records
+u32 entryCount
+entryCount x entry:
+    48 header bytes, the element count at +44
+    elementCount x element:
+        5 head bytes, the run count at +0
+        runCount x run: 12 header bytes, the record count at +7,
+                        then that many 12-byte records
+        12 trailing bytes
+        a trailer of 19 + 5 * flag bytes
+u32 terminator, always 100
+```
+
+- **This type had no frame at all before.** Every counted run in it is a count the
+  body declares, and every width was settled by scoring rivals the same way rather
+  than by whether the parse closed.
+- **Run the managed suite with `dotnet run --project
+  tools/AnimeStudio/AnimeStudio.CLI.Tests`, never `dotnet test`.** That project is a
+  console `Exe`, not a test-SDK project, so `dotnet test` finds no tests, prints no
+  counts and **exits 0**. A green exit there means nothing ran. The real run ends
+  with `Managed-reference and VFS recovery tests passed.`, and the `Error:` lines
+  above it are its own negative cases.
+- **The trailer length is `19 + 5 * flag`, and flags 0, 1 and 2 are each observed
+  closing bodies exactly** -- 3,108, 575 and 32 elements. Three points on the line,
+  not two and an extrapolation. Flag 2 was worth the check: adding it took the body
+  frame from 3,683 to 3,715, and all 32 of the bodies it gained had failed on
+  exactly `trailerFlag_02`. Anything above the highest observed flag is refused
+  rather than assumed to continue.
+- **The 388 fenced bodies, by reason:** `range_element_trailer_flag` 119,
+  `range_element_runs` 102, `entries_do_not_reach_the_terminator` 94,
+  `range_elements` 46, `range_element_head` 21,
+  `trailing_zero_run_before_the_terminator` 6. None is partially framed into a
+  result. (610 before the extended trailer, 464 before the trailing section.)
+- **The largest bucket was two different things and is now named apart.** Of the 322
+  bodies that stopped short of the terminator, **104 leave nothing but a run of
+  zeros** -- 7 bytes in 98 of them, 5 in the other 6 -- and **218 leave real
+  content**. Reporting one number hid that the second group is unread structure while
+  the first may be padding. *When a fence bucket is the largest one, check whether it
+  is one failure or several wearing the same name.*
+- **What the 218 leave is recognisable.** A 44-byte leftover begins
+  `00 00 40 3f 00 00 80 3f 09 00 00 00` -- 0.75, 1.0 and the interpolation code 9,
+  which is the twelve-byte curve record this type already carries. The 32-byte
+  leftovers carry an object id at +8. And every leftover of both sizes has `01`
+  **ten bytes from the terminator**, which is where an element's short trailer puts
+  its own marker.
+
+#### `0x0B` has a SECOND element trailer, opened by the trailing block: 3,861 of 4,325
+
+The residue was not noise, and it said exactly what it wanted. Of the bodies that
+walked all their entries and stopped short, **98 were 7 bytes short and 48 were 12
+bytes short, all at flag 0** -- where the flag says the trailer should be 19.
+
+- **The first byte of the element's trailing block is a second flag.** It is `1` in
+  exactly those 146 elements and `0` in the 3,108 that frame at flag 0. A clean
+  split, not a majority. When it is 1 the head is **`14 + 5 * k`**, with `k` the byte
+  seven into the trailer: `k = 0` in 98 elements and `k = 1` in 48.
+- **Every part beats its rivals corpus-wide, scored by whole-body closure.**
+
+  | part | chosen | rivals |
+  | --- | --- | --- |
+  | which block byte opens it | `block[0]`: **3,861** | the other eleven positions: at most 3,719 |
+  | the extended base | `14`: **3,861** | 10, 12, 13, 15, 16, 19: **3,715 each** -- they add nothing at all |
+  | which byte scales it | `trailer[7]`: **3,861** | bytes that are merely zero in this group: 3,813, closing the `k = 0` bodies and failing the `k = 1` ones |
+  | the step | `5`: **3,861** | 0, 3, 4, 6, 7, 8: 3,206 -- a wrong step loses bodies the plain branch had |
+
+- **Coverage rises 3,715 -> 3,861 of 4,325 (85.9% -> 89.3%)**, and the plain flag
+  counts are **unchanged at 3,108, 575 and 32**. The 146 are bodies that framed under
+  neither branch, not bodies moved between them.
+- **The step of 5 is borrowed, not established.** Only `k = 0` and `k = 1` occur,
+  which is two points; the reader refuses anything above 1 rather than extrapolating.
+  This is weaker evidence than the plain flag, where three values are each observed
+  closing bodies, and the reader says so.
+- **Every element that takes the extended branch carries plain flag 0** -- all 146.
+  Recorded rather than required: making it a rule would hide the day it stops holding.
+
+#### `0x0B`'s body ends with a fixed 12-byte block
+
+- **4,141 of 4,325 bodies (95.7%) end with `00 00 01 00 00 00 00 00 00 00 00 00`
+  immediately before the u32 terminator**, and so do 3,713 of the 3,715 that framed
+  before this batch. The two exceptions carry `00 04 01 01` in the first four bytes
+  with the same eight zeros, so the shape is **four bytes that vary and eight that are
+  zero**. Over the 3,861 close blocks the frame now reaches, the eight zeros hold
+  **3,861 of 3,861**, against **0** for the same width read four bytes earlier.
+- The trailer is therefore written as a head of `7 + 5 * flag` plus this 12-byte
+  close (19 = 7 + 12, 24 = 12 + 12, 29 = 17 + 12). **For these bodies that split is
+  not an independent fact** -- the trailer is the last thing before the terminator,
+  so "the trailer ends with the block" and "the body ends with the block" say the
+  same thing. It is written that way because the block is the same 12 bytes whether
+  or not the body frames, which makes it a property of the format rather than of the
+  walk.
+- **This is why the extended head is `14 + 5k` and not `26 + 5k`:** the close is
+  accounted for once, separately, in both branches.
+- **The residue always ends at this block**, in every failing class. So the 464
+  remaining failures misread body *interiors*; none of them has a different ending.
+
+#### `0x0B` has a trailing section, and it brought the multi-entry layout into the frame
+
+After the entry walk falls short, **one byte then the same 12-byte block and the same
+trailer an element ends with** lands exactly on the terminator in **76 bodies**, all
+of them multi-entry. Coverage **3,861 -> 3,937 of 4,325 (89.3% -> 91.0%)**.
+
+- **The prefix is discriminated:** width 1 closes 76 and every other width from 0 to 9
+  closes at most 10. The section costs nothing, because it is only attempted once the
+  walk has already failed -- it can add bodies, never take one.
+- **A length-only control closes 100, not 76, and the extra 24 are refused.** Accept
+  any of the four observed trailer lengths and ignore the flag, and 24 more residues
+  land exactly; but their block opening byte is `0xAF`, `0x55` or `0x59` and their
+  selector is scattered. That is a total-length coincidence, not a section. *When a
+  reading closes more cases than the rule that motivated it, the excess is the thing
+  to look at, not the win.*
+- The residue sizes made this findable: **32, 37, 39 and 44 are `13 + {19, 24, 26,
+  31}`** -- 13 bytes plus each of the four trailer lengths already established on
+  single-entry bodies.
+- **The layouts that do NOT explain it, ruled out first.** A uniform wider entry
+  header: no width from 8 to 200 closes any multi-entry body. All headers first and
+  then all elements: likewise none. The element count somewhere other than `+44`: the
+  sweep gives 3,861 at `+44` and at most 69 at every other offset. And the residue does
+  not parse as more elements -- 122 of 142 stop at the first one. *Single-entry bodies
+  cannot tell the interleaved layout from the headers-first one; both score 3,861. A
+  corpus that cannot distinguish two readings is not evidence for either.*
+
+#### Four of my own claims were true only because every framed body had one element
+
+The coverage gain broke four gates at once, and every one of them was right to break.
+**This is the degenerate-input trap in its purest form: the corpus could not
+distinguish the claim from a weaker one, so the claim looked exact.**
+
+| claim | how it looked | what it is |
+| --- | --- | --- |
+| the element count is a count | untestable -- **1 in every framed entry** | now read at **0, 1, 2 and 3** (130, 3,871, 8, 4) with the walk consuming exactly that many |
+| the entry count is a count | untestable -- **1 in every framed body** | now **1 in 3,861 and 2 in 76** |
+| the word at header `+4` is a source id | **3,715 of 3,715** headers | **3,937 of 4,013** headers, but **3,937 of 3,937 bodies**: in a two-entry body **exactly one of the two** entries names a declared source |
+| the 12-byte close ends in eight zeros | **3,861 of 3,861** trailers | its **content** is body-final -- **3,937 of 3,937 final** blocks, **0 of 38 interior** ones -- while its **length** is per element |
+
+- **The last of these is the one worth keeping, and it splits in two.** Before this
+  batch I could not tell whether the 12-byte close belonged to the element or to the
+  body, because every framed body had exactly one element and the two readings made
+  identical predictions.
+  - Its **content** is body-final. Interior blocks end in eight zeros **0 of 38**
+    times against **3,937 of 3,937** for final ones.
+  - Its **length** is per element, and that is the opposite answer. Charging the 12
+    bytes to every element closes **3,937**; charging them only to the last element of
+    an entry, only to the last of the body, or only to the first each close **3,925**,
+    and charging them to none closes **58**. So an interior element does consume a
+    12-byte close -- it simply does not hold the eight-zero pattern.
+  - *These are two different claims about the same twelve bytes, and the first draft
+    of this note ran them together. A field's length and a field's content are
+    separately testable and can have separate answers.*
+- The source join is now counted **per body**, not per header. Per header the same
+  data reads as a regression from 100% to 98.1%; per body it is exact, and the 76
+  "misses" are one half of each two-entry body.
+- The retired element-count gate had said: *"If a body ever closes with an entry
+  declaring two elements, this fails -- and that failure is the good news, because it
+  means the reading has finally been tested. Change it then, not before."* That is
+  exactly what happened, so it was replaced rather than relaxed. *Write the tripwire
+  that tells you when your own caveat has expired.*
+
+#### What does NOT explain `0x0B`'s remaining 388, tested and eliminated
+
+Recorded so the same ground is not re-walked. Each was scored over the whole corpus
+by whole-body closure, not on the failing slice alone.
+
+| hypothesis | result |
+| --- | --- |
+| a wider entry header, uniform | **no width from 8 to 200** closes a single multi-entry body |
+| all headers first, then all elements | likewise none; and note single-entry bodies score **3,861 either way**, so they cannot tell these two layouts apart at all |
+| the element count somewhere other than `+44` | `+44`: **3,861**; every other offset from 0 to 44: **at most 69** |
+| the residue is more elements | **122 of 142** stop at the first one |
+| a different source-record width | no width from 8 to 32 rescues any of the 50 out-of-range bodies |
+| a missing field before or after the entry count | gaps 0-16 either side rescue **2** at post-8, and cost the rest of the corpus |
+| the close belongs only to some elements | see above -- every element, **3,937** against 3,925 |
+
+- **The 119 trailer-flag fences almost all land at element index 1**, in single-entry
+  bodies declaring two or more elements, with the flag and the block's opening byte
+  both scattered. So the walk is already lost by then: **the first element's length is
+  wrong**, not the second element's flag.
+- **Shifting the second element does not repair them.** Of the 128 single-entry
+  multi-element bodies, only **20** close at *any* offset in `[-40, +80]`, and those
+  20 split between `-36` and `+17`. A single repeated delta would be a missing fixed
+  field; this is not one.
+- The 50 bodies whose counts come back wildly out of range have leading byte 0 and
+  declared source counts of 0 to 4 -- indistinguishable on both from the 3,937 that
+  frame.
+
+#### `0x0B`'s residue, measured rather than guessed
+
+(Superseded in part by the section above: 76 of these now frame.) Of the 4,325
+bodies, **306 declare more than one entry** (240 declare 2, 34 declare
+3, 16 declare 4, 2 declare 5, 10 declare 6 or more) and **4 declare none**. Among the
+4,019 single-entry bodies, **128 declare more than one element** (113 declare 2, 14
+declare 3, 1 declares 4).
+
+- **146 of the multi-entry bodies walk every entry and leave residue**; 100 more
+  desynchronise at a run count, which is what a wrong entry-header width looks like.
+  The entry header is not known to be 48 bytes for entries after the first.
+- The multi-entry residues **contain curve records** -- `0.75, 1.0, code 9` and
+  `float, 1.0, code 4` among them -- so they are unread element data, not padding.
+
+#### Correction: `0x0B`'s run splits 11 + 12n + 1, and its records ARE curve records
+
+- **The run header is 11 bytes, not 12**, followed by the records and then one
+  trailing byte. `11 + 12n + 1` and `12 + 12n` are **the same length**, so the body
+  frame closes the same 3,715 bodies either way -- which is exactly why the split
+  could not be settled by closure and had to be settled by what the records contain.
+- Under the 11-byte header **all 4,086 records carry an interpolation code of 0 to 9**,
+  spanning every value with no gaps: `9`:2017, `4`:1003, `1`:485, `7`:280, `8`:103,
+  `0`:77, `5`:74, `2`:25, `6`:14, `3`:8. Under 12 the codes are noise and only the
+  zeros pass. The control reading -- the same word one byte either side -- lands in
+  range **377 of 9,376** times.
+- **This corrects my own earlier measurement and restores the memory claim it
+  appeared to contradict.** Reading the records at the 12-byte boundary showed codes
+  in range for only 1,644 of 4,304, all of them zero, and I nearly recorded that the
+  curve record is *not* in `0x0B`. The boundary was off by one byte; the claim was
+  right.
+- So the twelve-byte curve record is confirmed in **three** numeric types by a test
+  with a working control: `0x08` and `0x12`'s tail units (314 records, all in range,
+  codes 9/4/7/1/0/8/5) and `0x0B`'s element runs.
+- **The lesson, and it is the sharpest form of one this session keeps teaching.** Two
+  layouts of equal total length are indistinguishable by closure *no matter how large
+  the corpus*. When a frame closes and its contents look like noise, suspect the
+  internal split before suspecting the claim -- and settle it on content, because
+  length cannot.
+
+#### The region after `0x0A`'s `0x0B` reference is a FLOAT BLOCK, and `+4` is the exception
+
+Reading every word after the reference as a float and asking how many are finite and
+in 1e-2..1e4:
+
+| offset | nonzero | plausible float | note |
+|---|---:|---:|---|
+| `+4` | 2,130 | **14%** | the odd one out |
+| `+8` | 3,748 | **95%** | median 5.689, mode **4.4766** (1,565) |
+| `+12` | 311 | 87% | |
+| `+16` | 334 | 95% | |
+| `+20` | 3,816 | **93%** | already recorded as an authored value |
+
+- **`+8` is a float field and had never been identified.** The reader uses it only as
+  the *control* for the `+4` fraction test -- where it works correctly, since a float
+  is not a small rational -- but nothing ever asked what it is in its own right. *A
+  word used as a control is still a field; passing as a control says what it is not,
+  never what it is.*
+- So the block after the `0x0B` reference is mostly floats, and `+4` is the one word
+  that is not. Its values -- `0x55555555`, `0xAAAAAAAB`, `0x89D89D8A`, `0xE8BA2E8B`,
+  `0x71C71C71` -- are `p/q` in Q32 for `q` in 3, 7, 9, 11, 13, 49. That it differs in
+  kind from its neighbours is now measured rather than assumed.
+- A test I wrote to check whether those values have repeating binary expansions
+  returned 100% for **every** offset including the floats, so it discriminates nothing
+  and is **discarded**. It is recorded here only so the next attempt does not rebuild
+  it. *A structural test that passes everything has not been run; it has been
+  mis-written.*
+
+#### QUALIFIED: `0x0A`'s "fraction" is a mixed value set, not a fraction field
+
+The discriminator that separates a real fixed-point field from a test artefact is
+**how many denominators it uses**, and applying it to `0x0A` qualifies a finding I
+strengthened two batches ago.
+
+| field | passes `IsSmallFraction` | distinct fractions | denominators |
+|---|---|---:|---|
+| `0x0B` `+28` | 100% | **5** | **3, 6, 2** |
+| `0x0B` `+36` | 96.3% | **18** | **3, 6, 2**, then a tail |
+| `0x0A` fraction | 67.4% | **42** | 3, **13, 11, 7, 23, 9, 19, 49** |
+| `0x0B` `+12` | 42.0% | **76** | 13, 17, 7, 3, 23, 19 -- no family |
+
+- `0x0B`'s established fields use a **tight, authored family**: 1/3, 2/3, 1/6, 1/2,
+  5/6. `0x0A`'s spreads across denominators 13, 11, 49, 23 and 19, which no one
+  authors.
+- **The field's real shape is a small repeated value set**: only **237 distinct
+  values** over 2,130 bodies, the ten commonest covering **50%**. Its top value is
+  `0x408F4000`, which is the **float 4.4766**, seen 203 times -- and the control word
+  four bytes on holds that same value **1,565** times. So the field mixes
+  float-shaped and fraction-shaped members.
+- **What survives**: the field is still sharply different from its control -- 67.4%
+  against 3.2%, a 20x margin, and random words pass at 0 of 2,130. Something real is
+  there. **What does not survive**: calling it a fixed-point fraction. That reading
+  over-reads a permissive test.
+- *`IsSmallFraction` with denominators to 64 is too generous for structured data. It
+  passes 42% of `0x0B`'s `+12`, which is definitely not a fraction field. The
+  discriminating question is not "is this value a small rational" but "does this field
+  use a handful of denominators".*
+- `0x0B` `+44` is confirmed as the element count from the other side: raw values `1`
+  in 3,903 entries, `2` in 133, `3` in 14, `4` in 1.
+
+#### The fixed-point fraction is in two types, and they are NOT the same quantity
+
+Three measurements, and the conclusion is a negative worth keeping.
+
+1. **The `0x0A` fraction reading is much stronger than previously recorded.** Under
+   the reader's own tolerance (16 parts in 2^32, denominators to 64): **1,435 of
+   2,130** nonzero values are small fractions, the control word four bytes further
+   on manages **121 of 3,748**, and **0 of 2,130 random 32-bit words** pass. The
+   random control is the one that settles it -- a test that admitted arbitrary words
+   would not have been evidence at all.
+2. **`0x0A` -> `0x0B` does not carry the fraction.** For the 1,864 `0x0A` bodies with
+   a nonzero fraction whose reference resolves to a framed `0x0B`, the value equals
+   one of that `0x0B`'s two entry-header fractions in **58** cases. Shuffling the
+   pairing gives **52**. That is chance, on the one edge in this format known to be
+   one-to-one.
+3. **The value distributions differ in kind.** `0x0B`'s entry fractions are a tight
+   set -- 0, 1/3, 2/3, 1/2, 1/6. `0x0A`'s spread across 7/13, 1/3, 10/11, 2/3, 4/9,
+   27/49, 4/7 and more, with denominators 7, 9, 11, 13, 49.
+
+So the two types share an **encoding**, not a **meaning**. *A representation found in
+two places is a lead, not a link -- test whether the values actually travel along the
+reference before treating it as one.* The cheapest such test is the shuffle: score the
+real pairing against a permuted one, and a difference of 58 against 52 says stop.
+
+#### Four fields read in the 48-byte entry header -- and one caveat about the frame
+
+Censused over the 3,715 entries of closing bodies only; an entry header from a body
+that later fails says nothing, because the walk that reached it may be desynchronised.
+
+| offset | reading | evidence | control |
+|---|---|---|---|
+| `+0`, `+8` | constant zero | 3,715 each | -- |
+| `+4` | **source id, joined** | it is one of the source ids the **same body** declares: **3,715 of 3,715** | -- |
+| `+16`, `+24` | a **symmetric float pair** | `low == -high` in **1,218 of 1,404** nonzero pairs; `low <= high` in 1,264 | the neighbouring word at `+12`: **0 of 1,391** |
+| `+28`, `+36` | **fixed-point fractions of 2^32** | small rationals in **2,735 of 2,804** | the word at `+40`: **0 of 3,715** |
+| `+40` | a **bounded float**, in every entry | 3,715 of 3,715 in 1e-3..1e4; range 3.951 to 10.1, median 7.548, 889 distinct | `+4` and `+12`: **420 of 4,806** |
+| `+44` | element count | see below | -- |
+
+- **The source id sits at record offset 5, which is NOT four-byte aligned.** Testing
+  the 14-byte source record's aligned words -- 0, 4 and 8 -- against the header's `+4`
+  finds **no match at all**; offset 5 matches **every one of the 4,321**. That is why
+  this field read as unidentified for so long, and it is the second time in two
+  batches that a field turned out not to be where alignment suggests. *A join that
+  fails at every aligned offset has not been disproved; it has been tested at the
+  wrong offsets.*
+- **Nor are they among the audio-named literal hashes.** All twelve offsets score
+  **0 of 4,321** against the 221 audio literal hashes the named-reach audit loads.
+- *A correction on how I read that.* I dismissed this as "no discriminating power",
+  which is backwards. With 221 hashes against 2^32, the expected chance matches over
+  4,321 words is **0.0002** -- so the test can never produce a false positive, and a
+  single hit would have been decisive. Finding none is a narrow but real elimination,
+  not a failed experiment. **A test with a tiny false-positive rate is powerful for
+  confirming and weak for refuting; say which of the two you got.**
+- **The stronger test has now been run, and it is decisively negative.** Against the
+  **24,231** distinct hashes of every identifier-shaped literal in
+  `global-metadata.dat` -- not the 221 audio-filtered ones -- **all twelve offsets
+  score 0**. Expected chance matches are **0.024**, so a single hit would have been
+  conclusive and there are none.
+- `scripts/audio_semantics/hirc_named_reach.py` already exposes `broad_literals()` for
+  exactly this: identifier-shaped literals without the audio prefix vocabulary. **The
+  population I said I would need was already a function in the repo.**
+- So `0x0B`'s `+12`, `+20` and `+32` are eliminated as object references (same-bank
+  and corpus-wide), source and media ids, floats, fixed-point fractions, **and name
+  hashes**. Five populations, all negative, all properly powered.
+- **None of the header words is a source id either.** Scored against the full
+  source-id population, every offset including `+12`, `+20` and `+32` matches **zero**
+  -- so those remain unread, now eliminated as object references, name hashes, floats,
+  fractions **and** source ids.
+- **The opaque words are not references.** Tested against the same-bank id set and the
+  corpus-wide one, **none** of the twelve header words resolves to an object -- `+4`
+  matches 8 ids out of 4,321 and the rest match zero. That confirms the standing note
+  that `0x0B` points at media rather than objects, and closes "reference" as a reading
+  for `+12`, `+20`, `+32` and `+44`.
+- **`+12` and `+20` are not floats either**: only **2.0%** of their values land in
+  1e-3..1e4, and they range over plus and minus 5e37. They remain unread.
+- *A float field is not established by its own values being finite -- almost any
+  32-bit word is a finite float. It is established by neighbouring words read the same
+  way not being plausible.* Here `+40` is 100% in band against 8.7% for its
+  neighbours.
+
+- The float pair sits around plus or minus five: `(-5.16, +5.16)`, `(-4.84, +4.84)`,
+  `(-5.48, +5.48)`. What it bounds is not claimed.
+- The fractions read 0, 1/3, 2/3, 1/2 and 1/6 -- **the same fixed-point encoding
+  `0x0A` carries**, which is now confirmed in two numeric types. Entries where both
+  range words are zero are excluded, and a zero fraction is excluded, because zero
+  satisfies both properties for free.
+- **Both controls score exactly zero.** A word read one field away satisfies neither
+  property in a single entry.
+
+**The caveat, and it is about this reader rather than the format.** The word at `+44`
+is read as an element count, and it is **1 in every one of the 3,715 entries the frame
+closes**. Reading it as a count and reading it as the constant 1 produce the same
+3,715 bodies, so **nothing in the corpus distinguishes them** and the "count" is a
+hypothesis. Entries declaring 0, 2, 3 or 4 exist -- 370, 221, 48 and 7 of them -- and
+every one is in a body that fails to frame.
+
+This is stated as a gate, `the_type11_element_count_is_not_yet_a_count`, which holds
+while the count is 1 everywhere. **When a body finally closes with two elements the
+gate fails, and that failure is the good news**: the reading will have been tested for
+the first time. *A field named as a count in a frame that never sees it take another
+value has been assumed, not measured -- and the assumption should be visible in the
+gate rather than buried in the field's name.*
+
+#### The 119 trailer-flag fences: the size is found, the selector is not
+
+- **A 17-byte trailing block instead of 12 closes 89 of the 119**, taking the body
+  frame from 3,715 to 3,804 of 4,325. And `17 - 12 = 5`, the same optional five-byte
+  step the element trailer and the entry widths both show.
+- The size is discriminated: `(17,)` alone closes only **91** bodies, `(12, 16)`
+  gains nothing, and `(12, 16, 17)` gains less than `(12, 17)` because 16 mis-matches
+  first. So 17 is specifically right, not merely bigger.
+- **But the selector is undetermined, and it is not adopted.** Thirteen byte
+  positions separate the two groups perfectly -- element head bytes 1 to 4, run
+  header bytes 0 to 4 and 7 to 9. The 89 are a completely homogeneous population:
+  every one has exactly one run, that run declares zero records, and its head bytes
+  1 to 4 are nonzero, while **2 of 3,804** twelve-byte-block elements have a nonzero
+  head there and **none** has one run with zero records.
+- So the two populations differ in every measured respect and nothing in the corpus
+  can say which difference is the switch. Picking one of the thirteen would be
+  arbitrary; taking `(12, 17)` as a fallback search would resolve the choice *by
+  closure*, which is the exact failure mode that made the terrain codec's nibble
+  reading look right for 6,442 files. **Measured, recorded, not adopted.**
+- What would settle it: a `0x0B` body with a populated element head and more than one
+  run, or one run declaring records. None exists in this corpus.
+
+**A second property, measured later and worth only what it is worth.** Under the
+17-byte block the fenced elements come out at size **53** in 93 of the 119 and **41**
+in 20. Every element size closing bodies produce is of the form `36 + 12a + 5b` --
+36, 41, 72, 77, 84, 89, 96, 120, 125, 137 -- and 53 fits it as `36 + 12 + 5`. So the
+reading yields family-consistent sizes rather than arbitrary ones.
+
+*But the family test is weak and saying so matters more than the result.* With 12 and
+5 coprime, every size above **79** is representable, so the test is **vacuous** there;
+across 36 to 139 it rules out only **22 of 104** candidates, or 21%. Size 53 passing
+is corroboration, not evidence, and it does not change the standing conclusion that
+the 12-vs-17 selector is undetermined. *Check a length model's Frobenius number before
+quoting it -- this is the second length family in this format where most of the range
+is free.*
+
+### THE 218 ARE MOSTLY NOT AN ELEMENT PROBLEM AT ALL
+
+Reading one failing body against a closing one -- the method that cracked `0x08`,
+rather than the ten enumerations that did not -- settles where the problem lives.
+
+- **Every one of the 3,715 bodies that frames has exactly ONE entry carrying exactly
+  ONE element.** No exceptions. The entry/element shape `(1, (1,))` is the only shape
+  the reader has ever parsed successfully.
+- **142 of the 218 declare an entry with ZERO elements**, in shapes like `(2, (0,0))`
+  54 times, `(2, (0,2))` 32, `(2, (0,1))` 24, `(3, (0,0,0))` 22. **No closing body has
+  that shape.** Four more declare zero entries.
+- So for most of this bucket the element walk is not at fault. **The multi-entry
+  layout has never been parsed**, the 48-byte header width is verified only for the
+  single-entry case, and the entry count -- like the element count already gated -- has
+  never been read at any value but 1 by a successful walk.
+- **The remaining 70** have the same `(1, (1,))` shape as every closing body. Those,
+  and only those, are a genuine element-level mystery.
+
+**The bucket decomposed, by (zero-element entries, residue bytes):**
+`(0,12)` 48, `(2,32)` 36, `(1,44)` 24, `(1,32)` 22, `(3,112)` 16, `(0,16)` 10,
+`(2,44)` 8, `(2,37)` 8, `(0,49)` 6, `(0,38)` 4.
+
+- **The residue does not scale with the number of zero-element entries.** Two zero
+  entries with a 32-byte residue is 16 each; one with 44 is 44; three with 112 is
+  37.3. No constant per entry, so the multi-entry layout is not "a fixed extra block
+  per empty entry".
+- **The 48 bodies with the closing shape and a 12-byte residue**: the residue is
+  `00 00 01 00 00 00 00 00 00 00 00 00` -- a mostly-zero twelve bytes with `01` at
+  offset 2. It passes a curve-record test, but only as `(0.0, 0.0, 0)`, which **a run
+  of zeros passes for free**. Not a curve record.
+- **Not a doubled trailing block either.** A 24-byte block closes **0** of 4,325 and a
+  36-byte block 0, against 3,715 for 12.
+
+*Four more readings eliminated. The pattern across this whole bucket is that every
+candidate that closes anything closes only the degenerate members -- zero runs, zero
+records, all-zero blocks -- and the content test catches each one. That is now the
+single most reliable signal in this investigation: if a reading's successes are all
+zero-filled, it is wrong.*
+
+*Ten hypotheses about element widths failed because the residue was never mostly an
+element problem. When a residue resists every reading of structure X, check whether
+the failing bodies even have the same shape at level X-1 as the ones that work.* Here
+one query -- the distribution of (entryCount, elementCounts) over closing versus
+failing bodies -- would have redirected the whole investigation.
+
+Gated: `the_type11_element_count_is_not_yet_a_count` now also refuses if the entry
+count is ever read at another value in a closing body, which would mean the
+multi-entry layout had finally been parsed and this note needed revising.
+
+#### The 218 are a PARTIAL ELEMENT, mis-entered by exactly four bytes
+
+Applying the lesson that closed `0x08` -- when a walk desynchronises, look for the
+next occurrence of something it already parses correctly:
+
+- **152 of the 218 residues END with a valid element trailer** -- 122 with the 19-byte
+  form, 26 with 24, 4 with 29. So the residue is not extra data appended to a finished
+  body. It is the **tail of an element the walk entered too late**.
+- Taking the trailer off leaves an element body, and **104 of those 152 are exactly
+  four bytes short of `17 + 12k`** -- 13 where 17 is wanted, 25 where 29 is, 93 where
+  97 is. The walk over-consumes by **4 bytes** in the element before it.
+- **No global constant change accounts for it.** Head 5->1 closes 10 bodies, block
+  12->8 or 12->16 closes 0, trailer 19->15 or 19->23 closes 0, head 5->9 closes 0.
+  The chosen `(5, 12, 19)` closes 3,715 and nothing else comes close.
+
+**ELIMINATED, and the "four bytes" framing with it.** I read the shortfall as one
+element consuming four bytes too many. Every version of that fails:
+
+* shortening each element in turn by four and re-running the walk: **0 of 322**;
+* *growing* each element in turn by four: **0 of 322**;
+* shortening one element by four **and** taking one extra element at the end, which is
+  the only way a shift and the entry's element count can both be satisfied: **0**;
+* alternative entry-header widths (44, 52, 56) and element-count offsets (4, 8, 40,
+  48): **0** each, against 3,715 for the chosen 48 and +44.
+
+So "four bytes" is not a walk error at all. It is an **arithmetic property of the
+residue lengths**: the residue bodies are `13 + 12k` -- 13 in 66 bodies, 25 in 30, 37
+in 4 -- which is four less than the `17 + 12k` a complete element body takes. That is
+a description of the residue, not a diagnosis of the walk, and I turned one into the
+other without checking.
+
+**Also eliminated again, with the content test this time.** The residue lengths are
+consistent with a 1-byte-head element -- 13 is `1 + 12`, 25 is `1 + 12 + 12`, 93 is
+`1 + 80 + 12` -- but reading them that way still closes only the same **66**, every
+one with **zero runs and therefore zero records**. The interpolation-code test has
+nothing to check, so the arithmetic consistency is all there is. Third time this
+reading has been measured and third time it is degenerate.
+
+**What survives, and it is still the most useful thing known about this bucket**: 152
+of the 218 residues end with a valid element trailer, so they are element *tails*
+rather than appended data. The mechanism that leaves them is not a single mis-sized
+element.
+
+*Searching for a flag also failed for a reason worth keeping: once a walk
+desynchronises, every element after the divergence is noise, so comparing the LAST
+element of a failing body against good ones compares nothing. No byte separated the
+two groups, and that result means nothing either.*
+
+#### FIVE eliminations on the 218, so the next attempt does not repeat them
+
+The residue of numeric type `0x0B` bodies that leave real content before the
+terminator. Sizes: `32`:58, `12`:48, `44`:32, `112`:16, `49`:10, `16`:10, `37`:8,
+then singles.
+
+1. **Not one more element the entry count failed to declare.** Walking elements
+   greedily after the declared ones takes **zero** extra in **every** body.
+2. **Not whole elements of any observed shape.** The element sizes bodies that close
+   actually use are 36, 41, 72, 84, 96, 120, 89, 77, 125, 137. Only **4 of 218**
+   residues have a size in that set. This is independent of (1) and reaches the same
+   place.
+3. **Not a variant element with a one-byte head.** It closes 66, but every one of
+   those declares a run count of zero, so only the fixed bytes are exercised and the
+   interpolation-code test has nothing to check. Retracted in full.
+4. **Not explained by the 17-byte trailing block.** Allowing it takes the frame to
+   3,804 and drops the trailer-flag fences from 119 to 6, but grows this bucket from
+   218 to 236. The two fence buckets have independent causes.
+5. **Not a counted array of curve records.** Locating the first curve-shaped window
+   and stepping back four bytes -- the move that closed `0x0A` -- gives no count in
+   any body: 150 of 218 have no room for one and the rest disagree.
+
+*Elimination (2) is the cheapest of the five and should have been first: comparing
+the residue's size against the sizes the structure is actually observed to take costs
+one query and rules out the whole "it is another one of those" family.*
+
+#### Two eliminations on the 218, kept for the record
+
+- **It is NOT one more element the count at +44 failed to declare.** Walking elements
+  greedily after the declared ones -- taking every element that parses until the
+  terminator -- takes **zero** extra elements in **every** body, and closes exactly
+  the same 3,715. The residue does not parse as an element at all.
+- **RETRACTED: the "66 of 218" one-byte-head reading is a length coincidence.**
+  I recorded it as "a fixed rule with no free parameter" and it is not evidence at
+  all. Every one of those 66 residues declares a **run count of zero**, so the
+  reading consumes only its fixed parts: `1 + 12 + 19 = 32` and `1 + 12 + 24 = 37`,
+  which are exactly the two residue sizes that close. It produces **zero records**,
+  so the interpolation-code test -- the thing that settled the run split -- has
+  nothing to test. Same trap as the flat terrain tiles, in a third costume.
+- What the residue sizes actually are: `32`:58, `12`:48, `44`:32, `112`:16, `49`:10,
+  `16`:10, `37`:8, then singles. Only **92** are of the form `32 + 12k` and **20** of
+  `37 + 12k`; **106 fit neither**, so most of the residue is not even the right length
+  to be a trailing element of the known shape.
+- **Also eliminated: the 17-byte trailing block does not explain the 218.** Allowing
+  it takes the frame to 3,804 and drops the trailer-flag fences from 119 to 6, but
+  the `entries_do_not_reach_the_terminator` bucket *grows* from 218 to 236. So the
+  two fence buckets have independent causes, and a reading that fixes one is not
+  corroborated by the other.
+- *When a candidate reading closes a residue, check what it exercised. A rule whose
+  counted runs are all zero has been confirmed by arithmetic on its constants, not by
+  the data.*
+- Not a closure-gated lane, for the same reason `0x08` is not. The gate is a floor
+  at 80% -- there to catch a regression, not to assert the frame is complete, which
+  it is not.
+
+### `0x0B`'s element is now a forward frame
+
+```
+element body:
+  u8  runCount            -- element[0]
+  4   head bytes
+  runCount x run:
+      12-byte run header, the record count at +7
+      count x 12-byte record
+  12  trailing block
+then the trailer: first byte 0 -> 19 bytes, 1 -> 24
+```
+
+- **1,103 of the 1,151 elements that declare a run close exactly**, and the best
+  rival frame closes **17**. Rivals varying the head, the run header width, the
+  count's offset and the trailing block all score 0-17.
+- **Scored over every element instead, the finding would have evaporated**: the
+  chosen frame closes 3,594 and a rival closes 2,508, a ratio of 1.4. The 2,491
+  elements that declare no runs close under almost any frame whose head and trailing
+  block add up, and they outnumber the ones that walk a run two to one. Same frame,
+  same corpus, completely different strength of claim -- which is why the gate reads
+  `frameClosesWithRuns` and its control requires a rival to be visibly inflated by
+  the empty ones.
+- Run counts: 0 in 2,491 elements, 1 in 835, 2 in 242, 3 in 26.
+- **How the layout fell out**, in order, because the sequence is the method:
+  1. `element[0]` is 0 in exactly the 2,491 elements with no records -- so it is a
+     run count, not a record count.
+  2. For `element[0] == 1`, `k = 1 + element[12]` in **all 835**. The `+1` is the
+     run's own twelve-byte header.
+  3. For `element[0] == 2`, the second run's count sits at `element[24 + 12*c1]` in
+     **242 of 242**, and at no other relative offset. That fixed the run stride at
+     `12 + 12*c` and the count's place at `+7`.
+  4. The lengths then forced a fixed twelve-byte block after the runs: an element
+     with no runs is 17 body bytes, and 17 = 5 + 12.
+- **Earlier searches missed it by looking for one count.** `element[8]` equals `k`
+  in 575 of 1,103 -- a genuine half-fit that is not the rule and led nowhere,
+  because `k` is a *total* over runs, not a field. *When a count field explains
+  roughly half a corpus, consider that the quantity is a sum before hunting a better
+  offset.*
+- The degenerate trap caught this one too: scored without excluding `k = 0`, eight
+  different offsets "carry k" in 2,491 elements, because an all-zero field matches a
+  zero count for free. The census excludes them, and the code says why.
+- Gated by `the_type11_trailer_anchor_beats_its_rivals` with
+  `the_type11_trailer_is_not_settled_by_parsing` as its stated control: if the chosen
+  anchor ever also wins on how many elements it can parse, the residue test is doing
+  no work and the gate fails loudly.
+- Supersedes the earlier note that "the 53 + 12k head widths that close are a fit
+  rather than a layout". That measurement was made from the front, looking for a
+  count in the first 53 bytes. The structure is anchored to the **end**, which the
+  earlier attempt could not see -- and which is the third time in this type that
+  tabulating from the end worked where the head resisted.
 - Type `0x0B` carries **no** same-bank object references at all -- it is pointed to
   by `0x0A`, and points at media instead. The corpus has only 7 DIDX entries in
   total, so its media is streamed rather than embedded, and `0x0B`'s source ids
@@ -2689,6 +3906,204 @@ Stable conclusions:
 Detailed changing investigations live under `reports/story/recovery/audio/`.
 Page behavior and focused publication belong in
 [`webui/audio.md`](webui/audio.md).
+
+### Types `0x02` and `0x0B` share one source record, and it accounts for the media
+
+This is the first result in this lane that is about the corpus rather than about a
+body layout, so its evidence is stated in full.
+
+**The record.** Numeric type `0x02` carries exactly one 14-byte source record at body
+offset 0. Numeric type `0x0B` carries a counted array of the same record after its
+leading flag and count. That they are the same record is shown twice:
+
+- **The word at `+0` is a plugin id from a closed set.** `0x0B` uses two values --
+  `0x00040001` (3,506 records) and `0x00140001` (941) -- and **140,121 of `0x02`'s
+  142,815** bodies open with one of exactly those two. `0x02` uses five more
+  (`0x00080001`, `0x00650002`, `0x00640002`, `0x00940002`, `0x01990002`), so it is a
+  superset rather than a different field.
+- **The word at `+5` names a declared media id in 4,447 of `0x0B`'s 4,447 records,
+  and in 0 of them at any other offset in the record.** That contrast is what makes
+  `+5` the id field. A bare hit rate would not.
+
+**The attribution.** Pooled over every package, **61,325 of the 61,333 declared media
+ids are named by some source record** -- 60,049 by `0x02`, 1,279 by `0x0B`, 3 by both,
+and **8 by no record at all**. The words one byte either side of the id field name
+**0 and 2**. Before `0x0B` was allowed to contribute, 1,284 media had no owner; it
+closed 1,276 of them.
+
+**The join has to cross a file boundary, and that is a trap worth recording.** A
+source record names media that a *different* package declares. The first version of
+this census joined inside one package and scored **12 of 147,262** -- not a weak
+result, a meaningless one. `media_ids_from_audit` already carried the warning in its
+own docstring: *"joining inside one package answers a question nobody asked."* The
+census is published from C# as distinct value sets and joined in Python, where the
+packages are already pooled.
+
+### The bank has four sections nothing parsed, and STMG is one of them
+
+Censusing the section tags was overdue. Across 20,873 bank payloads there are exactly
+two tags everywhere -- `BKHD` (834,940 bytes) and `HIRC` (26,995,526) -- and **one
+bank carries five more**: `DATA` 5,913,232, **`STMG` 10,118**, `INIT` 347, `ENVS` 216,
+`PLAT` 8, `DIDX` 84. *A section census costs nothing and should have been the first
+thing done to this format.*
+
+#### `STMG` IS CLOSED: 10,118 of 10,118 bytes, byte-exact
+
+```
+u16                      observed 0
+f32                      observed -60.0
+u16                      observed 256
+u16                      observed 50
+u32 count                309
+count x 12-byte record:  u32 id, u16 value, 6 bytes (all zero)
+```
+
+- **One instance in the whole corpus, so closure is not available as evidence and
+  none is claimed from it.** Two checks stand in, neither needing the section to
+  close:
+  - **Distinctness.** At stride 12 the 309 ids are **all different**. At every other
+    stride from 8 to 20 they collapse to between **107 and 220**. A stride that is not
+    the record width reads each id from a sliding mix of two fields, and those
+    collide. 12 rivals scored, **0** give distinct ids.
+  - **What follows.** At 12 the word after the run is **15** -- a small count opening a
+    further block. Every other stride lands on zero or an arbitrary large value.
+- The record value is **1000 in 306**, and 3500, 500 and 0 once each.
+
+#### `STMG`'s trailing run is framed BACKWARD, and its count is what locates it
+
+```
+u32 count                269
+count x 21-byte record:  u32 id, f32, u8 selector, 3 zero bytes, f32, f32, u8
+4 trailing bytes         all zero
+```
+
+- **It has to be backward.** The block between the two runs is variable-length and is
+  not framed, so the trailing run's start cannot be computed forward.
+- **The record shape bounds the run; the count locates it.** Walking back while the
+  three zero bytes at `+9` hold reaches **270** records where the true count is **269**
+  -- the bytes happen to be zero one record early. So the boundary is settled by the
+  count instead: over every length from 1 to 480, **exactly one** has a preceding word
+  equal to itself. *A shape test that overshoots by one is not a boundary; a count that
+  agrees with the run length is.*
+- **The shape is discriminated the same way the leading run's was.** All 269 ids are
+  distinct and all 269 carry the zero bytes; **7 rival strides from 14 to 24 give
+  neither** -- between 108 and 133 distinct ids and between 126 and 162 zero runs. All
+  **807** floats across the three float fields are finite and bounded, taking values
+  like 0, -96, 1, 0.1, 10, 50 and 16000. The selector at `+8` is 0 in 210, 2 in 47 and
+  1 in 12.
+#### `STMG`'s middle block, and why being bounded on both sides was the whole thing
+
+```
+u32 count                15
+count x entry:  u32, u32, u8 zero, u32 records, 3 zero bytes   (13 bytes)
+                records x 12-byte record: 8 bytes, u8 = 9, 3 zero bytes
+```
+
+- I said last batch this block was blocked on having one sample. **That was wrong, and
+  the mistake is worth naming: one STMG, but FIFTEEN entries inside the block.** The
+  sample size for an entry shape is 15, not 1.
+- **What made it framable was being bounded on both sides.** Once the leading and
+  trailing runs were located, the middle had a known start and a known end, so any
+  candidate shape had to consume it *byte-exactly in exactly 15 steps*. Searching every
+  shape of the form "head with a u32 count inside, then n records, then a tail" --
+  head 4..40, count offset 0..head-4, record 1..32, tail 0..16, about **745,000
+  candidates** -- **exactly one** does.
+- **The content agrees independently of the search.** All 15 entry ids are distinct,
+  the head's bytes at `+8` and `+10..+12` are zero in every entry, and the marker byte
+  at record `+8` is **9 in all 45 records** with `+9..+11` zero. *A shape found by
+  exhaustion needs content that the exhaustion did not select for.*
+- Record counts per entry: 3 in six entries, 5 in three, 0/2/4 in two each.
+- **Framed: 10,118 of 10,118. Nothing left over.** From 3,722 (36.8%) two batches ago.
+- Each of the three blocks was located by **different** evidence, because each had
+  something different available: the leading run by a forward count with a stride
+  discriminated against eleven rivals; the trailing run by a backward count, unique
+  over every length from 1 to 480; the middle by exhaustion plus closure.
+
+#### NOTHING outside HIRC references a music object either
+
+Sliding a 32-bit window over all four unparsed sections -- 10,677 words -- **63 name a
+HIRC object against 0.59 expected by chance**, so the references are real. Every one
+is a **bus**: numeric type `0x12` 62 times and `0x08` once, all inside `STMG`. `INIT`,
+`ENVS` and `PLAT` name nothing at all.
+
+- Unaligned offsets were included deliberately. The source id inside the 14-byte
+  source record sits at `+5`, which is not four-byte aligned, and testing only aligned
+  words is exactly how that field stayed unidentified for so long.
+- **Together with the object graph this closes the question.** Across every byte of
+  the bank format -- the reference graph, the parent field, the `0x08`/`0x12` forest,
+  every music relation, the action target word, and all four unparsed sections --
+  **nothing references a music object from outside the music family.**
+- Gated with its expiry in mind: a music type appearing here fails the audit. **That
+  failure is the good news.**
+
+### NOTHING in the HIRC object graph reaches the music family's media
+
+The previous batch asked what addresses the music subgraph. The answer, over every
+relation this reader has resolved, is **nothing** -- and the evidence is now complete
+rather than suggestive, because the relations can be enumerated.
+
+| relation | edges | any music type at either end? |
+| --- | --- | --- |
+| main reference graph | 230,247 | **no** -- sources `04/05/06/07`, targets `02/05/06/07/09` |
+| parent field (its inverse) | 199,445 | **no** -- 13 type pairs, all in `02/05/06/07/09` |
+| `0x08`/`0x12` forest | 412 | no |
+| music hierarchy at `+9` | 7,084 | internal only: `0A->0C`, `0A->0D`, `0C->0C`, `0D->0C` |
+| `0x0C`'s counted array | 2,980 | internal only: `->0A`, `->0C`, `->0D` |
+| `0x0A`'s counted array | 3,903 | internal only: `->0B` |
+| **action target word** | 23,455 resolvable | **8 land on `0x0C`; none on `0A`, `0B` or `0D`** |
+
+- **The family is large and well connected internally**: 11,656 objects, 7,305
+  downward edges from 4,607 sources, 4,351 objects with no incoming edge (3,764
+  `0x0A`, 489 `0x0D`, 98 `0x0C`). **Every `0x0B` has an incoming edge** -- none is a
+  root -- so the tracks are owned.
+- **Entering it from outside there are 5 edges in the whole corpus**, all
+  `action_03 -> type0C`, resolved within the same bank. All 5 land on objects that are
+  **roots**, **none of the 5 has an outgoing edge**, and together they reach **0**
+  source ids.
+- So the family's **1,279 media are reached by nothing**. Extending the named walk to
+  read `0x0B`'s source records changed the reach numbers by exactly nothing --
+  120 identifiers, 218 source ids, before and after.
+- *This is written as a gate, not a note.* If a later reading reaches even one source
+  id through the music family, `reachedSourceIdCount` becomes positive and the audit
+  fails. **That failure is the good news.** The same pattern retired the `0x0B`
+  element-count caveat two batches ago.
+- The gate also refuses when the walk has **no edges**, because an empty edge set
+  reaches nothing and looks exactly like isolation. *A negative result needs proof
+  that the instrument was working.*
+- What this does **not** say: that music is unreachable at runtime. It says no
+  relation resolved here reaches it, so whatever drives music is **outside the HIRC
+  object graph**. That bounds the search rather than ending it.
+
+### The music subgraph is not reachable from any named event
+
+- **Actions almost never address music.** Of the 23,455 action target words that
+  resolve to an object in the package, the types are `0x05` 7,709, `0x02` 7,466,
+  `0x09` 3,869, `0x06` 3,826, `0x04` 393, `0x07` 126, `0x08` 46, `0x15` 12 -- and
+  **`0x0C` 8**. None at all reach `0x0A`, `0x0B` or `0x0D`.
+- **The named walk confirms it from the other side.** Starting at the 199 named
+  `0x04` objects and following gated reference vectors, the walk arrives at types
+  `0x03` (310), `0x02` (225), `0x09` (127), `0x05` (91), `0x06` (18), `0x07` (4) and
+  `0x04` (1). **It never arrives at a music type.**
+- So the **1,279 media owned by `0x0B` are reached by no named event**, and the 163
+  media a named event does reach are all owned by `0x02`. Extending the walk to read
+  `0x0B`'s source records changed the reach numbers by **nothing** -- 120 identifiers
+  reaching 218 source ids, before and after -- which is itself the measurement.
+- What this does **not** say: that music is unreachable at runtime. It says the
+  music types are not addressed through the action target word or through any gated
+  reference vector, so whatever addresses them is not in this graph.
+
+### How much of the audio corpus is actually named
+
+| | count | share of declared media |
+| --- | --- | --- |
+| media ids declared by the packages | 61,333 | 100% |
+| named by some source record | 61,325 | **99.99%** |
+| reachable from a named `0x04` event | 163 | **0.27%** |
+
+The gap is not a defect in the walk. Only **221** audio-shaped literals survive in
+`global-metadata.dat`, matching 199 objects; the event names for the rest are not
+shipped as managed literals. *Coverage of the structure and coverage of the names are
+different numbers, and quoting one for the other would overstate both.*
 
 ## Asset and spatial semantics
 
