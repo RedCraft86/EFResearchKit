@@ -1931,6 +1931,513 @@ variant and `0x12` outright. Those four constructors are at `0x1800f2460`, `0x18
 `[rbp+0x58]` value is a per-type constant handed to a shared tail; **calling it a class
 selector is a reading, and only the grouping is a fact of the code.** No struct field has
 been recovered here.
+
+##### The address map, and where hand-decoding stops being reliable
+
+Everything above lives in `.text`, where `VA = file + 0x180000C00`. **That delta is
+section-specific and does not generalise** -- applying it to a `.data` reference put a
+global 0xC00 bytes wrong and landed it in `.pdata`, i.e. in exception-unwind data, which
+is how the error announced itself. The real section map:
+
+| section | VA | file | raw |
+| --- | --- | --- | --- |
+| `.text` | `0x180001000` | `0x400` | 2,662,400 |
+| `.rdata` | `0x18028b000` | `0x28a400` | 652,288 |
+| `.data` | `0x18032b000` | `0x329800` | 72,192 |
+| `.pdata` | `0x18034b000` | `0x33b200` | 150,528 |
+
+The dispatch table above is unaffected -- every address in it is a `.text` address and each
+target was confirmed against a real function prologue.
+
+***Where hand-decoding stops.*** Reading handler *bodies* by hand goes wrong quietly: a
+first pass mis-read a rip-relative operand as a `call` by starting mid-instruction, and the
+`.data` global needed exactly the section mapping that was wrong.
+
+**capstone 5.0.7 is installed** -- a note elsewhere recording its absence is stale -- and
+re-running under it shows the hand-decoded *instruction stream* was right all along; only
+the address resolution was wrong. So the reading below is the one that was provisionally
+discarded, now verified.
+
+#### HIRC `0x0A`-`0x0D` ARE NOT PARSED: THE ENGINE SKIPS THEM
+
+The shared arm, disassembled:
+
+```
+mov  rax, [rip + 0x24ca0f]      ; global hook, .data VA 0x180344998
+test rax, rax ; je default
+lea  r9,[rbp-0x20] ; mov rdx,rdi ; lea r8,[rbp+0x58] ; lea rcx,[rbp-0x14]
+call rax                         ; registered handler, if any
+cmp  eax, 3 ; jne done           ; 3 == "not handled, fall through"
+default:
+mov  edx, [rbp-0x13]             ; the item's declared SIZE
+lea  rcx, [rsi+8] ; lea r8,[rbp-0x18] ; mov [rbp-0x18], 0
+call 0x1800ef2b0                 ; advance the read stream by `size`
+cmp  [rbp-0x18], [rbp-0x13] ; cmovne ebx, 7    ; short read -> error 7
+inc  r14d ; cmp r14d,[rbp-0x1c] ; jb loop      ; next item
+```
+
+`0x1800ef2b0` is a **buffered-stream skip**, not a parser: it takes `min(remaining,
+requested)` against `[rbx + rax*4 + 0x18]`, advances `[rbx+0x50]`/`[rbx+0x10]`, calls a
+virtual refill at `[rax+0x68]` when a buffer empties, and returns bytes consumed.
+
+**So in this build, absent a registered hook, HIRC types `0x0A`, `0x0B`, `0x0C` and `0x0D`
+are consumed as opaque payloads of their declared size**, with the only check being that
+the skip consumed exactly `size` bytes.
+
+***This changes the `0x0B` question rather than answering it.*** The open item -- the 210
+multi-entry `0x0B` bodies -- has been looking for a structure that **the shipped reader
+never imposes**. Six mechanisms were swept and excluded from the bytes; the reader explains
+why none of them was found in the reader's own behaviour: *there is no `0x0B` layout in
+this engine to recover.* Whatever structure those bodies have is imposed by the optional
+hook or by the authoring tool, not by the runtime.
+
+##### AND IT ANSWERS "WHERE IS MUSIC DRIVEN FROM" -- IN THE NEGATIVE
+
+`0x0A`-`0x0D` are precisely the four music types this document has analysed at length
+elsewhere: the offset-9 parent rule, the one-to-one `0x0A` -> `0x0B` edge, the symmetric
+same-bank reference relation, the tempo-ranged floats. **All of that structure is real and
+none of it is read by this engine.** The four share one jump-table arm that consults an
+optional global hook and otherwise *skips the payload wholesale*.
+
+Two independent lines now agree:
+
+| line | finding |
+| --- | --- |
+| corpus (earlier) | the music family is **unreachable** from anything in the bank format |
+| **reader (here)** | the music family is **not parsed** by the bank reader |
+
+*Unreachable and unparsed are different claims from different evidence, and they point the
+same way.* **The bank's music hierarchy does not drive music in this build.** The bodies
+carry authored structure -- the corpus work established that beyond doubt -- but the
+runtime path that would consume it is absent.
+
+**The honest boundary.** The arm does call a registered hook first, so a plug-in *could*
+parse these types at runtime; what is shown is that **no built-in parser exists**, not that
+nothing can ever read them. That distinction matters because it names exactly what a
+future answer would have to be: a registered handler, discovered at runtime, not a
+structure recoverable from the bank bytes.
+
+##### The `+12` / `+20` words inherit this, and it re-files them
+
+The maintained reader's `Type11EntryPairFirstOffset = 12` / second at 20 are entry-header
+words in **numeric type 11, which is `0x0B`** -- one of the four the engine skips. So the
+open question about those two words sits inside a body **the runtime never parses**, and
+the status recorded for it (blocked on a namespace outside the shipped files) is not the
+real obstacle.
+
+***What this rules out, and what it leaves.*** No engine-side evidence can ever name these
+words, because no engine code reads them -- that route is closed, not merely unexplored.
+But `0x0B` bodies are demonstrably *not* noise: the same reader already resolves their
+source records, whose word at `+5` names a declared media id in **all 4,447** of `0x0B`'s
+bodies and closed 1,276 media that nothing else accounted for. **That worked because it
+had an external anchor -- the AKPK media declarations -- rather than an engine parser.**
+
+So the `+12`/`+20` question is answerable in exactly one way: *another external anchor, of
+the kind that resolved the source records.* Ten populations have already been eliminated
+against the bytes alone; the lesson from the source-record success is that the missing
+ingredient is a second table to join against, not a better sweep of the same bodies.
+
+##### What *is* established about those words, pooled over the corpus
+
+"Ten populations eliminated" understates the positive characterisation. Pooling the
+type-`0x0B` entry-header census across all 25 packages:
+
+| property | holds | control |
+| --- | --- | --- |
+| the two words are **equal to each other** | **78.98%** | -- |
+| read as floats, **inside the bounded band** | **4,371 / 4,371 = 100%** | 480 / 5,932 = **8.09%** |
+| plausible as **gains** | **2,123 / 2,123 = 100%** | 150 / 3,530 = **4.25%** |
+| **fractions are small** | 3,405 / 3,530 = 96.46% | **0.00%** |
+| the pair forms a **symmetric range** | 1,466 / 2,004 = 73.15% | **0.00%** |
+
+**Every control is at or near zero while every claim is at or near 100%**, so the words are
+not unstructured: they are floats in a bounded band, frequently equal, and when unequal they
+form a symmetric range about their centre. *That is a full description of their values -- it
+is only their referent that is missing.*
+
+**Which sharpens what an anchor has to supply.** Not "what are these bytes" -- that is
+answered -- but *which quantity in this engine is a symmetric float range, usually
+degenerate to a point, attached to a source entry inside a node type the runtime never
+reads.*
+
+***And it rules out every table in this corpus, on type grounds.*** The obvious next
+anchor is `STMG`, which is framed byte-exactly and carries the switch/state vocabulary.
+It cannot serve: pooled over all 25 packages `STMG` holds **4 sections, 15 distinct entry
+ids, 45 records** -- and those are **ids**, while `+12`/`+20` are **floats**. *A float does
+not join to an id table*, and the same objection retires the bank ids, media ids and object
+ids at a stroke. **The corpus's anchors are all identifier-keyed; this question needs a
+float-valued one**, which is why ten population sweeps found nothing and an eleventh would
+not either.
+
+That is a stronger statement of the blocker than "needs an external anchor": the anchor has
+to be a **property enumeration** -- the Wwise SDK's, or a bounded runtime observation --
+because nothing in the shipped data associates a float range with a name.
+
+##### The chunk switch in full, and what it says about the "unowned" media
+
+Disassembled properly, the bank dispatch is a flat fourcc chain:
+
+```
+cmp eax, 'DATA' ; je            cmp eax, 'DIDX' ; jne (other)
+cmp eax, 'ENVS' ; ja / je
+cmp eax, 'DATA' ; je 0x1800f57e5
+cmp eax, 'HIRC' ; je -> call 0x1800f7ca0      <- confirms the HIRC parser address
+cmp eax, 'STID' ; je -> call 0x1800f81e0
+cmp eax, 'STMG' ; jne 0x1800f5831 -> the DIDX/DATA media path
+```
+
+The media path runs the same `0x1800ef2b0` stream advance with the same
+consumed-versus-declared check and error 7, then allocates the media block (flags
+`0x20000003`, size stored at `[rdx+0x28]`) through the same `0x1800ef040` /`0x1800ef120`
+helpers the node loaders use.
+
+***It never touches the HIRC section.*** Media declared in `DIDX` and carried in `DATA` are
+allocated and registered **by id, straight from the chunk**, with no consultation of any
+source record.
+
+**So "unowned" is a property of the join, not an anomaly in the data.** The open item
+counts media that no HIRC source record names, and 7 of the 8 were already characterised as
+the Init bank's `DIDX`-embedded media. The reader explains *why that is the expected state*:
+**a bank-embedded media needs no HIRC owner to be loadable**, because the chunk path is
+self-sufficient. A media with no source record is not a dangling reference; it is a media
+that happens not to be reached that way.
+
+*That reframes the remaining question from "why are these 8 unowned" to "what, if anything,
+distinguishes the 1 that is not Init-bank embedded" -- a much smaller question, and one the
+existing censuses can be pointed at directly.*
+
+**Incidentally recovered:** the HIRC item header is `u8 type` at `[rbp-0x14]` followed by
+`u32 size` at `[rbp-0x13]`, with the section's item count at `[rbp-0x1c]` and the loop
+index in `r14d` -- which is exactly the framing this project's reader already uses,
+now confirmed against the engine.
+
+##### Where the per-type field reads actually happen
+
+Following the `0x11` arm (the 21-versus-27 tie) down: the arm **does not parse anything**.
+It allocates via `0x1800ef040`, returns error `0x38` if that fails, then takes a refcounted
+lock on a global registry at `[rip+0x252510] + 0x318`. The field reads are further on,
+behind a **virtual call**:
+
+```
+mov  rax, [rbx]            ; vtable
+mov  rcx, rbx              ; this
+lea  rdx, [rsp+0x30]       ; cursor
+lea  r8,  [rsp+0x20]       ; size (stored on entry from edx)
+call qword ptr [rax+0x28]  ; <- the deserializer
+```
+
+**`vtable[+0x28]` is the field deserializer**, uniform across the type handlers -- the
+single entry point any layout recovery has to go through. That is the useful, transferable
+part: it applies to `0x09`, `0x10`, `0x11` and `0x12` alike, not just the one traced.
+
+***What is left, stated precisely so the next attempt starts in the right place.*** Getting
+a concrete layout needs the per-type **vtable address**, and that is not stored inline in
+the arm -- it is written by a nested constructor, two or more calls down. A shortcut of
+scanning `.rdata` for runs of code pointers **does not work as written**: it finds 94 runs
+but merges adjacent tables, reporting 290-, 385- and 609-slot "vtables" that are plainly
+concatenations. Splitting them needs the RTTI `type_info` pointer that precedes each real
+vtable -- and this binary's RTTI is stripped to 12 `std::` descriptors, so that boundary is
+not available either. **The remaining route is to follow the nested constructors, not to
+scan for vtables.**
+
+#### THE CHAIN COMPLETED, AND HIRC `0x11`'s LAYOUT READ FROM THE ENGINE
+
+Following the constructors rather than scanning did work, in four hops:
+
+1. the `0x11` arm looks a node up in an **id-keyed chain** (`cmp [rbx+0x10], esi` /
+   `mov rbx, [rbx+8]`, refcount at `+0x14`, vtable at `+0x0`);
+2. when absent it calls the **type-`0x11` factory at `0x18014aee0`**, which allocates
+   **`0xa8` bytes** from pool 2, runs a base constructor, and **stores vtable
+   `0x1802992d0`** at `[rbx]` (plus a secondary at `[rbx+0x18]`);
+3. `vtable[+0x28]` is therefore `0x18014c250`;
+4. that function is the deserializer, and it is short enough to read outright.
+
+```
+add  qword ptr [rdx], 4     ; cursor += 4   -- the node id, already consumed
+mov  ebp, [rax]             ; FIELD A : u32
+mov  [rdx], rsi             ; cursor += 4
+mov  r14d, [rsi]            ; FIELD B : u32
+add  rsi, 4 ; mov [rdx], rsi
+cmp  ebp, -1 ; je done      ; A == 0xFFFFFFFF -> read nothing further
+lea  rcx, [rip+0x1e38a5] ; mov edx, ebp ; call 0x18011e060    ; look A up
+mov  rcx,[rsp+0x68] ; mov rax,[rcx] ; mov r9d, r14d ; mov r8, rsi
+call qword ptr [rax + 0x18]  ; hand the REST of the payload to the plug-in
+```
+
+**So the engine parses exactly twelve bytes of a `0x11` body** -- the node id, then `A`,
+then `B` -- and everything after that is passed to a plug-in **selected by `A`**, with `B`
+handed over as a parameter. `A == 0xFFFFFFFF` means no plug-in and no further reading.
+
+***This settles the `0x11` tie.*** The open item was a 21-versus-27 ambiguity in the body
+length, undecidable from the bank bytes. It is undecidable *because the format does not fix
+it*: **the engine-defined part is 12 bytes and the tail length is whatever the selected
+plug-in consumes.** Two body lengths are not two candidate readings of one structure -- they
+are two plug-ins. *A tie that will not break under more corpus evidence is often a tie the
+format never had a side in.*
+
+##### Running the recipe on the other types -- and a correction it caught
+
+The four hops were automated and run over `0x09`, `0x10`, `0x12` **and `0x11` again as a
+control**. The control earned its place immediately: it disagreed with the hand trace.
+
+| type | factory | alloc | vtable | `vtable[+0x28]` |
+| --- | --- | --- | --- | --- |
+| `0x10` | `0x18014af30` | 0xa8 | `0x180299200` | **`0x18014c250`** |
+| `0x11` | `0x18014aee0` | 0xa8 | `0x1802992d0` | **`0x18014c250`** |
+| `0x09` | *recipe found none* | -- | -- | -- |
+| `0x12` | *recipe found none* | -- | -- | -- |
+
+***The correction.*** An earlier version of the note above gave `0x11`'s factory as
+`0x18014af30` with vtable `0x180299200`. **Those are `0x10`'s.** The cause was reading a
+`tail`-truncated disassembly: the listing began after `0x18014aee0`'s body and showed the
+*next* function, whose vtable store was then attributed to the wrong type. *The deserializer
+address was right, which is exactly why the error survived -- a wrong path to a right answer
+looks like a right path.*
+
+**The substantive finding is unaffected and in fact broadens.** `0x10` and `0x11` have
+**different vtables but the same deserializer**, `0x18014c250`, so the 12-byte prefix plus
+plug-in tail describes **both** types -- which fits them being the two plug-in-bearing node
+kinds.
+
+**`0x09` and `0x12` needed a wider scan, not a different method.** Searching *every* direct
+call target in each loader for the factory signature finds exactly one per type:
+
+| type | loader | factory | alloc | vtable |
+| --- | --- | --- | --- | --- |
+| `0x02` | `0x1800f0b90` | `0x180150c50` | 264 | `0x180299498` |
+| `0x05` | `0x1800f3040` | `0x18013b6d0` | 304 | `0x1802984c8` |
+| `0x09` | `0x1800f2d30` | `0x18015ea90` | 304 | `0x18029a3b0` |
+| `0x10` | `0x1800f2750` | `0x18014af30` | 168 | `0x180299200` |
+| `0x11` | `0x1800f2460` | `0x18014aee0` | 168 | `0x1802992d0` |
+| `0x12` | `0x1800f1850` | `0x18015b170` | 400 | `0x180299cf0` |
+
+##### CORRECTION: the deserializer slot is *not* uniform
+
+An earlier note here said `vtable[+0x28]` is the field deserializer "uniform across the type
+handlers... it applies to `0x09`, `0x10`, `0x11` and `0x12` alike". **That was generalised
+from one loader and is false.** Reading the indirect calls each loader actually makes:
+
+| slot called | types |
+| --- | --- |
+| `[rax+0x28]` | `0x10`, `0x11`, `0x15` |
+| `[rax+0x278]` | `0x12` |
+| neither | `0x02`, `0x05`, `0x09`, `0x13` |
+
+***Why the wrong claim looked right.*** Slot `+0x28` **resolves to a real function on every
+one of these vtables** -- for `0x02`, `0x05`, `0x09` and `0x12` it is `0x1800dacd0`, which
+disassembles to a parent/flag setter (`bts`/`btr` on bits 13-15 of `[rbx+0x90]`, a virtual
+at `[rax+0x260]`), **not a payload parser at all**. *A slot that resolves cleanly for every
+type looks uniform; resolving is not the same as meaning the same thing, and only reading
+the callers shows which slot is actually invoked.*
+
+**`0x12`'s real deserializer is `0x180109030`** (`vtable[+0x278]`). It guards on a virtual
+`[rax+0x78]`, bails with error `0x5b` unless that returns 0 or 0xA, then takes the cursor
+and `add rax, 4` past the node id -- the same "id already consumed" convention as `0x11`.
+
+#### HIRC `0x12`'s FIELD SEQUENCE, READ FROM THE DESERIALIZER
+
+```
+add  rax, 4                      ; cursor += 4   -- node id, consumed by the caller
+mov  r14d, [rax] ; add rax,4     ; FIELD 1 : u32
+test r14d, r14d ; je skip        ; 0 means "none"
+  mov  rbx, [rip+0x23b911]       ; global object manager
+  div  dword ptr [rbx+0xa0]      ; FIELD 1 % bucketCount
+  mov  rax, [rbx+0x98]           ; bucket array
+  mov  rdi, [rax+rdx*8]          ; chain head
+  cmp  [rdi+0x10], r14d / mov rdi,[rdi+8]    ; walk, key at +0x10, next at +0x8
+skip:
+mov  ecx, [rax] ; add rax,4      ; FIELD 2 : u32  -> stored at object +0x188
+call qword ptr [rax + 0x1f0]     ; nested parse, cursor passed by reference
+cmp  eax, 1 ; jne fail
+movsxd rcx, dword ptr [rax]      ; FIELD 3 : i32
+imul   rcx, [rip+0x2267ee]       ; x a global rate
+movabs rax, 0x20c49ba5e353f7cf ; imul ; sar rdx,7    ; / 1000
+```
+
+| field | width | what the code does with it |
+| --- | --- | --- |
+| node id | 4 | consumed by the caller, skipped here |
+| **1** | 4 | an **object id**, resolved through the global id-keyed hash table (`0` = none) -- the same `+0x10` key / `+0x8` chain structure the loaders walk |
+| **2** | 4 | stored at object offset `0x188` |
+| *(nested)* | -- | virtual `[vt+0x1f0]` parses a further block, advancing the shared cursor |
+| **3** | 4 | signed, multiplied by a global rate then divided by 1000 -- **a millisecond duration converted to samples** |
+
+The divide is the standard `0x20c49ba5e353f7cf` / `sar 7` reciprocal for 1000, which is what
+makes the units legible rather than guessed.
+
+*So `0x12` is a node carrying one outbound reference, one stored word, a nested block and a
+millisecond duration* -- recovered from the reader, not inferred from the corpus.
+
+#### `0x09`: CALLED DIRECTLY, NOT THROUGH A VTABLE
+
+The slot search found nothing for `0x09` because **there is no slot** -- its loader calls
+the parser as a direct `call 0x180160450`. *A search for an indirect call cannot find a
+direct one, and the empty result reads exactly like "this type has no parser".*
+
+`0x180160450` has the same shape as `0x12`'s:
+
+```
+mov  rax,[rcx] ; call qword ptr [rax + 0x78]   ; type tag check
+cmp  eax, 5 ; jne error                        ; 0x09 requires 5   (0x12 requires 0 or 0xA)
+  ... log via 0x180036490, return 0x5b
+add  qword ptr [rsp+0x78], 4                   ; cursor += 4 -- node id, as everywhere
+lea  r8,[rsp+0x80] ; xor r9d,r9d ; lea rdx,[rsp+0x78]
+call 0x1800dcfd0                               ; shared sub-parser (this, &cursor, &out, 0)
+```
+
+So the three conventions now confirmed across types are: **the node id is consumed by the
+caller and skipped by the deserializer; a `[vt+0x78]` tag check gates entry with error
+`0x5b`; and the cursor is passed by reference so nested parsers advance it.**
+
+##### Status of the four types the notes called SDK-only
+
+| type | reached | result |
+| --- | --- | --- |
+| `0x10` | `vtable[+0x28]` -> `0x18014c250` | 12-byte prefix, then a plug-in tail |
+| `0x11` | `vtable[+0x28]` -> `0x18014c250` | same deserializer as `0x10` |
+| `0x12` | `vtable[+0x278]` -> `0x180109030` | ref id, stored word, nested block, ms duration |
+| `0x09` | **direct call** -> `0x180160450` | tag must be 5, delegates to `0x1800dcfd0` |
+
+plus `0x0A`-`0x0D`, which are not parsed at all. **The obstacle recorded for these was a
+licence; it was never the licence.**
+
+#### THE SHARED SUB-PARSER, AND THE REGISTRY BOTH TYPES RESOLVE AGAINST
+
+`0x1800dcfd0` -- what `0x09` delegates to -- is the common block:
+
+```
+call qword ptr [rax + 0x1f8]     ; per-class step 1, must return 1
+test bl, bl ; jne done           ; the flag the caller passes in r9b (0x09 passes 0)
+call qword ptr [rax + 0x200]     ; per-class step 2, cursor by reference
+mov  ebp, [rcx] ; add rcx,4 ; mov [r15], rcx      ; read a u32
+test ebp, ebp ; je skip                            ; 0 == none
+mov  rbx, [rip+0x267983]         ; global object manager
+lock cmpxchg [rbx+0x58] ...      ; refcount
+div  dword ptr [rbx+0xa0]        ; id % bucketCount, then walk the chain
+```
+
+So the shared block reads **one u32 object reference, resolved through the global node
+registry**, bracketed by two per-class virtuals at `[vt+0x1f8]` and `[vt+0x200]`.
+
+***The registries are the same one, which is checkable rather than assumed.*** `0x12`'s
+parser reaches it as `[rip+0x23b911]` from `0x1801090c7` and the shared block as
+`[rip+0x267983]` from `0x1800dd055`. Both resolve to **`0x1803449d8`**. *Two different
+displacements from two different call sites landing on one address is the kind of
+arithmetic that either agrees exactly or is wrong* -- and it agrees.
+
+**So `0x09` and `0x12` both carry an outbound object reference as their first parsed field
+after the node id, and both resolve it against the same registry.**
+
+#### THE PER-CLASS BLOCKS, AND `0x12`'s LAYOUT IN FULL
+
+Both per-class virtuals open identically -- `movzx <r>, byte ptr [rax] ; inc rax ;
+mov [rdx], rax` -- a **u8** taken from the shared cursor.
+
+**`0x09`, `[vt+0x200]` -> `0x1800ffb50`** *(an earlier draft of this note said `[vt+0x1f8]`;
+the slots are distinct -- `[+0x1f8]` is `0x1800ff980` and is not the function read here)*.
+It reads **two** bytes and then a table:
+
+```
+movzx r9d, byte [rax] ; inc rax          ; FLAG : u8
+mov  r8,[rcx+0x90] ; and/or with bit 54 ; cmove ; mov [rbp+0x90], r8   ; -> flags bit 54
+movzx ecx, byte [rax] ; inc rax          ; B : u8 count
+test cl,cl ; je done ; call 0x1800d70b0  ; reserve B
+loop x B:
+   movzx r10d, byte [rcx]      ; entry +0 : u8
+   mov   r8d,  dword [rcx+1]   ; entry +1 : u32
+   movzx r9d,  byte [rcx+5]    ; entry +5 : u8
+   cursor += 6
+   test r8d,r8d ; je next      ; the u32 being 0 skips the entry
+   call 0x1800dcf90
+```
+
+**`u8` flag, `u8` count `B`, then `B` six-byte entries of `{u8, u32, u8}`** -- the cursor
+advances 1, 4, 1 per entry, so the stride is read rather than assumed.
+
+***And three types share one implementation.*** `0x02`, `0x05` and `0x09` have **identical**
+per-class slots -- `[+0x1f0]` `0x1800ffc60`, `[+0x1f8]` `0x1800ff980`, `[+0x200]`
+`0x1800ffb50` -- while `0x12` has its own trio. So this block is not `0x09`'s; **it is the
+shared block of a three-type class family**, and anything established for one holds for the
+other two.
+
+##### The family's other two blocks, and a shape that appears twice independently
+
+**`[+0x1f0]` -> `0x1800ffc60`.** `u8 N`, then `align = (N+4) & ~3`, allocate
+`align + N*4`, store `N` at the head, fill from the cursor, and keep the block at
+`[+0x88]`. **That is the same `N` bytes then `N` dwords structure as `0x12`'s `[+0x1f0]`**
+(`0x180108d10`) -- *two different functions, compiled separately, producing an identical
+serialized shape and storing it at the identical object offset.* A layout inferred once
+could be a misreading; the same layout reached twice by independent code is the format.
+
+**`[+0x1f8]` -> `0x1800ff980`.** A single `u8`, folded into the flag word at `[+0x90]` with
+mask `0x3000000000000` -- **bits 48 and 49 together**, set or cleared as a pair. Note this
+differs from `[+0x200]`'s byte, which drives the single bit 54: *three bytes in three blocks
+all land in one flag word at different bit positions*, which is why they cannot be told
+apart by value and only the code separates them.
+
+##### The `0x02` / `0x05` / `0x09` node body, as far as the engine reads it
+
+| block | content |
+| --- | --- |
+| `[+0x1f0]` | `u8 N`, `N` x byte, `N` x dword -> object `+0x88` |
+| `[+0x1f8]` | `u8` -> flag bits 48-49 |
+| `[+0x200]` | `u8` -> flag bit 54; `u8 B`; `B` x `{u8, u32, u8}` |
+| shared tail | `u32` object reference, `0` = none, resolved via the registry at `0x1803449d8` |
+
+*All three types carry this identically -- it is one class, reached from three jump-table
+arms.*
+
+##### `0x12`'s trio beside it -- same shapes, three precise differences
+
+| block | `0x02` / `0x05` / `0x09` | `0x12` |
+| --- | --- | --- |
+| `[+0x1f0]` | `u8 N`, `N` x byte, `N` x dword -> `+0x88` | **same shape**, different function |
+| `[+0x1f8]` | `u8` read, sets *or clears* bits 48-49 | **reads nothing**; ORs bits 48-49 **unconditionally** |
+| `[+0x200]` | `u8` flag -> bit 54, **then** `u8 B` | **no flag byte** -- the first byte *is* `B` |
+| entries | `B` x `{u8, u32, u8}`, stride 6, skip when the u32 is 0 | **identical**, same callee `0x1800dcf90` |
+
+***The entry block is now confirmed three times over.*** `0x1800ffb50` and `0x180108c30`
+are separately compiled functions that read the same six-byte record with the same 1/4/1
+cursor advance and the same skip-on-zero rule, and `[+0x1f0]`'s `N`/bytes/dwords block
+likewise appears in two independent implementations. *Three independent arrivals at one
+layout is about as far from a lucky fit as byte-level work gets.*
+
+**And the difference that matters for reading bodies:** `0x12` spends **one byte fewer**
+in `[+0x200]` than the family does, and **zero bytes** in `[+0x1f8]` where the family
+spends one. Two types whose blocks look interchangeable differ by exactly two bytes of
+payload -- *which is the kind of discrepancy that makes a corpus-derived stride look
+"nearly right" across a mixed population and never quite fit.*
+
+**`0x12`, `[vt+0x1f0]` -> `0x180108d10`.** The byte is a **count**, and what follows is a
+parallel-array block:
+
+```
+movzx ebx, byte [rax] ; inc rax          ; N
+lea  r15d,[rbx+4] ; and r15d, 0xfffffffc ; align = (N+4) & ~3
+lea  r8d,[r15 + rbx*4] ; call alloc      ; block size = align + N*4   (0x34 on failure)
+mov  byte ptr [rax], bl                  ; N stored at the block head
+memcpy(block + 1,     cursor, N)     ; cursor += N        ; N x u8
+memcpy(block + align, cursor, N*4)   ; cursor += N*4      ; N x u32
+mov  [rdi+0x88], r14                     ; block stored on the object
+```
+
+**`u8 N`, then `N` bytes, then `N` dwords** -- two parallel arrays of equal length, which is
+a shape no amount of staring at body lengths would have separated from a single array of
+5-byte records.
+
+##### HIRC `0x12` complete
+
+| order | field | width |
+| --- | --- | --- |
+| 1 | node id | u32 *(consumed by the caller)* |
+| 2 | object reference, `0` = none | u32 |
+| 3 | word stored at object `+0x188` | u32 |
+| 4 | `N` | u8 |
+| 5 | `N` x byte | N |
+| 6 | `N` x dword | 4N |
+| 7 | duration, `x rate / 1000` -- **milliseconds** | i32 |
+
+*Read end to end from the engine's own deserializer.*
 - **Numeric type `0x12` is the one HIRC type with no framing at all, and these
   readings are ruled out.** 251 bodies, 15,175 bytes. It is not the `0x10`/`0x11`
   grammar -- its word at offset 4 fails `range_section` on all 251. It is not the
@@ -5301,6 +5808,88 @@ An **optional, per-layer** texture is `m_colorVariationTex`. It is **not**
 carry a layer index nor be absent from 16 directories. *The distribution settles which
 of the two candidates it is without needing to read a byte of its content.*
 
+##### REOPENED: a rival candidate the distribution argument could not have weighed
+
+The argument above chose `m_colorVariationTex` by eliminating `m_splatControlMap`. The
+engine, read since, offers a **third** candidate with the same profile, and the choice is
+no longer forced.
+
+**A per-layer mask map is a first-class concept here.** `maskMapRemapOffset` and
+`maskMapRemapScale` sit inside **`TerrainLayerInfo`** and **`SplatLayerData`** -- the
+*per-layer* structs -- and the shader side carries `_MaskMapTexture`,
+`_MaskMapRemapMin/Max/Offset/Scale`. An optional, layer-indexed third texture is exactly
+what a mask map is.
+
+**And the typing mildly favours the rival.** `VirtualTextureRenderer` binds three:
+
+| field | type index |
+| --- | --- |
+| `m_splatsDiffuseArray` | **144608** |
+| `m_splatsNormalArray` | **144608** |
+| `m_colorVariationTex` | **144600** *(different)* |
+
+*The two per-layer arrays share one type; the colour-variation binding has another* -- the
+shape of `Texture2DArray` twice and `Texture2D` once. A single non-array binding is an odd
+consumer for files that carry layer indices running to 34, whereas the mask map's
+parameters are stored per layer.
+
+**The census is reproduced, not disputed.** An independent count gives `C` in 22 of 38
+directories, 54 files against 345 each of `D` and `N`, with `D` and `N` equal in every
+directory -- matching the numbers above exactly.
+
+***The discriminator was run, and it disconfirms the answer above.*** Resolving the indices
+through `MetadataRegistration.types` in `GameAssembly.dll` (225,789 entries at VA
+`0x18c472bb0`; the type enum is bits 16-23 of the `Il2CppType` bitfield):
+
+| field | type index | declared type |
+| --- | --- | --- |
+| `m_splatsDiffuseArray` / `m_splatsNormalArray` | 144608 | **`UnityEngine.Texture2DArray`** |
+| `m_colorVariationTex` | 144600 | **`UnityEngine.Texture2D`** |
+
+**The arrays are per-layer; the colour-variation binding is a single texture.** And the
+argument that selected it eliminated `m_splatControlMap` on the grounds that *"a control map
+is one per terrain, always present, and would not carry a layer index"*. **`Texture2D` is
+one per terrain too** -- so the elimination that chose this answer also rules it out. *A
+distribution argument can only separate candidates it has typed; this one separated a name
+from a name.*
+
+**The rival does not simply inherit the win.** `VirtualTextureRenderer` binds exactly
+`m_splatsDiffuseArray`, `m_splatsNormalArray`, `m_colorVariationTex` and
+`m_decalBlockMaskLut` -- there is **no mask-map texture array**. The mask map's
+`maskMapRemapOffset`/`maskMapRemapScale` are `UnityEngine.Vector4` *parameters* per layer,
+which is consistent with a mask packed into the existing arrays rather than shipped as its
+own files.
+
+##### CORRECTION TO THE CORRECTION: the original identification survives
+
+The disconfirmation above over-reached, and two further checks show why.
+
+***There is no alternative binding.*** Across the **entire** metadata, exactly **four**
+fields are declared `UnityEngine.Texture2DArray`, all on `VirtualTextureRenderer`:
+`m_splatsDiffuseArray`, `m_splatsNormalArray`, `m_decalDiffuseTexArray`,
+`m_decalNormalMROTexArray`. **No third splat array exists anywhere**, so "something bound
+outside `VirtualTextureRenderer`" is not available -- there is nowhere else for a
+per-layer terrain texture to go.
+
+***And `LAYER_C` really is per-layer.*** Its indices are a **subset of that directory's
+`D` index set in 22 of 22 directories, with zero exceptions** (`C=[5]` against `D=0..6`;
+`C=[4,5,13]` against 15 layers; `C=[2,8]` against 11). The recorded claim was right and my
+doubt about it was not.
+
+**The objection dissolves rather than the answer.** The disconfirmation rested on
+`m_colorVariationTex` being a `Texture2D` and therefore "one per terrain", which was taken
+to exclude layer-indexed source files. *That only follows if each file is bound directly
+as an array slice.* Per-layer files **composited into** one texture -- which is what a
+virtual-texture renderer does, and what `HGTerrainSplatStreaming` in the engine's log
+strings names -- are per-layer inputs to a single binding, with no contradiction at all.
+
+**So `m_colorVariationTex` stands as the identification**, now on stronger ground than the
+distribution argument alone: it is the only colour-carrying terrain texture binding in the
+game, and the per-layer/per-terrain mismatch that seemed fatal is just the difference
+between a source file and a bound result. *I disconfirmed a correct answer by assuming the
+binding had to be one-to-one with the files, which is the sort of premise that never gets
+stated and so never gets checked.*
+
 `LAYER_C` also uses format **5** where `D` and `N` use 108 and 109 -- a low, presumably
 standard format against two engine-specific ones, which is consistent, though the format
 numbers themselves are not decoded.
@@ -5762,6 +6351,33 @@ It is still refused, on two counts:
 absence of evidence from the binary, and it would still hold if a matching schema turned
 up tomorrow.*
 
+##### CONFIRMED LATER: the engine's own types say the same thing
+
+The `<type-index:...>` placeholders that blocked this at the time are resolvable through
+`MetadataRegistration.types` in `GameAssembly.dll`. Resolved, `LoaderChunkStaticData` reads:
+
+```
+loadConfig      Beyond.Gameplay.ChunkLoadConfigInfo     chunkId    string
+compareId       uint                                    globalId   uint
+levelId         string                                  levelNumId int
+rectCenter / rectLeftBottom / rectRightTop  UnityEngine.Vector2
+grids           List<...>
+tiers           Dictionary<,>          mists      Dictionary<,>
+```
+
+***`tiers` and `mists` are dictionaries, not lists.*** The mapping was refused because
+`len(slot6) == len(slot7)` in 7,433 of 7,433 files and two independent collections would not
+match that exactly. The engine now says something stronger and quite separate: **two of the
+three are not even the same container kind as the third**, so they could not serialize as
+three parallel vectors whatever their lengths. *A refusal made on corpus evidence, upheld a
+second time by type evidence that did not exist when it was made.*
+
+Also worth keeping: the chunk rectangles are **`Vector2`** -- the loader addresses chunks in
+two dimensions, matching `StreamingChunkInfo`'s two-int32 entries, while the *filenames*
+carry a third coordinate that varies 0..7. And `LoaderLevelData` splits its chunks into
+`lowChunks` / `mediumChunks` / `highChunks`, three `List<>` of chunk references, which is a
+LOD tiering of chunks rather than of anything inside them.
+
 #### THE SIX CATEGORIES ARE UNORDERED: THE SIZE-CLASS READING IS REFUSED
 
 The `w4 = 8 | 2^(k+4)` lock-step makes `k` look like an index into something *ordered* --
@@ -6202,9 +6818,21 @@ decoding them confirms it:
 | `StreamingComponentType` | **NOT sequential** -- max value **128** | `Count` = 43 | -- |
 
 `ECSEntityType`'s valid range ends at exactly **13**, which is exactly `f2`'s observed
-maximum. And the fourth candidate is now excluded on a second, stronger ground: `f2`'s
-values are **contiguous 0..13**, which a non-sequential enum carrying a 128 does not
-produce. *The coverage argument against it was suggestive; this one is structural.*
+maximum.
+
+***A caveat on the method, found by pushing it further.*** The read above takes **one byte**
+per entry from `fieldAndParameterDefaultValueData`. For these three enums the result is
+self-consistent -- strictly sequential `0..N-1` with the terminator landing exactly on the
+member count -- which a misaligned read would not produce. **But the method is not generally
+sound**: applied to flag enums it returns incoherent sequences, e.g.
+`HGFactoryDirtyFlags` as `1, 2, 4, 16, 32, 1`, which is not a power-of-two ladder and
+cannot be right. Entries wider than a byte are not read correctly.
+
+**So the `StreamingComponentType` exclusion should lean on coverage, not on its values.**
+That enum read as "non-sequential, max 128", and that reading is exactly the kind the
+caveat above calls unreliable. *The exclusion still holds* -- `f2` uses 13 of 14
+`ECSEntityType` values against 30% of `StreamingComponentType`'s 44, and its values are
+contiguous `0..13` -- **but the structural argument from a 128 is withdrawn.**
 
 **A read that failed usefully.** The values are stored as **single bytes**, and reading
 them as int32 produced `0x03020100`, `0x04030201`, `0x05040302` -- consecutive overlapping
@@ -6212,11 +6840,32 @@ windows. *That the garbage was orderly is what identified the stride:* entries o
 apart, values 0, 1, 2, 3. A wrong read that returns noise tells you nothing; a wrong read
 that returns a pattern tells you the layout.
 
-**What is still not claimed.** `(0, 4)` separates terrain at 100% but reads as
-`Default + SphereCollider`, which is not a terrain concept; terrain levels are the outdoor
-maps, so that separation plausibly tracks *outdoors*, not terrain. **One pair fitting the
-statistic without fitting the name keeps the mapping at strongly supported rather than
-settled.**
+***6. The caveat is resolved, and the mapping is confirmed far harder than before.*** The
+worry was `(0, 4)`, which separates terrain levels at 100% while reading as
+`Default + SphereCollider`. Presence separation is a weak instrument -- it asks only
+*whether* a pair occurs. Correlating **counts** against each level's terrain-file count,
+over the 38 terrain levels, separates them completely:
+
+| pair | reading | total | corr. with terrain files |
+| --- | --- | --- | --- |
+| **`(5, 7)`** | **Collider + TerrainCollider** | 5,406 | **+1.000** |
+| `(0, 7)` | Default + TerrainCollider | 4,590 | +0.956 |
+| `(0, 4)` | Default + SphereCollider | 5,312 | **+0.728** |
+| `(3, 9)` | -- | 103,748 | +0.118 |
+| `(1, 9)` | -- | 123,540 | -0.030 |
+
+**`(5, 7)` is perfectly linear in terrain extent across all 38 levels.** A count of
+"terrain colliders on the collider layer" rising exactly in step with the number of terrain
+files is what the two enum names jointly predict, and nothing else in the census behaves
+that way. *This is the confirmation the presence test could not give.*
+
+**And `(0, 4)` behaves unlike a terrain record.** At +0.728 it is plainly correlated -- but
+the two records that genuinely name terrain sit at +1.000 and +0.956, and the difference is
+not marginal. `(0, 4)` is common on outdoor levels without scaling with terrain, which is
+exactly what "sphere colliders are more numerous outdoors" predicts and what
+"sphere colliders *are* a terrain feature" does not. *The pair that fit the statistic
+without fitting the name turns out to fit a weaker statistic, which is the name's
+prediction after all.*
 
 #### SLOT 7's DESCRIPTOR: THREE CANDIDATES REFUSED, AND MY OWN "6-VALUED" CORRECTED
 
@@ -6287,11 +6936,757 @@ extent per category is **38.98, 28.45, 97.74, 40.89, 38.05, 33.77, 31.51** -- ne
 increasing nor decreasing. *Re-testing was justified because the input had been shown
 unrepresentative, not because the answer was unwelcome.*
 
-**Two facts left for the next attempt.** `k = 2` is the outlier on every measure -- the
-largest population (3,305) and a median extent **2.5x** every other category. And the two
-varying low bits are not independent of the category: among populated descriptors the
-value `0xBF` occurs **only** with `k = 0`, 221 times in 2,956, with every other category
-exclusively `0xFF`.
+#### SOLVED: THE DESCRIPTOR IS A `StreamingComponentType` MASK
+
+The blocker was a **broken tool, not missing evidence**. `StreamingComponentType` had been
+excluded partly because it read as "non-sequential, max 128" -- a misread from taking one
+byte per enum value. Read at its declared width it is `ulong` and a **one-hot bitmask**:
+`Transform` = 1, `MeshFilter` = 2, `MeshRenderer` = 4, ... `HGGPUParticleSystem` = 2^42.
+
+Testing slot 7's first `u16` as a mask over it, across **12,932** non-empty descriptors:
+
+| check | result |
+| --- | --- |
+| every set bit is <= 14 | **12,932 / 12,932 = 100.00%** |
+| any bit 15 or above | **0** |
+| bits 0-5 all set (`Transform`..`MeshCollider`) | **12,932 / 12,932 = 100.00%** |
+| bits 8-15 one-hot | 12,859 / 12,932 = 99.44% |
+
+**And the one-hot bit names the category outright:**
+
+| k | bit | component | count |
+| --- | --- | --- | --- |
+| 0 | 8 | `TerrainCollider` | 2,956 |
+| 1 | 9 | `MultiCollider` | 1,980 |
+| 2 | 10 | **`HGDecalProjector`** | 3,305 |
+| 3 | 11 | `HLODGroup` | 2,250 |
+| 4 | 12 | `HGVolumetricLocalFog` | 1,536 |
+| 5 | 13 | `HGWaterRenderer` | 830 |
+| 6 | 14 | `HGEnvironmentVolume` | 2 |
+
+*Those are exactly the k-counts measured earlier, from a census that knew nothing of this
+enum.* The two varying low bits are **`SphereCollider`** (bit 6) and **`CapsuleCollider`**
+(bit 7): both present 12,638 times, capsule only 283, neither 11.
+
+***Every earlier observation now has a reason.*** `k = 2` was the outlier with the largest
+population and a median extent **2.5x** the rest -- it is `HGDecalProjector`, and a decal
+projector's bounds are large. The category looked "orthogonal to level content" because
+every level has decals, HLOD groups, fog and water. The range was seven because exactly
+seven component bits occur. `0xBF` appeared only with `k = 0` because a terrain-collider
+placement is the one that carries no sphere collider. And the `ECSEntityType` mask test
+failed against its controls because **it was the wrong enum, not the wrong idea**.
+
+**The lesson is about the tool.** This sat unsolved across several batches behind a
+one-byte read that silently produced a plausible-looking wrong answer. *A misread that
+returns garbage gets caught; a misread that returns a small tidy number gets believed* --
+and "max 128, non-sequential" was tidy enough to found an argument on.
+
+##### The element's other fields: one characterised, one degenerate test caught
+
+With the mask reading proven for field 0, the obvious move is to try it on field 1, whose
+commonest values are 1, 2 and 4. **It is not a mask.**
+
+| | |
+| --- | --- |
+| every bit <= 10, i.e. "fits `StreamingLayer`" | 99.61% |
+| **values below 2048** | **99.61%** |
+
+*The two are the same test.* The bound a `StreamingLayer` mask would satisfy is satisfied
+for free by any small integer, and the tell was the bit frequencies: 10,150 / 8,381 /
+6,899 / 5,223 / 4,151 / 2,963 / ... a smooth geometric decay, which is what small integers
+give and a mask over distinct concepts does not.
+
+**Field 1 is a count.** Its values are dense over the small integers with no gaps --
+`1`:3,455, `2`:1,905, `3`:1,154, `4`:1,113, `5`:734, `6`:574, `7`:463, `8`:405 -- **never
+zero**, with 60.9% of reads landing on non-powers-of-two. 964 distinct values, a long tail
+past 2048 in 0.39%.
+
+**Field 4 is the constant 4** in all 18,391 reads.
+
+##### Field 3 is a byte offset into the slot-4 region
+
+Its values are multiples of four -- 100, 180, 528, 340 -- which is a hint worth following
+rather than a coincidence:
+
+| check | result |
+| --- | --- |
+| divisible by 4 | **18,391 / 18,391 = 100.00%** |
+| `max(f3) < s4` | **6,002 / 6,002 = 100.00%** |
+| `max(f3) + 24 <= s4` | **6,002 / 6,002 = 100.00%** |
+| distinct within a file | 5,970 / 6,002 = 99.47% |
+
+**`s4` is the size of the region field 3 indexes into.** That closes a loop: `s4` was
+established earlier as *"a byte size over variable-length records, not a count times a
+stride"* -- with no idea what the records were. Field 3 points at them, and the gaps
+between consecutive sorted offsets take **5,163 distinct values**, which is exactly the
+variable-length structure `s4`'s growth implied. *Two findings made separately, each
+half of one mechanism.*
+
+**Two details that constrain the region.** The lowest offset in a file is never 24 and
+varies widely (100, 180, 340, 528...), so the records start after a header of variable
+size; and `s4 - max(f3)` is 136-448 bytes, so the last record is followed by a tail rather
+than ending the region exactly.
+
+***The offsets are not in element order.*** Only **74.36%** of files have field 3
+non-decreasing across the slot-7 vector, so a quarter of chunks reference their records in
+a different order from the order those records are stored. **Anyone walking the region by
+following elements in order will read it out of sequence in one file in four** -- which is
+the kind of thing that makes a parser look almost right.
+
+##### The region is not in the file, which unifies all three scalars
+
+Trying to *find* the records, the two natural bases both fail. At `len - s4` the bytes at
+`base + f3` are inconsistent across files -- small integers in one, a fragment of a name
+string (`_4_0_0#0_31D97B9`) in another, zeros in a third. At `root + 40`, likewise nothing
+that repeats. **There is no base in this file at which field 3's offsets land on a
+consistent record.**
+
+*That negative is the answer rather than a dead end.* `s2` and `s3` were already shown to
+be **sizes of something outside the file** -- every test against the buffer's own offsets
+scored 0.00%. Field 3 is bounded by `s4` and 4-byte aligned, `s4` grows with the
+placements, and the gaps between offsets are variable -- **so `s4` sizes a runtime
+allocation and field 3 is an offset within it**, exactly as `s2` and `s3` size runtime
+structures.
+
+**All three scalars describe the image the loader builds, not the file it reads.** That is
+why `s2 == len - root - 20` held for `InitChunkData` and scored **0.00%** for
+`StreamingChunkData`: in the Init case the payload happens to map one-to-one onto the
+allocation, and in the Streaming case it does not. *A relation that holds in one family and
+fails in its twin was never a fact about the byte layout.*
+
+##### RETRACTED, AND A MUCH LARGER GAP FOUND
+
+The paragraph this replaces claimed the records "are not here to decode". **That was an
+inference from two guessed bases failing, and it is wrong.** The decisive test is coverage:
+walk the FlatBuffers structure from the root, mark every byte it accounts for -- vtables,
+tables by declared object size, vector prefixes and elements -- and measure what is left.
+
+Over 3,000 files:
+
+| | |
+| --- | --- |
+| buffer bytes accounted for by the FlatBuffers walk | **1.65%** |
+| files with enough free bytes anywhere for an `s4` region | **94.60%** |
+| files with a **contiguous** free run >= `s4` | **77.40%** |
+
+**There is ample room; the claim was unsupported.** But the number that matters is the
+first one. ***These files are 98% unaccounted for by everything this project has framed of
+them.*** The root table, its eight slots and the three vectors -- the entire structure
+recovered across many batches -- describe **one part in sixty** of the bytes.
+
+*That was invisible because nothing ever measured it.* Every result here was framed as
+"this field means X", verified against controls, and gated over the corpus -- all true, and
+all about a sliver. A 34 KB file with `n5=1, n6=2, n7=2` was being described by a reading
+that covers a few hundred bytes of it.
+
+##### CORRECTION: the 98% figure was an artefact of the walk, not a property of the files
+
+The walk that produced 1.65% followed **only root slots 5-7**. A full recursive walk --
+every root slot, recursing through tables, vectors of tables and strings -- reaches
+**54.91%** of buffer bytes over 300 files, finding **7,751 tables, 1,258 vectors and 2,429
+strings** (about eight strings per file, not the one the sampling suggested).
+
+| walk | coverage |
+| --- | --- |
+| root slots 5-7 only | 1.65% |
+| **full recursive** | **54.91%** |
+
+***So "98% unaccounted" was wrong by a factor of thirty.*** I measured coverage with an
+instrument I had already documented as partial, then quoted the result as though it
+measured the files -- and wrote *"it will not raise it to anything near 100%"* in the same
+breath, which was a prediction made to protect the number rather than test it. It rose to
+more than half.
+
+**What survives.** Roughly **45% of `InitChunkData` is still not reachable** from the
+FlatBuffers root by this walk, which is a real and large gap -- the element table is still
+complete only for the element, and the bulk question stands. *But the gap is a third of
+what was claimed, and the claim was repeated across several entries before it was checked.*
+
+**The lesson is narrower than "measure coverage".** Measuring was right. The error was
+reporting a floor as though it were the value, when the instrument's known blind spot was
+the obvious first thing to close.
+
+##### WHAT THE REMAINING 45% IS: vectors the walker cannot follow
+
+Breaking the unreached bytes down by run length, **weighted by bytes rather than by run**:
+
+| unreached runs | bytes | share |
+| --- | --- | --- |
+| < 16 (alignment padding) | 26,210 | 0.2% |
+| 16-63 | 16,897 | 0.2% |
+| 64-255 | 50,679 | 0.5% |
+| **>= 256** | **10,953,692** | **99.2%** |
+
+*A first pass at this counted runs instead of bytes and concluded "mostly padding" -- there
+are indeed thousands of tiny runs, and they are 0.9% of the volume.* **The same mistake as
+the coverage figure itself: the right measurement reported through the wrong statistic.**
+
+**And the large runs are FlatBuffers.** Their heads look like this:
+
+```
+11 00 00 00   cc 02 00 00  bc 02 00 00  ac 02 00 00  9c 02 00 00  3c 02 00 00
+   count 17      descending 32-bit offsets ...
+```
+
+A count followed by descending offsets is **a vector**, and 266 distinct 64-byte heads
+across the sample share that shape. The walker misses them because `follow()` only accepts
+a target as a vector when its first elements resolve to valid *vtables* -- so vectors of
+**structs or scalars** are rejected and their bytes never marked.
+
+***The obvious conclusion -- "the gap is walker capability" -- was drawn and then tested,
+and it does not hold.*** Extending the walk to accept any vector whose elements all resolve
+in-bounds as offsets (marking the vector's storage but recursing only into targets that
+independently validate) finds **1,648 such vectors** and moves coverage from **54.91% to
+56.30%**: a gain of **1.4 points** against a 45-point gap.
+
+| walk | coverage |
+| --- | --- |
+| root slots 5-7 only | 1.65% |
+| tables, table-vectors, strings | 54.91% |
+| **+ offset-vectors** | **56.30%** |
+
+So the large runs are **not** mostly vectors of the kind the walker was rejecting. *The
+diagnosis was reasonable, specific, and wrong -- and it cost one run to find that out
+rather than being carried forward as an assumption.*
+
+**Where that leaves it, measured rather than guessed.** Two facts settle the character of
+the remaining 44%:
+
+- ***The gap is concentrated in a minority of files.*** Of 341 files, **221 have no
+  unreached run of 256 bytes or more** -- they are walked essentially in full. Only **120**
+  carry a large unreached region, and those are the big files.
+- ***RETRACTED: "those regions are addressed".*** That claim came from scanning every
+  4-byte position for a value resolving into the run -- 6,274 hits, 120 of 120 runs -- and
+  it was published **without a control**. With one, it collapses: a **randomly placed
+  window of the same size** in the same files draws **13,717 hits, 114.3 per run**, against
+  the real run's **52.3**. *The real region attracts fewer apparent pointers than chance
+  does.* **The test measures how often arbitrary 32-bit values land in a range, not whether
+  anything points at it**, and the region's addressability is unknown.
+
+  The tell was in the examples: `table@28 obj=40 +12, v=128` is the **root's own origin
+  field** -- `y*128` -- read as though it were a uoffset. Coordinates, counts and floats all
+  "resolve" when every word is treated as a pointer.
+
+And they are not simple arrays: no run satisfies `4 + count*W == length` for `W` in
+{4, 8, 12, 16, 24, 32, 36, 48}, so the head is not a count over a fixed stride.
+
+***So the honest position is narrower than any of the four claims made about this region.***
+It is not "unexamined bulk" (56.30% of the bytes are reached), not "walker capability" (the
+fix gained 1.4 points), and not "densely cross-referenced" (the control refutes it). What is
+established is only this: **about 44% of `InitChunkData` bytes are not reached from the
+FlatBuffers root, concentrated in 120 of 341 files, in runs of 256 bytes and up whose
+internal structure is unknown.**
+
+*Four successive characterisations of this region were wrong, and each was caught by the
+next measurement rather than by better thinking.* The one that should not have happened is
+the last: **a positive result published without the control that this project applies
+everywhere else.**
+
+##### What the region actually contains, described rather than theorised
+
+Dropping the question of *how* it is reached and simply describing the bytes -- with the
+**reached** bytes of the same 120 files as the control:
+
+| word class | unreached | reached |
+| --- | --- | --- |
+| zero | **43.74%** | 23.79% |
+| small int (< 4096) | **10.66%** | 5.41% |
+| plausible float (1e-4..1e6) | 9.03% | **20.40%** |
+| other | 36.57% | **50.40%** |
+| *words sampled* | 791,863 | 2,293,309 |
+
+**The profiles differ substantially**, so the unreached region is *not* simply more of the
+walked structure: it is **~1.8x as sparse** (zeros), carries **~2x the small integers**, and
+holds **less than half the float density**.
+
+*The walked tables are where the floats live* -- transforms, bounds, centres and extents,
+which is consistent with everything recovered from them. **The unreached region is
+integer-and-zero-dominated, which is the signature of index or table data with many unused
+slots**, not of geometry.
+
+That is a description, not an identification, and it is offered as one. **But it is the
+first statement about this region that was measured against a control and survived** --
+after four that were not.
+
+##### The zeros are interleaved, but there is no record stride
+
+Where the zeros *sit* distinguishes reserved space from records with empty fields. Measuring
+run lengths inside the unreached region:
+
+| zero-run length (words) | count | | non-zero run | count |
+| --- | --- | --- | --- | --- |
+| **1** | 34,554 | | 2 | 21,409 |
+| **3** | 33,117 | | **8** | 14,178 |
+| 4 | 2,170 | | 7 | 6,594 |
+| >= 16 | 1,130 | | 6 | 5,860 |
+
+**Almost no long zero blocks.** The 43.74% zeros are *interleaved* in runs of one and three
+words -- empty fields between short bursts of data, not reserved padding.
+
+***Which makes a fixed-size record array the obvious reading, and it is wrong.*** Testing
+every stride from 2 to 32 words for how well position-mod-stride predicts zero-ness:
+
+```
+stride 32 words: 59.63%     stride 16: 59.58%     stride  8: 59.03%
+stride 31 words: 59.18%     stride 24: 59.15%     stride  4: 58.97%
+```
+
+**Every stride scores between 58.97% and 59.63%** -- a spread of 0.66 points -- against a
+majority-class baseline of about 56.3%. *The uniformity is the control: if any stride were
+the record size it would stand clear of the others, and none does.* **There is no fixed
+record period in this region.**
+
+So the structure is short-range but not periodic: characteristic run lengths, no repeating
+frame, and no flat array of fixed-size entries.
+
+##### Not encoded -- and a byte histogram that disputes an earlier claim of mine
+
+"Encoded data" was one of two guesses offered above. **Entropy settles it:**
+
+| region | byte entropy |
+| --- | --- |
+| unreached | **3.925 bits/byte** |
+| reached (same files) | 5.110 bits/byte |
+| compressed input to the terrain codec | ~7.6+ |
+
+**Nothing compressed or encrypted looks like 3.9 bits/byte.** The region is plain data.
+
+***And its byte histogram sits awkwardly with something recorded above.*** The commonest
+bytes are `0x00` (1,972,692, **59.6%** of the region), then **`0x3F` (91,638), `0x3E`
+(48,183), `0x42` (43,565), `0x80` (41,767), `0x3D` (36,344)**.
+
+`0x3D`-`0x42` is precisely the **IEEE-754 exponent range for ordinary magnitudes** -- the
+high byte of a float near 0.05 to 100. Their prominence is evidence of substantial float
+content, which is hard to reconcile with the earlier finding that this region carries
+**"less than half the float density"** of the walked structure (9.03% against 20.40%).
+
+***Resolved: the float count was sampling the wrong alignment.*** Measuring the
+float-plausible rate at each of the four byte phases inside the run:
+
+| phase (relative to the run start) | float-plausible |
+| --- | --- |
+| 0 | 8.17% |
+| **1** | **24.25%** |
+| 2 | 9.41% |
+| 3 | 9.92% |
+
+and the exponent bytes `0x3D`-`0x42` sit at **absolute position mod 4 == 3** in **230,164**
+cases against 8,794 / 5,519 / 6,450 elsewhere -- a 26-to-42-fold concentration.
+
+**The two agree.** A little-endian float keeps its exponent in the *high* byte, at `+3`, so
+exponents at `mod 4 == 3` mean the floats start at `mod 4 == 0`: **properly aligned in
+absolute file coordinates**. The runs themselves do not begin on a 4-byte boundary, so
+iterating phases *relative to the run start* sampled the wrong alignment -- which is exactly
+what the 9.03% figure did.
+
+***So the earlier characterisation is reversed, not merely unsafe.*** At correct alignment
+the unreached region is about **24% float-plausible**, against **20.40%** measured over the
+reached bytes (whose iteration was absolute, and so correctly aligned). *The region is at
+least as float-dense as the structure that was walked* -- **not "integer-and-zero-dominated,
+not geometry", which was an artefact of an off-by-one in the sampler.** (The two rates use
+slightly different magnitude bands, `1e-3..1e5` against `1e-4..1e6`, so treat the comparison
+as qualitative.)
+
+**Worth naming the failure mode:** the byte histogram and the word classifier disagreed, and
+the disagreement was the signal. A single measurement would have been believed.
+
+##### The floats are normalised, not positional
+
+With the alignment fixed, the values can be read. Testing them against the chunk box that
+identified slot 7's centre gives **nothing**: `own X` 35.53% against a neighbour-box control
+of 31.00%, `own Z` 41.68% against 38.15% -- gaps of three and four points, where the slot-7
+centre scored 73.96% against 1.28%. **These are not world coordinates.**
+
+What they are is small:
+
+| band | share of 332,031 aligned float-plausible words |
+| --- | --- |
+| `0..128` | **93.85%** |
+| `128..256` | 4.63% |
+| `256..384` | 1.42% |
+| `384+` | ~0.00% |
+| **of which `|f| <= 1`** | **72.05%** |
+
+*The decay is the control* -- 93.85% into the first band against 4.63% into the next is not
+what a positional quantity spread over a 128-unit chunk looks like; it is what **normalised
+values** look like. **Nearly three quarters of these floats lie in `[0, 1]`.**
+
+**So the unreached region is normalised float data interleaved with zeros** -- weights,
+factors, normals, colours or coefficients rather than geometry -- **which is why the
+world-box join that worked on slot 7 finds nothing here.** Taken with the rest: ~44% of
+bytes, in 120 of 341 files, entropy 3.925, zeros in runs of one and three, no record stride,
+floats 4-byte aligned in absolute coordinates and 72% of them in the unit interval.
+
+##### A lead on the consumer: the region tracks `GrassGrid`
+
+Grouping 400 files by which names they contain, and measuring unreached bytes per group:
+
+| name present | files | unreached | mean file size |
+| --- | --- | --- | --- |
+| **`GrassGrid`** | 17 | **68.5%** | **740,677** |
+| `Reflection Probes (5)#0` | 45 | 51.5% | 1,227 |
+| `AudioScatterEmitter` | 13 | 36.0% | 1,881 |
+| `AudioRoom` | 38 | 30.1% | 6,269 |
+| `AudioEmitter` | 42 | 22.4% | 6,769 |
+| `SurfaceTypeData` | 147 | 16.2% | 83,829 |
+
+***Files naming `GrassGrid` are about a hundred times larger than the rest and the most
+unreached of any group*** -- 68.5% against `SurfaceTypeData`'s 16.2%, even though those
+files average 83 KB and are the most common name by far.
+
+**Normalised floats in `[0, 1]`, interleaved with zeros, in very large files that name
+grass** is a coherent fit for density or per-instance attribute data.
+
+***The test was run, and the lead does not survive it intact.*** Correlating against raw
+unreached **bytes** gives `GrassGrid` +0.479 -- but **file size alone scores +0.978**
+against the same target, because unreached bytes are a roughly fixed fraction of any file.
+*Anything that correlates with size correlates with unreached bytes.* Normalising to the
+unreached **fraction**:
+
+| against the unreached fraction | correlation |
+| --- | --- |
+| `GrassGrid` count | **+0.234** |
+| `SurfaceTypeData` count | **-0.768** |
+| file size (residual) | +0.176 |
+
+**Most of the grass signal was the size confound.** What survives is modest: files naming
+`GrassGrid` average a 45.6% unreached fraction against 22.8% for those that do not -- a real
+two-fold difference, but +0.234 is not the `+1.000` that identified `(Collider,
+TerrainCollider)`, and it does not identify a consumer.
+
+***The strongest effect in the data is the control, and it is negative.*** `SurfaceTypeData`
+scores **-0.768**: the more of those records a file carries, the *better covered* it is.
+That is worth more than the grass lead -- **it says the walk handles `SurfaceTypeData`
+content well, and that the unreached region is largely what is left when those records are
+accounted for.**
+
+##### THE GAP IS SEVEN FILES, NOT A PROPERTY OF THE FAMILY
+
+Chasing *which name* owns the unreached bytes was the wrong question. Coverage tracks
+**size**, not content: a **65,836-byte** file carrying a single `SurfaceTypeData` name is
+**99.9% covered**, while a **2.2 MB** file with the same single name is 77.9% unreached.
+
+Concentrating the 400-file sample (27,658,484 bytes, 40.01% unreached):
+
+| | share of all unreached bytes |
+| --- | --- |
+| top 1 file | 22.72% |
+| top 5 files | **84.13%** |
+| top 10 files | 93.59% |
+| **the 7 files >= 1 MB** | **90.41%** |
+| **the 382 files < 100 KB** | **3.73%** |
+
+***So "44% of `InitChunkData` is unreached" was a true number with a false implication.***
+It is not a property distributed across the family -- **393 of 400 files are walked
+essentially in full**, and the entire gap is a handful of multi-megabyte files, five of
+which carry 84% of it.
+
+**That is a far smaller and more tractable target than anything claimed for this region so
+far**, and it explains every confusing correlation above: `GrassGrid` and file size both
+correlated with unreached bytes because the giant files happen to name grass; `SurfaceTypeData`
+correlated negatively because the small, fully-covered files are dominated by it. *The
+size confound was not a nuisance in the measurement -- it was the finding.*
+
+##### Opening the largest offender
+
+`InitChunkData_-1_0_0_0.bytes` in **`blackbox02_dg001`** -- 3,238,664 bytes, **77.6%
+unreached**, across **125** runs, the largest **444,381** bytes.
+
+Sampling the big run shows what the bytes are:
+
+```
+b9 f3 48 3d  b9 f3 48 3d  b9 f3 48 3d     <- 0.04905 repeated
+e0 a3 a9 3c  e0 a3 a9 3c  e0 a3 a9 3c     <- 0.02071 repeated
+00 00 80 3f                                <- 1.0
+00 00 00 00 ... (long stretches)
+```
+
+**Identical floats repeated in threes, `1.0` constants, and long zero regions.** That is
+consistent with the normalised-float profile measured earlier, and the *repetition* is new:
+consecutive entries carrying the same value, either `Vector3(v, v, v)` or runs of identical
+per-element data.
+
+**Reading that run directly** -- 444,381 bytes at offset 2,601,975, **111,095** aligned
+words:
+
+| property | value |
+| --- | --- |
+| zero words | 66,768 = **60%** |
+| distinct values | **13,164** of 111,095 = 12% |
+| adjacent words equal | **47.5%** |
+| equal-value run lengths | 1: 44,510 · 2: 6,624 · 3: 3,438 · 4: 3,640 · **12: 142** |
+
+| commonest value | count | as float |
+| --- | --- | --- |
+| `0x00000000` | 66,768 | 0 |
+| `0x3f800000` | 4,707 | **1.0** |
+| `0x4276d70a` | 2,966 | **61.71** |
+| `0x3d48bcb8` | 591 | 0.0490081 |
+| `0x3f0161de` | 375 | 0.5054 |
+
+**Only one word in eight is distinct**, and two constants dominate the non-zero content:
+`1.0` and `61.71`. *`1.0` is the signature of a normalised default; `61.71` is not
+normalised at all* -- a magnitude, repeated nearly three thousand times in one chunk.
+
+The **12-word (48-byte) equal runs, occurring 142 times**, are the only long repeat, and
+`48 = 12 x 4` is the size of three `Vector3`s or one `Transform` -- worth testing, though
+run length is not a stride and the earlier periodicity test over this region found none.
+
+***Answering that question, spatially.*** `61.71` occurs in only **5 of the level's 106
+chunk files**, 19,144 times, and its distribution is **contiguous**:
+
+| chunk origin | occurrences |
+| --- | --- |
+| (-256, 0) | 5,367 |
+| (-128, 0) | 4,639 |
+| (-256, -128) | 4,568 |
+| (-128, -128) | 4,568 |
+| `_Global_` | 2 |
+
+**Four adjacent chunks forming a 2x2 block** -- x in {-256, -128}, z in {-128, 0}, a
+256x256-unit area -- and nothing outside it. *A constant repeated thousands of times across
+exactly one contiguous region is a property of that region, not of the format.*
+
+It is **not** a bounds value from the walked structures: scanning every slot-7
+centre-and-extents component in the level matches it **zero** times. So the unreached region
+carries per-area quantities that the framed tables do not.
+
+***The elevation reading was tested and is unsupported*** -- and the way it failed is the
+finding. Comparing `61.71` against slot-7 centre heights:
+
+| | result |
+| --- | --- |
+| placements **inside** the 2x2 block | **none at all** |
+| placements outside (control) | 20, heights 25.80 to 124.22, median 70.41 |
+| of those, within +-5 of 61.71 | 1 of 20 = 5%, i.e. chance |
+
+**There was nothing inside the block to compare against, because those four chunks carry no
+populated placements whatsoever.**
+
+***That is a structural dichotomy, not a size difference.*** The large files are not "small
+files with more in them": **their slot-7 vectors are empty and their entire content lives in
+the unreached region**, while the small files carry their content in the tables the walker
+reads. Two kinds of chunk file, and every coverage number in this section is the ratio
+between them.
+
+**So the framed structure and the unreached region are largely disjoint populations** --
+which is why no join from one to the other has worked, and why `SurfaceTypeData` correlated
+*negatively* with the unreached fraction. *The next attempt should stop trying to reach the
+blob from the root and read it on its own terms.*
+
+##### CORRECTION: slot 3 is a vector, not a size
+
+Reading one large file from the top -- rather than from the unreached end -- exposes an
+error in the root typing. In `InitChunkData_-1_0_0_0.bytes` (`blackbox02_dg001`), slot 3
+holds **3,238,372**, and taken as a uoffset from `root+20` that lands at **3,238,420**,
+where the first word is **59** -- exactly slot 5's element count.
+
+Tested over 400 files:
+
+| | |
+| --- | --- |
+| slot 3 resolves to a valid vector | **400 / 400 = 100.00%** |
+| `len(slot 3) == len(slot 5)` | **400 / 400 = 100.00%** |
+| slot 2 resolves to a vector | **0 / 400** |
+
+***So slot 3 is a fourth vector, parallel to slot 5 in every file*** -- not one of the
+"runtime allocation sizes" recorded earlier. **The formula `s3 == len - root - 28 - 4*n5`
+still holds arithmetically, but it was describing where that vector sits, not what the field
+is.** A vector pinned at a fixed distance from the end of the buffer makes its own offset
+look like a size, and `s3`'s dependence on `n5` -- which read as suspicious coupling -- was
+simply the vector's own length entering the address.
+
+*Slot 2 is untouched by this: it resolves to nothing in any file, so the size reading stands
+for it alone.* **The root now has four vectors (3, 5, 6, 7), two of them parallel, and one
+scalar whose meaning is still open.**
+
+**How the error survived:** `s3` was only ever tested as a number against other numbers. It
+was never dereferenced. *An arithmetic identity that fits 26,519 files is strong evidence
+about a value and no evidence at all about its type.*
+
+##### Slot 3 holds object ids, and the names carry the same id
+
+Slot 3's elements are **not tables** -- 0 of 2,327 resolve as one. They are bare 32-bit
+values: **975 distinct across 2,327 reads, none below 4096**, repeating across files
+(`113214674` appears 70 times, `88420531` 42 times). *That is an id vocabulary, shared
+between chunks.*
+
+***And it is the same vocabulary the names use.*** The name strings end in a hex suffix --
+`GrassGrid_0_0#0_A5F014`, `GrassGrid_0_-64#0_26E4C30` -- and parsing those tails as
+hexadecimal:
+
+| | |
+| --- | --- |
+| distinct slot-3 ids | 975 |
+| distinct name-tail hex values | 77 |
+| **intersection** | **40**, with **145 same-file pairs** |
+
+**The ids span about 1.3 x 10^8**, so 975 of them occupy roughly 7 x 10^-6 of that space and
+the expected intersection of 77 arbitrary values is **about 0.0005**. Observing **40** is not
+a coincidence.
+
+***So the hex suffix in a name is a slot-3 id.*** With slot 3 parallel to slot 5 in every
+file, that gives the chain:
+
+```
+name string  ->  hex suffix  ==  slot-3 id  ->  (same index)  ->  slot-5 typed record
+```
+
+**Slot 5's entries are identifiable after all.** Its kind codes gave the *type*
+(`StreamingLayer` x `ECSEntityType`); slot 3 gives the *identity*; and the name strings
+attach a human-readable label to a subset of them -- 77 of 975 ids are named, so most
+entries carry an id with no name in the file.
+
+##### THE ROOT RETYPED: slots 2, 3 and 4 are all vectors
+
+Dereferencing the remaining scalars finishes the correction. Over 400 files:
+
+| slot | resolves to | evidence |
+| --- | --- | --- |
+| **2** | a vector, **always empty** | target is exactly `len - 4` in **400/400**, count `0` in **400/400** |
+| **3** | a vector of **ids** | 400/400, `len == len(slot 5)` in 400/400 |
+| **4** | a vector, non-table elements | **400/400**, `len == len(slot 3) == len(slot 5)` in **400/400** |
+
+***So every one of slots 2 through 7 is a vector, and the "runtime allocation sizes" reading
+of 2, 3 and 4 was wrong for all three.*** The root is:
+
+```
+0  version 47          1  chunk origin (x*128, y*128), 8 bytes inline
+2  empty vector        3 | 4 | 5   three PARALLEL vectors
+                       6 | 7       two parallel vectors
+```
+
+**Slot 4's elements are packed bytes.** Its commonest values are `0x02020202` (324),
+`0x01010101` (92), `0x03030303` (88), `0x03020202`, `0x00020203` -- *byte-replicated and
+byte-packed words* -- mixed with small integers (1, 2, 3, 4, 16, 248, 356). Four small
+values per word, one per parallel entry's worth of something.
+
+**So a slot-5 record now has three columns beside it:** an **id** (slot 3), a **packed byte
+quad** (slot 4), and its own typed fields. *That is a far richer row than the "kind code plus
+five opaque fields" this section began with*, and all of it was hidden behind three fields
+recorded as sizes because they were never dereferenced.
+
+##### FIRST LOOK AT THE 98%: NAMED PROXY-ENTITY RECORDS
+
+The unaccounted region opens with a **length-prefixed string** -- `16 00 00 00` followed by
+exactly 22 bytes of `GrassGrid_0_0#0_A5F014`, `19 00 00 00` then 25 of
+`GrassGrid_0_-64#0_26E4C30`. The names follow `<Type>_<x>_<y>#<n>_<hash>`, and the
+coordinates step by **64**, not the 128 of the chunk origin.
+
+**The type vocabulary is `ProxyEntityType`.** Over 400 files:
+
+| name prefix | count | | name prefix | count |
+| --- | --- | --- | --- | --- |
+| `SurfaceTypeData` | 147 | | `GrassGrid` | 19 |
+| `AudioEmitter` | 42 | | `AudioScatterEmitter` | 14 |
+| `AudioRoom` | 39 | | `MergedCollider` | 7 |
+| `AudioPortal` | 5 | | `ClothGroupInfo` | 6 |
+
+-- `TerrainSurfaceTypeData`, `AudioEmitter`, `AudioRoom`, `AudioPortal`, `GrassGrid`,
+`GpuClothGroup`, `MergedRenderCollider`, beside plain Unity object names
+(`Reflection Probes`, `Point Light`, `New Game Object`).
+
+***This vindicates the refusal and relocates the enum.*** `ProxyEntityType` was refused as
+slot 5's kind code on an external anchor -- 0 of 28 codes matched the `iv` block's counts,
+with a positive control proving the test could fire -- and slot 5 was shown not to be a
+placement list at all. **Both conclusions stand, and the enum does appear in these files:
+as the names of records in the region nothing had looked at.** *The enum was real, the
+refusal was right, and they were about different parts of the file.*
+
+**Strings are only 0.1% of the bytes**, roughly one name per file.
+
+***And the records that carry them are small, which moves the mystery rather than solving
+it.*** Tracing the single uoffset that points at `GrassGrid_0_0#0_A5F014` (at 2140, in a
+9,480-byte file) reaches a table at 2128 with **vtable size 12, objectSize 16 and slots
+`[4, 0, 8, 12]`** -- four fields, one absent, the name in the last. *A 16-byte table is a
+directory entry, not a payload.*
+
+So the earlier guess in this section -- "the bulk is the binary payload that follows each
+name" -- is **not** supported: the name belongs to a compact record, and the 98% lies
+elsewhere. **What the region contains is still open; what is now known is that it is not
+hanging off these name tables.**
+
+## STATUS AFTER THE ENGINE-READING PASS (2026-09-15)
+
+Findings from this pass are spread across many entries above. This is the consolidated
+state, so the next session does not re-derive it.
+
+### `InitChunkData` / `StreamingChunkData` -- the slot-7 element, complete
+
+| field | meaning | evidence |
+| --- | --- | --- |
+| 0 | **`StreamingComponentType` mask** -- bits 0-5 always set, bits 6-7 optional (`SphereCollider`, `CapsuleCollider`), one-hot in 8-14 naming the component kind | 12,932/12,932 in range; one-hot counts reproduce an earlier blind census exactly |
+| 1 | a **count**, 1-based, never zero | dense over small integers, 60.9% non-powers-of-two |
+| 2 | **centre + extents**, `(x, height, z)` world space | centre in its own chunk 73.96% vs 1.28% control; extents never negative in 21,336 components |
+| 3 | **byte offset** into the region `s4` sizes | 4-aligned 18,391/18,391; `max+24 <= s4` 6,002/6,002 |
+| 4 | the constant **4** | 18,391/18,391 |
+
+Root: slot 0 = version **47**; slot 1 = chunk origin `(x*128, y*128)`; slots 2/3/4 =
+**runtime allocation sizes**, not file offsets; slot 5 = entries keyed by
+`StreamingLayer` x `ECSEntityType`; slot 6 = one constant per placement; slot 7 = the
+placements.
+
+### Audio -- the HIRC types the notes called SDK-only
+
+| type | how reached | state |
+| --- | --- | --- |
+| `0x02`, `0x05`, `0x09` | one shared class; `[+0x1f0]`/`[+0x1f8]`/`[+0x200]` | **field sequence read** |
+| `0x0A`-`0x0D` | one shared arm | **not parsed at all** -- skipped as opaque payload |
+| `0x10`, `0x11` | `vtable[+0x28]` -> `0x18014c250` | 12-byte prefix, then a plug-in tail |
+| `0x12` | `vtable[+0x278]` -> `0x180109030` | **complete**: ref, word, `N`/bytes/dwords, ms duration |
+
+### Still open, accurately
+
+- **`LAYER_C`'s consumer.** The recorded answer is *disconfirmed* (`m_colorVariationTex`
+  is a `Texture2D`, one per terrain, so the argument that eliminated the control map
+  eliminates it too) and the mask-map rival is excluded by the binding list.
+- **`0x0B`'s `+12`/`+20` words.** Needs an external anchor of the kind that resolved the
+  source records; no engine evidence can exist, since the engine never parses `0x0B`.
+- ~~**The 1 of 8 unowned media** that is not Init-bank embedded.~~ **IDENTIFIED** -- see
+  below.
+
+  *Reconciling two figures that look contradictory.* Pooling `hircMediaJoin` across all
+  25 audited packages gives **61,333 declared media, 60,049 named, 1,284 unowned** --
+  which sits oddly beside the recorded **61,325 of 61,333 (99.99%)**. They are the same
+  join at two stages: `sourceIdsByPlugin` carries the type-`0x02` records only, and the
+  note that **"adding `0x0B` closed 1,276 that no source record had named"** accounts for
+  the gap exactly -- **1,284 - 1,276 = 8**. *Two numbers in these notes that read as a
+  contradiction are the before and after of one step, and the arithmetic closes to the
+  unit.* The pooled join also shows **948 source ids naming no declared media**, the
+  reverse direction, which the cross-package trap predicts.
+
+  ***The 8 named, and a correction.*** Pooling `idValuesByType` -- which carries `type02`
+  (60,997 ids) **and** `type0B` (1,279) -- against the 61,333 declared media leaves
+  **exactly 8**, reproducing the recorded figure from the raw data:
+
+  | media id | declared in |
+  | --- | --- |
+  | 67918417, 133192886, 213132781, 792360875, 934360813, 1028758860 | `default_banks.pck` + `default_stream_0.pck` |
+  | **624424588** | `default_banks.pck` + **`default_stream_2.pck`** |
+  | **1041213772** | **`default_stream_0.pck` only -- no bank entry** |
+
+  **The note above says "the same 7 ids are also declared as streamed copies in
+  `default_stream_0.pck`. The 8th is in `default_stream_2.pck` only." Both halves are
+  wrong.** Seven ids are in `default_banks.pck` -- the Init bank's `DIDX` media, as
+  recorded -- but one of those seven streams from `default_stream_2.pck`, not
+  `default_stream_0.pck`. And the odd one out is **`1041213772`**, which is in
+  `default_stream_0.pck` *only* and has **no bank entry at all** -- so it is the media
+  that is genuinely not Init-bank embedded, and it is not the one the note points at.
+
+  *The characterisation was right in shape and wrong in both particulars, which is what
+  happens when a set is described from its summary rather than enumerated.*
+- **Slot-7 field 3's record contents**, which are not in these files at all.
+
+*Three blockers recorded before this pass turned out to be misdiagnosed:* the chunk
+reader's "packed native code" (it is in unpacked `UnityPlayer.dll`), the audio types'
+"licensed SDK" (the parser ships with the game), and `StreamingComponentType`'s exclusion
+(a one-byte read of a `ulong` enum). **Re-testing inherited blockers was the
+highest-yield activity of the session.**
+
+*Worth noting what made the difference:* field 0's mask reading survived because its bits
+were **not** the bits a small integer sets -- bits 0-5 always on, one-hot in 8-14 -- which
+no magnitude distribution produces. The same test on field 1 returned a high number and
+meant nothing.
 
 ***A degenerate fit, caught by fitting four rivals at once.*** `s4 == 24 + 24*n7` scores
 **100.00%** on the Streaming family, which reads like a decoded record stride -- until the
