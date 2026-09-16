@@ -2037,6 +2037,29 @@ the kind that resolved the source records.* Ten populations have already been el
 against the bytes alone; the lesson from the source-record success is that the missing
 ingredient is a second table to join against, not a better sweep of the same bodies.
 
+**Two candidate anchors have now been checked and ruled out.**
+
+***The decoded intermediate does not carry object bodies.***
+`tmp/audio/hirc_action_current/audio_audit.json` (325 MB) is the only decoded view of the banks
+on disk, and its rows hold per-package structural summaries -- sector byte counts, bank counts,
+`bnkBankIds` lists -- with a type breakdown that is counts only (`"0x0B": 2130`). It cannot
+supply a property enumeration.
+
+***Nor can it supply the media-size join.*** The better idea was to skip the enumeration
+entirely: every `0x0B` body's source record names a declared media id, so *if those words are
+durations they must correlate with the media's byte size* -- a genuine external anchor of the
+kind that resolved the source records. **The audit has no media sizes.** Its 41,752
+`offset`/`declaredSize` pairs are **BNK section headers** (`BKHD`, `HIRC`), not media entries,
+because it was generated with `mediaVerification: "skipped"`.
+
+***So every anchor reachable from the shipped artefacts is now exhausted.*** The shipped reader
+skips types `0x0A`-`0x0D` outright, the metadata has no bodies, and the media table has no sizes.
+**Closing this needs either the Wwise SDK's structure definitions or a bounded runtime
+observation** -- and the latter is an account-affecting action on a client that ships
+`AntiCheatExpert`, so *it is the user's call and must not be taken without an explicit request.*
+**This item is blocked on an input, not on analysis effort**, and should not be re-attempted
+against the corpus alone.
+
 ##### What *is* established about those words, pooled over the corpus
 
 "Ten populations eliminated" understates the positive characterisation. Pooling the
@@ -5713,6 +5736,456 @@ VT_INDIRECT_TEX_BUFFER_COUNT, VT_GPU_FEEDBACK_BUFFER_COUNT, VT_WORK_GROUP_COUNT
   same layer set look like. `LAYER_C` at 54 files is a control or colour map --
   `m_splatControlMap` and `m_colorVariationTex` are both candidates and it is not
   settled which.
+
+### The remaining VFS blocks, inventoried
+
+Beyond `streaming` and `terrain`, the blocks hold: **`iv` 4.17 GB** (irradiance volumes;
+`iv_N_N.bytes`, 92 `index.bytes`, a few `regionIv_room_*`), **`table`** 724 single-instance
+config tables (`BuffTable`, `SkillConditionTable`, `CharacterConst`, ...), **`json-data`** ~1,264
+name shapes of plain JSON, **`extend-data`** just three files
+(`CompressData.bin`, `FacBoneTRS.bin`, `StringPathHash.bin`, 176 MB together), and
+**`bundle-manifest`** a single 50 MB `manifest.hgmmap`. *`iv` is by a wide margin the largest
+and was entirely uncharacterised.*
+
+#### The irradiance-volume index
+
+`Data/IrradianceVolume/PC/<level>/v3/index.bytes` decodes cleanly at the head: a u32
+`0x03000003`, a u32, then a **length-prefixed UTF-16LE string** (`'under_construction'`), a
+28-byte field block, then **back-to-back length-prefixed UTF-16LE file names** naming the
+volume payloads this level uses -- `'iv_0_0.bytes'`, `'iv_1215527338_0.bytes'`.
+
+**The strings are only a header.** In the sample level they occupy 150 of 6,390 bytes and the
+remaining **6,240 bytes are small integers and zeros** -- *not* float positions or bounds, which
+is what an irradiance-volume index invites one to expect: only **9.9%** of the tail reads as a
+plausible float. Its record size is not settled -- 6,240 divides evenly by 12, 16, 24, 32 and 48
+alike, **so the divisor proves nothing and none is claimed.**
+
+**The second u32 is the named-entry count**, and it is **0 in 82 of 92 index files** -- *most
+levels name no payload at all*, which is why the sampled level with three strings is the
+exception rather than the pattern.
+
+#### The `iv` payloads are not one format
+
+The block holds three kinds: **92 `index.bytes`, 138 `iv_N_N.bytes`, 7 `regionIv_room_*`**.
+
+***A four-file sample said the payloads begin `(3, 2)` with a 512-byte header of `0`/`0xffffffff`
+sentinels. Across 120 files that holds for only 25%.*** The sample came from the first
+directories and was not representative. The majority open instead as `(N, 512)` or `(N, 768)`
+-- 990, 1050, 1063, 1246, 2270 in the first word -- with **high-entropy data immediately after
+an 8-byte head** and no sentinel region at all. *No header word equals the body or file length
+in any of the 120*, and body sizes are unaligned (divisible by 4 in only 21.7%), **so the
+payload length is not stated in the header** by any reading tried.
+
+The bodies are packed: entropy **6.7-7.2 bits/byte** with adjacency **+0.01 to +0.09**, the same
+signature that identified the block-compressed `LAYER` files.
+
+***They are block-compressed at a 16-byte block size.*** Two measurements agree:
+
+* **A 16-byte period.** Mean `|x[i] - x[i+lag]|` is minimised at **lag 16 in every file tested**
+  (56.6 / 57.8 / 61.9 against lag-1 baselines of 73.5 / 75.6 / 68.4), with lags 32 and 48 next --
+  multiples of the same period.
+* **No positional structure within the block.** All 16 byte positions carry **256 distinct values
+  with identical zero-fractions** (~0.12-0.14). *Compare the decoded `regionIv` probe, also 16
+  bytes, where positions 11 and 15 are zero in every record* -- **a plain record has per-position
+  structure and these have none.**
+
+Periodic at 16 bytes but flat inside the block is what **BC-family block compression** looks
+like: blocks are spatially coherent with their neighbours while every byte position spans the
+full range. *The specific BC variant is not identified* -- an irradiance volume would plausibly
+use an HDR format -- **but the block size and the compressed-texture reading are measured rather
+than assumed.**
+
+#### `regionIv_room_*` decoded completely
+
+The seven `regionIv_room_*` files are the only unpacked ones in the block, and they decode
+end to end:
+
+| offset | field |
+| --- | --- |
+| `+0` | u32, constant **4096** |
+| `+4` | u32 **44** -- *the header size itself* |
+| `+8` | 3 x f32 bounding-box **min** |
+| `+20` | 3 x f32 bounding-box **max** |
+| `+32` | 3 x u32 grid dimensions `nx, ny, nz` |
+| `+44` | `nx*ny*nz` probe records of **16 bytes** |
+
+***`44 + 16 * nx*ny*nz == file length` in 7 of 7 files*** -- 36x17x39, 39x17x36, 37x21x35,
+40x16x62 and so on, against sizes from 381,932 to 634,924 bytes.
+
+***The reading is confirmed independently by probe density.*** Dividing each grid dimension by
+its bounding-box extent gives **1.92 to 2.01 probes per world unit on every axis of every
+file** -- a fixed ~2/unit sampling. *A bounding box and a grid that happen to be mislabelled
+would not produce a constant density across seven files and three different box shapes.*
+
+**The 16-byte probe is four 4-byte groups.** Bytes 11 and 15 are **zero in every probe**, and
+groups 1, 2 and 3 are near-identical triples -- mean absolute difference of **0.8-1.3** between
+groups 1 and 2 and **2.2-3.5** between 2 and 3.
+
+***Which bytes hold sampled field data can be settled without knowing the encoding.*** Real
+irradiance is spatially smooth, so the probes were reshaped onto their `nx,ny,nz` grid and
+neighbour correlation measured per byte position, against a shuffled-probe control:
+
+| byte positions | neighbour correlation | mean abs. difference |
+| --- | --- | --- |
+| 4-10, 12-14 | **0.77 - 0.91** | 3.3 - 4.6 |
+| 0, 3 | 0.77, 0.81 | 16.4, 6.1 |
+| **1, 2** | **0.40, 0.17** | **56, 75** |
+| 11, 15 | -- | constant zero |
+| *shuffled control* | ***~0.00*** | -- |
+
+***So groups 1-3 are genuinely a sampled field*** -- correlation up to 0.91 where shuffling the
+same values gives 0.00. **Bytes 1 and 2 are not**: at 0.40 and 0.17 with neighbour differences of
+56 and 75 they are packed or quantised data sitting inside an otherwise smooth record, *which is
+why the record must not be read as four uniform RGBA groups.*
+
+**The grid is stored x-fastest.** Ordering the probes with `x` innermost gives lower neighbour
+differences at **every one of the 16 byte positions** than `z` innermost (16.4 vs 18.4 at
+position 0, 3.93 vs 4.75 at position 4, and so on) -- *a small margin, but unanimous across all
+sixteen.*
+
+### `extend-data`: two files are plain, two are opaque
+
+A single entropy/adjacency profile separates them, calibrated against known-readable references
+(plain JSON reads 5.111 bits/byte at +0.678; the decoded `regionIv` reads 6.301):
+
+| file | bytes | entropy | adjacency | verdict |
+| --- | --- | --- | --- | --- |
+| `manifest.hgmmap` | 50,002,822 | **7.997** | +0.002 | ***indistinguishable from random*** |
+| `CompressData.bin` | 873,686 | **7.994** | +0.016 | ***indistinguishable from random*** |
+| `FacBoneTRS.bin` | 17,909,576 | 3.956 | +0.411 | plain |
+| `StringPathHash.bin` | 157,726,628 | 4.022 | +0.379 | plain |
+
+***`manifest.hgmmap` and `CompressData.bin` are encrypted or fully compressed and cannot be
+parsed as they stand*** -- recorded so no one spends time on a byte-level attack.
+
+#### `FacBoneTRS.bin` is an array of 4x4 matrices
+
+After a **14,216-byte head** of small integers, the rest is **279,615 records of 64 bytes**
+(`17,895,360 / 64` exactly), and each is a row-major 4x4 affine transform:
+
+| test | result |
+| --- | --- |
+| 4th column == `(0,0,0,1)` | **100.00%** |
+| rows mutually orthogonal | 99.69% |
+| uniform scale | 99.69% |
+| **full TRS** | **99.69%** |
+| *control at random offsets* | **2.495%** |
+
+**A 40x separation from its control**, on the same acceptance test built for the chunk-data
+transforms -- *so the tooling from one format carried straight over to another.* The name's
+claim (facial bone TRS) is borne out by the contents rather than assumed from it.
+
+### `StringPathHash.bin` is the game's complete source-path table
+
+***157,726,628 bytes, decoded end to end with nothing left over.***
+
+| offset | field |
+| --- | --- |
+| `+0` | u32 **19,234,928** -- offset of the string pool |
+| `+4` | u32 **801,455** -- the string count |
+| `+8 .. poolOffset` | index/hash table |
+| `poolOffset .. EOF` | `801,455` x `[u32 byteLength][UTF-16LE bytes][u16 0x0000]` |
+
+**Walking the pool fail-closed parses 801,455 of 801,455 strings and ends exactly on the last
+byte, with 0 leftover** -- and the header's count was confirmed independently by scanning for
+UTF-16 runs *before* the header was understood, which found the same 801,455.
+
+***These are the real asset paths:*** 453,513 under `Data/`, 347,635 under `Assets/`/`assets/`;
+by extension 253,670 `.ab`, 103,592 `.bytes`, 102,852 `.json`, 64,164 `.fbx`, 62,109 `.asset`,
+30,856 `.png`, 29,959 `.mat`, 28,884 `.prefab`, 23,083 `.anim`.
+
+```
+Assets/Beyond/Arts/Entity/Actor/Loli/Wulfa/Materials/M_actor_wulfa_iris_01.mat
+Assets/Beyond/Arts/Environment/SceneAssets/Map01/Prop/.../S_prop_map01_object+1_005_07a_lod0.fbx
+Data/Streaming/PC/map01/Streaming/InitChunkData_4_14_0_0.bytes
+Data/Bundles/Windows/main/4df843b7674ea0b7d4d078a2.ab
+```
+
+**This is the largest semantic anchor recovered here** -- *a name for essentially every asset the
+game ships*, including the `.ab` bundle hashes and the chunk files this section has spent so long
+on.
+
+***A correction worth keeping.*** An earlier pass over this file searched for **8-bit ASCII**
+runs, found only random-looking junk, and concluded it held no strings -- while 801,455 UTF-16
+paths sat in it. **The byte-position census is what exposed it**: even positions varied, odd
+positions ~90% zero, which is exactly how UTF-16LE ASCII looks. *The earlier finding that the
+first words are "not hashes of VFS paths" stands, but the reason to doubt it was visible in the
+zero pattern and was missed.*
+
+#### The index region: a 64-bit hash to path map
+
+***Profiling the region in windows found the layout change the statistics had been hinting at.***
+Up to byte **6,422,536** the words are ~37% zero and ~68% small with no high values; after it
+they sit at **exactly 25.0% zero and 25.0% small** -- one word in four, which is the signature of
+a **16-byte record**.
+
+Read that way, the second part is **800,774 records** of:
+
+| slot | content |
+| --- | --- |
+| 0 | **offset into the string pool** (max 138,491,050 against a pool of 138,491,700) |
+| 1 | always zero -- padding, making slot 0 a u64 |
+| 2, 3 | a **64-bit hash**, essentially all distinct |
+
+***Every one of the 800,774 offsets lands exactly on a string record start -- 100.00%.***
+
+```
+0xcbb43c776a00a407 -> Data/Bundles/Windows/main/0054a391cac476902c17df24.ab
+0xe77047c45d2ad392 -> Data/Terrain/PC/dung02_dg002/Terrain_2_1_1_H.bytes
+0x08714e372c034651 -> Data/Json/LipSync/Chinese/au_dlg_c31m1_2_031.json
+```
+
+**So `StringPathHash.bin` is a complete 64-bit-hash to asset-path resolver for the whole game**,
+and the name is exact.
+
+##### The hash function itself is not identified, but it is constrained
+
+***The resolver works by lookup; it cannot yet be computed.*** With 787,063 ground-truth
+`(hash, path)` pairs available, the function was attacked directly and **32 combinations are now
+eliminated**, all scoring **0 matches**:
+
+| family | encodings | seeds |
+| --- | --- | --- |
+| `fnv1a-64`, `fnv1-64`, `djb2-64`, `sdbm-64` | utf-8, utf-8 lower, utf-16le, utf-16le lower | -- |
+| **`xxHash64`**, **`Murmur64A`** | the same four | 0 and 1 |
+
+`xxhash` and `mmh3` are not installed here, so **both were implemented from their published
+definitions in `scratch/hash64.py` and checked against xxHash64's published test vectors first**
+(`""` seed 0 -> `0xef46db3751d8e999`, seed 1 -> `0xd5afba1336a3be4b`, both reproduced exactly).
+*That check is what makes the negative meaningful: the algorithm is ruled out, not the
+implementation.*
+
+What the values do say:
+
+* **bits 0-59 are uniform** -- each set in exactly 50% of hashes;
+* **bits 60-63 are not** -- each set in only 28%;
+* the **top nibble is `0x0` in 46.95%** of hashes while `0x1`-`0xF` take ~3.5% each, against
+  6.25% for a uniform nibble;
+* ***that skew tracks path length***, not asset type: the nibble-`0` share runs **28.76% for
+  50-60 character paths and ~67% for paths over 80**, correlation **+0.316**. It looked like a
+  type tag because `.fbx` paths (73%) are long and `.ab` paths (27%) are short -- **the
+  extension correlation is a proxy for length.**
+
+*A function whose top four bits stay clear more often as the input grows is a strong fingerprint*
+and should identify it quickly once a wider hash library is available.
+
+***The hash is non-linear, so differential recovery will not work.*** The pool contains many
+paths differing in a single character, which for any polynomial or accumulate-style hash
+(`h = h*M + c`) forces a *constant* difference for a fixed `(length, position, character delta)`.
+Measured over 881 such groups: **796 vary and only 85 are constant, and every one of those 85 had
+just a single observed pair** -- constant by having nothing to disagree with. **The same holds
+for XOR.** *So the function ends in an avalanche finalizer*, which rules out the entire
+linear-accumulate family structurally rather than one member at a time, and means the algorithm
+must be identified by name rather than solved for.
+
+**The remaining route is the engine binary** -- and a constant scan of it narrows nothing on its
+own. Searching for the published 64-bit constants of seven hash families:
+
+| binary | constants present |
+| --- | --- |
+| `UnityPlayer.dll` | **Murmur3 `fmix64` x58 each**, xxHash64 primes 1-5, CityHash k0-k2, FNV-1a64 |
+| `GameAssembly.dll` | FNV-1a64 prime x70 / offset x62, xxHash64 primes |
+| `HGP.dll` | xorshift64* x57, FNV-1a64 x10 |
+
+***Presence is not use.*** These binaries carry several hash families at once, so the scan cannot
+say which one writes this table -- *but the 58 `fmix64` pairs pointed at MurmurHash3_x64_128,
+which is a different algorithm from the already-eliminated Murmur64A (MurmurHash2) and whose
+`fmix64` finalizer matches the measured avalanche.* **It was implemented and tested: no match
+across 4 encodings x 3 seeds x both 64-bit halves** (self-test: `murmur3_x64_128(b"", 0)` returns
+`(0, 0)` as published).
+
+**Seven families and 44 combinations are now eliminated**, every one with a verified
+implementation. *Identifying the function needs the routine disassembled rather than more
+candidates guessed*, which is a larger task than this section has needed so far and is recorded
+as the next step rather than attempted here.
+
+##### The resolver works on the chunk data
+
+***`InitChunkData` carries these hashes, and they resolve.*** Over 25 large chunk files and
+6,101,502 aligned u64 words:
+
+| set | matches | rate |
+| --- | --- | --- |
+| **the real 787,063 hashes** | **179,537** | **2.9425%** |
+| decoy: same set with the low bit flipped | 4 | 0.0001% |
+| decoy: same set with bit 40 flipped | 0 | 0.0000% |
+
+***The decoy control is what makes this safe to claim.*** A random-u64 control scores 0% here
+too, but chunk data is not random -- it is adjacent float pairs -- so a decoy of **identical size
+and magnitude** is the honest test, and it lands at 1 in 10,000 of the real rate.
+
+Resolved, a chunk's hashes name its asset dependencies -- NavMesh chunks, HLOD meshes, character
+`.fbx`, effect textures, terrain `.bytes`, `.ab` bundles. **A single hash repeats thousands of
+times within one file** (4,487x for the top asset in one `_Global_` chunk), which is what
+per-instance storage of a shared mesh reference looks like.
+
+*This was nearly discarded.* The cross-level references and the heavy repetition looked like
+false positives, and the reasoning "a `blackbox02` chunk would not reference `map02` assets"
+was wrong on both counts -- **`_Global_` chunks reference shared assets, and repetition is
+per-instance.** The decoy control settled it where intuition would have thrown away a true
+result.
+
+###### Where these hashes appear, and where they do not
+
+| data | real hits | decoy |
+| --- | --- | --- |
+| **`InitChunkData`** | **2.94%** on large files, 1.02% on small | 0 |
+| `StreamingChunkData` | **0** | 0 |
+| `StreamingChunkInfo` | **0** | 0 |
+| `LAYER_*`, `iv` payloads, `iv` index | **0** | 0 |
+| `table` block | **0** | 0 |
+
+***The hashes are specific to `InitChunkData`.*** Not terrain, not irradiance volumes, not the
+config tables, and -- *the sharpest of these* -- **not `StreamingChunkData`**, which is the same
+format family from the same directories. **So `Init` chunks declare asset dependencies and
+`Streaming` chunks do not**, which is a semantic distinction between the two that the structural
+work never surfaced: the pair have matching layouts and differ in what they carry.
+
+#### Region A: a second hash table, keyed by something else
+
+Bytes 8 to 6,422,536 are **802,816 slots of 8 bytes** -- and `802,816 = 784 x 1024`, a capacity
+rather than a count. **299,979 slots (37.37%) are entirely empty** and 502,837 are occupied,
+which is a load factor around 0.63: *this is an open-addressing hash table.* The first word is
+hash-like -- all distinct over a 100,000 sample, spanning the full u32 range -- and the second is
+usually small (`1, 2, 3, 4 ...` in a decaying tail).
+
+***What it is keyed by is not any of the obvious things.*** Each tested against a control:
+
+| reading | result | control |
+| --- | --- | --- |
+| region B's 64-bit hash, low or high half | 0.03% / 0.10% | 0.016% |
+| an offset landing on a string record | 1.37% | 0.57% |
+| a string index (`<= 802,816`) | 0.14% | -- |
+| `crc32` / `fnv1a-32` / `fnv1a-64` of the paths | 0.04-0.08% | 0.056% |
+| **the 24-hex bundle id** from the 253,670 `.ab` paths, any 4-byte slice | **0.01-0.02%** | 0.013% |
+
+***The slot layout is tighter than first recorded.*** At stride 8 from byte 8 the zero-fractions
+are `[0.38, 0.38, 0.38, 0.84, 0.38, 1.00, 1.00, 1.00]`, so **the second field is effectively a
+single byte**, not a u32 -- the 4.29-billion maximum quoted earlier came from a ~0.5% tail, not
+the common case. *An apparent set of sub-region "shifts" was an artefact of profiling with a
+window size that is not a multiple of 8*, which rotates the stride phase every window; region A
+is uniform throughout.
+
+**So the file holds *two* hash tables over the same string pool**: region B keys 800,774 paths by
+a 64-bit hash and resolves at 100%, while region A keys ~502,837 entries by a 32-bit value that
+is *not* derived from the path text by any function tried, *nor* related to region B's hash.
+**It is plausibly keyed by something other than the path** -- a GUID, a bundle id, an object id
+-- which would explain every negative above at once. ***Recorded as open; the resolver in region
+B is the usable half.***
+
+### The `TRET` container, decoded exactly
+
+***Every file in the terrain block shares one container*** -- not just the `LAYER_*` families.
+Over **2,500 files: 0 non-`TRET`, 0 decode failures**, version 1 in all, and
+**`payload == file length - 20` in 2,500 of 2,500**, which fixes a 20-byte header:
+
+| offset | field |
+| --- | --- |
+| `+0` | magic `TRET` |
+| `+4` | version (always 1) |
+| `+8`, `+10` | width, height |
+| `+12` | mip count -- **1** for the per-chunk `Terrain_*` files (2,428), **11** for `LAYER_*` (72) |
+| `+14` | format code |
+| `+16` | payload size |
+
+***The format code determines bytes per texel, exactly and with no variance.*** Over the
+single-mip files:
+
+| code | files | bytes/texel | seen on |
+| --- | --- | --- | --- |
+| 6 | 889 | **2.0** | `Terrain_*_C` (34^2), `Terrain_*_H` (65^2) |
+| 8 | 329 | **4.0** | `Terrain_*_S` (132^2) |
+| 100 | 552 | **1.0** | `Terrain_*_T` (132^2) |
+| 101 | 658 | **1.0** | `Terrain_*_A`, `Terrain_*_N` (132^2) |
+| 5 | 7 | 1.0, uncompressed | `LAYER_C` |
+| 108 / 109 | 98 | 1.0, block-compressed | `LAYER_D` / `LAYER_N` |
+
+*Each code yields a single value across every file carrying it* -- 889 files at exactly 2.0,
+329 at exactly 4.0, and so on. **The per-chunk terrain maps are 34x34, 65x65 and 132x132
+single-level surfaces; the layer maps are 1024x1024 with a full 11-level chain.**
+
+#### The `LAYER_*` families
+
+All three share the container above, verified on **105 files with no exceptions**:
+
+| field | value |
+| --- | --- |
+| `+0` magic | **`TRET`** (105/105) |
+| `+4` version | 1 (105/105) |
+| `+8`, `+10` | width, height = **1024 x 1024** (105/105) |
+| `+12` | **11** -- the mip-level count (105/105) |
+| `+14` | format code: **5** = `C`, **108** = `D`, **109** = `N` |
+| body | a **full mip chain, 1 byte per texel** |
+
+***The size equation closes exactly:*** `header + sum((1024 >> i)^2 for i in 0..10)` equals the
+file length in **105 of 105 files, with zero trailing bytes**. The chain sums to 1,398,101.
+*The `+12` field is not inferred to be a mip count -- 11 is exactly the number of levels the size
+equation requires.*
+
+***The header is 20 bytes for every family.*** The u32 at `+16` equals **file length - 20 in 105
+of 105 files**, which fixes the header at 20 and makes that field a payload size.
+
+### `C` is uncompressed; `D`/`N` are block-compressed
+
+***There is no 27-byte prefix.*** That number was an artefact of assuming an uncompressed layout
+for all three. Block-compressed formats are 1 byte per texel but **pad every mip below 4x4 to a
+full 16-byte block**, so the two tails differ by exactly 27 bytes:
+
+| chain | bytes |
+| --- | --- |
+| uncompressed, 1024^2 down to 1x1 at 1 B/texel | 1,398,101 |
+| block, 1024^2 down to 4x4 plus two 16-byte mips | **1,398,128** |
+
+| family | uncompressed chain | block chain |
+| --- | --- | --- |
+| `C` (7 files) | **7 / 7** | 0 / 7 |
+| `D` (49 files) | 0 / 49 | **49 / 49** |
+| `N` (49 files) | 0 / 49 | **49 / 49** |
+
+***Perfect separation, no crossover***, and it explains three things that did not previously fit:
+
+* **`C` is a real image and `D`/`N` are not, byte-wise.** Downsampling L0 and comparing to L1
+  gives a mean error of **4.5 for `C`** and **72-75 for `D`/`N` at every candidate offset** --
+  block-compressed data cannot be box-filtered at byte level.
+* **Entropy and adjacency agree.** `C` reads **6.12 bits/byte with +0.973 adjacent-byte
+  correlation** -- a natural image; `D`/`N` read **7.56/7.83 bits with +0.09/+0.12** -- the
+  signature of compressed blocks.
+* The `D`/`N` level means sitting at ~128 at *every* level, which looked like signed encoding,
+  is just compressed data looking random.
+
+**So format code 5 is uncompressed 8-bit and 108/109 are two block-compressed formats** -- and
+the earlier note that `C` "holds a different kind of quantity" was right for the wrong reason.
+
+Decoding the levels confirms a real image pyramid: `LAYER_C`'s level means fall monotonically
+**37.97 -> 1.00**, which is what repeated downsampling does.
+
+**One statistical difference.** `D` and `N` sit at level means of **~124 and ~131**, hovering
+around 128 across every level, whereas `C` starts at **38** and decays. *Data centred on 128 is
+signed or offset-encoded; `C`'s is not*, so **`C` holds a different kind of quantity from
+`D`/`N`.**
+
+### `LAYER_C` is not a splat control map
+
+The file *counts* settle what the byte statistics could not. Over **744 LAYER files in 38
+directories**:
+
+| | |
+| --- | --- |
+| directories where `D` and `N` index sets are identical | **38 / 38** |
+| directories where `C`'s index set is a subset of `D`'s | **22 / 22** |
+| directories with **no** `C` file at all | **16 / 38** |
+| `C` files per directory where present | 1, 2 or 4 -- *never a fixed one* |
+
+***A splat control map is terrain-wide: exactly one per terrain, always present.*** `C` is
+neither. Its indices are drawn from the same per-layer numbering as `D`/`N` (`C[4,5,13]` against
+`D[0..7]`), most terrains have none, and those that do have a handful. **So `C` is a per-layer
+optional map, and the `m_splatControlMap` reading is eliminated** -- leaving the
+`m_colorVariationTex` sort of per-layer extra, which is what an optional third texture attached
+to *some* layers looks like.
+
+**The `D`/`N` pairing claim is independently confirmed** by the same census: identical index sets
+in every one of the 38 directories, which is stronger than the matching file counts it rested on
+before.
 - The surrounding machinery is named too: `HGASMVirtualTextureAllocator` with
   `AllocateTile` and `GetVTData`, `ASMTileManager` with an LRU tile cache,
   `HGTerrainGroundLayerClipmap` with `Initialize`/`Render`/`SetPlayerCenter`, and
@@ -7565,6 +8038,724 @@ values per word, one per parallel entry's worth of something.
 quad** (slot 4), and its own typed fields. *That is a far richer row than the "kind code plus
 five opaque fields" this section began with*, and all of it was hidden behind three fields
 recorded as sizes because they were never dereferenced.
+
+***And it changes nothing about the coverage gap.*** Marking those three vectors explicitly
+moves coverage from **59.99% to 60.05%** over 400 files -- **17,062 bytes, 42 per file**.
+They hold 59 entries at four bytes each; the gap is measured in megabytes.
+
+*Two separate things were being conflated under "unexamined".* The root typing was **wrong**
+and is now right, which matters for reading these files. The **byte volume** in the five
+large files is a different problem entirely, and no amount of correcting the root touches it.
+**A structural correction and a coverage gain are not the same currency**, and this one paid
+entirely in the first.
+
+##### AND IT BREAKS THE SLOT-7 FIELD-3 READING TOO
+
+Field 3 of a slot-7 element was recorded as *"a byte offset into the region `s4` sizes"*,
+and `s4` has just turned out to be a **vector offset**, not a size. That interpretation is
+void, so field 3 was dereferenced the same way -- **with controls this time**:
+
+| field | recorded as | dereferences to a vector |
+| --- | --- | --- |
+| **3** | "byte offset into `s4`'s region" | **434 / 434 = 100.00%** |
+| 1 | a count *(control)* | 9 / 434 = 2.07% |
+| 4 | the constant 4 *(control)* | **0 / 434 = 0.00%** |
+
+**Field 3 is a uoffset**, and the controls show the test discriminates rather than accepting
+anything. The vectors it reaches are short -- **length 2 in 392 of 434**, 15 in 32, 16 in 10
+-- with non-table elements.
+
+***So the records field 3 names are in the file after all.*** The earlier conclusion that
+*"their content is not here to decode -- only their sizes and the offsets that will address
+them once built"* is **withdrawn in full**. It rested on `s4` being an allocation size, which
+it is not.
+
+**That is the third claim in this family to fail the same way**: `s2`, `s3` and now field 3
+were each verified as *arithmetic* against other numbers, across tens of thousands of files,
+and each was a uoffset. *The formulas were real and the types were invented* -- and a
+uoffset that lands at a predictable distance from the end of a buffer will satisfy an
+arithmetic identity every time.
+
+##### What field 3's vectors hold: an alternating code/zero list, three codes in all
+
+Reading the elements: **952 words, and only 4 distinct values.**
+
+| value | hex | as two u16 | count |
+| --- | --- | --- | --- |
+| `0` | -- | -- | 476 |
+| `4194325` | `0x00400015` | (64, 21) | 392 |
+| `262144` | `0x00040000` | (4, 0) | 42 |
+| `262145` | `0x00040001` | (4, 1) | 42 |
+
+**Exactly half the words are zero**, and the layout is strictly alternating -- `[4194325, 0]`
+for the length-2 vectors, `[262144, 0, 262145, 0, ...]` for the length-15 ones. *So the
+vector is a list of `(code, 0)` pairs*, and the codes come from a **three-value vocabulary**
+across the whole sample.
+
+Read as two 16-bit halves the codes are `(64, 21)`, `(4, 0)` and `(4, 1)` -- a high half of
+64 or 4, a low half of 21, 0 or 1. **A three-code enumeration attached to a placement is a
+flag or kind list, not payload**, which fits the vector being two entries long in 392 of 434
+cases.
+
+*This completes the slot-7 element*: a component mask, a count, world centre and extents, a
+**uoffset to a short code list**, and the constant 4. **Nothing in it is a size, and nothing
+in it points outside the file** -- which is the opposite of what this section concluded twice.
+
+##### SWEEPING SLOT 5 FOR THE SAME ERROR -- two more uoffsets
+
+Rather than wait for the next field to break, every width-4 field of a slot-5 element was
+dereferenced at once:
+
+| field | tested | vector-shaped | valid table |
+| --- | --- | --- | --- |
+| 0 | 2,327 | 95.57% | 18.99% |
+| 1 *(kind code)* | 2,039 | **0.00%** | 2.40% |
+| 2 *(kind code)* | 1,855 | 11.11% | 7.44% |
+| **3** | 1,890 | 8.68% | **100.00%** |
+| **4** | 437 | **100.00%** | 31.81% |
+| 5 | 1,358 | **0.00%** | **0.00%** |
+
+*Fields 1 and 5 scoring 0.00% are the control* -- the test rejects scalars rather than
+accepting anything. **Field 3 is a uoffset to a table and field 4 a uoffset to a vector**,
+both at 100%.
+
+**The kind codes survive.** Fields 1 and 2 -- `StreamingLayer` and `ECSEntityType` -- are
+scalars on this test, so that identification, which rests on five independent lines, is
+untouched.
+
+***And it re-explains the Init/Streaming comparison.*** That census found fields 1 and 2
+**invariant** across a chunk's two files while 0, 3 and 5 **differed**, and read the
+difference as "per-file quantities". **Fields 3 and 0 differ because they are offsets** --
+two files with different layouts inevitably place the same object at different addresses.
+*The invariant/varying split was partly types, not semantics*, and only field 5 (a genuine
+scalar that differs in 100% of pairs) still needs a content explanation.
+
+##### The structure nests further than assumed
+
+Following slot-5 field 3 to its table (1,890 of them): the vtable is
+`(0, 0, 0, 12, 8, 4)` with objectSize **16** in 1,810 cases, `(0, 16, 0, 12, 8, 4)` with
+objectSize 20 in 80. **Three live fields at *descending* offsets -- +12, +8, +4** -- in a
+table whose whole body is 16 bytes: a soffset plus three words.
+
+Their values give them away:
+
+| field | offset | commonest value | resolves to |
+| --- | --- | --- | --- |
+| 5 | +4 | 12 (1,810), 16 (80) | `table + 16` / `table + 20` -- *immediately past the table* |
+| 4 | +8 | 12, 20, 24 | `table + 20`, ... |
+| 3 | +12 | 12, 24, 28 | `table + 24`, ... |
+
+**Three more uoffsets**, pointing at objects laid out directly after their own table --
+which is why the values are small and cluster on 12.
+
+***So the depth is greater than this section has been assuming throughout.*** The chain now
+runs root -> slot-5 vector -> element -> field-3 table -> three further objects, and each
+level was reached only by dereferencing a field previously written down as a number.
+**Every "distinct value" census in this family counted addresses as though they were data**,
+which is why so many of them found large distinct-value counts with no structure in them.
+
+##### Re-checking the two censuses that finding casts doubt on
+
+Applying the same dereference to the slot-3 "ids" and slot-4 "packed byte quads":
+
+| | in-bounds as an offset | resolves to a table |
+| --- | --- | --- |
+| **slot 3** | **0.00%** | **0.00%** |
+| slot 4 | 77.11% | **62.11%** |
+
+***Slot 3 is vindicated.*** Its values are not offsets by any margin -- 0 of 3,325 -- so the
+id reading survives, and with it the join to the name strings' hex suffix. **The test that
+broke `s2`, `s3`, slot-7 field 3 and two slot-5 fields clears this one**, which is worth more
+than never having doubted it.
+
+***Slot 4 was read at the wrong width.*** At 62.11% resolving to a valid table against a
+same-buffer random-position control of **3.13%**, the signal was real -- but 38% did not
+resolve, and a vector of uoffsets is all or nothing. The `0x02020202`-style values that looked
+like packed byte quads were the tell: **that is what a vector of *bytes* looks like read four
+at a time.**
+
+Read as a byte vector instead, over 400 files:
+
+| test | result |
+| --- | --- |
+| byte-vector storage `4 + n` fits | **100.00%** |
+| `count(slot4) == count(slot5)` | **100.00%** |
+| `count(slot4) == count(slot3)` | **100.00%** |
+| distinct byte values over 3,325 elements | **3** -- only `1`, `2`, `3` |
+
+##### Slots 4 and 5 are a union vector
+
+A `ubyte` vector of three small values running exactly parallel to a vector of tables is the
+FlatBuffers **union vector** signature: `field: [SomeUnion]` generates a `ubyte` type vector
+plus an offset vector. That is falsifiable -- the tag must *determine the element's layout* --
+so every slot-5 element was cross-tabulated against its tag over **1,200 files, Init and
+Streaming, 12,417 elements**:
+
+| tag | elements | vtable slot-count | distinct layouts |
+| --- | --- | --- | --- |
+| 1 | 2,368 | **5, always** | 2 |
+| 2 | 7,653 | **6, always** | 6 |
+| 3 | 2,396 | **4, always** | 4 |
+
+***0 of 10 layouts appear under more than one tag.*** Slot-count is a function of the tag at
+100% purity; the size variants inside a tag (obj 24/28, 40/44, 20/16) are ordinary
+default-omission. **So root slots 3, 4 and 5 are one three-part structure: ids, union type
+tags, union values** -- not three independent vectors, which is how they have been treated
+throughout.
+
+##### What this invalidates
+
+**The slot-5 field sweep and the field-3 table follow both pooled the three union members.**
+"Field 3" is a different field in a 4-slot, a 5-slot and a 6-slot table, so those two tables
+of percentages measured a mixture. It also explains their oddities -- the sweep's shrinking
+sample sizes per field index were the tag-2-only fields, and *it is the likely explanation of
+the "five lines" in the slot-5 kind codes*, which would be distinct union members rather than
+five lines in one code space. **Both results are demoted to structural-only and must be re-read
+per tag before anything is concluded from them.**
+
+##### The per-tag re-read
+
+Done over **900 files, Init and Streaming**, each width-4 field tested as a uoffset against a
+random-position control in the same buffer (`r` = resolves to a valid table, `c` = control):
+
+| | field 0 | field 1 | field 2 | field 3 | field 4 | field 5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| **tag 1** | 669 distinct, r 9.20% | **1 distinct** | -- | 8/12-byte inline struct | 11 distinct, r 14.62% | -- |
+| **tag 2** | 1,445 distinct, r 10.74% | 2 distinct, r 0% | 5 distinct, r 0% | **r 100.00%**, c 3.35% | **16 bytes, 100% zero** | 12 distinct, r 0% |
+| **tag 3** | 761 distinct, r 10.85% | 2 distinct, r 0% | 8 distinct, r 24.24% | **r 100.00%**, c 3.87% | -- | -- |
+
+***The 100%-against-3.4% contrast is the useful part of this table.*** It shows what a real
+uoffset looks like beside a scalar that coincidentally resolves, and retro-fits a calibration
+this section never had: **field 0's ~10% is three times control and still not an offset.**
+Cardinality agrees -- 669/1,445/761 distinct values is an id field, not a pointer.
+
+Established per tag:
+
+* **Field 0 of all three members is a high-cardinality id-like scalar**, not an offset.
+* **Field 3 of tags 2 and 3 is a uoffset to a table at 100%.** This is the nested table
+  followed earlier, so that result survives the demotion -- for those two members.
+* **Field 1 is tiny-cardinality in every member** (1, 2, 2 distinct) and *tag 1's is constant
+  across all 1,564 elements*.
+* ***Tag 2 field 4 is sixteen bytes that are zero in 2,781 of 2,781 elements***, across both
+  Init and Streaming. Read as 4 floats it is all-zero too. A struct field is written even when
+  default, so this is most likely reserved or always-default space -- **it is not a transform,
+  which is what a 16-byte inline struct in chunk data invites one to assume.**
+
+***The "five lines" of slot-5 kind codes are confirmed as the pooling artefact predicted
+above:*** per tag those fields have 2, 5 and 8 distinct values, and the earlier five-line
+structure was three different members' fields overlaid in one space.
+
+##### Field 0 is the object's name, and the id join closes at 100%
+
+***The per-tag table above understates field 0, and the "it is an id" reading in the previous
+commit is wrong.*** That test asked only whether the target was a *table*; a uoffset can point
+at a string or a vector just as well. Re-tested against every target kind:
+
+| target | tag 1 | tag 2 | tag 3 | control |
+| --- | --- | --- | --- | --- |
+| **string** | **40.49%** | **40.59%** | **39.15%** | **0.19-0.31%** |
+| table | 9.20% | 10.74% | 10.85% | 3.5-4.6% |
+
+At 130x control this is not ambiguous, and the ~50% that resolved to nothing are **empty
+strings**, whose zero length failed the `0 < count` guard in the checker. Decoded properly,
+every field 0 is a NUL-terminated name and **100.00%** parse as `<base>#<N>_<HEX>`.
+
+***These names give the three union members their identities:***
+
+| tag | representative names |
+| --- | --- |
+| 1 | `Reflection Probes (5)#0_6BF84D2`, `rp_global#0_1C8A4C4`, `Env_rabbit hole (2)#0_73AB3B3` |
+| 2 | `New Game Object#0_1255C60`, `MergedCollider_0_-1_0_0#0_51C0A5E` |
+| 3 | `AudioBox_0#30_42A2041`, `AudioEmitter_4192702263#30_6F648D2`, `SurfaceTypeData_3_3#31_5EA5EA4` |
+
+**The `#N` group is not decorative** -- it tracks field 1 exactly: `(tag 1, #0)` -> 8,
+`(tag 2, #0/#31)` -> 5, `(tag 3, #30)` -> 9. *So the tiny-cardinality field 1 and the name's
+group number are two encodings of the same thing*, which is the first independent check on
+those kind codes this section has had.
+
+###### The id join
+
+The hex suffix was compared to the parallel slot-3 id. Exact equality gave 72.24%, and the
+misses were not random: the suffix differed from the id's low 28 bits **by exactly one bit**
+each time (`D`->`5`, `B`->`3`, `A`->`2`). That is bit 27. The true rule, over **97,061 names
+in 2,500 files**:
+
+| rule | match |
+| --- | --- |
+| `suffix == id & 0x0FFFFFFF` | 98.613% |
+| ***`suffix == id & 0x07FFFFFF`*** | ***100.000%*** |
+
+***Exact, at full-corpus scale, with 0 names matching a different index.*** This establishes
+what was previously only inferred from a chance argument: **slot 3 is an id vector running
+index-parallel to slot 5, and the name carries that id masked to 27 bits.**
+
+##### Tag 1's field 3 is a StreamingComponentType mask -- the last union field, closed
+
+Censused positionally rather than word-wise (**4,386 elements, 1,500 files**): byte +0 is
+constant `0x01`, bytes +1..+4 are low-cardinality and bit-like, and **+5 onward are always
+zero** -- including the whole 4-byte tail of the 12-wide variant, *so that tail is object
+padding, not field content, and the field is 8 bytes.*
+
+There are only **8 distinct combinations**, and **the name prefix determines the combination at
+100%** -- every light type shares one, every reflection probe another. Read as a little-endian
+u64 they decode against the `StreamingComponentType` enum recovered from IL2CPP:
+
+| n | bytes | decodes to | names carrying it |
+| --- | --- | --- | --- |
+| 1,266 | `01 00 02 02 00` | `Transform \| Light \| HGAdditionalLightData` | Spot / Point / Linear Light, `lt_*` |
+| 645 | `01 00 01 00 00` | `Transform \| ReflectionProbe` | Reflection Probe(s), `rp_global` |
+| 217 | `01 40 00 00 00` | `Transform \| HGEnvironmentVolume` | `Env_*`, Global Env |
+| 19 | `01 80 00 00 00` | `Transform \| Volume` | Global Volume |
+| 19 | `01 00 02 22 00` | `Transform \| Light \| HGAdditionalLightData \| LensFlareComponentSRP` | Directional Light |
+| 14 | `01 00 00 00 01` | `Transform \| HGWaterGlobalConfig` | Water |
+| 5 | `01 00 08 00 00` | `Transform \| HGTerrain` | TerrainRoot |
+| 1 | `01 00 00 00 02` | `Transform \| HGWindMotor` | Wind |
+
+***8 of 8 masks decode with no unknown bits, and every decode matches its names.*** The enum
+comes from the IL2CPP metadata and the names come from the file, so **these are two independent
+sources agreeing eight times out of eight** -- this is not a name inference. The sharpest case
+is `Directional Light`, which differs from the other lights by exactly one bit,
+`LensFlareComponentSRP`: *a directional light that carries a lens flare, which is what a sun
+is.* **Every field of all three union members is now characterised.**
+
+This also ties the member back to known ground: **the slot-7 descriptor is a
+`StreamingComponentType` mask too**, so the same component vocabulary appears at two levels of
+this format.
+
+##### A cross-lane link the names open up, and why the raw route to it is closed
+
+Tag 3's names embed numbers -- `AudioEmitter_4192702263`, `AudioScatterEmitter_771790068`.
+Over 1,500 chunk files these yield **306 distinct ids in four kinds** (AudioEmitter 212,
+AudioScatterEmitter 60, AudioBoxEmitter 30, AudioPrismEmitter 4), all inside u32 and ranging
+15,460,646 .. 4,268,220,140. **That is the shape of Wwise short ids**, so if they appear among
+the HIRC object or AKPK media ids, the chunk lane and the audio lane are joined by something
+stronger than a name -- *and this section has wanted a cross-lane anchor for a long time.*
+
+**The raw route is closed.** Every audio package begins with the magic `:)xD`, not `AKPK`, so
+the containers are obfuscated and a byte scan finds no `HIRC`/`BKHD` at all -- 0 sections
+across `Audio` and `InitAudio`. *A scan reporting zero here means the scanner never reached the
+banks, not that the ids are absent*, and the intersection measured that way (0 of 306, with a
+control also at 0) **carries no information and is recorded only so it is not re-run.**
+
+The maintained audio pipeline already enumerates AKPK media ids through `AnimeStudio.CLI`,
+which handles the container, and **its decoded intermediate is already on disk** --
+`tmp/audio/hirc_action_current/audio_audit.json`, 325 MB of `akpk-structure-audit-v1`. So the
+join could be run after all, without re-running the pipeline or touching its sources.
+
+###### The join runs, and it is a clean negative
+
+Scanning the whole audit for each id as a decimal and as a hex token:
+
+| set | found |
+| --- | --- |
+| 3 source ids known from the named-reach report *(positive control)* | **3 / 3** |
+| the 306 emitter ids | **0 / 306** |
+| 306 random ids drawn from the same range *(negative control)* | **0 / 306** |
+
+***The positive control is what makes this worth recording.*** The first attempt at this join
+scanned the raw packages, found nothing, and the zero meant only that the scanner never reached
+the banks. Here a known-present id is found 3 times out of 3, in sorted id lists, **so the scan
+demonstrably works and the absence of the emitter ids is a real result rather than a broken
+tool.**
+
+**The emitter numbers are not any id the AKPK/HIRC audit records** -- not source ids, not media
+ids. They are therefore *not Wwise identifiers into the shipped banks*, and the obvious
+hypothesis is closed. Supporting evidence from the chunk side agrees: the number **is not the
+element's own id** (0.00% against both the id and its 27-bit mask), spans the full u32 range,
+and **22 of 306 recur across level directories, one in six levels** -- an authored identifier
+that is shared between places, rather than a per-instance Unity id.
+
+*What they do identify is still open, but the search space is now smaller by the most obvious
+candidate.*
+
+#### The unreached bulk of InitChunkData is an array of transform matrices
+
+The coverage gap was last recorded as "~44% unreached, concentrated in five multi-megabyte
+files", with the largest run 444,381 bytes in `blackbox02_dg001/InitChunkData_-1_0_0_0.bytes`.
+***The run was being read at the wrong alignment.*** It begins at 2,601,975, which is not
+4-aligned, so word reads were shifted by three bytes -- which is exactly why the earlier census
+found top values `0x0000003f` / `0x000000bf` / `0x000000be`. **Those are float exponent bytes
+sitting one byte off**, and it is the same three-byte shift the earlier note recorded as
+"exponent bytes concentrate at `mod 4 == 3`" without following it up.
+
+Realigned absolutely, the window is `0.0`, `1.0` (4,707x), `61.71` (2,966x), `0.049`, `0.286`
+-- and consecutive `1.0` values are **24 words apart**. Laying the floats out on that stride:
+
+```
+-0.5947   0.0000   0.2789   0.0000
+ 0.0000   0.6569   0.0000   0.0000
+-0.2789   0.0000  -0.5947   0.0000
+-166.69  61.7100  37.6612   1.0000
+```
+
+***A row-major 4x4 affine transform.*** A rotation about Y at uniform scale 0.6569
+(`|row0| = sqrt(0.5947^2 + 0.2789^2) = 0.6569`, matching row 1), translation in the last row,
+fourth column `(0,0,0,1)`.
+
+Tested as a hypothesis rather than read off one sample -- fourth column zero, rows mutually
+orthogonal to 1e-3, scale uniform to 1e-3 -- **scanning every 4-aligned offset** of that file:
+
+| | |
+| --- | --- |
+| matrices found | **19,990** |
+| gap between consecutive matrices == 96 bytes | **18,451 / 19,989 = 92%** |
+| random 16-float windows passing the same test *(control)* | **1.88%** |
+| unreached bytes inside a 64-byte matrix | 41.84% |
+| ***unreached bytes inside the 96-byte record*** | ***62.76%*** |
+
+**The record is `[64-byte matrix][16 zero bytes][16 bytes of floats]`** -- words +16..+19 are
+zero in **19,989 of 19,990**, the same always-zero 16-byte block seen in the union's tag-2
+field 4, which suggests one reserved field reused at both levels.
+
+***This also settles the `61.71` mystery.*** It was recorded as an unexplained value repeating
+2,966 times and localised to a 2x2 chunk block whose chunks have no populated placements.
+**It is the Y component of the translation row** -- the ground height where those objects stand.
+*It was never a strange constant; it was a coordinate being read as an opaque number.*
+
+**Scope:** measured on the worst file. A second large file (`InitChunkData_Global_0_0.bytes`,
+1,846 matrices) gives 19.2%, so the share varies and *this is not yet a corpus figure.*
+
+##### Trying to make it a corpus figure -- partly done, and the diagnosis was wrong
+
+`scratch/coverage4.py` rewrites the walk with O(1) marking (spans resolved once by a numpy
+difference array instead of a bytearray slice per call) and a cached `vtable_of`. It is
+**byte-identical to `Walker3` on 120 of 120 files**, and it makes the 3.2 MB worst file walkable
+in **15 s**, which `Walker3` could not do at all. *That part worked.*
+
+***The corpus figure still does not exist, and the reason is not what was written above.***
+A run over all `InitChunkData` files managed only **45 files in 554 s**, which is ~12 s each for
+~59 KB files -- absurd. Profiling then showed **the walk is not the bottleneck**: 0.00 s per
+file on typical inputs, and 6 files stream and decode in 0.4 s. *So "the pure-Python walker is
+too slow" was the wrong diagnosis.* **A few specific files stall it**, and the rest are instant.
+
+A node budget was added to `table()` so a stalling file fails closed as `unbounded` rather than
+silently returning a truncated coverage number. **It did not stop the stall**, which localises
+the problem usefully: *it is not in table recursion.* The remaining suspects are the O(count)
+element list `follow()` rebuilds for every candidate vector (count up to 65,536), and the
+Python loop over spans in `coverage()`.
+
+What can be quoted, from **45 completed walks totalling 2.67 MB**:
+
+| | |
+| --- | --- |
+| unreached by the structural walk | 46.75% |
+| of that, inside a 96-byte TRS record | 19.36% |
+| combined accounted for | **62.30%** |
+
+##### The stall, found
+
+Printing each filename before walking it named the culprits directly: a **134 KB** file took
+**38.6 s** at only 880 tables, a **323 KB** file took **70.2 s** at 679. *Time was unrelated to
+table count and tracked `offsetVectors`.* The cause was in `follow()`: it built a Python list of
+every element -- **up to 65,536 ints** -- for **every candidate vector**, before testing whether
+the vector was acceptable. Replacing that test with a vectorised numpy read:
+
+| file | before | after |
+| --- | --- | --- |
+| `InitChunkData_Global_1_0.bytes` (323 KB) | 70.2 s | **16.6 s** |
+| `InitChunkData_-1_0_1_0.bytes` (134 KB) | 38.6 s | **12.0 s** |
+| `InitChunkData_-1_0_0_0.bytes` (3.2 MB) | 15.0 s | **10.0 s** |
+
+Still **byte-identical to `Walker3` on 150 of 150 files**, and every coverage value unchanged.
+
+***One further optimisation was tried and was wrong.*** `as_string` tests printability with
+`all(32 <= c < 127 for c in s)`; pushing that into C as `min(s) >= 32 and max(s) < 127` made it
+**slower** -- the 3.2 MB file went 10.0 s -> 14.2 s. `min`/`max` each traverse the whole slice
+while `all` short-circuits on the first non-printable byte, *and nearly every candidate fails on
+byte one.* **Reverted, with the measurement recorded in the code so it is not retried.**
+
+With the faster walk, **92 files / 5.51 MB** in one bounded run: 24.14% unreached, 19.23% of
+that inside a 96-byte TRS record, **80.50% combined accounted for**.
+
+***That is still a sample.*** 92 of 26,520 files is not a corpus figure and must not be quoted
+as one.
+
+##### Benchmarking on this machine needs a quiet machine
+
+A full-corpus background run reached 200 files in 1,088 s -- ~5.4 s/file, which extrapolates to
+**about 40 hours**. To cut that, a numpy pre-filter was added to skip vector elements that could
+be neither a string nor a table. Measured against the existing code it looked **3-4x slower**.
+
+***That measurement was invalid, and the reason is worth keeping.*** The corpus run was still
+going in the background, competing for CPU, while the "before" baselines had been taken on an
+idle machine. **Re-measured with the background job stopped, the same three files varied by up
+to 4x run to run with no code change at all** -- 16.6 s and 63.0 s for the same walk of the same
+buffer. The pre-filter won on one file and lost on two, entirely inside that noise.
+
+**It was reverted.** *An optimisation that cannot be shown to help is just more code*, and the
+measurement is recorded in the source so it is not tried again. The earlier `min`/`max`
+`as_string` result should be read with the same caution -- though that one at least was taken
+against an idle machine.
+
+##### Fail-closed on the stragglers instead
+
+Since a minority of files stall the walk while most are instant, `walk()` now takes a wall-clock
+`seconds` budget alongside the node budget: a file that exceeds it is marked **`unbounded`** and
+**excluded from the percentages**, with its count and bytes reported, rather than contributing a
+truncated coverage. Still **byte-identical to `Walker3` on 150 of 150 files.**
+`scratch/corpus_coverage.py` runs the full set at a 3 s/file budget and writes
+`corpus_coverage.json` with `total / success / unbounded / unboundedBytes / decodeFailed`, so
+the denominator and the excluded share are both visible.
+
+##### The actual bottleneck, found by profiling instead of guessing
+
+***Three successive diagnoses of this walk's cost were wrong*** -- "the pure-Python walker is too
+slow over multi-megabyte files", then the O(count) element list in `follow()`, then a wall-clock
+budget. A profile of one 134 KB file ends the argument:
+
+```
+268,365 calls   13.694s   method 'index' of 'list' objects
+```
+
+**`live.index(off)` in `table()` was 96% of the entire walk.** It rescans the sorted slot list
+for every slot of every table, making the function quadratic in slot count. *Nothing to do with
+vectors, element counts, or file size* -- which is exactly why every fix aimed at those missed.
+Replacing it with a precomputed offset-to-position map (reproducing `index()` exactly, including
+which position a duplicated offset maps to):
+
+| file | before | after |
+| --- | --- | --- |
+| `InitChunkData_Global_1_0.bytes` (323 KB) | ~67 s | **0.31 s** |
+| `InitChunkData_-1_0_1_0.bytes` (134 KB) | 13.4 s | **0.25 s** |
+| `InitChunkData_-1_0_0_0.bytes` (3.2 MB) | 13.4 s | **0.31 s** |
+
+**40-200x, still byte-identical to `Walker3` on 150 of 150 files**, every coverage value
+unchanged.
+
+***The profile also exposed why the budget never fired.*** It reported `work = 6,799` elements
+on a file that took 13 seconds -- proof the time could not be in the element loops -- and the
+deadline was checked every 8,192 elements, so on that file it was never checked at all. The
+counter now advances where the work happens, though with the real bottleneck gone it should
+rarely be needed.
+
+***The lesson, which cost two turns:*** on this walk, *measure before optimising.* Every
+guess-driven change was aimed at the wrong function, and the one that mattered took a single
+profile to find.
+
+#### The corpus coverage figure
+
+The full `InitChunkData` set now walks in **32 minutes** -- it had been extrapolating to 36
+hours -- and completes with **0 unbounded files**: 26,519 of 26,520 walked, 1 decode failure,
+2.91 GB decoded.
+
+***The durable conclusion: the structural walk reaches barely half of this format, and the
+largest single thing it does not reach is an array of transform matrices.*** Just under half
+the bytes are unreached from the root, a little over a quarter of those sit inside the 96-byte
+TRS record, and **over 6.7 million transform matrices** are present corpus-wide against a
+control that passes at 1.88%. *The transform-array reading is not a property of one file; it is
+the dominant content of the format.*
+
+**A first pass of this must not be quoted.** It used a 3 s per-file budget and excluded 58 files
+totalling 571 MB as `unbounded` -- ~20% of all bytes, and precisely the large files holding most
+unreached content. **The exclusion was not neutral: it flattered the result by ~2.8 points.**
+*A coverage percentage measured with the hard files dropped is worth less than no percentage.*
+
+Counts, per-run totals and the acceptance test live in
+`reports/chunk_data/init_chunk_coverage_latest.{json,md}`, per the rule that changing counts and
+full inventories belong in reports rather than memory prose.
+
+##### What the unreached bytes actually hold
+
+*"Unaccounted" is the absence of a finding, not a finding*, so every unreached byte was
+attributed to exactly one named bucket, over the full corpus (26,519 files, 0 unbounded).
+**The largest part is zero bytes -- 45.75% of everything the walk does not reach.** Zeros are
+padding and default space, not undiscovered structure.
+
+***The honest size of the gap is therefore 11.65% of the format, not the 34.4% the headline
+coverage figure implies.*** Quoting "a third unaccounted" overstates it by roughly three times.
+*The single most useful thing done to this number was refusing to leave it as one word.*
+
+***The rest is not alien data; it is the same scene population, stored a second time.***
+Searching the unreached region for the `<name>#<N>_<HEX>` form established for union field 0
+finds it densely -- **39.1% of all such name occurrences lie in bytes the walk never reaches** --
+and the vocabulary is the union's own, dominated by prefab instances (`P_prop_*`, `P_tree_*`,
+`P_bush_*`, overwhelmingly `_ECSMerged`) then `MergedCollider`, `GrassGrid`, `AudioEmitter`,
+`SOCChunk`, `SurfaceTypeData`, `Reflection Probe`, `Global Volume`.
+
+***That first looked like additional objects the walk fails to traverse. It is not.***
+**99.61% of the names found in unreached bytes are names the union already reaches**, and
+counting occurrences shows why: **1,303 of 1,311 distinct names appear exactly twice** (mean
+1.99 copies), **72.6% with one reached copy and one unreached copy**, and only one name with no
+reached copy at all. *The same string is stored at two offsets* -- for example
+`P_prop_map01_vatzmdlife+1_008_s03_ECSMerged#0_637998D` at 3,560 (unreached) and 1,054,728
+(reached).
+
+***So the unreached region does not extend the scene population; it duplicates its name set.***
+Taken with the transform arrays, **`InitChunkData` embeds a second serialized payload that is
+not reachable from the FlatBuffers root** and that carries the same objects' names alongside
+their transforms. **The scene contents are therefore already enumerated by the union** -- the
+gap is a second encoding of them, not unseen objects.
+
+##### How the second payload is organised
+
+*It is not one opaque blob.* The root carries **two parallel vector groups**, not one: slots
+3/4/5 at the union's element count, and **slots 6/7 at a second, much smaller count** (1, 9, 15,
+20 ...). Following slot 7's elements as uoffsets lands them **immediately after each large
+unreached block** -- block 38,288..82,404 ends exactly at slot-7 target 82,404, and so on down
+the file. ***So the payload is a sequence of descriptor-delimited blocks, and the descriptors
+are reachable even though the blocks are not.***
+
+Each descriptor is a 56/60-byte table holding, in order: an **8-byte `StreamingComponentType`
+mask** (which is the previously recorded slot-7 descriptor, now located), a **count**, **two
+floats**, a large size-like word, and a constant `4`.
+
+**The count nearly partitions the union.** Summed over a file's descriptors it equals the union
+element count exactly in 15% of 400 files and falls short by just **1 to 7** in most of the rest
+-- *a near-partition, so the descriptors group the scene's objects into streaming blocks.* The
+residual is small and consistently positive; a plausible reading is the handful of global
+objects (`Directional Light`, `Global Volume`, `Water`, `Wind`) that belong to no block, **but
+that has not been tested and is not claimed.**
+
+***The size-like word is not the block length*** -- summed against unreached bytes the ratio
+ranges from **0.001 to 1.27**, and single-descriptor files pair a 2 KB sum with a 100 KB payload.
+
+***It is the block's per-object payload size.*** It correlates **+0.943 with the descriptor's
+count** and near zero with names, matrices or block length, and it is divisible by 4 in 100% of
+cases. Fitting `size = a x count + b` **within each component mask**, over 29 masks in 120
+files, gives **integer `a` and a constant `b` of about 20-22 bytes**:
+
+| mask | bytes per object | b | max residual |
+| --- | --- | --- | --- |
+| `0x100000200000` | **80** | 20.00 | **0.00** |
+| `0x0000082001ff` | **328** | 20.00 | **0.00** |
+| `0x8000202402ff` | **589** | 21.59 | 1.68 |
+| `0x8000202408ff` | **1021** | 21.72 | 1.72 |
+| `0x8000202410ff` | **1597** | 22.00 | 2.00 |
+
+So **`size = archetypeSize x count + ~20-byte header`**, where the archetype size is a constant
+determined by the component mask -- *which is exactly what an ECS chunk's serialized size looks
+like*, and it ties the descriptor's mask to its payload quantitatively rather than by name.
+
+**The obvious corroboration is weak and is not claimed as support.** Bytes-per-object correlates
+only **+0.550** with the number of components in the mask, and *masks with the same 13 components
+give 505, 589, 733, 1021 and 1597* -- consistent with different components having different
+sizes, but no evidence in its own right. **The fit is the result; the component count is not.**
+
+A second confirmation fell out of the offsets: **slot 4's storage ends exactly where slot 5's
+begins**, which is only true if slot 4 is a byte vector -- the reading established earlier from
+value shape alone now also holds geometrically.
+
+##### Inside a block
+
+**The names are a fixed-width array, not a string pool.** Across 100 blocks in 8 files, the
+spacing between consecutive names is **exactly 64 bytes in 99.83%** of 2,420 gaps, and each slot
+holds a **NUL-terminated ASCII name zero-padded to 64 bytes** -- text lengths run 15 to 63, never
+exceeding 63 plus the terminator, and the remainder is zero in almost every case. That is a
+`char[64]` field, which is *also why the names are duplicated*: **the block stores its own fixed
+copy of a name the FlatBuffers side already stores as a variable-length string.**
+
+##### How a block's regions are ordered
+
+Over **48 blocks** of at least 8 KB carrying both names and matrices:
+
+| | |
+| --- | --- |
+| all matrices before all names | **47 / 48 (97.9%)** |
+| all names before all matrices | 1 / 48 |
+| ***interleaved*** | ***0 / 48*** |
+
+***The zero is the informative cell.*** The two populations never mix, so a block is
+**regionally partitioned**, not a sequence of per-object records -- which is the same conclusion
+the failed name-to-matrix proximity test reached from the opposite direction. Median layout:
+float/header content to ~0.31 of the block, transforms ~0.31-0.53, names ~0.54-0.61, trailer
+after; and the gap from the last matrix to the first name is typically **96 bytes**, one
+transform record.
+
+**The name array is contiguous in 85.4%** of blocks -- `count x 64` spans exactly the distance
+from first to last.
+
+***The transform region, however, is not one contiguous array.*** At 96-byte stride it breaks
+into a median of **58 separate runs** per block (min 3, max 1,027).
+
+**But the stride itself is stable.** Grouping matrices by the descriptor whose block they fall
+in, the dominant gap is **96 bytes in 50 of 50 groups, for all 19 distinct component masks
+observed.** *So the record size does not vary by component mask* -- a hypothesis raised by one
+file whose gaps were dominated by 160 (= 96 + 64, temptingly a record plus a name slot) and
+**refuted as soon as it was measured across files.** The fragmentation is skipped slots within a
+constant-stride array, not a varying record size.
+
+A sample record reads as an identity rotation with translation (-67.30, 1.336, -2.051) followed
+by `(0, 1, 0, 0)` and 80 zero bytes.
+
+###### What separates the runs: two hypotheses, both refuted
+
+***The skipped slots are not rejected matrices.*** Enumerating every 96-aligned slot between the
+first and last accepted matrix gives **228,075 skipped slots**; they pass the scale-relaxed test
+at **0.23%** against a random-position control of **1.90%**. **They are *less* transform-like
+than random data**, so loosening the acceptance test would not recover them -- and the count
+rising from 1,846 to 2,543 on one file, which suggested this, was measuring something else.
+
+***There is no count word before a run.*** The dword preceding a run equals the run's length in
+29.13% of 13,978 runs and its byte length in **0.00%** -- and the sampled cases read `0` before a
+run of 2, contradicting the match outright. *29% is chance-level agreement between two small
+integers*, and **is recorded as a non-result rather than a weak signal.**
+
+***The framing itself was wrong.*** 228,075 skipped slots against a far smaller number of
+accepted ones means the matrices are **not a dense constant-stride array with holes**; they are
+**short runs scattered through a much larger region**.
+
+###### The ECS reading predicts this, and is only half borne out
+
+Once the descriptor is understood as an archetype plus an entity count, the natural reading is a
+**struct-of-arrays chunk**: each component type gets its own contiguous array, which would
+explain the never-interleaved regions, the `char[64]` array and the transform runs at once, with
+the space between runs being *other components' arrays*. It makes a sharp prediction: a block's
+transform array should hold exactly one entry per entity.
+
+**It does not.** Across 87 descriptors and 16,577 runs, the number of matrices in a descriptor's
+block equals its entity count in **0.00%** of cases.
+
+*What does hold is weaker:* **no run exceeds the entity count** (99.3% at or below) and **20.73%
+match it exactly**. But the array reading fails a second, independent test as well: **the span
+from a group's first to last matrix, measured in 96-byte slots, equals its entity count in 0% of
+groups and exceeds it in 60%**, with a median span/count of **2.07** and a maximum of **4,519**.
+*Matrices are not laid out as one N-slot array per descriptor.* **The ECS struct-of-arrays
+reading is not supported and is dropped rather than kept as a plausible story.**
+
+###### What actually fills the space between transform runs
+
+Measuring the acceptance test first -- as the failed hypothesis above said to do -- answers it.
+Of 33,022 rejected slots adjacent to an accepted matrix, the conditions fail in a very
+particular pattern: **`col3 zero` passes at 96.74% while `m15 == 1` passes at 8.98% and
+`scale uniform` at 0.00%.** *That is the signature of all-zero data*, which satisfies a
+zero-column test and fails every other one. Confirmed directly:
+
+| | |
+| --- | --- |
+| zero words within those slots | **86.12%** |
+| slots whose 64-byte matrix region is entirely zero | **56.15%** |
+| slots that are entirely zero across all 96 bytes | 12.44% |
+
+***So the space between transform runs is mostly zeros.*** Not a rival structure, not a component
+array -- **sparse default space**, which is the same answer the corpus decomposition gave from
+the other direction when it found 45.75% of all unreached bytes to be zero. *It also explains
+the earlier puzzle that skipped slots are* **less** *matrix-like than random data (0.23% against
+a 1.90% control): zeros fail the relaxed test too.*
+
+**An earlier count of 25/25 for the ordering was measured on a smaller, easier subset** (blocks
+with any names and matrices rather than at least three of each). The honest figure is 47/48.
+*Widening the sample moved the number, which is the reason to widen it.*
+
+***A length-prefix reading was tried and is not supported.*** The first dword of a block is close
+to the block's length for some blocks -- **39 of 100 within 512 bytes**, with a suspiciously
+consistent 132-142 byte difference -- but it is exact in **0 of 100**, and the remainder are
+nowhere near (one reads 1,057,398,912 for a 61,138-byte block). *Either the block boundary taken
+from the coverage mask is not the true block start, or the first dword is not a length.*
+**Recorded as unresolved rather than as a near-miss worth quoting.**
+
+***A plausible reading was tested and refuted.*** If each named instance carried its own
+transform, names and matrices would interleave. They do not: the distance from a name to the
+nearest matrix is **worse than chance** -- 0.5% within 256 bytes against a random-offset control
+at 20.6%. **Names and transforms live in separate regions**, which is what a pooled string table
+beside a contiguous transform array looks like, and *not* a record-per-instance layout.
+
+One further structure was isolated in the residue: a **24-byte fixed-stride record** whose six
+words are four constants, one sentinel `0xffffffff` and one small varying field -- a
+fixed-capacity, mostly-default table. It is real (17x its control) but minor, **1.59%** of the
+unreached bytes. **A constant-byte-fill hypothesis was measured and dropped** at 0.28%; the one
+20 KB run of `0x02` that suggested it is an outlier, not a category.
+
+The bucket counts live in `reports/chunk_data/init_chunk_residue_latest.{json,md}`.
 
 ##### FIRST LOOK AT THE 98%: NAMED PROXY-ENTITY RECORDS
 
