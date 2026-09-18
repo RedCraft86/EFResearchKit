@@ -94,6 +94,31 @@ console errors, deep links, filters, media playback, and explicit degraded
 states. Use the serve/package workflow only when browser or archive validation
 is required.
 
+The frontend smoke test is, concretely: load every normal page and read the
+browser console; check Story reset, the recovery filters, and the SNS
+emoji/sticker fixtures named in [`../webui/README.md`](../webui/README.md);
+open one playable character and one enemy in Gameplay and verify variants,
+progression, skills, projectiles, sounds, and asset links; and confirm that an
+absent optional input produces a clear degraded state rather than an empty
+success.
+
 Changing counts and per-build inventories belong in `reports/`; page guides
 record only stable recovery logic, evidence boundaries, and the highest-value
 gaps.
+
+## Packaging contract
+
+`pack_webui.py` emits four matching archives; the commands are in
+[`../scripts/README.md`](../scripts/README.md). The main archive owns WebUI
+code and generated text data. The `-media` archive owns images/videos referenced by
+Story, Text, Map, Characters, and Gameplay plus their compact asset index. The
+`-audio` archive owns FLAC files referenced by those pages. The optional
+`-resources` archive owns every file listed by the Assets page—including
+indexed images, videos, JSON, OBJ, and FBX files—the remaining FLAC set, and
+the complete Audio/Assets resource indexes. Assets referenced by normal pages
+are duplicated there so the Assets page works from the resources archive alone.
+With no selection the archives publish atomically in main, media, audio, then
+resources order; an explicit selection uses the caller's order.
+Already-compressed media is ZIP-stored instead of being recompressed. Each
+archive includes a UTF-8 Chinese usage note; extract resources last because its
+complete asset index replaces the compact media-only index.

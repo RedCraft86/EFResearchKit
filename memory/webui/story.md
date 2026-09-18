@@ -20,6 +20,11 @@ inference into one confidence class.
 5. Manual inputs in `webui/overrides/story_order.json`, `options.json`, and
    `narrative_videos.json` are applied without being overwritten.
 
+6. The Story page additionally reads `webui/data/mission_pipeline/index.json`
+   for `storyCoverage.storyTriggerManifest`, which is published by the
+   standalone Mission Pipeline workflow rather than by a Story builder. Its
+   absence is a degraded trigger state, not a failed build.
+
 Primary outputs are `webui/data/manifest.json`,
 `webui/data/lang/<LANG>/index.json`, `conv/*.json`, `mission/*.json`, and
 `webui/data/assets/story_media.json`.
@@ -58,5 +63,5 @@ coherent batch boundary described in `AGENTS.md`.
 - Reduce unresolved option placement without weakening manual/generated labels.
 - Keep definition-only media, authored placement, and observed playback separate.
 
-See [`../game_story_recovery.md`](../game_story_recovery.md) for the durable
+See [`story_recovery.md`](story_recovery.md) for the durable
 Story reconstruction model and reports.
