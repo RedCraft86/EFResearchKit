@@ -141,7 +141,7 @@ build-specific catalog across files:
 Audio code follows the same ownership boundary. `build_audio.py` owns decode,
 Wwise indexing, relinking, and Gameplay sidecars;
 `build_audio_semantics.py` owns orchestration and publication only; reusable
-semantic domains live under `scripts/audio_semantics/`. Add logic to its
+semantic domains live under `scripts/webui/audio/semantics/`. Add logic to its
 domain owner instead of growing either entry point or importing the entry
 point as a helper library. Native claims must use the explicit selected
 `global-metadata.dat` plus `GameAssembly.dll` gate, fail closed on
@@ -152,17 +152,30 @@ index can supply both names and hashes.
 
 ### Raw-format ownership in `scripts/game_data/`
 
-`scripts/game_data/` owns installed-format decoding below any page or semantic
-view: it reads bytes and proves framing, and it does not publish WebUI data.
-Its durable conclusions belong to the owning `memory/game_data/` file under
-`memory/game_data_recovery.md`; its commands belong to `scripts/README.md`.
-Modules are grouped by role:
+`scripts/game_data/` is the first of the two script lines: it owns extraction
+from the installed client and installed-format decoding below any page or
+semantic view. It reads bytes and proves framing, and it does not publish
+WebUI data. Its durable conclusions belong to the owning `memory/game_data/`
+file under `memory/game_data_recovery.md`; its commands belong to
+`scripts/README.md`. Modules are grouped by role:
 
+- `extraction/` runs AnimeStudio and writes `export_full/`: the full and
+  changed-file exporters, the freshness guard, the object index, and the
+  `animestudio/` maintenance commands;
 - exact framing readers, one per payload family: `streaming.py`,
   `irradiance_volume.py`, `extend_data_binary.py`, `bundle_manifest.py`,
-  `ifix_patch.py`, and `inverted_lz4.py`. Terrain is the one split family: the
-  reader is `scripts/terrain_tret.py` at the root while its validator is
-  `scripts/game_data/terrain_native.py`. Put a new reader in the package;
+  `ifix_patch.py`, `inverted_lz4.py`, `terrain_tret.py`, `terrain_height.py`,
+  `dynamic_streaming.py`, and the serialized-gameplay readers
+  `levelscript_binary.py`, `leveldata_binary.py`, `ability_binary.py`,
+  `interactive_binary.py`, `spawner_binary.py`,
+  `char_interact_perform_binary.py` and `animation_config_binary.py`, with
+  their per-record codecs under `codecs/`. Put a new reader in the package,
+  never beside the page builder that first needs it;
+- `native_contracts/`, reviewed native facts about the installed binary that
+  Story, Mission Pipeline, Map and the recovery tools consume: one loader per
+  contract plus its byte-pinned JSON;
+- `media_resolver.py`, game-media naming (inline image tags, env-emoji prefab
+  layers, SNS and video naming) and asset-candidate resolution;
 - `*_corpus.py` current-corpus gates, which sweep the installed set and fail
   closed on an `--input-set-sha256`/`--expected-input-set-sha256` mismatch. The
   AnimeStudio VFS audit is the only producer of that value
@@ -179,7 +192,8 @@ Modules are grouped by role:
 - `memorypack/` for serialized gameplay payloads, with `core.py`/`schemas.py`
   shared and one module per domain;
 - `il2cpp_context.py` and `il2cpp_context_audit.py` for generic-instantiation
-  pointer tables.
+  pointer tables, and `il2cpp_protocol.py` for the shared IL2CPP and protobuf
+  primitives that validators and page builders both read.
 
 Keep a new family in its own reader plus its own corpus gate. Do not widen an
 existing reader to a second framing, and do not let a corpus gate infer a
@@ -208,6 +222,13 @@ different shapes:
   `postprocessor_*`, `streaming_*`) carry `schemaVersion`, `methods` as
   `[metadata index, type name, method, RVA]`, and `codeWindows` with a
   per-window `sha256` and `boundary`. `memorypack/` and the audit read them.
+
+`scripts/game_data/native_contracts/` holds a third set, one loader module per
+contract JSON of the same name. Every loader except `mission_task_paths` gates
+on the installed native inputs itself. That contract is validated by its
+consumers, the protocol registry and the mission trace hook manifest. Where a
+loader declares a `CONTRACT_SHA256`, the same edit-requires-pin rule below
+applies.
 
 `evidenceBoundary` is the vocabulary to use when recording what a contract
 proves, in both the JSON and any memory prose that cites it: `exact` for what
@@ -246,7 +267,7 @@ what a reader of that file would still get wrong.
 
 - Export and rebuild commands are long-running. Give them a generous timeout
   and wait; do not poll or re-check while one is still running.
-- `scripts/story_builder/build.py` takes about 3 minutes for the default CN
+- `scripts/webui/story/build.py` takes about 3 minutes for the default CN
   lean build. Multi-language or forced timeline recovery takes longer -- allow
   10-15 minutes (`timeout_ms` of at least `900000`).
 - Before starting a WebUI server, check whether the default
@@ -426,9 +447,9 @@ Browser behavior:
 
 Export freshness:
 
-- `export.bat` runs `scripts/verify_export_freshness.py` before rebuilding
+- `export.bat` runs `scripts/game_data/extraction/verify_export_freshness.py` before rebuilding
   from an existing `export_full/`.
-- Run `python scripts\verify_export_freshness.py` directly when checking the
+- Run `python -m scripts.game_data.extraction.verify_export_freshness` directly when checking the
   guard, and pass `--game-root "...\Endfield_Data"` for non-default installs.
 - If freshness reports stale source roots, rerun
   `.\export.bat --from-game` before Story or asset builders read
@@ -449,7 +470,8 @@ Setup and export internals:
   irradiance volumes, extend-data bins, patch bytes, and Lua. `build_audio.py`
   streams Wwise bank metadata directly from VFS when relinking audio events.
   `--structured-dump-mode default` adds Terrain while retaining the production
-  exclusions; use `--structured-dump-mode debug` only for broad VFS diagnostics.
+  exclusions. Raw containers are never dumped; probe them with a bounded
+  `AnimeStudio.CLI dump` into `tmp/`.
 - `export_assets.bat --from-game` (that is, `export.bat --assets-only
   --from-game`) passes `--skip-structured`, writes a
   lightweight VFS metadata index, runs WebUI-facing image/model/Material
@@ -460,7 +482,7 @@ Setup and export internals:
   optional script-schema recovery is wanted. Wrapper flags or
   `ANIMESTUDIO_DUMMY_DLLS` can supply it, but missing or stale DummyDll paths
   must warn and continue without failing normal exports.
-- `scripts\animestudio\generate_dummydll.py` is the maintained regeneration
+- `scripts\game_data\extraction\animestudio\generate_dummydll.py` is the maintained regeneration
   path. Run `--dry-run` first after a game update, then `--replace` only when
   script-derived schema recovery is needed. It discovers build-specific
   registrations, clones and verifies the pinned
@@ -479,11 +501,12 @@ Setup and export internals:
 
 Browser data inputs and outputs:
 
-- Active inputs include `export_full/structured/StreamingAssets/Table/*.json`,
-  recovered AnimeStudio text/metadata under `export_full/recovered/`,
-  exported image/model/material outputs under
-  `export_full/recovered/AnimeStudio-cli/<source>/`, and generated data under
-  `webui/data/`.
+- Active inputs are the export root's `game/` tree (layout v2, see
+  `memory/game_data/extraction_pipeline.md`): `game/Table`, `game/Json`,
+  `game/Video`, `game/Audio`, and decoded Unity objects under
+  `game/Unity/<Type>/`, plus generated data under `webui/data/`. Builder
+  evidence and comparison inputs go to `webui/data/_build/`, which is neither
+  served nor packaged.
 - Generated browser outputs include `webui/data/manifest.json`,
   `webui/data/lang/<code>/index.json`, `conv/*.json`, `mission/*.json`,
   `reference/**`, `webui/data/gameplay/projectiles.json`,
@@ -728,10 +751,10 @@ a broad audit of all files under the two export roots.
 `build_updates.bat` reads the saved previous export and current export roots
 from `endfield_paths.bat`
 (`ENDFIELD_PREVIOUS_EXPORT_ROOT` and `ENDFIELD_EXPORT_ROOT`). The underlying
-`scripts/build_updates.py` defaults to comparing:
+`scripts/webui/updates/build_updates.py` defaults to comparing:
 
 ```text
-export_1d2
+export_full_1d4d1
 export_full
 ```
 
@@ -830,29 +853,54 @@ export folder so the cached scanner baseline is rebuilt.
 ## Active Script Groups
 
 **The path-to-owner map is in [`scripts/README.md`](scripts/README.md)** under
-`## Layout`: extraction, installed formats, Story reconstruction, page builders,
-shared helpers, and tests. Do not keep a second copy here. The ownership rules
-that are not visible from that layout:
+`## Layout`. It has two lines that mirror the memory axes: `scripts/game_data/`
+(extraction and installed formats) and `scripts/webui/` (Story reconstruction,
+one folder per page, orchestration, and packaging), plus shared helpers and
+tests. Do not keep a second copy here. The ownership rules that are not visible
+from that layout:
 
-- `scripts/build_gameplay.py` owns every Gameplay page dataset. Stage modules
-  live in `scripts/gameplay_builder/`, and its `asset-refs` stage is the sole
+- Place new code by axis. If it reads the installed client or proves a format,
+  it goes under `scripts/game_data/`. If it projects exported data onto a page,
+  it goes in that page's `scripts/webui/<page>/` folder. Line 1 must not write
+  under `webui/data/`.
+- Dependencies point one way: `common.py`, `source_paths.py` and
+  `repo_paths.py` import neither line, `scripts/game_data/` imports only
+  those, and `scripts/webui/` imports both. Import rather than copy. A page
+  builder calls the `game_data` reader or contract. A helper both lines need
+  goes into `common.py` under a name that states its behaviour
+  (`sha256_file_upper`, `write_canonical_json`). Do not paste a private
+  copy. When an existing helper differs even slightly (casing, key order,
+  change detection), add a separately named one, because swapping it in would
+  change output bytes. The only line-1 read of line-2 output is data: focused
+  asset export reads published `webui/data` media references to scope its
+  Texture2D filter. The local `scripts/tests/test_scripts_layout_boundaries.py`
+  checks the direction statically and at import time.
+- Run every entry point as `python -m scripts.…` from the repository root,
+  both in wrappers and in docs. Import with absolute `from scripts.… import`.
+  Resolve the repo root through `scripts.repo_paths.REPO_ROOT`, never
+  `Path(__file__).parents[N]`. Do not reintroduce `__package__`-dependent
+  import branches or `sys.path` bootstraps: they encode a file's location, and
+  a move breaks them silently. A documented entry point guards direct file
+  execution with a `SystemExit` naming its `-m` command.
+- `scripts/webui/gameplay/build_gameplay.py` owns every Gameplay page dataset. Its stage modules
+  sit beside it in `scripts/webui/gameplay/`, and its `asset-refs` stage is the sole
   writer of `webui/data/assets/gameplay_refs.json`.
-- `scripts/build_audio_semantics.py` is the Audio orchestrator/publisher;
-  reusable Audio evidence owners live under `scripts/audio_semantics/`.
-- `scripts/story_builder/lua_consumer_references.py` owns the canonical
+- `scripts/webui/audio/build_audio_semantics.py` is the Audio orchestrator/publisher;
+  reusable Audio evidence owners live under `scripts/webui/audio/semantics/`.
+- `scripts/webui/story/lua_consumer_references.py` owns the canonical
   fingerprinted Lua consumer index that Mission Pipeline reads directly.
   Refreshing it requires an explicit complete plaintext-Lua extraction, because
   standard extraction omits Lua.
-- `scripts/story_builder/native_contracts/` holds reviewed current-build native
+- `scripts/game_data/native_contracts/` holds reviewed current-build native
   facts consumed by builders. Recovery hooks must reference or validate those
   contracts rather than duplicate them.
-- A production builder must not import or execute a `scripts/story_recovery/`
+- A production builder must not import or execute a `scripts/webui/story_recovery/`
   module. Recovery tools may import stable builder primitives, not the reverse.
 - Native carrier audits go through the single
-  `scripts/story_recovery/audit_native_carriers.py` profile CLI; reusable
+  `scripts/webui/story_recovery/audit_native_carriers.py` profile CLI; reusable
   scanner/profile code and versioned negative boundaries live in
-  `scripts/story_recovery/native_carriers/`.
-- `scripts/download_bilibili_video.py` is optional intake for the OCR/audio
+  `scripts/webui/story_recovery/native_carriers/`.
+- `scripts/webui/story_recovery/download_bilibili_video.py` is optional intake for the OCR/audio
   story-order workflow. It needs `requests`, `ffmpeg`, and browser-exported
   cookies, and is outside the stdlib-only export path.
 - `scripts/game_data/memorypack/` holds the maintained stdlib-only MemoryPack

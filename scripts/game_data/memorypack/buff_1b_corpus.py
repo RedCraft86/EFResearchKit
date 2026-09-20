@@ -20,7 +20,7 @@ from typing import Any, Mapping
 
 from scripts.common import NATIVE_EVIDENCE_VALIDATED, check_installed_native_inputs
 
-from . import buff_corpus, corpus_gate as vfs
+from scripts.game_data.memorypack import buff_corpus, corpus_gate as vfs
 
 
 TAG = 0x1B
@@ -37,7 +37,10 @@ BOUNDARY = (
     "invalidate an individually exact-closed earlier union range."
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+from scripts.repo_paths import REPO_ROOT
+from scripts.common import canonical_json_sha256
+
+REPO_ROOT = REPO_ROOT
 GAME_DATA_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_NATIVE_REPORT = REPO_ROOT / "reports/animestudio/il2cpp_context_current_latest.json"
 DEFAULT_NATIVE_CONTRACT = GAME_DATA_ROOT / "buff_1b_native.json"
@@ -1326,8 +1329,8 @@ def build_current_census(
         vfs._fail(
             "buff-1b-native-evidence-drift",
             source=str(native_report_path),
-            expected=vfs._canonical_sha256(native_before),
-            actual=vfs._canonical_sha256(native_after),
+            expected=canonical_json_sha256(native_before),
+            actual=canonical_json_sha256(native_after),
         )
     gate_source_after = vfs._fingerprint(Path(__file__))
     if gate_source_before != gate_source_after:

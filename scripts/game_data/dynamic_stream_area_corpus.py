@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.dynamic_streaming import (
+from scripts.game_data.dynamic_streaming import (
     OBSERVED_ROOT_SHAPES,
     OBSERVED_STREAM_AREA_INLINE_WIDTHS,
     OBSERVED_STREAM_AREA_VECTOR_WIDTHS,
@@ -24,7 +24,10 @@ from scripts.dynamic_streaming import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[2]
+from scripts.repo_paths import REPO_ROOT
+from scripts.common import sha256_file_upper as sha256_file
+
+ROOT = REPO_ROOT
 DEFAULT_OUTER = ROOT / "reports/animestudio/vfs_understanding_latest.json"
 DEFAULT_LEDGER = ROOT / "reports/animestudio/vfs_understanding_files_latest.jsonl.gz"
 DEFAULT_CLI = ROOT / "tools/AnimeStudio/AnimeStudio.CLI/bin/Release/net9.0-windows/AnimeStudio.CLI.exe"
@@ -36,13 +39,6 @@ SHA256_RE = re.compile(r"^[0-9A-F]{64}$")
 STREAM_AREA_NAME_RE = re.compile(r"(?:^|/)FBStreamArea\.bytes$", re.IGNORECASE)
 STREAM_AREA_FILE_REGEX = r"(?:^|/)FBStreamArea\.bytes$"
 
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest().upper()
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -554,7 +550,7 @@ def run_current_gate(
     if not cli_path.is_file():
         raise ValueError(f"AnimeStudio CLI is missing: {cli_path}")
     cli_sha = str(provenance["streamCliFingerprint"]["currentSha256"])
-    parser_path = ROOT / "scripts/dynamic_streaming.py"
+    parser_path = ROOT / "scripts/game_data/dynamic_streaming.py"
     parser_sha = sha256_file(parser_path)
     gate_path = Path(__file__).resolve()
     gate_sha = sha256_file(gate_path)
@@ -631,7 +627,7 @@ def run_current_gate(
         "parser": {
             "path": str(parser_path),
             "sha256": parser_sha,
-            "entrypoint": "scripts.dynamic_streaming.parse_dynamic_file('stream_area', bytes)",
+            "entrypoint": "scripts.game_data.dynamic_streaming.parse_dynamic_file('stream_area', bytes)",
         },
         "gate": {"path": str(gate_path), "sha256": gate_sha},
         "corpus": {

@@ -11,26 +11,21 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
-if __package__ == "scripts":
-    from .story_builder.animestudio_story_objects import (
-        REVERSE_GAMEASSEMBLY_SHA256,
-        REVERSE_METADATA_SHA256,
-        REVERSE_NATIVE_MAPPING_ID,
-        REVERSE_REPORT_PATH,
-        REVERSE_SCHEMA,
-    )
-else:
-    from story_builder.animestudio_story_objects import (
-        REVERSE_GAMEASSEMBLY_SHA256,
-        REVERSE_METADATA_SHA256,
-        REVERSE_NATIVE_MAPPING_ID,
-        REVERSE_REPORT_PATH,
-        REVERSE_SCHEMA,
-    )
+from scripts.repo_paths import REPO_ROOT
+from scripts.source_paths import ExportLayout, ExportLayoutError
 
-ROOT = Path(__file__).resolve().parents[1]
-EXPORT_ROOT = Path(os.environ.get("ENDFIELD_EXPORT_ROOT") or ROOT / "export_full")
+ROOT = REPO_ROOT
+# The configured export root (layout v2, see scripts/source_paths.py). Build
+# every path into it from EXPORT_LAYOUT; do not join its segments by hand.
+EXPORT_LAYOUT = ExportLayout.configured()
+EXPORT_ROOT = EXPORT_LAYOUT.root
+GAME_DIR = EXPORT_LAYOUT.game
+TABLE_DIR = EXPORT_LAYOUT.table_dir
+DATA_JSON_DIR = EXPORT_LAYOUT.json_dir
 OUT_DIR = ROOT / "webui" / "data"
+# Builder output that is not itself a page file: evidence indexes, caches, and
+# comparison inputs. Served and packaged builds exclude it.
+WEBUI_BUILD_DIR = OUT_DIR / "_build"
 LANG_DIR = OUT_DIR / "lang"
 ASSET_DIR = OUT_DIR / "assets"
 REPORTS_DIR = ROOT / "reports"
@@ -41,7 +36,7 @@ STORY_OPTION_REPORTS_DIR = STORY_RECOVERY_REPORTS_DIR / "options"
 UPDATES_REPORTS_DIR = REPORTS_DIR / "updates"
 ASSET_REPORTS_DIR = REPORTS_DIR / "assets"
 PATH_ID_EXPORT_STEM_RE = re.compile(r"^(?P<base>.+)_p(?P<path_id>[0-9A-Fa-f]{16})$")
-PATH_ID_EXPORT_SOURCE_FAMILIES = frozenset({"streamingassets", "persistent"})
+PATH_ID_EXPORT_SOURCE_FAMILIES = frozenset({"unity"})
 
 
 @lru_cache(maxsize=128)
@@ -194,10 +189,35 @@ def rel_requires_path_id_export_name(rel: str | Path) -> bool:
     source = normalized.split("/", 1)[0]
     if not source:
         return False
-    if source.lower().endswith("-structured") or source.lower() == "raw_vfs":
+    if source.lower() == "game":
         return False
     source_family = source.split("-", 1)[0].lower()
     return source_family in PATH_ID_EXPORT_SOURCE_FAMILIES
+
+
+def require_export_layout(export_root: Path | None = None) -> None:
+    """Refuse to build from a root that is missing, layout-v1, or mid-write."""
+    try:
+        ExportLayout(Path(export_root) if export_root is not None else EXPORT_ROOT).require()
+    except ExportLayoutError as exc:
+        raise SystemExit(f"export root not usable: {exc}") from exc
+
+
+def unity_asset_rel(value: str | Path) -> str:
+    """The ``Unity/<Type>/<file>`` asset reference for a path under game/Unity.
+
+    Accepts an absolute path, an export-root-relative path, or a URL path; any
+    other location returns "" so callers never guess a reference.
+    """
+    text = normalize_posix(str(value or ""))
+    marker = "/game/Unity/"
+    if text.startswith("game/Unity/"):
+        tail = text[len("game/Unity/"):]
+    elif marker in text:
+        tail = text.split(marker, 1)[1]
+    else:
+        return ""
+    return f"Unity/{tail}" if "/" in tail else ""
 
 
 def display_extension(value: str) -> str:
@@ -384,13 +404,6 @@ RECORDED_NATIVE_METADATA_SHA256 = (
 )
 SPACESHIP_STORY_GAMEASSEMBLY_SHA256 = RECORDED_NATIVE_GAMEASSEMBLY_SHA256
 SPACESHIP_STORY_METADATA_SHA256 = RECORDED_NATIVE_METADATA_SHA256
-STORY_ROOT_PLAYBACK_ALIAS_REPORT = (
-    REVERSE_REPORT_PATH
-)
-STORY_ROOT_PLAYBACK_ALIAS_SCHEMA = REVERSE_SCHEMA
-STORY_ROOT_PLAYBACK_ALIAS_MAPPING_ID = REVERSE_NATIVE_MAPPING_ID
-STORY_ROOT_PLAYBACK_ALIAS_GAMEASSEMBLY_SHA256 = REVERSE_GAMEASSEMBLY_SHA256
-STORY_ROOT_PLAYBACK_ALIAS_METADATA_SHA256 = REVERSE_METADATA_SHA256
 DEFAULT_INSTALLED_GAME_DATA_ROOT = Path(
     r"D:\Program Files\Endfield Game\Endfield_Data"
 )
@@ -474,6 +487,74 @@ def sha256_file(path: Path, *, chunk_bytes: int = 1024 * 1024) -> str:
     result = digest.hexdigest()
     _SHA256_FILE_CACHE[cache_key] = result
     return result
+
+
+def sha256_file_upper(path: Path) -> str:
+    """Uppercase hex SHA-256, the form contracts and corpus gates record."""
+    return sha256_file(path).upper()
+
+
+def canonical_json_sha256(value: Any) -> str:
+    """Uppercase SHA-256 of ``value`` as sorted, compact UTF-8 JSON."""
+    raw = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest().upper()
+
+
+def repo_path(path: Path) -> str:
+    """Resolved repository-relative POSIX path; the resolved absolute path
+    when it lies outside the repository.
+
+    Unlike :func:`rel_path`, this resolves symlinks and ``..`` first, which is
+    what a provenance field naming a contract or report needs.
+    """
+    path = Path(path).resolve()
+    return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
+
+
+def read_json_strict(path: Path) -> Any:
+    """Parse a UTF-8 JSON file, raising on a missing or malformed file.
+
+    Use :func:`read_json` instead when a default should replace a bad file.
+    """
+    with Path(path).open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def read_json_object_bytes(path: Path) -> tuple[dict[str, Any], bytes, str | None]:
+    """Read a JSON object with its exact bytes for hashing.
+
+    Returns ``(payload, raw, error)``: ``error`` is ``None`` on success, and a
+    bounded message when the file is unreadable, malformed, or not an object.
+    """
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return {}, b"", str(error)[:400]
+    if not isinstance(payload, dict):
+        return {}, raw, f"expected object, found {type(payload).__name__}"
+    return payload, raw, None
+
+
+def write_canonical_json(path: Path, value: Any) -> None:
+    """Write sorted, compact JSON with a trailing LF, always rewriting.
+
+    This is the byte-stable form Mission Pipeline publishes. Use
+    :func:`write_json` for change-detecting writes.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    path.write_text(encoded + "\n", encoding="utf-8", newline="\n")
 
 
 def resolve_installed_game_data_root(
@@ -721,14 +802,7 @@ def guide_runtime_non_mission_content_keys(
         )
         source_fingerprint = source_row.get("sourceFingerprint")
         export_fingerprint = source_sizes.get(source)
-        summary_path = (
-            Path(output_root)
-            / "recovered"
-            / "AnimeStudio-cli"
-            / source
-            / "object_index"
-            / "summary.json"
-        )
+        summary_path = ExportLayout(Path(output_root)).object_index_dir(source) / "summary.json"
         current_summary = read_json(summary_path, {})
         current_stage = current_summary.get("stageSignature")
         if (
@@ -973,160 +1047,6 @@ def spaceship_story_non_mission_content_keys(
             "evidenceReport": evidence_report,
         }
     return found
-
-
-def story_root_playback_aliases(
-    report_path: Path = STORY_ROOT_PLAYBACK_ALIAS_REPORT,
-    *,
-    export_summary_path: Path = EXPORT_FULL_SUMMARY,
-    output_root: Path = EXPORT_ROOT,
-) -> list[dict[str, Any]]:
-    """Load current exact CutsceneRoot-to-TimelineAsset playback aliases.
-
-    Missing or stale evidence yields no rows. The aliases are playback context
-    only: callers must not turn them into mission ownership or Story order.
-    """
-    report = read_json(Path(report_path), {})
-    export_summary = read_json(Path(export_summary_path), {})
-    native = report.get("nativeEvidence") if isinstance(report, dict) else {}
-    if (
-        not isinstance(report, dict)
-        or report.get("_schema") != STORY_ROOT_PLAYBACK_ALIAS_SCHEMA
-        or not isinstance(export_summary, dict)
-        or not isinstance(native, dict)
-        or safe_key(native.get("mappingId"))
-        != STORY_ROOT_PLAYBACK_ALIAS_MAPPING_ID
-        or safe_key(native.get("gameAssemblySha256")).upper()
-        != STORY_ROOT_PLAYBACK_ALIAS_GAMEASSEMBLY_SHA256
-        or safe_key(native.get("metadataSha256")).upper()
-        != STORY_ROOT_PLAYBACK_ALIAS_METADATA_SHA256
-    ):
-        return []
-    source_sizes = export_summary.get("source_sizes")
-    sources = report.get("sources")
-    if (
-        not isinstance(source_sizes, dict)
-        or not isinstance(sources, list)
-        or not sources
-    ):
-        return []
-    for source_row in sources:
-        if not isinstance(source_row, dict):
-            return []
-        source = safe_key(source_row.get("source"))
-        stage_signature = safe_key(
-            source_row.get("stageSignatureSha256")
-        )
-        source_fingerprint = source_row.get("sourceFingerprint")
-        export_fingerprint = source_sizes.get(source)
-        summary_path = (
-            Path(output_root)
-            / "recovered"
-            / "AnimeStudio-cli"
-            / source
-            / "object_index"
-            / "summary.json"
-        )
-        current_summary = read_json(summary_path, {})
-        current_stage = current_summary.get("stageSignature")
-        if (
-            not source
-            or len(stage_signature) != 64
-            or not isinstance(source_fingerprint, dict)
-            or not isinstance(export_fingerprint, dict)
-            or not isinstance(current_summary, dict)
-            or current_summary.get("complete") is not True
-            or not isinstance(current_stage, dict)
-            or safe_key(current_stage.get("sha256")) != stage_signature
-        ):
-            return []
-        normalized_report_fingerprint = {
-            "files": source_fingerprint.get("files"),
-            "bytes": source_fingerprint.get("bytes"),
-            "fingerprint":
-                safe_key(source_fingerprint.get("fingerprint")).lower(),
-        }
-        normalized_export_fingerprint = {
-            "files": export_fingerprint.get("files"),
-            "bytes": export_fingerprint.get("bytes"),
-            "fingerprint":
-                safe_key(export_fingerprint.get("fingerprint")).lower(),
-        }
-        current_payload = current_stage.get("payload")
-        normalized_current_fingerprint = (
-            current_payload.get("source_fingerprint")
-            if isinstance(current_payload, dict)
-            else None
-        )
-        if (
-            normalized_report_fingerprint != normalized_export_fingerprint
-            or normalized_report_fingerprint != normalized_current_fingerprint
-        ):
-            return []
-
-    evidence_path = Path(report_path)
-    try:
-        evidence_report = evidence_path.resolve().relative_to(
-            ROOT.resolve()
-        ).as_posix()
-    except ValueError:
-        evidence_report = str(evidence_path)
-    found: dict[tuple[str, str], dict[str, Any]] = {}
-    for host in report.get("directorHosts") or []:
-        if not isinstance(host, dict):
-            continue
-        for row in host.get("crossStoryPlaybackAliases") or []:
-            if not isinstance(row, dict):
-                continue
-            root_key = safe_key(row.get("rootStoryKey"))
-            playable_key = safe_key(row.get("playableAssetStoryKey"))
-            director = row.get("directorObject")
-            if (
-                not root_key
-                or not playable_key
-                or root_key == playable_key
-                or safe_key(row.get("relation"))
-                != "cutscene_root_director_playable_asset"
-                or safe_key(row.get("edgeStatus"))
-                != (
-                    "exact_root_playback_alias_no_chronology_or_"
-                    "mission_owner"
-                )
-                or not isinstance(
-                    row.get("cutsceneRootComponentPathId"),
-                    int,
-                )
-                or not isinstance(director, dict)
-                or not safe_key(director.get("serializedFile"))
-                or not isinstance(director.get("pathId"), int)
-            ):
-                continue
-            found[(root_key, playable_key)] = {
-                "rootStoryKey": root_key,
-                "playableAssetStoryKey": playable_key,
-                "relation": "cutscene_root_director_playable_asset",
-                "edgeStatus": safe_key(row.get("edgeStatus")),
-                "cutsceneRootGameObjectPathId":
-                    row.get("cutsceneRootGameObjectPathId"),
-                "cutsceneRootComponentPathId":
-                    row["cutsceneRootComponentPathId"],
-                "directorObject": {
-                    "serializedFile":
-                        safe_key(director.get("serializedFile")),
-                    "pathId": director["pathId"],
-                    "source": safe_key(director.get("source")),
-                    "sourceOffset": director.get("sourceOffset"),
-                },
-                "nativeMappingId":
-                    STORY_ROOT_PLAYBACK_ALIAS_MAPPING_ID,
-                "evidenceReport": evidence_report,
-                "ownership": False,
-                "chronology": False,
-            }
-    return [
-        found[key]
-        for key in sorted(found)
-    ]
 
 
 def combined_non_mission_content_keys(

@@ -12,20 +12,44 @@ reaches a page.
 
 ## Layout
 
-The tree follows the same split. A path appears under exactly one owner.
+The tree follows the same split: two lines of work, each mirroring one memory
+axis. A path appears under exactly one owner.
 
-| Owner | Paths | Responsibility |
+| Line | Path | Responsibility |
 | --- | --- | --- |
-| **Extraction** | `export_full_from_game.py`, `export_changed_game_data.py`, `verify_export_freshness.py`, `animestudio/`, `animestudio_object_index.py`, `animestudio_index_io.py`, `benchmark_export.py` | installed client to `export_full/`; never publishes page data |
-| **Installed formats** | `game_data/`, `terrain_tret.py`, `terrain_height.py`, `dynamic_streaming.py` | exact framing readers, corpus gates, native validators, reviewed contracts |
-| **Story reconstruction** | `story_builder/`, `story_recovery/`, `mission_pipeline/`, `scene_order_gap_shared.py` | Story evidence, ordering, validation, candidate audits |
-| **Page builders** | `build_*.py`, `asset_builder/`, `audio_semantics/`, `gameplay_builder/`, `updates_builder/`, `pack_webui.py` | everything written under `webui/data/`, plus packaging |
-| **Shared** | `common.py`, `source_paths.py` | helpers used across owners |
+| **1. Game data** | `game_data/extraction/` | installed client to `export_full/`: the export and changed-file exporters, freshness guard, export benchmark, AnimeStudio object index, and `animestudio/` maintenance commands; never publishes page data |
+| | `game_data/` | exact framing readers (Streaming, Terrain, DynamicStreaming, irradiance, extend data, bundle manifest, IFix, and the LevelScript, LevelData, Ability, Interactive, Spawner, CharInteractPerform and AnimationConfig `*_binary.py` readers), `*_corpus.py` gates with `corpus_common.py`, `*_native.py` validators and their reviewed contracts, `il2cpp_protocol.py`, `il2cpp_context*.py`, `media_resolver.py` (game-media naming and asset resolution) |
+| | `game_data/codecs/` | per-record LevelScript and LevelData codecs behind the `*_binary.py` readers |
+| | `game_data/native_contracts/` | reviewed native facts about the installed binary, each a loader plus its byte-pinned JSON |
+| | `game_data/memorypack/` | MemoryPack codecs and their corpus gates |
+| **2. WebUI** | `webui/views.py`, `webui/package.py` | page-build orchestration, and packaging |
+| | `webui/story/` | Story and Text page data plus shared Story evidence |
+| | `webui/story_recovery/` | Story audits, OCR ordering, runtime traces, candidate generation |
+| | `webui/mission_pipeline/` | standalone Mission Pipeline recovery (not a WebUI page) |
+| | `webui/{assets,audio,characters,gameplay,map,updates}/` | one folder per page: its `build_*.py` entry point and helper modules |
+| **Shared** | `common.py`, `source_paths.py`, `repo_paths.py` | helpers used by both lines; `repo_paths.REPO_ROOT` is the only repo-root anchor |
 | **Tests** | `tests/` | stdlib `unittest`, untracked, run by explicit module path |
 
-Two rules keep that split honest. A production builder must not import or
-execute a recovery/audit module. A corpus gate or native validator is tracked
-because the sweep is reusable, while everything it emits goes to `reports/`.
+Dependencies point one way: shared helpers import neither line, line 1
+imports only shared helpers, and line 2 imports both. Reuse is the point of
+that direction. A page builder calls a `game_data` reader or contract instead
+of re-decoding bytes, and a helper that both lines need goes in `common.py`
+under its own name, not in a private copy. The local
+`tests/test_scripts_layout_boundaries.py` checks the direction statically and
+at import time. The one sanctioned
+crossing is data, not code: focused asset export reads the published
+`webui/data` media references to scope which textures it extracts.
+
+Three more rules keep the split honest. Line 1 never writes under
+`webui/data/`. A production builder must not import or execute a
+recovery/audit module. A corpus gate or native validator is tracked because
+the sweep is reusable, while everything it emits goes to `reports/`.
+
+Every entry point runs as a module from the repository root, e.g.
+`python -m scripts.webui.audio.build_audio`. Imports are absolute
+(`from scripts.… import`), and nothing computes the repo root from its own
+depth, so moving a file changes only the paths that name it. A documented entry
+point run directly as a file exits with the `python -m` command to use instead.
 
 ## Root workflows
 
@@ -36,12 +60,12 @@ because the sweep is reusable, while everything it emits goes to `reports/`.
 | Refresh Story from the game | `.\export.bat --from-game` |
 | Refresh Story and assets together | `.\export.bat --from-game --with-assets` |
 | Refresh changed local game files and all WebUI views, excluding Updates | `.\export.bat --changed-only` |
-| Story recovery loop | `python -m scripts.story_builder.build --languages CN --default-language CN` |
-| Mission Pipeline recovery (standalone, not WebUI) | `python -m scripts.build_mission_pipeline_data --refresh-source-story-gap-queue` |
+| Story recovery loop | `python -m scripts.webui.story.build --languages CN --default-language CN` |
+| Mission Pipeline recovery (standalone, not WebUI) | `python -m scripts.webui.mission_pipeline.build_mission_pipeline_data --refresh-source-story-gap-queue` |
 | Rebuild post-Story views, assets, and CN audio | `.\export_assets.bat` |
 | Refresh assets/audio and rebuild post-Story views | `.\export_assets.bat --from-game` |
 | Compare exports for Updates | `.\build_updates.bat OLD NEW` |
-| Serve or package | `python serve.py` / `python scripts\pack_webui.py` |
+| Serve or package | `python serve.py` / `python -m scripts.webui.package` |
 
 The wrappers load `endfield_paths.bat`, then apply explicit path flags. Run any
 wrapper with `--help` for its supported options.
@@ -86,7 +110,7 @@ surface. Only the behaviour `--help` does not give you is recorded here:
   encryption identity, applies only the delta, then runs the *complete* normal
   WebUI build. It never touches Updates -- no baseline change, no entry. Its
   private snapshot under
-  `export_full/recovered/AnimeStudio-cli/local_incremental/` advances only
+  `<export root>/meta/extraction/incremental/` advances only
   after every builder succeeds, so a late failure retries from the applied
   files rather than needing an older audit snapshot.
 - `--story-only` and `--assets-only` are mutually exclusive.
@@ -130,27 +154,27 @@ a degraded reason instead of using them as direct evidence.
 | Extraction | `export_full_from_game.py` | `export_full/` |
 | Local logical-file delta | `export_changed_game_data.py` | changed structured files and private snapshot |
 | Export freshness | `verify_export_freshness.py` | validation result |
-| WebUI orchestration | `build_webui_views.py` | semantic page data |
-| Story evidence | `story_builder/refresh_evidence.py` | `reports/story/` evidence |
-| Story links | `story_builder/source_links.py` | localized reference data |
-| Story | `story_builder/build.py` | `webui/data/lang/<LANG>/` |
+| WebUI orchestration | `webui/views.py` | semantic page data |
+| Story evidence | `webui/story/refresh_evidence.py` | `reports/story/` evidence |
+| Story links | `webui/story/source_links.py` | localized reference data |
+| Story | `webui/story/build.py` | `webui/data/lang/<LANG>/` |
 | Mission Pipeline recovery | `build_mission_pipeline_data.py` | standalone recovery reports/data |
 | Map | `export.bat` runs map data, then `recover_map_streaming_instances.py --all-published-map-scenes`, then preview publication; a sidecar failure stops the phase instead of silently degrading to registry points. The recovery streams installed-game `InitChunkData` through AnimeStudio.CLI and joins the exported AssetMap/Mesh; colored output additionally needs Material JSON and Texture2D from the default asset scope. `build_map_recovery_data.py --with-preview` remains the direct data/preview path, while `--preview-only` reuses current map data and sidecars. `--jobs N` bounds both the per-level data workers and preview processes; maps sharing one exact Streaming scene remain together so their shared bounds and outputs cannot race. Preview rendering checkpoints each completed exact streaming, point, and inferred HLOD render under `reports/assets/map_recovery/render_cache/`; matching map, matrix, mesh, material, texture, renderer-index, bounds, density, and renderer-version inputs reuse the published PNG/sample set across runs. Missing outputs or changed inputs invalidate only that checkpoint, and the CLI reports cache hits/writes; pass `build_map_recovery_preview.py --no-render-cache` for a forced rerender. `--refresh-exact-fallbacks-only` cheaply refreshes registry/quest point fallbacks. | `reports/assets/map_recovery/terrain_height_index.json`, `export_full/recovered/AnimeStudio-cli/StreamingAssets/map_streaming_instances/`, `reports/assets/map_recovery/`, `webui/data/map_recovery/` |
 | Map01 RegionMap3D package | `build_map_region3d.py` | a self-contained package plus its provenance sidecar; separate from the WebUI map renderer and the authored 2D minimap |
-| Lua consumer index | `story_builder/lua_consumer_references.py` | fingerprinted Mission Pipeline evidence |
+| Lua consumer index | `webui/story/lua_consumer_references.py` | fingerprinted Mission Pipeline evidence |
 | Characters | `build_character_data.py` | character indexes and versioned final-catalog snapshots |
 | Gameplay | `build_gameplay.py` | Gameplay datasets |
 | Assets | `build_assets.py` | asset indexes and media lookup |
 | Audio | `build_audio.py` | decoded/relinked audio data |
 | Audio semantics | `build_audio_semantics.py` | compact Audio page evidence and shards |
-| Audio HIRC structural gates | `audio_semantics/hirc_action_corpus.py` | Action cursors and type `0x02` source prefixes under `reports/animestudio/` |
+| Audio HIRC structural gates | `webui/audio/semantics/hirc_action_corpus.py` | Action cursors and type `0x02` source prefixes under `reports/animestudio/` |
 | DynamicStreaming stream-area gate | `game_data/dynamic_stream_area_corpus.py` | `reports/animestudio/dynamic_stream_area_current_latest.{json,md}` |
 | Updates | `build_updates.py` | `webui/data/updates/latest.json`, `webui/data/updates/characters.json` |
-| Packaging | `pack_webui.py` | distributable static package |
+| Packaging | `webui/package.py` | distributable static package |
 
 ### Packaging
 
-`pack_webui.py` emits four archives -- main, `-media`, `-audio` and an optional
+`webui/package.py` emits four archives -- main, `-media`, `-audio` and an optional
 `-resources`. What each one owns and why they publish in that order is a
 publication contract:
 [`../memory/webui_recovery.md`](../memory/webui_recovery.md).
@@ -168,8 +192,8 @@ is the build/publication order. With no argument all four are built:
 ### Gameplay datasets
 
 `build_gameplay.py` owns every Gameplay dataset. Behavior-focused stages live
-in `gameplay_builder/`; its `asset-refs` stage calls the public
-`asset_builder.gameplay_refs` API with the current Gameplay and Assets indexes
+in `webui/gameplay/`; its `asset-refs` stage calls the public
+`webui.assets.gameplay_refs` API with the current Gameplay and Assets indexes
 and is the sole writer of `webui/data/assets/gameplay_refs.json`.
 What those datasets establish, and the registry/tag join rules they obey, are
 in [`../memory/game_data/gameplay_semantics.md`](../memory/game_data/gameplay_semantics.md).
@@ -179,8 +203,8 @@ registry before rebuilding the base stage. Start the capture first so it can
 attach during client startup, then load the title/menu or a gameplay scene:
 
 ```bat
-tools\frida-runtime\venv\Scripts\python.exe -m scripts.gameplay_builder.capture_runtime_tags --duration 600 --output scratch\reverse_engineering\gameplay_tag_runtime\capture.jsonl
-python scripts\build_gameplay.py --stage base --languages CN --default-language CN --runtime-tag-capture scratch\reverse_engineering\gameplay_tag_runtime\capture.jsonl
+tools\frida-runtime\venv\Scripts\python.exe -m scripts.webui.gameplay.capture_runtime_tags --duration 600 --output scratch\reverse_engineering\gameplay_tag_runtime\capture.jsonl
+python -m scripts.webui.gameplay.build_gameplay --stage base --languages CN --default-language CN --runtime-tag-capture scratch\reverse_engineering\gameplay_tag_runtime\capture.jsonl
 ```
 
 The capture is read-only and refuses to attach unless the selected
@@ -195,17 +219,17 @@ and do not feed active pages.
 ### Focused commands
 
 ```bat
-python scripts\verify_export_freshness.py
-python -m scripts.story_builder.refresh_evidence
-python -m scripts.story_builder.source_links
-python -m scripts.story_builder.build --languages CN --default-language CN
-python scripts\build_character_data.py --languages CN --default-language CN
-python scripts\build_mission_pipeline_data.py
-python scripts\build_gameplay.py
-python scripts\build_assets.py
-python scripts\build_audio.py
-python scripts\build_audio.py --skip-decode --refresh-hirc
-python scripts\pack_webui.py
+python -m scripts.game_data.extraction.verify_export_freshness
+python -m scripts.webui.story.refresh_evidence
+python -m scripts.webui.story.source_links
+python -m scripts.webui.story.build --languages CN --default-language CN
+python -m scripts.webui.characters.build_character_data --languages CN --default-language CN
+python -m scripts.webui.mission_pipeline.build_mission_pipeline_data
+python -m scripts.webui.gameplay.build_gameplay
+python -m scripts.webui.assets.build_assets
+python -m scripts.webui.audio.build_audio
+python -m scripts.webui.audio.build_audio --skip-decode --refresh-hirc
+python -m scripts.webui.package
 ```
 
 ### Offline recovery probes
@@ -275,47 +299,46 @@ shell command, especially for multiple languages or forced Timeline recovery.
 ## Story recovery
 
 Production parsing, validation, attachment, and generated schemas live in
-`story_builder/`. Audit and candidate-generation tools live in
-`story_recovery/`; they may import stable builder primitives, but production
+`webui/story/`. Audit and candidate-generation tools live in
+`webui/story_recovery/`; they may import stable builder primitives, but production
 builders must not import or execute recovery modules.
 
 The reconstruction helpers WebUI builders depend on:
 
 | Module | Owns |
 | --- | --- |
-| `story_builder/refresh_evidence.py` | Story evidence refresh |
-| `story_builder/source_links.py` | localized reference data |
-| `story_builder/build.py` | the Story page data itself |
-| `story_builder/dialog_registry.py` | dialog id registration |
-| `story_builder/video_bindings.py` | Story-to-video bindings |
-| `story_builder/timeline_recovery.py` | Timeline recovery |
-| `story_builder/timeline_action_evidence.py` | typed Timeline action evidence |
-| `story_builder/mission_recovery.py` | mission reconstruction |
-| `story_builder/lua_consumer_references.py` | the fingerprinted Lua consumer index |
-| `story_builder/native_contracts/` | reviewed current-build native facts |
+| `webui/story/refresh_evidence.py` | Story evidence refresh |
+| `webui/story/source_links.py` | localized reference data |
+| `webui/story/build.py` | the Story page data itself |
+| `webui/story/dialog_registry.py` | dialog id registration |
+| `webui/story/video_bindings.py` | Story-to-video bindings |
+| `webui/story/timeline_recovery.py` | Timeline recovery |
+| `webui/story/timeline_action_evidence.py` | typed Timeline action evidence |
+| `webui/story/mission_recovery.py` | mission reconstruction |
+| `webui/story/lua_consumer_references.py` | the fingerprinted Lua consumer index |
 | `scene_order_gap_shared.py` | shared scene-order gap logic |
 
 Mission Pipeline is a standalone recovery/reporting workflow; the WebUI export
 does not run it. It reads the canonical shipped-Lua consumer index through
-`story_builder.lua_consumer_references`; it does not consume a recovery-script
+`webui.story.lua_consumer_references`; it does not consume a recovery-script
 artifact. Cinematic-handle classification and typed action-producer joins come
 from the reviewed, installed-build-gated
-`story_builder/native_contracts/cinematic_queue.json`; the full native carrier
+`game_data/native_contracts/cinematic_queue.json`; the full native carrier
 report is not a production input. Standard WebUI extraction intentionally
 omits Lua, so refresh this tracked index only from an explicit complete
 plaintext-Lua extraction. To refresh it and optionally render Markdown, run:
 
 ```bat
-python -m scripts.story_builder.lua_consumer_references --markdown
+python -m scripts.webui.story.lua_consumer_references --markdown
 ```
 
 To refresh and reconcile the optional full cinematic native audit against the
 compact contract, run
-`python -m scripts.story_recovery.audit_native_carriers cinematic`. Use
+`python -m scripts.webui.story_recovery.audit_native_carriers cinematic`. Use
 `--skip-contract-reconciliation` only while reviewing a new installed build
 before intentionally updating the versioned contract.
 
-`story_builder/source_gap/` owns the canonical source-only Story gap queue.
+`webui/story/source_gap/` owns the canonical source-only Story gap queue.
 Mission Pipeline refreshes it through the in-process builder API; it is not a
 recovery-script subprocess.
 
@@ -339,7 +362,7 @@ Review manual option coverage, stale targets, and current generated response
 candidate conflicts with the single maintained option audit:
 
 ```bat
-python -m scripts.story_recovery.build_option_override_coverage_audit --language CN
+python -m scripts.webui.story_recovery.build_option_override_coverage_audit --language CN
 ```
 
 Manual Story order is user-managed in `webui/overrides/story_order.json`.
@@ -352,10 +375,10 @@ WebUI reference, and `compare` reports differences without editing the active
 override:
 
 ```bat
-python -m scripts.story_recovery.ocr_story_order sample --dry-run
-python -m scripts.story_recovery.ocr_story_order match
-python -m scripts.story_recovery.ocr_story_order publish
-python -m scripts.story_recovery.ocr_story_order compare
+python -m scripts.webui.story_recovery.ocr_story_order sample --dry-run
+python -m scripts.webui.story_recovery.ocr_story_order match
+python -m scripts.webui.story_recovery.ocr_story_order publish
+python -m scripts.webui.story_recovery.ocr_story_order compare
 ```
 
 AnimeStudio Story-object recovery uses one staged audit. `reverse` publishes
@@ -364,7 +387,7 @@ the fail-closed playback-alias evidence consumed by builders; `carrier` and
 dependency order:
 
 ```bat
-python -m scripts.story_recovery.audit_story_objects --stage reverse
+python -m scripts.webui.story_recovery.audit_story_objects --stage reverse
 ```
 
 Native value-carrier work also uses one profile command. `generic` is the
@@ -373,30 +396,30 @@ contract and its existing report paths, and `radio-forbid` validates the small
 versioned negative boundary recorded for the pinned build:
 
 ```bat
-python -m scripts.story_recovery.audit_native_carriers generic --carrier-type TYPE --focus-field FIELD
-python -m scripts.story_recovery.audit_native_carriers cinematic
-python -m scripts.story_recovery.audit_native_carriers radio-forbid
+python -m scripts.webui.story_recovery.audit_native_carriers generic --carrier-type TYPE --focus-field FIELD
+python -m scripts.webui.story_recovery.audit_native_carriers cinematic
+python -m scripts.webui.story_recovery.audit_native_carriers radio-forbid
 ```
 
 Reusable implementations and the radio boundary live under
-`story_recovery/native_carriers/`; tests live under `scripts/tests/` rather
+`webui/story_recovery/native_carriers/`; tests live under `scripts/tests/` rather
 than beside recovery tools.
 
 Mission and audio runtime traces share one fail-closed CLI while retaining
 separate hook manifests, Frida agents, schemas, and evidence boundaries:
 
 ```bat
-tools\frida-runtime\venv\Scripts\python.exe -m scripts.story_recovery.runtime_trace capture --profile mission
-tools\frida-runtime\venv\Scripts\python.exe -m scripts.story_recovery.runtime_trace capture --profile audio
-python -m scripts.story_recovery.runtime_trace import --profile mission CAPTURE.jsonl
-python -m scripts.story_recovery.runtime_trace import --profile audio CAPTURE.jsonl
+tools\frida-runtime\venv\Scripts\python.exe -m scripts.webui.story_recovery.runtime_trace capture --profile mission
+tools\frida-runtime\venv\Scripts\python.exe -m scripts.webui.story_recovery.runtime_trace capture --profile audio
+python -m scripts.webui.story_recovery.runtime_trace import --profile mission CAPTURE.jsonl
+python -m scripts.webui.story_recovery.runtime_trace import --profile audio CAPTURE.jsonl
 ```
 
 To publish a verified imported capture onto the Audio Event/media detail rows,
 rerun the semantic publisher with its JSON bundle:
 
 ```bat
-python scripts\build_audio_semantics.py --language CN --runtime-trace-bundle reports\story\recovery\audio_runtime_trace.json
+python -m scripts.webui.audio.build_audio_semantics --language CN --runtime-trace-bundle reports\story\recovery\audio_runtime_trace.json
 ```
 
 The projection requires the bundle's current schema, matching language, and
@@ -404,8 +427,8 @@ verified GameAssembly path/size/SHA-256 facts. It records observed managed
 request boundaries and exact Event-to-media relations, but never promotes a
 capture to selected Wwise branch, decoded leaf, or audibility evidence.
 
-The reviewed LevelScript task paths are builder-owned in
-`story_builder/native_contracts/mission_task_paths.json`. The protocol registry
+The reviewed LevelScript task paths live in
+`game_data/native_contracts/mission_task_paths.json`. The protocol registry
 reads that contract directly; the mission runtime hook manifest references and
 validates the same contract before rendering its Frida agent, so task RVAs,
 message IDs, and field offsets have one mutable source of truth.
@@ -442,8 +465,8 @@ results show disk contention rather than a speedup.
 Optional DummyDll regeneration is build-specific:
 
 ```bat
-python -m scripts.animestudio.generate_dummydll --dry-run
-python -m scripts.animestudio.generate_dummydll --replace
+python -m scripts.game_data.extraction.animestudio.generate_dummydll --dry-run
+python -m scripts.game_data.extraction.animestudio.generate_dummydll --replace
 ```
 
 The generator consumes a tag-and-commit-pinned release from
@@ -456,13 +479,13 @@ Managed-reference schema work can opt into a separate fail-closed JSONL sidecar
 without changing normal JSON or object-index output:
 
 ```bat
-python scripts\export_full_from_game.py --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics
-python scripts\export_full_from_game.py --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics --animestudio-managed-reference-diagnostic-type "AbilitySystemData$"
-python scripts\export_full_from_game.py --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics --animestudio-managed-reference-diagnostic-type "AbilitySystemForEnemyPartData$" --animestudio-managed-reference-diagnostics-include-exact-matches
+python -m scripts.game_data.extraction.export_full_from_game --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics
+python -m scripts.game_data.extraction.export_full_from_game --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics --animestudio-managed-reference-diagnostic-type "AbilitySystemData$"
+python -m scripts.game_data.extraction.export_full_from_game --skip-structured --sources Persistent --animestudio-scope story --animestudio-stages json_by_type --animestudio-managed-reference-diagnostics --animestudio-managed-reference-diagnostic-type "AbilitySystemForEnemyPartData$" --animestudio-managed-reference-diagnostics-include-exact-matches
 ```
 
 Each MonoBehaviour worker writes a unique atomic part under
-`export_full/recovered/AnimeStudio-cli/<source>/managed_reference_diagnostics/parts/`.
+`<export root>/meta/<Layer>/managed_reference_diagnostics/`.
 Only partial managed references are included by default; repeat
 `--animestudio-managed-reference-diagnostic-type` to constrain capture by
 `assembly::namespace.class` regex, and
@@ -483,13 +506,13 @@ truncated, errored, or incomplete parts are not evidence.
 
 `build_audio.py` owns decode, Wwise bank/HIRC indexing, relinking, and the
 Gameplay sidecars. It writes shared SFX/music once under
-`export_full/structured/Audio/shared/` and language voice under
-`export_full/structured/Audio/<LANG>/`.
+`<export root>/game/Audio/shared/` and language voice under
+`<export root>/game/Audio/<LANG>/`.
 
 ```bat
-python scripts\build_audio.py
-python scripts\build_audio.py --skip-decode
-python scripts\build_audio.py --skip-decode --refresh-hirc
+python -m scripts.webui.audio.build_audio
+python -m scripts.webui.audio.build_audio --skip-decode
+python -m scripts.webui.audio.build_audio --skip-decode --refresh-hirc
 ```
 
 AnimeStudio streams decoded PCM into lossless FLAC without intermediate WAV
@@ -497,7 +520,7 @@ files or `ffmpeg`; decode and WebUI output are FLAC-only, so existing WAV/WEM
 files stay readable on an index-only maintenance run but are no longer produced
 or converted. WEM decoding uses the pinned 64-bit vgmstream CLI, installed by
 `setup.bat` under `tools/vgmstream/` or directly by
-`scripts\animestudio\setup_vgmstream.bat`. `--skip-decode --refresh-hirc` gives
+`scripts\game_data\extraction\animestudio\setup_vgmstream.bat`. `--skip-decode --refresh-hirc` gives
 a fresh HIRC bank pass while decoded audio is already current; plain
 `--skip-decode` reuses the existing event-media/HIRC cache. Use direct
 `build_audio.py` runs for non-CN languages or audio-only maintenance.
@@ -513,8 +536,8 @@ Both gates are current-corpus bound: pass the exact `inputSetSha256` from
 `--expected-input-set-sha256` argument.
 
 ```bat
-python -m scripts.audio_semantics.hirc_action_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
-python -m scripts.audio_semantics.hirc_named_reach --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+python -m scripts.webui.audio.semantics.hirc_action_corpus --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
+python -m scripts.webui.audio.semantics.hirc_named_reach --expected-input-set-sha256 CURRENT_VFS_INPUT_SET_SHA256
 ```
 
 `hirc_action_corpus` binds verified package MD5/chunk/physical-source identities
@@ -556,10 +579,10 @@ Audio evidence page; page data changes only after a formal semantic rebuild
 (normally `export.bat`, or the targeted run below).
 
 ```bat
-python scripts\build_audio_semantics.py --language CN
+python -m scripts.webui.audio.build_audio_semantics --language CN
 ```
 
-Maintained domain code lives under `audio_semantics/`: `native_evidence.py`
+Maintained domain code lives under `webui/audio/semantics/`: `native_evidence.py`
 (installed-build gate), `identifiers.py` (Wwise hashes and managed string
 identities), `managed_literals.py` (managed literal and MonoBehaviour
 audio-field contexts), `responsive_voice.py` and `voice_requests.py` (their
@@ -578,7 +601,7 @@ sound projection), `name_recovery.py` (grammar-derived Event name recovery), and
 
 `build_audio.py` imports shared primitives from these owners instead of treating
 the semantics entry point as a utility module, and
-`story_builder.level_bindings` owns the LevelScript dynamic string property
+`webui.story.level_bindings` owns the LevelScript dynamic string property
 resolution that audio lifecycle evidence reads. Add logic to its domain owner
 rather than growing either entry point; do not add compatibility re-exports,
 duplicate native catalogs, broad `ImportError` import fallbacks, or a second
@@ -621,10 +644,10 @@ packaging flow. Validate the single manifest and payload contract before any
 authorized staging:
 
 ```bat
-python -m scripts.story_recovery.runtime_trace_audio_native_capture --check-only --native-library PATH\AudioCapture.dll
-tools\frida-runtime\venv\Scripts\python.exe -m scripts.story_recovery.runtime_trace capture --profile audio --check-only
-tools\frida-runtime\venv\Scripts\python.exe -m scripts.story_recovery.runtime_trace capture --profile audio
-python -m scripts.story_recovery.runtime_trace import --profile audio CAPTURE.jsonl
+python -m scripts.webui.story_recovery.runtime_trace_audio_native_capture --check-only --native-library PATH\AudioCapture.dll
+tools\frida-runtime\venv\Scripts\python.exe -m scripts.webui.story_recovery.runtime_trace capture --profile audio --check-only
+tools\frida-runtime\venv\Scripts\python.exe -m scripts.webui.story_recovery.runtime_trace capture --profile audio
+python -m scripts.webui.story_recovery.runtime_trace import --profile audio CAPTURE.jsonl
 ```
 
 The experimental native fallback under `tools/audio-runtime-capture/` verifies
@@ -640,7 +663,7 @@ reporting the session armed. A denial, incomplete module gate, hook attachment
 failure, or unsupported profile stops without retry or fallback.
 
 The Frida audio hook manifest verifies `AkSoundEngine.dll` and reads the
-builder-owned native contracts rather than pinning its own copy of a task RVA,
+contracts in `game_data/native_contracts/` rather than pinning its own copy of a task RVA,
 message ID, or field offset; `runtime_trace_audio_import.py` publishes the
 observed relations, and what a capture does and does not prove is recorded in
 [`memory/game_data/audio_native_hooks.md`](../memory/game_data/audio_native_hooks.md).
@@ -656,7 +679,7 @@ summary with any published evidence.
 Updates compare two complete export folders. Pass `OLD NEW`, or configure
 `ENDFIELD_PREVIOUS_EXPORT_ROOT` and `ENDFIELD_EXPORT_ROOT` in
 `endfield_paths.bat`. A named `OLD` refreshes the cached baseline.
-`build_updates.py` calls the reusable `updates_builder/scanner.py` API in
+`build_updates.py` calls the reusable `webui/updates/scanner.py` API in
 process; the scanner is an internal component rather than a second CLI.
 
 ```bat
@@ -664,24 +687,50 @@ process; the scanner is an internal component rather than a second CLI.
 .\build_updates.bat OLD NEW --text-only
 .\build_updates.bat OLD NEW --no-audio
 .\build_updates.bat OLD NEW --exact
-python scripts\build_updates.py --refresh-previous-export-baseline
+python -m scripts.webui.updates.build_updates --refresh-previous-export-baseline
 ```
 
 The default scan covers WebUI-facing exported text plus image, model, video,
 and decoded audio assets. `--text-only` omits all assets, `--no-audio` keeps
 other assets, `--exact` hashes contents, and `--full-export-scan` is for broad
 audits only.
+
+Asset identity normally follows the exported relative path. For unmatched
+add/delete pairs, the builder also recognizes one-to-one Unity exports whose
+stable name differs only by the generated `_p<PathID>` suffix, and decoded
+audio whose bytes match exactly. A second FLAC-only lane compares the decoded
+PCM identity from STREAMINFO, so metadata or encoder changes can still be
+recognized without an external decoder. Exact-byte hashing is limited to
+equal-size unmatched candidates, while STREAMINFO supplies exact duration and
+format. A shared filename is preferred; duplicate-content buckets may then pair
+one-to-one inside the same unchanged parent folder, otherwise each byte or PCM
+identity must be unique. Recognized relocations publish as no update when their
+effective content is unchanged. A stable Unity identity whose bytes also
+changed publishes as `modified` with both paths and its match basis. Multiple
+candidates inside one folder remain separate `added` and `deleted` entries
+rather than being guessed.
+
+The same reconciliation pass filters obsolete numeric AudioDialog copies when
+the numeric filename is the exact 64-bit external-source hash of one current
+authored dialog path, that dialog basename resolves to one canonical voice
+asset, the bytes match, and the canonical asset survives on both sides. These
+are redundant export copies rather than game deletions. A repeated basename,
+hash ambiguity, missing canonical peer, or content mismatch keeps the original
+add/delete entry visible.
 AnimeStudio `object_index`/`field_index` directories (including their
 `parts`) and exporter index-only JSONL, compressed, and temporary files are
 excluded from every Updates comparison and previous-export prune; ordinary
 WebUI JSON, media, and decoded audio remain in scope.
 
 Every Characters build also saves its final generated catalog under
-`export_full/recovered/WebUI/characters/<LANG>.json`. Every Updates comparison
-writes `webui/data/updates/characters.json` by comparing those version-owned
-catalog snapshots. The comparison therefore covers the same Table, Story actor,
-and exported-asset identities and evidence that formed each Characters page,
-not only `CharacterTable`. Only languages present on both sides participate.
+`webui/data/_build/characters/<LANG>.json` (the page's own snapshot). Every
+Updates comparison writes `webui/data/updates/characters.json` from two
+catalogs that Updates builds itself, one per export, with the current builder
+and cached in `.game-data-tracker/`: each from that export's own tables and
+converted media, without the Story actor registry that exists only for the
+built export. Builder changes and Story-only inputs therefore never appear as
+game updates; the comparison covers Table and exported-asset identities, not
+only `CharacterTable`. Only languages present on both sides participate.
 It reports `added`, `modified`, and `deleted` independently of asset flags,
 including under `--text-only`. Missing, invalid, empty, or legacy exports
 without snapshots publish an unavailable empty sidecar instead of treating the
@@ -710,8 +759,8 @@ python tools\endfield_source_graph.py issues --limit 20
 
 Reviewed per-build native facts are stored as data, not prose:
 `scripts/game_data/*_native.json` for raw-format consumers and MemoryPack
-formatter windows, and `scripts/story_builder/native_contracts/` for Story
-builders. These JSON files **are tracked**: what they record is a data
+formatter windows, and `scripts/game_data/native_contracts/` for the native
+facts Story, Mission Pipeline, Map and the recovery tools consume. These JSON files **are tracked**: what they record is a data
 structure, and the per-build anchors beside each field are its provenance. The
 digest of a named consumer contract is pinned as `CONTRACT_SHA256` in its
 `*_native.py` module and re-checked at load, so editing the JSON without

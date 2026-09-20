@@ -8,7 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .core import (
+from scripts.game_data.memorypack.core import (
     MEMORYPACK_NULL_COUNT,
     MEMORYPACK_UNION_WIDE_TAG,
     STRING_SAMPLE_MAX_CHARS,
@@ -20,7 +20,7 @@ from .core import (
     read_memorypack_utf8_string,
     require_memorypack_non_null_string,
 )
-from .schemas import MEMORYPACK_FIELD_SCHEMAS
+from scripts.game_data.memorypack.schemas import MEMORYPACK_FIELD_SCHEMAS
 
 
 INTERACTIVE_TEMPLATE_MEMBER_COUNT = 25
@@ -1624,7 +1624,7 @@ def decode_interactive_template_memorypack(path: Path, data: bytes, size: int) -
                                 decode_embedded_action_serialized_map_audio,
                             )
                         except ImportError:
-                            from scripts.story_builder.levelscript_binary import (
+                            from scripts.game_data.levelscript_binary import (
                                 decode_embedded_action_serialized_map_audio,
                             )
                         template_action_map_audio = (

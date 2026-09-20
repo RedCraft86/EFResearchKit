@@ -30,7 +30,7 @@ activation, or placement time.
 .\export.bat --from-game --with-assets
 .\export_assets.bat
 .\export_assets.bat --from-game
-python scripts\build_assets.py
+python -m scripts.webui.assets.build_assets
 python tools\endfield_source_graph.py build
 ```
 
@@ -40,8 +40,8 @@ Asset modes, from narrowest to broadest, are `--focused-assets`,
 Primary outputs:
 
 ```text
-export_full/recovered/AnimeStudio-cli/
-export_full/structured/Audio/
+<export root>/game/Unity/<Type>/
+<export root>/game/Audio/
 webui/data/assets/index.json
 webui/data/assets/gameplay_refs.json
 webui/data/assets/story_media.json

@@ -44,7 +44,7 @@ content kinds -- **more than this directory documents**:
 | `Table` | 724 single-instance config tables | **gameplay** (Buff/Skill) and **text** | here for gameplay; [`../webui/story_recovery.md`](../webui/story_recovery.md) for Story/Text Tables |
 | `JsonData` | ~1,264 JSON name shapes: LipSync, NPC Montage, conversations | **text**, partly **world** | [`install_and_vfs.md`](install_and_vfs.md) for LipSync/Montage framing; [`../webui/story_recovery.md`](../webui/story_recovery.md) for conversations |
 | `ExtendData`, `InitialExtendData` | `StringPathHash.bin`, `FacBoneTRS.bin`, `CompressData.bin` | **catalog** | here |
-| `Lua` | mission and consumer scripts | **code** | [`../webui/story_recovery.md`](../webui/story_recovery.md); index built by `scripts/story_builder/lua_consumer_references.py` |
+| `Lua` | mission and consumer scripts | **code** | [`../webui/story_recovery.md`](../webui/story_recovery.md); index built by `scripts/webui/story/lua_consumer_references.py` |
 | `IFixPatch` | runtime code patches | **code** | nowhere -- reader is `scripts/game_data/ifix_patch.py` |
 | `BundleManifest` | one 50 MB `manifest.hgmmap` | **catalog** | [`extend_data.md`](extend_data.md): entropy is indistinguishable from random, so it is opaque |
 | `Audit*` (5 kinds) | audit variants of streaming, dynamic streaming, IV, audio, video | provenance | [`extraction_pipeline.md`](extraction_pipeline.md) |
@@ -153,6 +153,7 @@ animation. Neither is spatial, so neither belongs in the world lane.
 - *Is this family's reader proven that far?* -> [`extraction_payload_boundaries.md`](extraction_payload_boundaries.md), not the lane file.
 - *What is the layout of Buff action tag `0xNN`?* -> its `scripts/game_data/buff_NN_native.json` contract, not the gameplay file.
 - *Does this LevelScript action or trigger volume prove a Story link?* -> [`story_carriers.md`](story_carriers.md).
+- *Which native fact does a Story or Mission Pipeline builder rely on?* -> its `scripts/game_data/native_contracts/<name>.json`, then that contract's `nativeInputs` against the selected build.
 - *Is this conclusion still current?* -> [`settled_and_open.md`](settled_and_open.md), then the contract's own `nativeInputs`.
 - *What is worth attempting next?* -> the remaining gaps in [`../game_data_recovery.md`](../game_data_recovery.md), and the eliminations in `world_chunk_unread_region.md`, `world_irradiance.md` and `audio_hirc_curves.md` so an excluded route is not retried.
 

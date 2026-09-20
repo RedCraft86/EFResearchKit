@@ -52,7 +52,7 @@ if /I "%~1"=="--prune-previous-export-untracked" goto :opt_prune_old
 if /I "%~1"=="--dry-run" goto :opt_dry_run
 if /I "%~1"=="--dry-run-prune-previous-export-untracked" goto :opt_prune_dry_run
 
-rem Anything else, including its value, goes to scripts\build_updates.py.
+rem Anything else, including its value, goes to scripts\webui\updates\build_updates.py.
 set "EXTRA_ARGS=%EXTRA_ARGS% "%~1""
 shift
 goto :parse_options
@@ -127,8 +127,8 @@ rem Naming a different old folder invalidates its cached scan, so rebuild that
 rem baseline here instead of making the user remember to ask for it.
 if "%ROOTS_GIVEN%"=="1" set "ROOT_ARGS=%ROOT_ARGS% --refresh-previous-export-baseline"
 
-if not defined OLD_EXPORT set "OLD_EXPORT=(scripts\build_updates.py default)"
-if not defined NEW_EXPORT set "NEW_EXPORT=(scripts\build_updates.py default)"
+if not defined OLD_EXPORT set "OLD_EXPORT=(scripts\webui\updates\build_updates.py default)"
+if not defined NEW_EXPORT set "NEW_EXPORT=(scripts\webui\updates\build_updates.py default)"
 echo [build_updates] old: %OLD_EXPORT%
 echo [build_updates] new: %NEW_EXPORT%
 
@@ -137,7 +137,7 @@ rem - compare WebUI-facing text JSON in the two exports
 rem - compare CharacterTable rows and localized names for Characters-page tags
 rem - compare exported image/model/video/audio assets by default
 rem - write Updates feed and Characters-page change sidecar
-python .\scripts\build_updates.py%ROOT_ARGS%%MODE_ARGS%%EXTRA_ARGS%
+python -m scripts.webui.updates.build_updates%ROOT_ARGS%%MODE_ARGS%%EXTRA_ARGS%
 if errorlevel 1 exit /b %errorlevel%
 
 endlocal
@@ -187,7 +187,7 @@ echo   LevelData and friends) is always compared, by content. No option
 echo   below changes that part.
 echo   On top of it, two media groups are compared by default:
 echo     images/models/video   from the asset export roots
-echo     decoded audio         from structured\Audio (.flac .wav .wem)
+echo     decoded audio         from game\Audio (.flac .wav .wem)
 echo   AnimeStudio object_index/field_index outputs, their parts, and transient
 echo   compressed/index files are excluded; ordinary JSON, media, and audio stay tracked.
 echo.
@@ -233,7 +233,7 @@ echo.
 echo Notes:
 echo   Naming OLD and NEW rebuilds the cached scan of OLD automatically.
 echo   For repeated runs, edit endfield_paths.bat instead of passing folders.
-echo   Advanced options pass through to scripts\build_updates.py.
+echo   Advanced options pass through to scripts\webui\updates\build_updates.py.
 echo.
 endlocal
 exit /b 0

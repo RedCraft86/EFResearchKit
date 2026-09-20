@@ -34,8 +34,11 @@ from scripts.game_data.streaming_pairs import bind_current_pair, index_ordered_p
 SCHEMA = "endfield.streaming-marker2-corpus.v1"
 ROOT_SCHEMA = "endfield.streaming-root-subgraphs-corpus.v15"
 # Candidate location is tmp/animestudio/<task>. The promoted maintained file
-# must change this to Path(__file__).resolve().parents[2].
-MODULE_REPO_ROOT = Path(__file__).resolve().parents[2]
+from scripts.repo_paths import REPO_ROOT
+from scripts.game_data.corpus_common import is_bounded_diagnostic_output as _is_bounded_diagnostic_output
+
+# must change this to REPO_ROOT.
+MODULE_REPO_ROOT = REPO_ROOT
 FRAMED_STATUS = "framed"
 UNSUPPORTED_STATUSES = frozenset((
     "unsupported-context", "unsupported-cluster", "unsupported-occupancy",
@@ -1004,13 +1007,6 @@ def render_markdown(report: dict[str, Any]) -> str:
         "Certified neighbours bound the selected physical gaps; only the conditional four-byte native read window is projected. Serialized record extent, native EOF, runtime receipt and semantics remain unresolved.", "",
     ])
 
-
-def _is_bounded_diagnostic_output(path: Path, repo_root: Path) -> bool:
-    resolved = path.resolve()
-    return any(
-        resolved == base or base in resolved.parents
-        for base in (repo_root / "tmp", repo_root / "scratch")
-    )
 
 
 def main() -> int:

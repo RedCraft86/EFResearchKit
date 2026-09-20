@@ -10,7 +10,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .core import (
+from scripts.game_data.memorypack.core import (
     MEMORYPACK_NULL_COUNT,
     MEMORYPACK_SCHEMA_SOURCE_NOTE,
     MEMORYPACK_UNION_WIDE_TAG,
@@ -20,7 +20,7 @@ from .core import (
     scan_length_prefixed_utf8_string_hits,
     unique_strings,
 )
-from .schemas import BUFF_MEMBER_COUNT, MEMORYPACK_FIELD_SCHEMAS
+from scripts.game_data.memorypack.schemas import BUFF_MEMBER_COUNT, MEMORYPACK_FIELD_SCHEMAS
 
 
 BUFF_MEMORYPACK_FIELD_TYPES = {
@@ -7990,10 +7990,7 @@ def read_skill_u8_field(data: bytes, offset: int, field_name: str, *, max_value:
     return value, offset + 1
 
 
-def read_skill_i32_field(data: bytes, offset: int, field_name: str) -> tuple[int, int]:
-    if offset + 4 > len(data):
-        raise ValueError(f"{field_name}:truncated-i32")
-    return struct.unpack_from("<i", data, offset)[0], offset + 4
+read_skill_i32_field = read_buff_i32_field
 
 
 def read_skill_bool_field(data: bytes, offset: int, field_name: str) -> tuple[bool, int]:

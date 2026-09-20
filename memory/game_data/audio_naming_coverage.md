@@ -176,7 +176,7 @@ runtime setter, caller, trigger, selected branch, execution, or audibility.**
 
 ### Grammar name recovery, for the Events no shipped string reaches
 
-`scripts/audio_semantics/name_recovery.py` names Events that no shipped string
+`scripts/webui/audio/semantics/name_recovery.py` names Events that no shipped string
 reaches. Sweeping the whole IL2CPP literal blob and every metadata type/field
 name resolves only a handful of hash-only Events, so the module instead mines
 head/tail name templates per naming family **from the names already proven by
@@ -239,7 +239,7 @@ exact evidence**, regenerates sibling names, and keeps candidates whose
 
 Producer/consumer links are admitted only for an **exact same-LevelScript
 source-root and source-path identity**, with one active final serialized slot
-and one unique output path. `story_builder.level_bindings` resolves
+and one unique output path. `scripts.webui.story.level_bindings` resolves
 `ParamSource=200` dynamic string properties **only** through the strict
 `LevelScriptBriefData` property formatter; `ParamSource=100` and
 unknown/runtime sources remain runtime-unresolved and **cannot become handles**.

@@ -10,7 +10,7 @@ portraits and model references, while retaining merge and naming provenance.
 1. Character-related Tables supply ids, names, roles, rarity, professions, and
    authored relationships.
 2. Exported Texture2D/model data and Assets indexes supply resolvable media.
-3. `scripts.build_character_data` localizes records, applies conservative
+3. `scripts.webui.characters.build_character_data` localizes records, applies conservative
    identity merges and exclusions, and publishes the page index.
 4. User-managed name and merge overrides are read and written through
    `serve.py`; generated exports do not replace them.
@@ -22,7 +22,9 @@ portraits and model references, while retaining merge and naming provenance.
 Primary output: `webui/data/lang/<LANG>/characters/index.json` plus referenced
 Assets entries.
 
-Versioned comparison input: `export_full/recovered/WebUI/characters/<LANG>.json`.
+Page snapshot: `webui/data/_build/characters/<LANG>.json`. Updates builds both
+comparison catalogs itself, one per export, from that export's tables and media
+only (no Story actor registry), so both sides use identical inputs.
 
 Optional Updates sidecar: `webui/data/updates/characters.json`.
 
@@ -45,10 +47,10 @@ Optional Updates sidecar: `webui/data/updates/characters.json`.
 ## Focused refresh
 
 ```bat
-python scripts\build_character_data.py --languages CN --default-language CN
+python -m scripts.webui.characters.build_character_data --languages CN --default-language CN
 ```
 
-Run `scripts.build_assets` first only when asset indexes changed; run the full
+Run `scripts.webui.assets.build_assets` first only when asset indexes changed; run the full
 wrapper after extraction or shared Story/manifest changes.
 
 ## Remaining gaps
