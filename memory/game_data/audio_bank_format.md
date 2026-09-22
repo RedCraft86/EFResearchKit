@@ -7,6 +7,30 @@ Part of [`../game_data_recovery.md`](../game_data_recovery.md). See
 that are not the object graph. `STMG`, `ENVS` and `INIT` are framed byte-exact, and
 `ENVS` reuses the same point record the curve type does.
 
+## The bank version is 150, measured, and two external anchors are available
+
+- `BKHD`'s first `u32` is the bank version and it reads **150** in every bank of
+  `init_banks.pck` (40 of 40). The typed reader's `v150` name was previously carried
+  as an assertion; it is now a measurement. This matters because both external
+  anchors gate on it: wwiser's definitions branch at `<= 150` and `<= 152`, and one
+  version either side changes which fields exist.
+- **The Wwise SDK is installed locally** at `Wwise_2023.1.17.8841`, the exact
+  engine version (see [`audio_overview.md`](audio_overview.md)). Its headers give
+  enum and codec tables and built-in plug-in parameter layouts, and its Profile
+  static libraries plus PDBs carry the bank deserializers themselves as named
+  object code, which is what frames the HIRC node types
+  ([`audio_hirc_parser.md`](audio_hirc_parser.md)). Headers and libraries are
+  Audiokinetic's under their EULA: record derived facts, never vendor them.
+- **wwiser is checked out** under `tmp/audio/aux_sends/wwiser`. Its per-version
+  definitions are the only anchor for the music hierarchy, because the engine skips
+  those types and can supply no evidence. `tmp/` is disposable, so a conclusion drawn
+  from it must be re-derived against bytes before it is recorded here -- cite the
+  bytes, not the path.
+- A bounded probe that reproduces all of the above:
+  `AnimeStudio.CLI dump --streaming-assets <SA> --output tmp/audio/<task> --block-type initial-audio`,
+  then read `BKHD` and walk `parse_hirc_objects` over each bank payload. InitAudio is
+  two files and about 11 MB, so this costs nothing and needs no full audio export.
+
 ## The bank has four sections nothing parsed, and STMG is one of them
 
 Censusing the section tags was overdue. Across 20,873 bank payloads there are exactly

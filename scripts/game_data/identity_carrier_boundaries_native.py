@@ -1,0 +1,192 @@
+"""Load the reviewed negative boundaries for managed identity carriers."""
+from __future__ import annotations
+
+from scripts.game_data.contracts import CONTRACTS_DIR
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+from scripts.common import (
+    NATIVE_EVIDENCE_MISSING,
+    NATIVE_EVIDENCE_MISMATCHED,
+    NATIVE_EVIDENCE_VALIDATED,
+    check_installed_native_inputs,
+)
+
+from scripts.game_data.ifix_patch_native import (
+    DEFAULT_CONTRACT as DEFAULT_IFIX_CONTRACT,
+    PATCH_SHA256 as IFIX_PATCH_SHA256,
+    load_ifix_patch_contract,
+)
+
+
+SCHEMA = "identityCarrierNegativeBoundaries.v1"
+AUDIT_SCHEMA = "identityCarrierNegativeBoundariesAudit.v1"
+DEFAULT_CONTRACT = CONTRACTS_DIR / "identity_carrier_boundaries.json"
+GAMEASSEMBLY_SHA256 = (
+    "0C5573679BC6DEC2D068A14335466DB7CCF20AF9BAE2B983FB9D45677D80FFCE"
+)
+METADATA_SHA256 = (
+    "90C58E26E87C7227A85DDA3FEDF6CE5ED0B06DC1F76E0ABBE75AB20750ADF97E"
+)
+BOUNDARY_IDS = (
+    "mission_option_alternate_actions",
+    "mission_property_script_pointer",
+    "implicit_current_mission_context",
+    "direct_managed_identity_carriers",
+    "nested_managed_identity_carriers",
+)
+
+
+from scripts.common import repo_path as _source_file
+from scripts.common import read_json_object_bytes as _read_json
+
+
+
+def load_identity_carrier_boundaries_contract(
+    contract_path: Path = DEFAULT_CONTRACT,
+    *,
+    ifix_contract_path: Path = DEFAULT_IFIX_CONTRACT,
+    gameassembly: Path | None = None,
+    metadata: Path | None = None,
+) -> dict[str, Any]:
+    """Expose the negative conclusions only when their build gates match."""
+
+    path = Path(contract_path)
+    source_file = _source_file(path)
+    failures: list[dict[str, Any]] = []
+
+    def reject(
+        gate: str,
+        expected: Any,
+        actual: Any,
+        source: str = source_file,
+    ) -> None:
+        failures.append({
+            "validator": "identityCarrierNegativeBoundaries",
+            "gate": gate,
+            "sourceFile": source,
+            "expected": expected,
+            "actual": actual,
+        })
+
+    contract, raw, error = _read_json(path)
+    if error:
+        reject("read_valid_contract", {"readableJsonObject": True}, error)
+    sources = (
+        contract.get("sources")
+        if isinstance(contract.get("sources"), dict)
+        else {}
+    )
+    boundaries = (
+        contract.get("boundaries")
+        if isinstance(contract.get("boundaries"), list)
+        else []
+    )
+    exact_gates = (
+        ("schema", SCHEMA, contract.get("schema")),
+        ("status", "validated", contract.get("status")),
+        (
+            "gameassembly_sha256",
+            GAMEASSEMBLY_SHA256,
+            sources.get("gameAssemblySha256"),
+        ),
+        (
+            "metadata_sha256",
+            METADATA_SHA256,
+            sources.get("globalMetadataSha256"),
+        ),
+        (
+            "ifix_patch_sha256",
+            IFIX_PATCH_SHA256,
+            sources.get("ifixPatchSha256"),
+        ),
+        (
+            "boundary_ids",
+            list(BOUNDARY_IDS),
+            [row.get("id") for row in boundaries if isinstance(row, dict)],
+        ),
+        (
+            "story_bindings_added",
+            [0] * len(BOUNDARY_IDS),
+            [
+                row.get("storyBindingsAdded")
+                for row in boundaries
+                if isinstance(row, dict)
+            ],
+        ),
+        (
+            "mission_order_edges_added",
+            [0] * len(BOUNDARY_IDS),
+            [
+                row.get("missionOrderEdgesAdded")
+                for row in boundaries
+                if isinstance(row, dict)
+            ],
+        ),
+    )
+    for gate, expected, actual in exact_gates:
+        if actual != expected:
+            reject(gate, expected, actual)
+
+    ifix_audit = load_ifix_patch_contract(
+        ifix_contract_path,
+        gameassembly=gameassembly,
+        metadata=metadata,
+    )
+    if ifix_audit.get("status") != NATIVE_EVIDENCE_VALIDATED:
+        reject(
+            "ifix_contract_status",
+            {"status": NATIVE_EVIDENCE_VALIDATED},
+            {
+                "status": ifix_audit.get("status"),
+                "validationFailures": ifix_audit.get("validationFailures") or [],
+            },
+            str(ifix_audit.get("sourceFile") or _source_file(ifix_contract_path)),
+        )
+
+    native = check_installed_native_inputs(
+        GAMEASSEMBLY_SHA256,
+        METADATA_SHA256,
+        gameassembly=gameassembly,
+        metadata=metadata,
+    )
+    if native.status != NATIVE_EVIDENCE_VALIDATED:
+        reject(
+            "installed_native_inputs",
+            {"status": NATIVE_EVIDENCE_VALIDATED},
+            {"status": native.status, "detail": native.detail},
+        )
+
+    status = NATIVE_EVIDENCE_VALIDATED
+    if failures:
+        status = (
+            native.status
+            if native.status != NATIVE_EVIDENCE_VALIDATED
+            else NATIVE_EVIDENCE_MISSING
+            if error or ifix_audit.get("status") == NATIVE_EVIDENCE_MISSING
+            else NATIVE_EVIDENCE_MISMATCHED
+        )
+    return {
+        "schema": AUDIT_SCHEMA,
+        "status": status,
+        "sourceFile": source_file,
+        "sourceSha256": hashlib.sha256(raw).hexdigest().upper() if raw else "",
+        "boundaries": boundaries if not failures else [],
+        "validationFailures": failures,
+        "usesOcrOrManualOrder": False,
+    }
+
+
+__all__ = [
+    "AUDIT_SCHEMA",
+    "BOUNDARY_IDS",
+    "DEFAULT_CONTRACT",
+    "DEFAULT_IFIX_CONTRACT",
+    "GAMEASSEMBLY_SHA256",
+    "IFIX_PATCH_SHA256",
+    "METADATA_SHA256",
+    "SCHEMA",
+    "load_identity_carrier_boundaries_contract",
+]

@@ -97,13 +97,12 @@ animation. Neither is spatial, so neither belongs in the world lane.
 
 | File | Level | Lines |
 | --- | --- | --- |
-| [`audio_overview.md`](audio_overview.md) -- the six evidence layers and the authored-versus-observed boundary | 2 | 406 |
-| [`audio_bank_format.md`](audio_bank_format.md) -- the bank sections outside HIRC | 2 | 147 |
-| [`audio_hirc_parser.md`](audio_hirc_parser.md) -- the shipped parser, read out of the engine | 2 | 701 |
+| [`audio_overview.md`](audio_overview.md) -- the six evidence layers and the authored-versus-observed boundary | 2 | 440 |
+| [`audio_bank_format.md`](audio_bank_format.md) -- the bank sections outside HIRC | 2 | 171 |
+| [`audio_hirc_parser.md`](audio_hirc_parser.md) -- every HIRC layout, named from the SDK deserializer; the shipped parser read out of the engine | 2 | 819 |
 | [`audio_native_hooks.md`](audio_native_hooks.md) -- the native request chain, and what a bounded capture would prove | 2 | 435 |
-| [`audio_hirc_graph.md`](audio_hirc_graph.md) -- the object graph, the closed type layouts, and the typed v150 effect/bus parse | 3 | 1384 |
-| [`audio_hirc_curves.md`](audio_hirc_curves.md) -- `0x0B`, framed from bytes alone | 3 | 1103 |
-| [`audio_naming_coverage.md`](audio_naming_coverage.md) -- what is named and owned, and what nothing reaches | 4 | 424 |
+| [`audio_hirc_graph.md`](audio_hirc_graph.md) -- the object graph, the closed type layouts, and the typed v150 effect/bus parse | 3 | 1409 |
+| [`audio_naming_coverage.md`](audio_naming_coverage.md) -- what is named and owned, and what nothing reaches | 4 | 263 |
 
 **Gameplay lane** -- authored `Table` config joined to native contracts.
 
@@ -151,9 +150,9 @@ animation. Neither is spatial, so neither belongs in the world lane.
 - *How does the game actually read this file off disk?* -> [`native_read_path.md`](native_read_path.md).
 - *What does the audio runtime do with a voice request, and what would a capture add?* -> [`audio_native_hooks.md`](audio_native_hooks.md).
 - *Is this family's reader proven that far?* -> [`extraction_payload_boundaries.md`](extraction_payload_boundaries.md), not the lane file.
-- *What is the layout of Buff action tag `0xNN`?* -> its `scripts/game_data/buff_NN_native.json` contract, not the gameplay file.
+- *What is the layout of Buff action tag `0xNN`?* -> its `scripts/game_data/contracts/buff_NN_native.json` contract, not the gameplay file.
 - *Does this LevelScript action or trigger volume prove a Story link?* -> [`story_carriers.md`](story_carriers.md).
-- *Which native fact does a Story or Mission Pipeline builder rely on?* -> its `scripts/game_data/native_contracts/<name>.json`, then that contract's `nativeInputs` against the selected build.
+- *Which native fact does a Story or Mission Pipeline builder rely on?* -> its `scripts/game_data/contracts/<name>.json` and `<name>_native.py` loader, then that contract's `nativeInputs` against the selected build.
 - *Is this conclusion still current?* -> [`settled_and_open.md`](settled_and_open.md), then the contract's own `nativeInputs`.
 - *What is worth attempting next?* -> the remaining gaps in [`../game_data_recovery.md`](../game_data_recovery.md), and the eliminations in `world_chunk_unread_region.md`, `world_irradiance.md` and `audio_hirc_curves.md` so an excluded route is not retried.
 

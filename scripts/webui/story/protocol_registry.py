@@ -38,14 +38,14 @@ from scripts.common import (
     write_report_json,
     write_text_if_changed,
 )
-from scripts.game_data import il2cpp_protocol as il2cpp
+from scripts.game_data.il2cpp import protocol as il2cpp
 from scripts.game_data.levelscript_binary import (
     extract_levelscript_uid_records,
     levelscript_action_map_membership,
     levelscript_native_header_contract,
     summarize_levelscript_native_header_records,
 )
-from scripts.game_data.native_contracts.mission_task_paths import (
+from scripts.game_data.mission_task_paths_native import (
     DEFAULT_CONTRACT as MISSION_TASK_PATH_CONTRACT,
     load_mission_task_paths,
 )
