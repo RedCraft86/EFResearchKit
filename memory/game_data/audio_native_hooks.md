@@ -424,6 +424,188 @@ match**, and no verified capture has produced the decoder continuity rows yet.
   the external descriptor and opened path with the selected stream callback and
   the resulting decoded data flow.
 
+## The catalog is the host's input, and re-pinning it is gated
+
+`audio_runtime_trace_hooks.json` is an evidence catalog: 64 rows pinned to the
+build they were recorded on, of which the capture host requires **five**.
+`StartCapture.bat` pointing `BUILD_MANIFEST` at it is correct -- the host reads
+this schema -- but the path had not followed the `scripts/` reorganisation, and
+the pin was a superseded build.
+
+**The host owns the conversion, not this repository.** It looks the five hooks
+up by name in the catalog, takes only each one's `rva`, supplies the module and
+ABI identifier from its own table, and writes the `activation.v1` manifest the
+provider consumes. Producing an activation file here writes something nothing
+reads -- a mistake worth recording, because the catalog's own integration note
+describes the conversion and it is easy to assume the conversion is ours.
+
+What actually blocks a capture is the catalog's build pin, and
+`scripts/webui/story_recovery/refresh_audio_hook_catalog.py` re-pins it,
+verifying the two halves differently because they are different claims.
+
+**The managed halves are re-resolved and they moved.** `AudioAdapter._PostEvent`
+and `_PostEventWithExternalSource` live in `GameAssembly.dll`, so their
+addresses come from `il2cpp.method_resolver` by name against the selected
+build. They moved -- `0x328a690` to `0x337f270`, and `0x3abea70` to
+`0x3fa4a80` -- so carrying the recorded values forward would have attached two
+hooks to the wrong code.
+
+***The native halves did not move, and that is checkable rather than assumed.***
+`AkSoundEngine.dll` was rebuilt: same 3,586,536 bytes, different SHA-256. Its
+RVAs are nonetheless still valid, and the evidence is the binary's own `.pdata`
+exception directory, where a `BeginAddress` *is* a function start by
+definition. **29 of the catalog's 32 native rows land exactly on one**, at a
+density of one function per 212 bytes of `.text`; the three that do not are
+sixteen-byte leaf getters, which MSVC omits from `.pdata` by design. The
+generator re-checks each activated native RVA against that table and refuses
+the whole manifest if one is not a function start, so a future rebuild that
+*does* move code fails closed instead of attaching a hook to whatever now sits
+there.
+
+That asymmetry is the useful part: a rebuilt native DLL is not automatically a
+re-derivation job, and a rebuilt `GameAssembly.dll` always is.
+
+## A capture cannot name an Event, and what it can do instead
+
+Worth stating exactly, because the opposite is easy to assume. The audio
+provider's post hook is
+`(uint32 eventId, uint64 audioObjectId, uint32 callbackType, ...)` -- it
+carries the hash and never the spelling -- so **no session run with the shipped
+hooks names a hash-only Event**. `AudioManager` does expose string overloads
+(`PostEvent(string)`, `PlaySoundAtPosition(string, ...)`,
+`PostAudioCue(string)`), so a *different* hook could observe a name, but that
+hook does not exist and building it would only reach names that ship as
+literals, which the static sources now read far more thoroughly.
+
+What a session can do is the continuity this file is waiting on, and
+`scripts/webui/audio/semantics/runtime_capture_import.py` is the consumer side
+of it. It validates a session against the provider's own counters in
+`audio/summary.json` -- dropped records, unpaired calls, a window still open at
+session stop, an incomplete session -- and refuses the whole session naming the
+gate rather than reporting a smaller number across a hole.
+
+**The payload layout is recovered, and it is the writer's own.** The
+per-callback records ship as opaque `payloadHex` blobs whose layout is not the
+in-memory `CallbackRecord` -- the payload is 208 bytes where that struct is
+larger. It is `AudioEventPayload` in `runtime_dll.cpp`: five u64, four u32, a
+kind byte, then a 48-byte hook name and a 96-byte key/path, summing to 201 and
+padding to 208. The decode is self-checking and checks out: across a real
+session every payload decodes, the hook-name field resolves to exactly the
+three constants the adapter declares, and calls and results pair one to one.
+
+***A session already on disk carried observed playback that nothing had
+read.*** Over 32.7 seconds of windowed capture: 693 calls and 693 results with
+**no unpaired call and no truncated text**, **111 distinct Events posted** in
+689 posts each returning its own playing id, and **19 of those Events have no
+recovered name** -- so they are genuinely hash-only *and* genuinely used, which
+authored evidence alone could not establish.
+
+The four opened paths are the same bank probed in order across
+`Persistent` and `StreamingAssets`, each with and without the `Chinese`
+subdirectory. That is the overlay fallback rule of
+[`../game_data_recovery.md`](../game_data_recovery.md) observed at runtime
+rather than inferred from the catalog.
+
+***The external-source post carries its own join, and it is many-to-one.*** A
+`_PostEventWithExternalSource` call passes both the source key and the media
+path in its own arguments, so that pair is a join the game makes rather than
+two facts observed near each other. A second session, 110 seconds over four
+windows with nothing dropped and nothing unpaired, shows what it looks like at
+scale: **87 external posts carrying 81 distinct voice paths under 10 distinct
+keys**, of which **one key alone names 66 different files**.
+
+So an `externalSourceKey` is **not** a media identifier. Any reading that
+treats it as one -- including any attempt to recover a file from a key -- is
+refuted by a single session. What the key selects is something coarser than
+the file, and this evidence does not say what.
+
+Two bounds on those paths are worth keeping. The capture's text field holds 96
+bytes, so a path is cut at 95 characters and six of this session's were; a cut
+path is counted separately rather than presented whole. And the media itself is
+never opened through `DefaultIoOpenDispatch`: both sessions show only bank
+opens -- `368289710.bnk`, then `1214305672.bnk` and `1645682467.bnk` -- each
+probed across `Persistent` and `StreamingAssets` with and without `Chinese`.
+Voice media is read by some path these hooks do not see.
+
+## The native rows are named from the SDK, and every name was wrong
+
+`SourceProviderPreparation` recorded **nothing in either session**, including
+110 seconds of heavy voice. That is not a capture problem and no longer session
+would have fixed it. The shipped `AkSoundEngine.dll` is built from
+`AkSoundEngine.lib`, whose objects carry named COMDAT sections, so a function
+body can be matched back to its symbol. `scripts/game_data/wwise_sdk_symbols.py`
+does that for the whole image and names 1,021 of its 12,512 functions; the
+catalog refresh re-runs it on every re-pin and writes the symbol beside each row
+it can name, so the annotations cannot outlive the build they were derived from.
+
+An identification requires an *exactly* equal extent and at least 80% byte
+agreement, with the runner-up 5% behind. A shared prologue proves nothing --
+MSVC emits the same one everywhere -- but a function of identical length
+agreeing on 87-98% of its bytes, with the disagreements at relocated call
+targets and rip-relative displacements, is the same code. Below either bar the
+function is left unnamed rather than assigned to the best of several.
+
+***Six of the 32 native rows can be named, and all six are misnamed.*** Four are
+`CAkPlayingMgr` or `CAkPositionRepository` members -- playing-id bookkeeping,
+starvation and buffering notifications, a speaker-volume mixing callback -- and
+the fifth is file-source stream creation. **Not one is an external-source
+function**, though four are named `ExternalSource*` or `SourceKey*`. The
+`AkSoundEngine.*` row names record the role someone expected; the symbol records
+what the code is. Where they disagree the symbol wins, and a row's recorded
+argument shape and memory reads are then describing a function that does not do
+that -- so such a row is not evidence, whatever a session containing it seemed
+to show. The per-row symbols and their measured agreement live in
+`scripts/webui/story_recovery/audio_runtime_trace_hooks.json`, not here.
+
+Only five rows are enabled, so the four newly-named ones cost no past evidence.
+They are latent traps rather than active errors, and hooking one of them --
+`NotifySpeakerVolumeMatrix` fires per mix connection -- would be expensive and
+meaningless. Their symbols are now recorded so that does not happen.
+
+## Three codec source families, and which one voice takes is open
+
+Matching against *every* SDK library rather than only the one named after the
+DLL roughly doubles what can be named -- 1,943 of 12,512 functions -- because
+the engine links the stream manager, the memory manager and each codec as
+separate archives. That is what brings the decode path into view, and it also
+names three more catalog rows.
+
+The engine offers three ways to get compressed audio into a voice, and the map
+shows all three present in this build:
+
+- `CAkSrcFileBase` and its `CAkSrcFileOpus` subclass -- Opus **streamed from a
+  file**, with `read_opus` as libopusfile's read callback;
+- `CAkSrcBankVorbis` -- Vorbis **resident in a loaded bank or prepared media**,
+  which takes no stream at all;
+- `CAkSrcMedia` with `CAkSrcMediaCodecVorbis` and `CAkSrcMediaCodecPCM` -- the
+  newer media-source interface, fed a `SrcMedia::Header` and a codec factory.
+
+***The three codec rows are Opus, and none of them is enabled.*** `CodecStreamRead`,
+`CodecMemorySourceCopy` and `CodecDecoderDecode` are `op_get_next_page`,
+`CAkSrcFileOpus::read_opus` and `AK_op_read_float_no_copy` -- so whoever wrote
+the catalog was reading the Opus file path. Because no session enabled them,
+that is a record of where someone looked, not evidence of what voice does.
+
+**The observation and the Opus path disagree, and that is the open question.**
+`CAkSrcFileOpus` derives from `CAkSrcFileBase`, so Opus-from-file voice would
+have to pass `CreateStream` -- and `CreateStream` recorded nothing while voice
+was posting, with no `.wem` opened in either session. Either voice is not the
+Opus file path at all, in which case a bank-resident or media-source class
+serves it, or the stream was created outside the bounded window. Both remain
+open; the earlier reading that named `CAkSrcMedia` as *the* candidate was too
+confident, because it was made before `CAkSrcBankVorbis` and `CAkSrcFileOpus`
+were known to be present.
+
+**The hook that would settle it.** `CAkSource::SetSource(unsigned int, void*,
+AkMediaInformation)` at 96.7% agreement is the overload binding a source to
+in-memory bytes *together with* its media information, and
+`CAkSource::LockDataPtr(AkMediaRef&)` is where a source resolves to the media
+it will actually play. Those carry the source id and the media identity in one
+frame, which is precisely the key-to-file-to-decoder join, and they sit above
+the choice between the three families rather than inside one -- so a single
+hook answers which path voice takes instead of assuming it. Adding it is a new
+ABI in the capture provider: a tooling change, then a session.
+
 ## What remains unresolved
 
 The remaining address-taken codec callback/initialization targets, callback

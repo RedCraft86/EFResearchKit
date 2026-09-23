@@ -136,6 +136,14 @@ audibility.
   `scripts/webui/audio/semantics/name_recovery.py` mines head/tail templates per
   naming family from names already proven by exact evidence, regenerates sibling
   names, and keeps candidates whose hash equals a current hash-only Event id.
+  A second generator swaps one token at a time (tokens seen at that position in
+  names of the same token count, plus lifecycle words and numbered variants),
+  because head/tail recombination cannot reach a sibling that differs in a middle
+  token (`..._attack03_hit` beside `..._attack01_hit`). Both generators feed one
+  match table, so a hash two generators spell differently is ambiguous. The
+  corroboration rule below is what makes the wider search safe: against an equal
+  number of random target hashes the substitution search produces the expected
+  handful of coincidental preimages, and every one of them stays isolated.
   Because a generated preimage is weaker than a shipped string, a hash with two
   distinct spellings is dropped and a name is promoted only when its head and tail
   each recur across other recovered Events at one shared split boundary;
@@ -255,9 +263,63 @@ audibility.
   matching `conv/<dialogId>.json` records, and missing conversation ids stay
   Audio-only with no lifecycle dispatch inferred.
 
+## The serialized payloads were not exhausted, and the reason was a regex
+
+The claim below that every observed-string source was exhausted held for the
+sources, not for the *reading* of one of them. `length_prefixed_matches` found
+candidates by letting the `au_`/`bark_`/`radio_` pattern locate its own
+boundaries and then checking the four-byte length afterwards. A greedy
+`[A-Za-z0-9_]` class runs past the string's end whenever the following byte is
+a word character, and the length then disagrees, so the candidate is dropped.
+`Au_Chr_0035_Liino_Skill_Pop` is a shipped instance: 27 bytes, followed by a
+`d`.
+
+Driving the scan from the length prefix instead -- the pattern still locates a
+start, but the *slice the prefix names* must match entirely -- is a stricter
+per-candidate test, not a wider one, and the FNV-1 promotion gate is unchanged.
+Over SkillData and BuffData it raises candidates from 2,537 to 3,925 and adds
+**1,372 Event names that a current Event object claims by hash, 533 of them
+Events with no recovered name at all**. Accepting both spellings adds a further
+18, and on its own would have added nothing.
+
+*The general point is worth keeping.* "Every source is exhausted" was a claim
+about where names live, and what actually bounded recovery was how one scanner
+read them. The check that exposed it came from outside the lane: decoding
+SkillData and BuffData whole gave 4,091 strings sitting in members literally
+named `_soundEvent`, of which 4,072 hash to a current Event -- so the schema
+position said "Event" where the spelling grammar had to guess.
+
+## The member is a better handle than the spelling
+
+Fixing the scanner leaves a bound that no scanner can pass. A byte scan can
+only find names that *look* like Event names, and the corpus is full of Events
+that do not: `eny_0125_fdcentur_lance_skill_01_a_hit` is an Event and begins
+`eny_`, which the `au_`/`bark_`/`radio_` grammar will never accept and should
+not be widened to accept, because widening it on a suffix is the failure mode
+this lane exists to avoid.
+
+`decoded_payload_event_names` uses the member instead. A string in a member the
+generated wrapper calls `_soundEvent` is an Event reference because of where it
+sits, and the promotion gate is unchanged -- FNV-1 equality with a current
+Event object id. Over the decodable families it offers 4,090 candidates, of
+which 4,071 are claimed by a current Event against a coincidence expectation of
+0.024, and **197 of those are names the byte scan cannot reach at all**.
+
+Two constraints keep it from being a different guess. The member names are an
+explicit list of members that were read and found to hold Event references, not
+a pattern over member names -- admitting anything containing `sound` would move
+the guess up one level rather than remove it. And a decoded value counts only
+when its record consumed to EOF exactly, so a drifted cursor contributes
+nothing.
+
+The module is a standalone source with its own report and is **not yet wired
+into `build_audio`**; wiring it is the remaining step, and it would make the
+Audio build depend on the installed-build gate, which it currently does not.
+
 ## What still needs new evidence
 
-Every observed-string source is exhausted: the IL2CPP literal blob, the authored
-tables, and the serialized payloads. The Events that remain hash-only, and the
-media reached only by them, need a captured `PostEvent` argument or a native
-callsite that carries the string, not another static sweep.
+The remaining hash-only Events, and the media reached only by them, still need
+a captured `PostEvent` argument or a native callsite that carries the string.
+That is now a statement about the Events left after the fix above, and the
+lesson from it is that a source counts as exhausted only once its reader is
+known to consume it exactly.

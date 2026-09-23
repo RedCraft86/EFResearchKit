@@ -25,7 +25,7 @@ from typing import Any
 from scripts.common import check_installed_native_inputs
 from scripts.game_data.contracts import CONTRACTS_DIR
 from scripts.game_data.il2cpp.context import generic_type_carrier, method_spec_usage_index
-from scripts.game_data.il2cpp.native_image import NativeImage, read_pinned_contract
+from scripts.game_data.il2cpp.native_image import NativeImage, read_reviewed_contract
 
 
 CONTRACT_STATUS = "exact-current-build"
@@ -35,7 +35,6 @@ CONTRACT_STATUS = "exact-current-build"
 class Frontier:
     name: str
     file: str
-    sha256: str
     schema: str
 
     @property
@@ -53,31 +52,26 @@ FRONTIERS: dict[str, Frontier] = {
         Frontier(
             "residual",
             "buff_residual_frontier.json",
-            "debabbbd6ea0465e4cf5bacffd489f0ca9b6c0838a7aa59088197c2dda6038f3",
             "endfield.buff-residual-frontier-native-contract.v1",
         ),
         Frontier(
             "frontier6",
             "buff_frontier6.json",
-            "fabf42c86746d668e099ed640aa9c1dd44570f6dc591425710d66ca7a36133c4",
             "endfield.buff-frontier6-native-contract.v1",
         ),
         Frontier(
             "frontier7",
             "buff_frontier7.json",
-            "100709c977caeb671d86a304f9a786b1df506edeed51d6506be09abf1136d0b3",
             "endfield.buff-frontier7-native-contract.v1",
         ),
         Frontier(
             "frontier8",
             "buff_frontier8.json",
-            "196820a6fd2bcd811ccabacc5e17565289193e05c19e906ea2e29f0d0e91ddab",
             "endfield.buff-frontier8-native-contract.v1",
         ),
         Frontier(
             "frontier9",
             "buff_frontier9.json",
-            "52b0a641d077383f54eb692d18178f2dbe97cd22ce4de9148e596c1011b79810",
             "endfield.buff-frontier9-native-contract.v1",
         ),
     )
@@ -97,9 +91,8 @@ def contract_path(name: str) -> Path:
 
 def _read_contract(name: str, contract_path: Path | None = None) -> tuple[dict[str, Any], str]:
     spec = frontier(name)
-    return read_pinned_contract(
+    return read_reviewed_contract(
         contract_path or spec.path,
-        sha256=spec.sha256,
         schema=spec.schema,
         status=CONTRACT_STATUS,
         label=spec.label,
@@ -108,7 +101,7 @@ def _read_contract(name: str, contract_path: Path | None = None) -> tuple[dict[s
 
 @lru_cache(maxsize=len(FRONTIERS))
 def reviewed_contract(name: str) -> dict[str, Any]:
-    """Return the byte-pinned contract without selecting installed inputs."""
+    """Return the reviewed contract without selecting installed inputs."""
     return _read_contract(name)[0]
 
 
@@ -217,7 +210,6 @@ def load_rows(
         audit.update(
             nativeGate={"status": gate.status, "detail": gate.detail},
             contractSha256=digest,
-            inputSetSha256=contract["inputSetSha256"],
         )
         if gate.status != "validated":
             failures.append({

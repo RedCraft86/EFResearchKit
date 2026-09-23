@@ -54,6 +54,7 @@ from scripts.game_data.memorypack import buff_actions
 from scripts.game_data.memorypack.buff_actions import Reader as _FrozenReader, Unsupported
 from scripts.game_data.memorypack.derived_schema import (
     FIXED,
+    NULL_ONLY,
     LIST,
     MAP,
     OBJECT,
@@ -71,14 +72,43 @@ from scripts.source_paths import ExportLayout
 DEFAULT_OUTPUT = REPO / "reports/game_data/memorypack_derived_plans.json"
 NULL_MARKER = 0xFF
 WIDE_TAG_LEAD = 0xFA
-# A plan may legitimately recurse; this is what makes executing one terminate.
-# It bounds nesting, not record size, and a body deeper than this is reported
-# unsupported rather than read on a guess.
-PLAN_DEPTH_LIMIT = 24
+# A plan may legitimately recurse, and this bounds how deep an execution goes.
+#
+# It counts plan *steps*, not nesting levels: reading a nested body costs two,
+# one for the member and one for the object it holds. Termination does not rest
+# on it -- every step consumes at least one byte, a null marker or a member
+# header, so a run is bounded by the record anyway -- which makes this a guard
+# against pathological nesting rather than the thing that stops recursion.
+#
+# The value has to be set from the data. SkillData's real maximum is 55 steps,
+# with a 99th percentile of 39, so the original 24 was not a bound on anything
+# pathological: it refused 818 ordinary files. This leaves several times the
+# observed headroom while staying far below the interpreter's own stack limit.
+PLAN_DEPTH_LIMIT = 256
 # The exported family the frozen reader is built for, and the only one whose
 # root framing is reachable without a corpus gate. Its first byte is the root
 # wrapper's member count.
 BUFFDATA_DIRECTORY = "BuffData"
+# The other exported family, read whole rather than to an anchor: SkillData's
+# own wrapper is a plan like any other, so a file either consumes exactly or
+# refuses.
+SKILLDATA_DIRECTORY = "SkillData"
+SKILLDATA_TYPE = "Beyond.Gameplay.Core.SkillData"
+BUFFDATA_TYPE = "Beyond.Gameplay.Core.BuffData"
+#: Each exported family read whole, as ``directory -> record type``.
+#:
+#: A family qualifies when its exported files are MemoryPack payloads and its
+#: root type plans. ``MissionRuntimeAsset`` is deliberately absent: those files
+#: are ordinary JSON text, which the reader correctly refuses rather than
+#: framing. ``LevelData`` and ``LevelScriptData`` are absent because their
+#: ``aiBlackboard`` is a ``Dictionary<string, object>``, and ``System.Object``
+#: names no layout to read.
+WHOLE_RECORD_FAMILIES = {
+    SKILLDATA_DIRECTORY: SKILLDATA_TYPE,
+    BUFFDATA_DIRECTORY: BUFFDATA_TYPE,
+    "LevelConfig": "Beyond.Gameplay.LevelConfig",
+    "LevelScriptTemplateData": "Beyond.Gameplay.LevelScriptTemplateData",
+}
 BUFFDATA_ROOT_MEMBER_COUNT = 30
 # A file with more id anchors than this is not selected between; the census
 # refuses it rather than picking one.
@@ -102,20 +132,46 @@ class PlanRegistry:
         self.plans = plans
         self.union_tag_maps = union_tag_maps
         self.roots = roots
+        self.named_roots = {}
+        #: The type each planned wrapper wraps, so a decoded union can name the
+        #: subtype its tag selected instead of reporting a bare number.
+        self.wrapped_names: dict[int, str] = {}
+
+    #: Plans for types reached by name rather than by a dispatcher tag.
+    named_roots: dict[str, int]
 
     @classmethod
     def from_resolver(
-        cls, resolver: Resolver, resolved: dict[int, dict[str, Any]]
+        cls, resolver: Resolver, resolved: dict[int, dict[str, Any]],
+        named: tuple[str, ...] = (),
     ) -> "PlanRegistry":
         roots = {
             tag: row["wrapperTypeDefinition"]
             for tag, row in resolved.items()
             if row.get("status") == "determined" and "wrapperTypeDefinition" in row
         }
-        return cls(dict(resolver.plans), dict(resolver.union_tag_maps), roots)
+        # A named type is not a union member, so it has no tag; it is planned
+        # here so a whole record of that type can be executed directly.
+        named_roots: dict[str, int] = {}
+        for name in named:
+            definition = resolver.by_type.get(name)
+            if definition is not None and resolver.plan(definition):
+                named_roots[name] = definition
+        registry = cls(dict(resolver.plans), dict(resolver.union_tag_maps), roots)
+        registry.named_roots = named_roots
+        registry.wrapped_names = {
+            definition: wrapper.wrapped_type
+            for definition, wrapper in resolver.wrappers.items()
+            if wrapper.wrapped_type
+        }
+        return registry
 
     def __len__(self) -> int:
         return len(self.roots)
+
+    # __len__ makes a registry with no dispatcher roots falsy, so every reader
+    # below tests ``is not None`` rather than truthiness. A named-root run has
+    # exactly that shape and would otherwise behave as if unregistered.
 
 
 def load_registry(
@@ -126,7 +182,8 @@ def load_registry(
         gameassembly=gameassembly, metadata=metadata)
     if resolver is None:
         return PlanRegistry({}, {}, {}), audit
-    registry = PlanRegistry.from_resolver(resolver, resolved)
+    registry = PlanRegistry.from_resolver(
+        resolver, resolved, named=tuple(WHOLE_RECORD_FAMILIES.values()))
     return registry, dict(audit, determinedRoutes=len(registry))
 
 
@@ -157,7 +214,7 @@ class DerivedPlanMixin:
 
     def _action(self, depth: int, tag: int, width: int) -> None:
         registry = self.plan_registry
-        definition = registry.roots.get(tag) if registry else None
+        definition = registry.roots.get(tag) if registry is not None else None
         if definition is None:
             super()._action(depth, tag, width)
             return
@@ -189,7 +246,7 @@ class DerivedPlanMixin:
         """A wrapper body: a null marker, or a member header and the members."""
         self._plan_depth_guard(depth)
         registry = self.plan_registry
-        members = registry.plans.get(definition) if registry else None
+        members = registry.plans.get(definition) if registry is not None else None
         if members is None:
             raise Unsupported(
                 self.source, self.pos, "a planned wrapper", definition, "unplanned")
@@ -202,7 +259,13 @@ class DerivedPlanMixin:
 
     def _plan_member(self, member: MemberPlan, depth: int) -> None:
         self._plan_depth_guard(depth)
-        if member.kind == FIXED:
+        if member.kind == NULL_ONLY:
+            # A refused body: the null marker is readable, anything else is not.
+            if self.peek() != NULL_MARKER:
+                raise Unsupported(self.source, self.pos, "a null marker",
+                                  self.peek(), "refused-body")
+            self.take(1, f"null:{member.name}")
+        elif member.kind == FIXED:
             self.take(member.width or 0, f"derived:{member.name}")
         elif member.kind == STRING:
             self.byte_payload()
@@ -213,7 +276,7 @@ class DerivedPlanMixin:
         elif member.kind == LIST:
             self._plan_list(member, depth)
         elif member.kind == MAP:
-            self._plan_map(member)
+            self._plan_map(member, depth)
         elif member.kind == UNION:
             self._plan_union(member.ref if member.ref is not None else -1, depth)
         else:
@@ -233,29 +296,38 @@ class DerivedPlanMixin:
         for _ in range(max(0, self.count(minimum, nullable=True))):
             self._plan_member(element, depth + 1)
 
-    def _plan_map(self, member: MemberPlan) -> None:
+    def _plan_map(self, member: MemberPlan, depth: int) -> None:
         """The counted map, with the object header the plan says it carries.
 
-        The pair is raw memory, so the whole struct including its padding is
-        taken at once; the plan already carries the padded size.
+        With both sides unmanaged the pair is raw memory, so the whole struct
+        including its padding is taken at once and the plan carries the padded
+        size. With a managed side there is no padding: the key and then the
+        value are read by their own plans, back to back.
         """
-        pair_size = member.pair_size or 0
-        if not pair_size:
-            raise Unsupported(
-                self.source, self.pos, "a sized map pair", pair_size, "plan-kind")
         if member.header:
             if self.peek() == NULL_MARKER:
                 self.take(1, "null-map")
                 return
             self.header(1)
-        for _ in range(max(0, self.count(pair_size, nullable=True))):
-            self.take(pair_size, f"derived:{member.name}.pair")
+        pair_size = member.pair_size or 0
+        if pair_size:
+            for _ in range(max(0, self.count(pair_size, nullable=True))):
+                self.take(pair_size, f"derived:{member.name}.pair")
+            return
+        key, value = member.key, member.value
+        if key is None or value is None:
+            raise Unsupported(
+                self.source, self.pos, "a planned map pair", None, "plan-kind")
+        minimum = (key.width or 1) if key.kind == FIXED else 1
+        for _ in range(max(0, self.count(minimum, nullable=True))):
+            self._plan_member(key, depth + 1)
+            self._plan_member(value, depth + 1)
 
     def _plan_union(self, base: int, depth: int) -> None:
         """A null marker, or a tag and the concrete subtype's body."""
         self._plan_depth_guard(depth)
         registry = self.plan_registry
-        tags = registry.union_tag_maps.get(base) if registry else None
+        tags = registry.union_tag_maps.get(base) if registry is not None else None
         if tags is None:
             raise Unsupported(
                 self.source, self.pos, "a planned union", base, "unplanned")
@@ -461,6 +533,66 @@ def _sweep(files: list[Path]) -> dict[str, tuple[int, int]]:
     return closed
 
 
+def _whole_record_sweep(
+    files: list[Path], registry: PlanRegistry, type_name: str
+) -> dict[str, Any]:
+    """Execute a whole record plan over every exported file of one family.
+
+    This is a different measurement from the reader-versus-reader one, and a
+    stronger one. No reviewed reader frames either family's file whole: they
+    decode a first record or reach an anchor and leave the rest an explicit
+    opaque remainder. What is being asked here is simply whether the derived
+    plan consumes each file exactly.
+
+    The shape of the answer is what carries the evidence. A wrong member layout
+    drifts, and a drifted cursor lands at an arbitrary offset; landing on the
+    last byte, repeatedly, across files spanning orders of magnitude in size,
+    is not something a wrong layout produces. So ``shortOfEof`` is reported
+    beside ``exactEof``: it is the number that would expose a drifting model,
+    and reporting the two together is what makes the claim checkable.
+    """
+    definition = registry.named_roots.get(type_name)
+    if definition is None:
+        return {"status": "unplanned", "type": type_name}
+
+    class _Driver(DerivedPlanMixin, _FrozenReader):
+        pass
+
+    exact = short = refused = 0
+    null_only = 0
+    refusals: dict[str, int] = {}
+    for path in files:
+        data = path.read_bytes()
+        reader = _Driver(data, path.name, registry=registry)
+        try:
+            reader._plan_object(definition, 0)
+        except (Unsupported, ValueError, IndexError, struct.error) as error:
+            refused += 1
+            category = getattr(error, "diagnostic", None) or {}
+            key = str(category.get("category") or type(error).__name__)
+            refusals[key] = refusals.get(key, 0) + 1
+            continue
+        if reader.pos == len(data):
+            exact += 1
+        else:
+            short += 1
+        null_only += sum(1 for span in reader.ranges
+                         if str(span.get("kind", "")).startswith("null:"))
+    return {
+        "status": "validated" if not short else "drifting",
+        "type": type_name,
+        "files": len(files),
+        "exactEof": exact,
+        "shortOfEof": short,
+        "refused": refused,
+        "refusalKinds": dict(sorted(refusals.items(), key=lambda kv: -kv[1])),
+        # How often a refused body's position was actually reached and found
+        # null. It is the number that makes that plan kind's claim checkable:
+        # zero would mean the claim was never tested by this family.
+        "nullOnlyPositionsRead": null_only,
+    }
+
+
 def corpus_run(export_root: Path | None = None) -> dict[str, Any]:
     """Compare the frozen reader against the plan reader over exported BuffData.
 
@@ -493,9 +625,17 @@ def corpus_run(export_root: Path | None = None) -> dict[str, Any]:
     shared = sorted(set(before) & set(after))
     unchanged = sum(1 for name in shared if before[name] == after[name])
     moved = [name for name in shared if before[name] != after[name]]
+    whole: dict[str, Any] = {}
+    for directory_name, type_name in sorted(WHOLE_RECORD_FAMILIES.items()):
+        directory = layout.json_dir / directory_name
+        whole[directory_name] = (
+            _whole_record_sweep(sorted(directory.glob("*.json")), registry, type_name)
+            if directory.is_dir() else {"status": "missing-export"}
+        )
     return {
         "status": "validated" if not moved and not (set(before) - set(after)) else "regressed",
         "audit": audit,
+        "wholeRecord": whole,
         "files": len(files),
         "frozenClosed": len(before),
         "planClosed": len(after),

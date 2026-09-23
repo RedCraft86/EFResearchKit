@@ -1,5 +1,6 @@
 """Build-locked offline exhaustion evidence and validators."""
 from __future__ import annotations
+from scripts.game_data import levelscript_union_tags as union_tags
 from scripts.common import rel_path as export_rel_path
 
 import base64
@@ -46,11 +47,12 @@ from scripts.webui.story.mission_recovery import natural_key
 from scripts.webui.story.source_gap.data import (
     CORE_STORY_NODE_KINDS,
     NPC_PROXY_DIALOG_SELECTION_MAPPING_ID,
-    NPC_PROXY_DIALOG_SELECTION_GAMEASSEMBLY_SHA256,
+    npc_proxy_dialog_selection_sha256,
     DIALOG_TREE_TRUNK_GROUP_MAPPING_ID,
-    DIALOG_TREE_TRUNK_NATIVE_CONSUMERS,
+    DIALOG_TREE_TRUNK_NATIVE_GROUP,
+    DIALOG_TREE_TRUNK_NATIVE_METHODS,
     OFFLINE_EXHAUSTION_MAPPING_ID,
-    OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+    offline_exhaustion_gameassembly_sha256,
     OFFLINE_EXHAUSTION_ABSENT_BINARY_TOKENS,
     OFFLINE_EXHAUSTION_MISSION_BRANCH_CONTEXTS,
     OFFLINE_EXHAUSTION_MISSION_RELATED_ORIGINAL_DATA,
@@ -60,7 +62,7 @@ from scripts.webui.story.source_gap.data import (
     OFFLINE_EXHAUSTION_EMPTY_LEVELSCRIPT_CONTEXTS,
     OFFLINE_EXHAUSTION_LEVELSCRIPT_TASK_CONSUMERS,
     OFFLINE_EXHAUSTION_REVERSE_PPTR_MAPPING_ID,
-    OFFLINE_EXHAUSTION_METADATA_SHA256,
+    offline_exhaustion_metadata_sha256,
     OFFLINE_EXHAUSTION_RADIO_TABLE_SHA256,
     OFFLINE_EXHAUSTION_AUDIO_DIALOG_SHA256,
     OFFLINE_EXHAUSTION_NUM_ID_STR_TABLE_SHA256,
@@ -126,6 +128,7 @@ from scripts.webui.story.source_gap.content_evidence import (
     _offline_radio_definition_validation_failure,
 )
 from scripts.common import EXPORT_LAYOUT, WEBUI_BUILD_DIR
+from scripts.game_data.story_native_consumers_native import cited_address, cited_token, consumer_rows
 
 
 
@@ -1932,8 +1935,8 @@ def build_offline_exhaustion_index(
         "dialogIdIndex": OFFLINE_EXHAUSTION_DIALOG_ID_INDEX_SHA256,
         "timelineLineOrders":
             OFFLINE_EXHAUSTION_TIMELINE_LINE_ORDERS_SHA256,
-        "gameAssembly": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-        "globalMetadata": OFFLINE_EXHAUSTION_METADATA_SHA256,
+        "gameAssembly": offline_exhaustion_gameassembly_sha256(),
+        "globalMetadata": offline_exhaustion_metadata_sha256(),
     }
     for context in OFFLINE_EXHAUSTION_RADIO_CONTEXTS.values():
         expected_hashes[context["sourceKey"]] = context["sha256"]
@@ -2645,8 +2648,8 @@ def build_offline_exhaustion_index(
             actual_playback_records = []
             for record_index, record in enumerate(playback_records):
                 action = {
-                    (0x0363, 0x0D): "PlayRadio",
-                    (0x0364, 0x0D): "PlayRadioAndWait",
+                    union_tags.action("PlayRadio"): "PlayRadio",
+                    union_tags.action("PlayRadioAndWait"): "PlayRadioAndWait",
                 }.get(levelscript_record_semantic_key(record))
                 if not action:
                     continue
@@ -3772,8 +3775,8 @@ def build_offline_exhaustion_index(
                     "absent_utf8_and_utf16le_in_current_game_binaries",
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
                 "gameAssemblySha256":
-                    OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                    offline_exhaustion_gameassembly_sha256(),
+                "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                 "searchedConsumerKinds": [
                     "MissionRuntime Story routes",
                     "typed LevelScript playback actions",
@@ -3939,14 +3942,14 @@ def build_offline_exhaustion_index(
                 "carrierAuditTargetSetSha256": core_target_digest,
                 "nativeMappingId": NPC_PROXY_DIALOG_SELECTION_MAPPING_ID,
                 "gameAssemblySha256":
-                    NPC_PROXY_DIALOG_SELECTION_GAMEASSEMBLY_SHA256,
+                    npc_proxy_dialog_selection_sha256(),
                 "nativeConsumerMethods": [{
                     "method": (
                         "Beyond.Gameplay.NpcInteractComponent."
                         "_TryGetNpcProxyInteractDialogId"
                     ),
-                    "token": "0x06011381",
-                    "address": "0x183564080",
+                    "token": cited_token("Beyond.Gameplay.NpcInteractComponent._TryGetNpcProxyInteractDialogId"),
+                    "address": cited_address("Beyond.Gameplay.NpcInteractComponent._TryGetNpcProxyInteractDialogId"),
                     "selectionField": "activeCondIndex",
                 }],
                 "searchedConsumerKinds": [
@@ -4138,8 +4141,8 @@ def build_offline_exhaustion_index(
                     "absent_utf8_and_utf16le_in_current_game_binaries",
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
                 "gameAssemblySha256":
-                    OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                    offline_exhaustion_gameassembly_sha256(),
+                "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                 "searchedConsumerKinds": [
                     "authored SNS relatedMissionId/linkMissionId fields",
                     "MissionRuntime Story routes",
@@ -4598,8 +4601,8 @@ def build_offline_exhaustion_index(
                 "binaryRootTokenStatus":
                     "absent_utf8_and_utf16le_in_current_game_binaries",
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
-                "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
+                "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                 "searchedConsumerKinds": [
                     "MissionRuntime Story routes",
                     "typed LevelScript playback actions",
@@ -6038,8 +6041,8 @@ def build_offline_exhaustion_index(
                 "binaryRootTokenStatus":
                     "absent_utf8_and_utf16le_in_current_game_binaries",
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
-                "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
+                "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                 "searchedConsumerKinds": [
                     "MissionRuntime Story routes",
                     "typed LevelScript playback actions",
@@ -6238,8 +6241,8 @@ def build_offline_exhaustion_index(
                 "binaryRootTokenStatus":
                     "absent_utf8_and_utf16le_in_current_game_binaries",
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
-                "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
+                "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                 "consumerBoundary": (
                     "the mechanical misc_dlg-to-dlg alias, exact DialogId "
                     "MemoryPack registration, and exact DialogTextTable rows "
@@ -6455,8 +6458,8 @@ def build_offline_exhaustion_index(
                     "absent_utf8_and_utf16le_in_current_game_binaries"
                 ),
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
-                "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
+                "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                 "searchedConsumerKinds": [
                     "MissionRuntime Story routes",
                     "complete typed LevelScript action-list census",
@@ -6651,9 +6654,10 @@ def build_offline_exhaustion_index(
                     source_display_path(source_paths["globalMetadata"]),
                 ],
                 "nativeMappingId": DIALOG_TREE_TRUNK_GROUP_MAPPING_ID,
-                "nativeConsumers": [
-                    dict(row) for row in DIALOG_TREE_TRUNK_NATIVE_CONSUMERS
-                ],
+                "nativeConsumers": consumer_rows(
+                    DIALOG_TREE_TRUNK_NATIVE_GROUP,
+                    list(DIALOG_TREE_TRUNK_NATIVE_METHODS),
+                ),
                 "gameAssemblySha256": actual_hashes.get(
                     "gameAssembly", ""
                 ),
@@ -6832,9 +6836,9 @@ def build_offline_exhaustion_index(
         and safe_key(reverse_native.get("mappingId"))
         == OFFLINE_EXHAUSTION_REVERSE_PPTR_MAPPING_ID
         and safe_key(reverse_native.get("gameAssemblySha256"))
-        == OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256
+        == offline_exhaustion_gameassembly_sha256()
         and safe_key(reverse_native.get("metadataSha256"))
-        == OFFLINE_EXHAUSTION_METADATA_SHA256
+        == offline_exhaustion_metadata_sha256()
     )
     if (
         not gameobject_audit_valid
@@ -6983,8 +6987,8 @@ def build_offline_exhaustion_index(
                     "binaryRootTokenStatus":
                         "absent_utf8_and_utf16le_in_current_game_binaries",
                     "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
-                    "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                    "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                    "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
+                    "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                     "consumerBoundary": (
                         "the exact TextTable group survives, while the current "
                         "Timeline registries, TextAsset/root and reverse-PPtr "
@@ -7224,8 +7228,8 @@ def build_offline_exhaustion_index(
                 "absent_utf8_and_utf16le_in_current_game_binaries",
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "playbackMappingId": OFFLINE_EXHAUSTION_REVERSE_PPTR_MAPPING_ID,
-            "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-            "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+            "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
+            "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
             "consumerBoundary": (
                 "the bidirectional Timeline registry, decoded TextAsset, "
                 "typed CutsceneRootComponent hierarchy, and resolved "
@@ -7370,8 +7374,8 @@ def build_offline_exhaustion_index(
                 "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
                 "playbackMappingId":
                     OFFLINE_EXHAUSTION_REVERSE_PPTR_MAPPING_ID,
-                "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
-                "globalMetadataSha256": OFFLINE_EXHAUSTION_METADATA_SHA256,
+                "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
+                "globalMetadataSha256": offline_exhaustion_metadata_sha256(),
                 "consumerBoundary": (
                     "the original CutsceneRoot _director pointer and the "
                     "director's PlayableAsset pointer prove an exact cross-key "
@@ -7683,7 +7687,7 @@ def build_offline_exhaustion_index(
             "emptyLevelScriptContext": empty_levelscript_context,
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
-                OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+                offline_exhaustion_gameassembly_sha256(),
             "consumerBoundary": (
                 (
                     "the exact LevelData file contains this radio id near "
@@ -7887,7 +7891,7 @@ def build_offline_exhaustion_index(
                 if validation["npcProxyConsumers"] else []
             ),
             "gameAssemblySha256":
-                OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+                offline_exhaustion_gameassembly_sha256(),
             "consumerBoundary": (
                 (
                     "the hash-locked LevelData properties resolve this dialog "
@@ -8049,7 +8053,7 @@ def build_offline_exhaustion_index(
             "emptyLevelScriptContext": empty_levelscript_context,
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
-                OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+                offline_exhaustion_gameassembly_sha256(),
             "consumerBoundary": (
                 "the exact DialogTextTable line/audio group is consumed "
                 "as authored trunks inside the registered parent "
@@ -8166,7 +8170,7 @@ def build_offline_exhaustion_index(
             "runtimeTrackingContext": validation["runtimeTracking"],
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
-                OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+                offline_exhaustion_gameassembly_sha256(),
             "consumerBoundary": (
                 (
                     "the exact SNSDialogTable content graph defines this "
@@ -8304,7 +8308,7 @@ def build_offline_exhaustion_index(
             ),
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
             "gameAssemblySha256":
-                OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+                offline_exhaustion_gameassembly_sha256(),
             "consumerBoundary": (
                 (
                     "an exact WorldEntityRegistry script/slot resolves to a "
@@ -8411,7 +8415,7 @@ def build_offline_exhaustion_index(
             "playbackMappingId":
                 OFFLINE_EXHAUSTION_REVERSE_PPTR_MAPPING_ID,
             "gameAssemblySha256":
-                OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+                offline_exhaustion_gameassembly_sha256(),
             "logicalBundles": [
                 row.get("logicalBundle") or {}
                 for row in object_rows
@@ -8458,7 +8462,7 @@ def build_offline_exhaustion_index(
                 key=natural_key,
             ),
             "nativeMappingId": OFFLINE_EXHAUSTION_MAPPING_ID,
-            "gameAssemblySha256": OFFLINE_EXHAUSTION_GAMEASSEMBLY_SHA256,
+            "gameAssemblySha256": offline_exhaustion_gameassembly_sha256(),
             "consumerBoundary": definition.get("consumerBoundary") or (
                 "the exact TextTable group has no Timeline registry entry, "
                 "indexed cutscene root, reverse PPtr relation, "

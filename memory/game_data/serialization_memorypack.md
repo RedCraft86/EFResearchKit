@@ -38,9 +38,9 @@ the formatter, never from the field list.
 
 Current exact named readers additionally cover LevelConfig,
 AtmosphericNpcData tables, NavMesh area/state containers,
-TeleportValidation tables, DialogIdTable including its two added row members,
-AetherEnergyLockConfigDataTable, MatrixShockWaveBeatConfigTable, the compact
-MissionAreaTable, WorldChallenge SubGame table, compact WorldEntityRegistry,
+the four serialized TeleportValidation tables, DialogIdTable including its
+two added row members, AetherEnergyLockConfigDataTable,
+MatrixShockWaveBeatConfigTable, the compact MissionAreaTable, WorldChallenge SubGame table, compact WorldEntityRegistry,
 BambooRaftTaskTable, and InteractiveTable. The registry's persisted root has
 four dictionaries; the script lists in the larger textual table are derived
 postprocessing and are not serialized members.
@@ -74,7 +74,7 @@ three atmospheric-NPC indexes, 1,956 NPC proxy placements, model paths and
 interactive lock-view metadata, 18,030 world-entity briefs, focus modes,
 mission areas, map regions and LevelScript teleport rows. The five broad
 polymorphic tables (`ForbidByGameplayTagTable`, `GameModeTable`, `LevelMapMark`,
-`ScriptTaskExtraInfoTable` and `SubGameInstanceDataTable`) use a byte-pinned
+`ScriptTaskExtraInfoTable` and `SubGameInstanceDataTable`) use a reviewed
 declarative contract covering 813 schema nodes and 88 stored `$type`
 identities. Only their explicitly named
 authored-ID dictionaries are dynamic; unknown fields, shapes, scalar types or
@@ -82,7 +82,7 @@ discriminators fail closed. This establishes stored configuration structure,
 while runtime selection and render consumption remain separate evidence.
 
 The remaining ten textual JsonData rows also have named schemas rather than a
-generic JSON classification. A byte-pinned 473-node contract closes the AI
+generic JSON classification. A reviewed 473-node contract closes the AI
 global settings and enemy-template paths, the root-level NPC-proxy and script-
 task tables, interactive collection counts, doodad groups, factory regions and
 spaceship cabin spawn data. The two LevelMountPoint files use a recursive
@@ -175,7 +175,7 @@ five-float `MovementData`, bounded `MoveMode`, and two-float proxy shape at the
 next component union. A present `ActionSerializedMap` with three zero list
 counts now advances through the same typed suffix to physical EOF, preserving
 the distinction from a null map. Positive maps now use the shared sequential
-`codecs/levelscript/action_map.py` reader. Its byte-pinned
+`codecs/levelscript/action_map.py` reader. Its reviewed
 `action_map_layouts.json` records selected native dispatcher/type-usage joins
 and generated inherited field order. Supported maps include control-flow
 checks/branches, effects/audio, typed assignments, interaction options, simple
@@ -613,7 +613,7 @@ SpawnerConfig files as exact named schemas. The older unique-tail fallback
 remains for a changed future route profile; failure of both readers preserves
 the exact enemy-library prefix as bounded partial evidence.
 CharInteractPerform now closes the complete 27-member owner through physical
-EOF for every current file. The byte-pinned
+EOF for every current file. The reviewed
 `char_interact_perform_native.json` contract records the exact 37-entry native
 tag-to-wrapper dispatch; generated wrapper properties and whole-owner cursor
 closure establish the read order of every concrete action shape present in the
@@ -882,12 +882,12 @@ markers fail at that element. Header `0x0085` is
 `LevelEvent_OnProxyPatrolCheckpointReach` with seven concrete members, while
 getter `0x0022` is `CompareQuestState` with its comparer and two quest-state
 parameters. Their switch routes, wrapper identities, setters and reader windows
-are byte-pinned independently; same-numbered rows in another dispatcher family
+are reviewed independently; same-numbered rows in another dispatcher family
 cannot select these layouts.
 
 `LevelCameraLookAt` now advances its 31 concrete parameters after the inherited
 action envelope. The LevelScript-owned `camera_look_at.py` reader loads the
-byte-pinned `camera_look_at_layout.json` contract and gates on both selected
+reviewed `camera_look_at_layout.json` contract and gates on both selected
 native inputs. Its initial/exit state constants are unmanaged 24-byte structs:
 the `Param` formatter copies that raw value, rather than invoking the separately
 generated seven-member state wrapper. Four booleans and three floats have exact
@@ -908,7 +908,7 @@ dynamic named-path form and one fully unset `-1/-1/null` form. The reader admits
 only that null constant and those exact `Param` tail rules, so a future concrete
 `CameraControlState` value fails before advancing the action cursor.
 
-The LevelScript sequence reader now reuses the shared byte-pinned
+The LevelScript sequence reader now reuses the shared reviewed
 `action_map_layouts.json` node codecs at each unsupported action, getter or
 header cursor. The shared entry point validates both selected native inputs
 before decoding; a missing/mismatched pair, unknown union, changed member count,
@@ -1063,7 +1063,7 @@ bulk unmanaged array whose 32-byte elements use native struct order:
 `inWeight`, `outWeight`. Treating bulk slots as standalone-wrapper fields turns
 one-third weight bit patterns into an enum and erases increasing key times.
 The matching curve wrapper directly reads `keys`, `postWrapMode`, then
-`preWrapMode`. The byte-pinned identities,
+`preWrapMode`. The reviewed identities,
 windows, offsets and helper joins live in
 `scripts/game_data/contracts/animation_curve_native.json`; its reader fails closed when
 the contract bytes or shape change. This closes character and ability
@@ -1180,7 +1180,7 @@ intervening action/task bytes exact.
 
 `LST_Test_1` additionally closes its one-entry positive task map. The selected
 current `GameCondition` dispatcher binds wide tag `0x012f`, member count eight,
-to `InteractiveCheckBool`. A byte-pinned native contract validates that switch
+to `InteractiveCheckBool`. A reviewed native contract validates that switch
 branch and generated inheritance before the task decoder admits the four
 common condition members followed by `compareValue`, `entityId`, `key`, and
 `levelId`. The task cursor then rejoins the terminal template ID at physical
@@ -1410,7 +1410,7 @@ native and input-set gates.
 
 Physical tag `0x00B2` similarly maps to the 18-member `FindTargetActionData`.
 Its nested selector tags differ from the older Buff selector table, so the
-Skill reader supplies only byte-pinned current finder, validator, and
+Skill reader supplies only reviewed current finder, validator, and
 postprocessor routes and fails closed elsewhere. The reached one-action first
 timeline records close exactly, but each still has later timeline records and
 therefore remains a bounded partial file. Tags `0x02` and `0x03` stay open
@@ -1455,14 +1455,14 @@ wrapper to close the whole SkillData file. Dispatch requires the complete
 top-level ActionGroup/timeline/sequence shape so an unrelated byte equal to
 `0x92` cannot select this decoder.
 
-The shared timeline-sequence reader reuses only byte-pinned action contracts
+The shared timeline-sequence reader reuses only reviewed action contracts
 and preserves the distinction between an exact action, an exact enclosing
 timeline record, and a whole ActionGroup. It closes reviewed roots for
 `ConvertToTargetContext` (`0x008C`), multi-action `CreateBuff` (`0x0092`),
 `LaunchProjectile` (`0x00DE`), and `SpawnAbilityEntity` (`0x0169`), then reuses
 the top-level continuation only when every timeline record is exact.
 `IfElseAction` (`0x00C9`) is an eight-member reader whose three nested
-`SequenceActionData` members are selected through the byte-pinned RIP-load and
+`SequenceActionData` members are selected through the reviewed RIP-load and
 usage-cell chain to MethodSpec 619962. The atlas mechanically validates that
 MethodSpec's generic instantiation as `SequenceActionData`, and the contract
 checks its ordered reads and member count against the shared reader. Recursive
@@ -1484,7 +1484,7 @@ closes every currently reached `IfElseAction` child, including nested use, but
 does not promote a multi-timeline file unless all later records also close.
 
 The same shared sequence lane admits `DamageAction` (`0x009A`) at the first
-timeline root through its byte-pinned dependency and exact action cursor. The
+timeline root through its reviewed dependency and exact action cursor. The
 complete supported wrapper can rejoin the top-level Skill continuation and EOF;
 six distinct unsupported variants still stop at their owning selector rather
 than borrowing the admitted layout. This distinction accounts for the large
@@ -1706,9 +1706,10 @@ the derivation against serialized data and fixes the framing constant: a
 record's extent is the tag width, plus one header byte, plus the members.
 
 Where every member of a wrapper is fixed-width, that makes the body a known
-length. `scripts.game_data.memorypack.derived_actions` admits exactly those
-tags on top of the frozen reader and names each field instead of taking it
-anonymously. It is strictly additive -- a tag the frozen reader admits is
+length, and a string member extends the same reach without a new evidence class
+because the frozen reader already proves its length-prefixed framing.
+`scripts.game_data.memorypack.derived_actions` admits exactly those tags on top
+of the frozen reader and names each field instead of taking it anonymously. It is strictly additive -- a tag the frozen reader admits is
 always delegated, never intercepted -- and it fails closed, so without the
 installed build it is the frozen reader. Its cross-check rebuilds a record from
 the derived member count and widths and feeds it to the frozen reader: on every
@@ -1753,6 +1754,390 @@ enumerated is therefore the one remaining lever on this path, and it is the same
 mechanical walk. Unity value types and a `SerializeFieldDictionary` member are
 the small remainder, and that dictionary is exactly the family whose registered
 formatter does not frame like its member list.
+
+Recursing past a flat body closes most of the rest.
+`scripts.game_data.memorypack.derived_schema` turns a tag into a tree of member
+reads over the same tables: a nested record from its generated members, a list
+or array as a nullable count plus elements, and a nested union as a tag plus its
+concrete wrapper. A recursive type is a cycle in the plan registry rather than an
+infinite expansion, bounded when the plan is executed, not when it is built.
+Lists and arrays share one framing, which is why modelling `T[]` alongside
+`List<T>` moved the resolved share from roughly a third of current routes to
+most of them; `GameplayTag[]` alone had been blocking hundreds.
+
+Every declared route now resolves, and closing the last of them was three
+separate questions, not one.
+
+**An enum that no member declares.** A member holding `List<T>` or `T[]` names
+its element nowhere in any member list, so an enum reached only that way has no
+width -- and an enum is written as its underlying type, which this build does
+not always make int32. Deriving every enum's width from its own `value__` field,
+over every enum definition rather than over the enums some member happens to
+declare, is what makes such an element resolvable at all. `load_derived_tables`
+returns that table beside the wrappers from the one parse that already
+classifies them.
+
+**The counted-map families, which are modelled rather than refused.** A type
+whose framing is not its member list is never read from that list, but that is a
+reason to look for a proven framing, not to stop. `Dictionary<K,V>` writes a
+nullable count and then that many `KeyValuePair<K,V>` structs laid out with
+.NET's own padding -- the value aligned to its own width, the struct padded to
+the wider of the two -- and the `SerializeFieldDictionary` family writes the
+one-member object header before exactly that. Both come from the reviewed
+`codecs.levelscript.action_map`, whose CharInteractPerform reader reaches EOF on
+all 202 current owners reading them, and the `<GroundedMoveGait, float>`
+instantiation is separately walked by the `buff_residual_actions` exact-build
+contract. Only an unmanaged key *and* value are modelled, because that is the
+shape the pair layout is proven for; a managed side refuses the whole member.
+This is the case worth generalising from: the family had been refused as a
+whole while the framing it needed was already proven one lane over.
+
+**`Beyond.Audio.AudioId`, settled from its formatter's body.** It is a
+`System.ValueType` holding one `int _id`, with a hand-written
+`MemoryPackFormatter`, so its field list proved nothing. Its `Deserialize` body
+is a class-init guard, one `MethodInfo`-carrying call into a reader generic
+instance, one 32-bit store into the value, and a return: no null-marker test,
+no member-count byte, no second call, no loop, so no framing but the value
+itself fits in it. `Beyond.Resource.StringPathHashFormatter.Deserialize` is the
+same body shape, differing only in calling the int64 instantiation and storing
+eight bytes, and its wire is already settled as its one int64 field. The settled
+case fixes what the shape means; the store width fixes this one's extent. Two
+consequences: `AudioId` joins `StringPathHash` as a settled formatter in
+`levelscript_union_layouts.FORMATTER_BACKED_TYPES`, and a short formatter body
+is now a readable proof route -- the store width and the absence of a branch say
+what the wire is without decoding the reader call.
+
+What is still refused is what has no such evidence: `SerializeReferenceDictionary`,
+which no reviewed reader routes, and the remaining entries of
+`FORMATTER_BACKED_TYPES` -- `BezierKnot`, `Gradient`, `RectOffset`,
+`SendLuaEvent1`, `SendLuaEvent2` -- which that lane records as read from their
+field lists on the strength of nothing. None of them is reached by a current
+route, so the refusal is a guard against a future build rather than a live
+blocker. Unity value types have no generated wrapper either, so only the widths
+the frozen reader already consumes are modelled, and `UnityEngine.AnimationCurve`
+is named as that reader's own proven `curve_profile` instead of a width. A plan
+carries the weakest tier it contains, so any plan reaching a nested union is
+`structuralOnly`.
+
+**Resolution is not consumption**, so the plans are executed rather than only
+described. `scripts.game_data.memorypack.derived_plans` walks a plan with the
+frozen reader's own primitives -- its null marker, member header, nullable
+count, length-prefixed payload and 28-byte keyframe curve -- so no plan kind
+introduces a framing that reader does not already prove somewhere else. It is
+strictly additive and fails closed on the same terms as `derived_actions`.
+
+Executing them is what found the model's errors, and each was caught by the
+reviewed reader rather than by argument. Three corrections came out of it.
+
+**Having a subclass is not being a union.** The resolver had treated any
+wrapper with a descendant as polymorphic and read a tag before it. That is
+wrong for a concrete base: `Beyond.Blackboard.BlackboardString` has a subclass,
+and the reviewed `paired_payload` reads it as the plain three-member object its
+member list describes -- a string, a bool, a string -- with no tag at all. The
+actual test is two independent metadata facts that agree: a union base is
+**abstract**, and it declares **no `Deserialize` of its own**, because its
+generated union formatter reads the tag and dispatches to the concrete
+subtype's formatter instead. They agree on all 910 wrappers that have a
+subclass, with no exception, and the one union whose tags are read out of the
+binary -- `AbilityActionData` -- satisfies both. `WrapperType.frames_as_union`
+carries it. Correcting this alone moved 22 reviewed tags from disagreement to
+agreement and promoted 30 plans from `structuralOnly` to `direct`.
+
+**A memberless union subtype is not unresolvable.** It writes a header byte of
+zero and nothing else, which the reviewed `selector_finder_profile` records
+directly: its per-tag header table is 0 for seven of its fifteen tags. Skipping
+those subtypes left the executor with no plan to reach; planning them as an
+empty member list closed every remaining derived-only route.
+
+**A struct is raw memory, at its aligned size.** MemoryPack writes an unmanaged
+struct with no null marker and no member header, so it is a width rather than a
+nested body -- and the width is its size in memory, not its members' summed
+widths. `CameraControlStateInitialParam` is the case that separates the two:
+four bools and three floats sum to 16, the struct is 24, and the reviewed
+reader takes 24 raw bytes. That size is not computed here. It is read from the
+build's own `Il2CppTypeDefinitionSizes`, whose `instance_size` is the boxed
+size, so the object header comes off. Five independent checks agree with it:
+`GameplayTag` 4 and `CameraControlStateInitialParam` 24 from the frozen
+reader's own raw takes, `AudioId` 4 from its formatter body's 32-bit store, and
+`Vector3` 12 and `Quaternion` 16 from widths that reader already consumes.
+Blittability is decided structurally and recursively -- every non-static field
+a primitive other than `string`, an enum, or another qualifying value type --
+which yields 2,295 sized structs and leaves a struct with a managed field
+unsized rather than guessed. This replaced two hand-maintained width tables,
+reproducing every value they held and correcting one.
+
+*The general lesson is the same one this directory records elsewhere.* Each of
+the three was a level-4 reading taken off a level-2 fact: inheritance standing
+in for polymorphic framing, an empty member list standing in for an
+unresolvable one, a member-width sum standing in for a struct's extent. The
+reviewed reader refuted all three, which is what a cross-check against a
+corpus-validated framing is for.
+
+**Where it now stands, and what each measurement proves.** Of the 416 routes,
+the frozen reader admits 209; a record built from the plan and fed to that
+reviewed reader is consumed to exactly the plan's own end for **209 of 209**.
+The other 207 are shown self-consistent, which synthesis cannot raise above
+that. The corpus run is the evidence synthesis is not: over the exported
+BuffData family, the frozen reader frames the root's members 2-6 and then the
+named middle's fields 6-14 in 2,815 of 2,873 files, and the plan reader in
+**all 2,873** -- the 58 it gains being the files an unknown action tag had
+blocked, 55 at the root and 3 in the middle. Additivity is measured rather than
+asserted: every one of the 2,815 files that already closed ends at the
+**identical extent with the identical range count**, and none is lost.
+
+**The inferred union ordering now has a sharper check.** The nested unions are
+tagged by the ordering rule rather than by a walked table, which is why any
+plan reaching one is `structuralOnly`. The frozen reader nonetheless reads six
+of them -- selector finder, validator and post-processor, damage and heal
+processor, and calculation -- with an explicit per-tag member count, and none
+of the six is natively walked, so the rule has to place every one of those tags
+correctly on its own. It does: **40 of 40 rows agree**, with no disagreement
+and no missing base. `union_subtypes.check_reviewed_nested_tables` keeps that
+as a standing check, keyed by the managed base names so a client update does
+not invalidate it, and reports a misplaced tag as a member count that does not
+match rather than as a plausible name. It corroborates the ordering; it does
+not promote it, and a tag no reviewed reader covers stays an inference.
+
+**Closing every file is not validating every plan**, and the run says so
+rather than leaving the inference open. It walked **58 of the 416** routes and
+**11 nested-union placements across 3 bases**; the rest of the plans are simply
+not present in this family's payloads. So the three bodies of evidence cover
+different slices and none subsumes another: the reviewed cross-check reaches
+209 routes, the union tables 40 placements, and the corpus 58 routes and 11
+placements on real bytes. `planTagsExercised` and
+`nestedUnionPlacementsExercised` are in the report for exactly this reason.
+
+**A second reviewed family, and a trap re-run on this very check.** Twelve
+contracts record rows carrying a union tag, a member count and a type name.
+Compared tag-first, 38 of them "disagree" -- and every one of those is an
+artefact. `action_entity_fields.json` indexes the `Beyond.Gameplay.Actions`
+family, not the `AbilityActionData` dispatcher these plans resolve, so joining
+on the tag pits two unrelated numbering schemes against each other; not one of
+its 83 action names appears in the wrapper the same tag plans. That is the
+cross-package join this directory warns about, reproduced by accident while
+checking something else. **Joining on the type name instead inverts it: the tag
+becomes the thing checked rather than the key, and the result is 53 rows
+agreeing on tag and member count with no mismatch**, with rows naming another
+union's types reported unjoinable instead of compared.
+`derived_schema.verify_against_reviewed_routes` keeps that discipline.
+
+**SkillData: the reader is no longer the constraint.** Running the plan reader
+through `skill_timeline_shared_sequence` over the 2,621 exported SkillData
+files changes closure not at all -- 661 both ways, identical extents, nothing
+lost -- and that null result is the finding. The decoder gates twice before its
+reader matters: a `rootTags` allowlist on the first timeline tag, and an
+`allowedReachedRoutes` allowlist on every route reached. Widening `rootTags` in
+memory to every first tag the corpus presents still yields **+0 closures**;
+what moves is the *reason*, from 73 anonymous "unsupported union tag" stops
+down to 1, with the rest landing on `not-contracted` and naming the exact
+route. So the plan reader does reach further -- on 10 files it converts a
+framing stop into a named contract refusal -- but SkillData's remaining work is
+contract coverage, not tag coverage.
+
+**Widening both allowlists is what moves it, and the decoder verifies the
+widening itself.** `allowedReachedRoutes` is not only a list of permitted
+routes: for each one the decoder compares the recorded `memberCount` against
+the payload's own member-count byte. So a route added from the derived plans is
+checked on every file that reaches it, and a wrong count fails closed instead of
+producing plausible values. On that basis the contract now carries 21 further
+root tags and the **33 derived routes the corpus actually reaches**, each marked
+`evidence: derivedPlanCorpusVerified` so it stays distinguishable from the 61
+hand-reviewed rows, with `derivedRouteEvidence` recording the method and its
+boundary. The 322 determined routes the corpus never reached were deliberately
+**not** added: an unreached route would be an assertion rather than a
+verification.
+
+The result is **661 of 2,621 files closing before, 2,210 after** with the frozen
+reader alone, and **2,293** with the opt-in plan reader, which removes the
+residual framing stops (88 down to 5). No member-count mismatch occurred at any
+point. What remains is structural rather than coverage: 294 files refused at the
+envelope's `actionGroup` shape, 29 by the deliberate
+`createBuff:requires-multiple-actions` rule, and 5 framing stops.
+
+### Four families, and what each refusal turned out to be
+
+Testing every exported payload directory against a root wrapper of the same
+name found two more families that read whole for nothing but the asking --
+**LevelConfig 216 of 216 and LevelScriptTemplateData 46 of 46**, both exactly
+to EOF -- and turned the remaining refusals into four distinct, named causes
+rather than one backlog.
+
+- **`MissionRuntimeAsset` is not MemoryPack at all.** Its 1,046 exported files
+  begin `7b 0d 0a`, which is `{
+`: ordinary JSON text. The reader refusing
+  them is correct behaviour, not a gap, and the family is excluded by name.
+- **`LevelData` and `LevelScriptData` hold a `Dictionary<string, object>`.**
+  `System.Object` names no layout, so the refusal stands and needs no further
+  work.
+- **A counted map with a managed side was refused, and should not have been.**
+  The rule had been to model only an unmanaged key *and* value, because that is
+  the shape the padded-pair layout is proven for. But `declared_dictionary`
+  frames the other case too: it computes a pair size only when both sides are
+  unmanaged, and otherwise reads the key and then the value with nothing
+  between them. Modelling that unblocked every family that carries one.
+- **A memberless wrapper is not a derivation gap.** `FacOcclusionHandle` has
+  nine instance fields and its generated wrapper has no serialized members,
+  because MemoryPack serializes none of them; the formatter writes the object
+  framing and nothing else. Refusing it had blocked MissionRuntimeAsset,
+  LevelScriptTemplateData, LevelScriptData and the whole 1,026-subtype
+  `ActionBase` union from one type.
+
+*Two of my own defects surfaced in the same pass.* `plan()` walked a member and
+its list element but not a map's key and value, so refs in those positions were
+never planned and surfaced much later as an `unplanned` refusal at read time --
+which is what the last 22 LevelScriptTemplateData files were. And a
+formatter-backed type appearing anywhere in a tree failed the whole plan, even
+where no payload ever reaches it.
+
+***A refused body, and a position that is not the same thing.*** A
+formatter-backed type's member list does not describe its wire, so its body
+stays unread -- but a null marker is one byte whatever would have followed it.
+The `nullOnly` plan kind accepts exactly that byte and refuses anything else,
+so a payload that really carries such a body stops with a named reason instead
+of being guessed at. It is a claim about the corpus rather than the type, so
+the sweep counts how often the position was reached: **zero, across all four
+families**. The kind earns its place by letting a plan *build* where such a
+type sits in the tree, and the counter is what shows nothing was assumed at
+read time.
+
+**Both original families read whole, which no reviewed reader had claimed.** A family's
+root type is itself a planned wrapper, so a file can be executed from its first
+byte rather than decoded to an anchor -- and **all 2,873 BuffData and all 2,621
+SkillData files consume exactly to EOF, with nothing refused and not one
+landing short**. The reviewed readers reach an anchor or a first record and
+leave the remainder explicitly opaque; this reaches the end.
+
+*BuffData took one more correction to get there, and it was a classification
+error rather than a framing one.* Every one of its 2,873 files stopped at
+`dispelConfig`, which the reviewed root reader takes as **eight raw bytes** and
+the plan was reading as a nested object. The type is a `bool` beside an enum,
+so it should have been sized as a blittable struct -- but the blittable test
+asked whether a type's base was `System.ValueType`, and **an enum's base is
+`System.Enum`**. That one omission excluded every enum, and with it every
+struct holding one: correcting it took the sized-struct table from 2,295 types
+to **7,498**, and gave `DispelConfig` exactly the 8 bytes the reviewed reader
+already recorded. That shape is the
+evidence: a wrong member layout drifts, and a drifted cursor stops at an
+arbitrary offset, so landing on the last byte repeatedly across files spanning
+orders of magnitude in size is not something a wrong layout produces. The sweep reports `shortOfEof` beside `exactEof` precisely because it is the
+number that would expose a drifting model, and it reached zero only after the
+collection rule below; the 138 files that refused before it were refusing
+correctly.
+
+This also closes the family the decoder never reached. 88 files carry a
+non-empty `passiveEventActions` list, whose records no reviewed reader frames;
+**all of them now consume exactly to EOF**. The other 206 files the timeline
+decoder refuses at the envelope are correctly refused -- both action-group
+lists are empty, so there is no first timeline record to decode, which is an
+absence rather than a gap.
+
+*Two corrections came out of getting there, and both were mine rather than the
+data's.* The depth limit was set at 24 plan steps, roughly twelve nesting
+levels, and refused 818 ordinary files; SkillData's real maximum is 55 with a
+99th percentile of 39. Termination never rested on that limit -- every plan
+step consumes at least one byte -- so it was a guard masquerading as a
+correctness bound. And `PlanRegistry` defines `__len__`, which makes a registry
+holding no dispatcher roots *falsy*; three reader paths tested it for
+truthiness and so behaved as if unregistered, which is exactly the shape a
+named-root run has.
+
+***A hypothesis tested and refused, and then explained.*** The dominant
+refusal was `TimelineAction+ForceSyncAnimData`, where the plan expected four
+members and the payload's header byte said zero -- the same type, the same
+value, 85 times, which reads like MemoryPack writing fewer members than the
+type declares. Accepting a short header gained **nothing**: still 2,483 exact,
+with 60 refusals merely changing category. Were those headers legitimately
+short, reading them short would land on EOF. It did not, so the cursor was
+wrong there rather than the header. The cause is the collection rule below,
+and the refutation is worth keeping: the zero was a symptom several members
+downstream of the real error, which is what a drifted cursor looks like when it
+happens to land on a plausible-looking byte.
+
+### From framing to values, and an oracle that checks the whole chain
+
+Framing says where a member begins and ends. `derived_values` takes the same
+plan and the same cursor and keeps what each member holds, under the name its
+generated wrapper gives it, so the gameplay config reads as named data rather
+than as proven byte ranges. **All 5,756 records of four families decode** --
+2,873 BuffData, 2,621 SkillData, 216 LevelConfig and 46 LevelScriptTemplateData.
+
+The interpretation is deliberately narrow, because a width is not a meaning. A
+primitive decodes as its declared type. An enum keeps the integer actually
+stored rather than a member name, which would be a second inference on top of
+the first. A blittable struct keeps its bytes: the build's size table proves
+its extent but not its internal field offsets, so rendering a twelve-byte
+struct as three floats would be knowledge of the library rather than evidence
+from it. A profile reports the span the frozen reader consumed rather than a
+reading it does not make.
+
+***The check worth having is one the decoder does not control.*** A record
+carries its own identifier and the exported file is named after it, from the
+exporter's logical path -- two sources that only agree if the framing, the
+member order *and* the string decoding are simultaneously right. A wrong member
+order still decodes a string; it decodes the wrong one. **All 5,756 decoded
+identifiers equal their filenames**, with none refused. Each family names that
+member differently -- `skillId`, `id`, `m_id`, `templateId` -- and a family
+carrying none at all is reported as such rather than counted as a
+disagreement.
+
+***A second check, semantic rather than structural.*** The decode surfaces a
+reference graph -- 3,554 distinct audio event names, 5,664 effect names, 1,675
+buff ids, named blackboard keys -- and a reference either lands in the exported
+world or it does not. Four members name another record of a known family, and
+they resolve at **1,662 of 1,675 (`buffId`), 501 of 508 (`buffIdList`), 291 of
+294 (`skillId`) and 277 of 279 (`projectileSkillId`)**. That is a far harder
+thing to pass by accident than the identifier oracle: a wrong decode yields
+strings that resolve to nothing.
+
+*The measurement needed one correction before it meant anything.* Counting
+every `skillId` gave 2,621 of 2,624, which looks conclusive and measures
+almost nothing -- SkillData's own identifier *is* `skillId`, so nearly every
+value counted was a file resolving to itself. Restricting the census to nested
+occurrences drops it to 294 genuine references, and the ratio survives.
+`verify_references` builds that restriction in.
+
+What none of this establishes is what any member means. The names come from the
+same metadata the framing does and carry the same tier; resolution shows that a
+member names a record of that family, not what the reference is *for*; a stored
+value is not a runtime value; and an unresolved name is reported rather than
+explained, since absence from the export does not make a name wrong.
+
+### A list and an array do not frame their elements the same way
+
+**`List<T>` writes each element through `T`'s own formatter; `T[]` of an
+unmanaged `T` is a packed array.** For a type with a generated wrapper the
+first emits that wrapper's member header before each element and the second
+does not, so the same type is four bytes in one position and five in the other.
+
+The reviewed readers state both halves. `_skill_read_gameplay_tag_list` frames
+every `List<GameplayTag>` element as five bytes -- a member-count byte of one,
+then four -- and `_skill_read_buff_id_list` calls the same shape the retained
+nested one-member wrapper. Against that, the frozen reader takes a
+`GameplayTag` *member* as four raw bytes in its tag-7 route, and this lane's
+own note that `GameplayTag[]` had been blocking hundreds of routes is the array
+half of the same fact.
+
+Getting it wrong in either direction is visible immediately, which is what
+fixes the rule rather than a preference. Framing every struct element through
+its wrapper costs BuffData 8 files and SkillData 98. Framing none of them
+leaves 138 SkillData files refused. Splitting on the container closes
+**both**: BuffData stays at 2,873 of 2,873 with no file's cursor moved, and
+SkillData goes to **2,621 of 2,621 -- every exported file, consumed exactly to
+EOF, with nothing refused and nothing short**.
+
+*The general shape of the error is worth naming.* A type's framing was being
+read as a property of the type, when it is a property of the type **in a
+position**. The same reading had already been made correctly once, for a struct
+as a member versus a struct in a counted map pair; a collection element is the
+third position, and nothing but a corpus was going to reveal that the first
+answer did not generalise.
+
+That BuffData closure is also fields 2-14 reaching the accepted id anchor, not
+a whole-file EOF claim: the named suffix beyond the anchor and the opaque nested
+bodies inside those fields are unchanged. BuffData is one family -- the
+SkillData timeline readers are validated by the Skill corpus gate and this
+run does not cover them. And what the plans describe is still a generated
+member order, not a proven cursor, for every tag no reviewed route touches.
 
 The tags the frozen reader does not admit are only shown to be self-consistent.
 That a real payload has that shape is not established by synthesis, and
@@ -1859,7 +2244,7 @@ LevelScript union contracts through one shared current-build PE/metadata
 context and writes its generated index under `reports/`. Tags remain qualified
 by dispatcher family, conflicting identities fail closed, and the atlas cannot
 promote a field or invent a schema: setter types, nested layouts, and exact
-cursors still come from the owning byte-pinned contract and reader. It replaces
+cursors still come from the owning reviewed contract and reader. It replaces
 repeated native discovery during frontier ranking, while publication continues
 to require complete family and JsonData corpus gates. Dependency-scoped replay
 remains developmental until mechanically derived transitive dependencies and

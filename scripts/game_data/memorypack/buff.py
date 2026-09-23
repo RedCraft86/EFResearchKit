@@ -21,6 +21,7 @@ from scripts.game_data.memorypack.core import (
     unique_strings,
 )
 from scripts.game_data.memorypack.schemas import BUFF_MEMBER_COUNT, MEMORYPACK_FIELD_SCHEMAS
+from scripts.game_data import levelscript_union_tags as union_tags
 
 
 BUFF_MEMORYPACK_FIELD_TYPES = {
@@ -380,76 +381,80 @@ BUFF_ABILITY_ACTION_TAG_NAMES = {
     0x000b: "Core_AddTagAction_Data",
     0x0016: "Core_AuraAction_Data",
     0x001c: "Core_BlowOffCharacterAction_Data",
-    0x0023: "Core_CameraImpulseAction_CameraImpulseActionData",
-    0x0026: "Core_CastSkill_Data",
-    0x002e: "Core_ChannelingAction_Data",
-    0x0034: "Core_CharHurtAnimAction_Data",
-    0x003b: "Core_CheckBuffStackNumAdvanced_Data",
-    0x003d: "Core_CheckConsumeBuffLayer_Data",
-    0x003f: "Core_CheckDistanceCondition_Data",
-    0x0041: "Core_CheckGlobalCDTimerAction_Data",
-    0x004d: "Core_CompareFloat_Data",
-    0x0053: "Core_Conditions_CheckBuffIdInContext_Data",
-    0x0054: "Core_Conditions_CheckBuffIdInContextAdvanced_Data",
-    0x0055: "Core_Conditions_CheckBuffStackNum_Data",
-    0x0058: "Core_Conditions_CheckDamageDecorateMask_Data",
-    0x005a: "Core_Conditions_CheckDamageType_Data",
-    0x0060: "Core_Conditions_CheckHp_Data",
-    0x0063: "Core_Conditions_CheckMainCharacterCondition_Data",
-    0x0064: "Core_Conditions_CheckObjectTypeMatch_Data",
-    0x0065: "Core_Conditions_CheckObtainAtbType_Data",
-    0x0069: "Core_Conditions_CheckPoiseValue_Data",
-    0x0071: "Core_Conditions_CheckSkillId_Data",
-    0x0075: "Core_Conditions_CheckSuperArmor_Data",
-    0x0076: "Core_Conditions_CheckTagMatch_Data",
-    0x007a: "Core_Conditions_CheckTargetsEqual_Data",
-    0x007b: "Core_Conditions_CheckTimedMarkerCondition_Data",
-    0x0082: "Core_Conditions_Probablity_Data",
-    0x0084: "Core_ContinuousFindTargetAction_Data",
-    0x0086: "Core_ConvertToTargetContext_Data",
-    0x008a: "Core_CreateBuffAction_Data",
-    0x008e: "Core_CreateTimedMarker_Data",
-    0x0091: "Core_CustomRootMotionAction_Data",
-    0x0092: "Core_DamageAction_DamageActionData",
-    0x0093: "Core_DebugPrintAction_Data",
-    0x009a: "Core_EffectAction_EffectActionData",
-    0x00a9: "Core_FindTargetAction_FindTargetActionData",
-    0x00ab: "Core_FinishBuffAdvanced_Data",
-    0x00ad: "Core_FinishOwnerAction_Data",
-    0x00b8: "Core_GetAITransDataAction_Data",
-    0x00be: "Core_HitStopAction_Data",
-    0x00c0: "Core_IfElseAction_IfElseActionData",
-    0x00cb: "Core_InterruptAction_Data",
-    0x00d5: "Core_LaunchProjectile_Data",
-    0x00d7: "Core_LockCameraAimAction_LockCameraAimActionData",
-    0x00e1: "Core_ModifyDynamicBlackboard_Data",
-    0x00eb: "Core_MoveToAction_Data",
-    0x00f2: "Core_NotNextCheckAction_Data",
-    0x00f3: "Core_ObtainCostAction_Data",
-    0x00f9: "Core_OverrideCameraFollowAction_OverrideCameraFollowActionData",
-    0x0100: "Core_PatrolTeleport_Data",
-    0x0109: "Core_PlayAnimationAction_PlayAnimationActionData",
-    0x010d: "Core_PlaySoundAction_PlaySoundActionData",
-    0x0110: "Core_PullAction_Data",
-    0x011a: "Core_RecoverFromPoiseBreak_Data",
-    0x011c: "Core_RecoverPoiseAction_Data",
-    0x0131: "Core_SaveValueFromAIBlackboard_Data",
-    0x0133: "Core_SelfRotateAction_Data",
-    0x0134: "Core_SendBattleSignalToLevel_Data",
-    0x0144: "Core_SetSkillCdAtOnce_Data",
-    0x014a: "Core_ShowComboRingQte_Data",
-    0x014c: "Core_ShowHideActorAction_ShowHideActorData",
-    0x014e: "Core_SimpleCalcBBAction_Data",
-    0x0154: "Core_SpawnAbilityEntity_Data",
-    0x0155: "Core_SpawnEnemyAction_Data",
-    0x0156: "Core_SpawnInteractiveGoldCoin_Data",
-    0x0158: "Core_SpellInfliction_Data",
-    0x0167: "Core_TeleportAction_Data",
-    0x016c: "Core_TickIntervalAction_Data",
-    0x016e: "Core_TimeDilationAction_Data",
+    0x0024: "Core_CameraImpulseAction_CameraImpulseActionData",
+    0x0027: "Core_CastSkill_Data",
+    0x002f: "Core_ChannelingAction_Data",
+    0x0035: "Core_CharHurtAnimAction_Data",
+    0x003c: "Core_CheckBuffStackNumAdvanced_Data",
+    0x003f: "Core_CheckConsumeBuffLayer_Data",
+    0x0042: "Core_CheckDistanceCondition_Data",
+    0x0044: "Core_CheckGlobalCDTimerAction_Data",
+    0x0050: "Core_CompareFloat_Data",
+    0x0056: "Core_Conditions_CheckBuffIdInContext_Data",
+    0x0057: "Core_Conditions_CheckBuffIdInContextAdvanced_Data",
+    0x0058: "Core_Conditions_CheckBuffStackNum_Data",
+    0x005b: "Core_Conditions_CheckDamageDecorateMask_Data",
+    0x005d: "Core_Conditions_CheckDamageType_Data",
+    0x0065: "Core_Conditions_CheckHp_Data",
+    0x0068: "Core_Conditions_CheckMainCharacterCondition_Data",
+    0x0069: "Core_Conditions_CheckObjectTypeMatch_Data",
+    0x006a: "Core_Conditions_CheckObtainAtbType_Data",
+    0x006e: "Core_Conditions_CheckPoiseValue_Data",
+    0x0076: "Core_Conditions_CheckSkillId_Data",
+    0x007b: "Core_Conditions_CheckSuperArmor_Data",
+    0x007c: "Core_Conditions_CheckTagMatch_Data",
+    0x0080: "Core_Conditions_CheckTargetsEqual_Data",
+    0x0081: "Core_Conditions_CheckTimedMarkerCondition_Data",
+    0x0088: "Core_Conditions_Probablity_Data",
+    0x008a: "Core_ContinuousFindTargetAction_Data",
+    0x008c: "Core_ConvertToTargetContext_Data",
+    0x0092: "Core_CreateBuffAction_Data",
+    0x0096: "Core_CreateTimedMarker_Data",
+    0x0099: "Core_CustomRootMotionAction_Data",
+    0x009a: "Core_DamageAction_DamageActionData",
+    0x009b: "Core_DebugPrintAction_Data",
+    0x00a2: "Core_EffectAction_EffectActionData",
+    0x00b2: "Core_FindTargetAction_FindTargetActionData",
+    0x00b4: "Core_FinishBuffAdvanced_Data",
+    0x00b6: "Core_FinishOwnerAction_Data",
+    0x00c1: "Core_GetAITransDataAction_Data",
+    0x00c7: "Core_HitStopAction_Data",
+    0x00c9: "Core_IfElseAction_IfElseActionData",
+    0x00d4: "Core_InterruptAction_Data",
+    0x00de: "Core_LaunchProjectile_Data",
+    0x00e0: "Core_LockCameraAimAction_LockCameraAimActionData",
+    0x00ec: "Core_ModifyDynamicBlackboard_Data",
+    0x00f6: "Core_MoveToAction_Data",
+    0x00fd: "Core_NotNextCheckAction_Data",
+    0x00fe: "Core_ObtainCostAction_Data",
+    0x0104: "Core_OverrideCameraFollowAction_OverrideCameraFollowActionData",
+    0x010c: "Core_PatrolTeleport_Data",
+    0x0115: "Core_PlayAnimationAction_PlayAnimationActionData",
+    0x0119: "Core_PlaySoundAction_PlaySoundActionData",
+    0x011c: "Core_PullAction_Data",
+    0x0126: "Core_RecoverFromPoiseBreak_Data",
+    0x0128: "Core_RecoverPoiseAction_Data",
+    0x0142: "Core_SaveValueFromAIBlackboard_Data",
+    0x0144: "Core_SelfRotateAction_Data",
+    0x0145: "Core_SendBattleSignalToLevel_Data",
+    0x0157: "Core_SetSkillCdAtOnce_Data",
+    0x015e: "Core_ShowComboRingQte_Data",
+    0x0160: "Core_ShowHideActorAction_ShowHideActorData",
+    0x0163: "Core_SimpleCalcBBAction_Data",
+    0x0169: "Core_SpawnAbilityEntity_Data",
+    0x016a: "Core_SpawnEnemyAction_Data",
+    0x016b: "Core_SpawnInteractiveGoldCoin_Data",
+    0x016d: "Core_SpellInfliction_Data",
+    0x017c: "Core_TeleportAction_Data",
+    0x0181: "Core_TickIntervalAction_Data",
+    0x0183: "Core_TimeDilationAction_Data",
 }
 
 
+# Keyed by the current tag of each action's name. The count is the layout the
+# decoders were reviewed against; an action whose current wrapper has a
+# different member count fails closed at the item header rather than being
+# read with a stale layout.
 BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS = {
     0x0006: 5,
     0x0002: 12,
@@ -458,73 +463,73 @@ BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS = {
     0x000b: 8,
     0x0016: 24,
     0x001c: 15,
-    0x0023: 12,
-    0x0026: 9,
-    0x002e: 10,
-    0x0034: 15,
-    0x003b: 10,
-    0x003d: 7,
-    0x003f: 10,
-    0x0041: 6,
-    0x004d: 7,
-    0x0053: 8,
-    0x0054: 8,
-    0x0055: 8,
-    0x0058: 6,
-    0x005a: 5,
-    0x0060: 8,
-    0x0063: 5,
-    0x0064: 6,
+    0x0024: 12,
+    0x0027: 9,
+    0x002f: 10,
+    0x0035: 15,
+    0x003c: 10,
+    0x003f: 7,
+    0x0042: 10,
+    0x0044: 6,
+    0x0050: 7,
+    0x0056: 8,
+    0x0057: 8,
+    0x0058: 8,
+    0x005b: 6,
+    0x005d: 5,
     0x0065: 8,
-    0x0069: 8,
-    0x0071: 5,
-    0x0075: 7,
-    0x0076: 6,
-    0x007a: 6,
-    0x007b: 9,
-    0x0082: 5,
-    0x0084: 19,
-    0x0086: 12,
+    0x0068: 5,
+    0x0069: 6,
+    0x006a: 8,
+    0x006e: 8,
+    0x0076: 5,
+    0x007b: 7,
+    0x007c: 6,
+    0x0080: 6,
+    0x0081: 9,
+    0x0088: 5,
     0x008a: 19,
-    0x008e: 9,
-    0x0091: 23,
-    0x0092: 11,
-    0x0093: 9,
-    0x009a: 17,
-    0x00a9: 18,
-    0x00ab: 13,
-    0x00ad: 6,
-    0x00b8: 6,
-    0x00be: 12,
-    0x00c0: 8,
-    0x00cb: 8,
-    0x00d5: 34,
-    0x00d7: 14,
-    0x00e1: 10,
-    0x00eb: 43,
-    0x00f2: 4,
-    0x00f3: 18,
-    0x00f9: 12,
-    0x0100: 6,
-    0x0109: 16,
-    0x010d: 22,
-    0x0110: 18,
-    0x011a: 5,
-    0x011c: 11,
-    0x0131: 11,
-    0x0133: 18,
-    0x0134: 6,
-    0x0144: 11,
-    0x014a: 8,
-    0x014c: 10,
-    0x014e: 8,
-    0x0154: 37,
-    0x0155: 15,
-    0x0156: 6,
-    0x0158: 8,
-    0x0167: 13,
-    0x016c: 9,
-    0x016e: 16,
+    0x008c: 12,
+    0x0092: 19,
+    0x0096: 9,
+    0x0099: 23,
+    0x009a: 11,
+    0x009b: 9,
+    0x00a2: 17,
+    0x00b2: 18,
+    0x00b4: 13,
+    0x00b6: 6,
+    0x00c1: 6,
+    0x00c7: 12,
+    0x00c9: 8,
+    0x00d4: 8,
+    0x00de: 34,
+    0x00e0: 14,
+    0x00ec: 10,
+    0x00f6: 43,
+    0x00fd: 4,
+    0x00fe: 18,
+    0x0104: 12,
+    0x010c: 6,
+    0x0115: 16,
+    0x0119: 22,
+    0x011c: 18,
+    0x0126: 5,
+    0x0128: 11,
+    0x0142: 11,
+    0x0144: 18,
+    0x0145: 6,
+    0x0157: 11,
+    0x015e: 8,
+    0x0160: 10,
+    0x0163: 8,
+    0x0169: 37,
+    0x016a: 15,
+    0x016b: 6,
+    0x016d: 8,
+    0x017c: 13,
+    0x0181: 9,
+    0x0183: 16,
 }
 
 
@@ -585,106 +590,106 @@ def read_buff_timeline_first_union_tag(
     return data[offset], 1, data[offset:offset + 1].hex(" ")
 
 
-BUFF_CONVERT_TO_TARGET_CONTEXT_ACTION_TAG = 0x0086
+BUFF_CONVERT_TO_TARGET_CONTEXT_ACTION_TAG = 0x008c
 
 
-BUFF_CREATE_BUFF_ACTION_TAG = 0x008a
+BUFF_CREATE_BUFF_ACTION_TAG = 0x0092
 
 
-BUFF_MODIFY_DYNAMIC_BLACKBOARD_ACTION_TAG = 0x00e1
+BUFF_MODIFY_DYNAMIC_BLACKBOARD_ACTION_TAG = 0x00ec
 
 
-BUFF_DEBUG_PRINT_ACTION_TAG = 0x0093
+BUFF_DEBUG_PRINT_ACTION_TAG = 0x009b
 
 
-BUFF_CAMERA_IMPULSE_ACTION_TAG = 0x0023
+BUFF_CAMERA_IMPULSE_ACTION_TAG = 0x0024
 
 
-BUFF_EFFECT_ACTION_TAG = 0x009a
+BUFF_EFFECT_ACTION_TAG = 0x00a2
 
 
-BUFF_CHECK_SUPER_ARMOR_ACTION_TAG = 0x0075
+BUFF_CHECK_SUPER_ARMOR_ACTION_TAG = 0x007b
 
 
-BUFF_CHECK_MAIN_CHARACTER_ACTION_TAG = 0x0063
+BUFF_CHECK_MAIN_CHARACTER_ACTION_TAG = 0x0068
 
 
 BUFF_FINISH_BUFF_ACTION_TAG = 0x0002
 
 
-BUFF_CREATE_TIMED_MARKER_ACTION_TAG = 0x008e
+BUFF_CREATE_TIMED_MARKER_ACTION_TAG = 0x0096
 
 
-BUFF_NOT_NEXT_CHECK_ACTION_TAG = 0x00f2
+BUFF_NOT_NEXT_CHECK_ACTION_TAG = 0x00fd
 
 
-BUFF_CHECK_DAMAGE_DECORATE_MASK_ACTION_TAG = 0x0058
+BUFF_CHECK_DAMAGE_DECORATE_MASK_ACTION_TAG = 0x005b
 
 
-BUFF_CHECK_BUFF_ID_CONTEXT_ACTION_TAG = 0x0053
-BUFF_CHECK_BUFF_ID_CONTEXT_ADVANCED_ACTION_TAG = 0x0054
-BUFF_CHECK_HP_ACTION_TAG = 0x0060
-BUFF_CHECK_DAMAGE_TYPE_ACTION_TAG = 0x005a
-BUFF_CHECK_TAG_MATCH_ACTION_TAG = 0x0076
-BUFF_CHECK_TIMED_MARKER_ACTION_TAG = 0x007b
-BUFF_CHECK_OBJECT_TYPE_ACTION_TAG = 0x0064
-BUFF_CHECK_OBTAIN_ATB_TYPE_ACTION_TAG = 0x0065
-BUFF_PROBABILITY_ACTION_TAG = 0x0082
-BUFF_FINISH_OWNER_ACTION_TAG = 0x00ad
-BUFF_CHECK_BUFF_STACK_NUM_ADVANCED_ACTION_TAG = 0x003b
-BUFF_CHECK_BUFF_STACK_NUM_ACTION_TAG = 0x0055
-BUFF_FINISH_BUFF_ADVANCED_ACTION_TAG = 0x00ab
-BUFF_SPAWN_INTERACTIVE_GOLD_COIN_ACTION_TAG = 0x0156
-BUFF_SAVE_VALUE_FROM_AI_BLACKBOARD_ACTION_TAG = 0x0131
-BUFF_OBTAIN_COST_ACTION_TAG = 0x00f3
+BUFF_CHECK_BUFF_ID_CONTEXT_ACTION_TAG = 0x0056
+BUFF_CHECK_BUFF_ID_CONTEXT_ADVANCED_ACTION_TAG = 0x0057
+BUFF_CHECK_HP_ACTION_TAG = 0x0065
+BUFF_CHECK_DAMAGE_TYPE_ACTION_TAG = 0x005d
+BUFF_CHECK_TAG_MATCH_ACTION_TAG = 0x007c
+BUFF_CHECK_TIMED_MARKER_ACTION_TAG = 0x0081
+BUFF_CHECK_OBJECT_TYPE_ACTION_TAG = 0x0069
+BUFF_CHECK_OBTAIN_ATB_TYPE_ACTION_TAG = 0x006a
+BUFF_PROBABILITY_ACTION_TAG = 0x0088
+BUFF_FINISH_OWNER_ACTION_TAG = 0x00b6
+BUFF_CHECK_BUFF_STACK_NUM_ADVANCED_ACTION_TAG = 0x003c
+BUFF_CHECK_BUFF_STACK_NUM_ACTION_TAG = 0x0058
+BUFF_FINISH_BUFF_ADVANCED_ACTION_TAG = 0x00b4
+BUFF_SPAWN_INTERACTIVE_GOLD_COIN_ACTION_TAG = 0x016b
+BUFF_SAVE_VALUE_FROM_AI_BLACKBOARD_ACTION_TAG = 0x0142
+BUFF_OBTAIN_COST_ACTION_TAG = 0x00fe
 BUFF_ACHIEVE_SPECIAL_GAME_EVENT_ACTION_TAG = 0x0006
 BUFF_ADD_GLOBAL_CD_TIMER_ACTION_TAG = 0x000a
-BUFF_CAST_SKILL_ACTION_TAG = 0x0026
-BUFF_CHECK_CONSUME_BUFF_LAYER_ACTION_TAG = 0x003d
-BUFF_CHECK_DISTANCE_ACTION_TAG = 0x003f
-BUFF_CHECK_GLOBAL_CD_TIMER_ACTION_TAG = 0x0041
-BUFF_CHECK_POISE_VALUE_ACTION_TAG = 0x0069
-BUFF_CHECK_TARGETS_EQUAL_ACTION_TAG = 0x007a
-BUFF_SIMPLE_CALC_BLACKBOARD_ACTION_TAG = 0x014e
+BUFF_CAST_SKILL_ACTION_TAG = 0x0027
+BUFF_CHECK_CONSUME_BUFF_LAYER_ACTION_TAG = 0x003f
+BUFF_CHECK_DISTANCE_ACTION_TAG = 0x0042
+BUFF_CHECK_GLOBAL_CD_TIMER_ACTION_TAG = 0x0044
+BUFF_CHECK_POISE_VALUE_ACTION_TAG = 0x006e
+BUFF_CHECK_TARGETS_EQUAL_ACTION_TAG = 0x0080
+BUFF_SIMPLE_CALC_BLACKBOARD_ACTION_TAG = 0x0163
 
 
-BUFF_FIND_TARGET_ACTION_TAG = 0x00a9
+BUFF_FIND_TARGET_ACTION_TAG = 0x00b2
 
 
-BUFF_SEND_BATTLE_SIGNAL_TO_LEVEL_TAG = 0x0134
+BUFF_SEND_BATTLE_SIGNAL_TO_LEVEL_TAG = 0x0145
 
 
-BUFF_PLAY_SOUND_ACTION_TAG = 0x010d
+BUFF_PLAY_SOUND_ACTION_TAG = 0x0119
 
 
-BUFF_PATROL_TELEPORT_ACTION_TAG = 0x0100
+BUFF_PATROL_TELEPORT_ACTION_TAG = 0x010c
 
 
-BUFF_PLAY_ANIMATION_ACTION_TAG = 0x0109
+BUFF_PLAY_ANIMATION_ACTION_TAG = 0x0115
 
 
-BUFF_COMPARE_FLOAT_ACTION_TAG = 0x004d
+BUFF_COMPARE_FLOAT_ACTION_TAG = 0x0050
 
 
-BUFF_GET_AI_TRANS_DATA_ACTION_TAG = 0x00b8
+BUFF_GET_AI_TRANS_DATA_ACTION_TAG = 0x00c1
 
 
-BUFF_CHECK_SKILL_ID_ACTION_TAG = 0x0071
+BUFF_CHECK_SKILL_ID_ACTION_TAG = 0x0076
 
 
-BUFF_IF_ELSE_ACTION_TAG = 0x00c0
+BUFF_IF_ELSE_ACTION_TAG = 0x00c9
 
 
-BUFF_INTERRUPT_ACTION_TAG = 0x00cb
+BUFF_INTERRUPT_ACTION_TAG = 0x00d4
 
 
-BUFF_SPELL_INFLICTION_ACTION_TAG = 0x0158
+BUFF_SPELL_INFLICTION_ACTION_TAG = 0x016d
 
 
-BUFF_SET_SKILL_CD_AT_ONCE_ACTION_TAG = 0x0144
+BUFF_SET_SKILL_CD_AT_ONCE_ACTION_TAG = 0x0157
 
 
-BUFF_DAMAGE_ACTION_TAG = 0x0092
+BUFF_DAMAGE_ACTION_TAG = 0x009a
 
 
 BUFF_DAMAGE_UNIT_MEMBER_COUNT = 32
@@ -747,10 +752,10 @@ BUFF_EFFECT_ACTION_CFG_MIN_BYTES = 256
 BUFF_CREATE_BUFF_ICON_DURATION_SOURCE_BYTES = 9
 
 
-BUFF_CREATE_BUFF_INPUT_TAIL_BYTES = 5
 
 
 BUFF_CREATE_BUFF_MAX_BUFF_IDS = 16
+BUFF_CREATE_BUFF_MAX_ASSIGN_ITEMS = 64
 
 
 BUFF_MODIFY_DYNAMIC_BLACKBOARD_OPERATION_NAMES = {
@@ -1922,74 +1927,101 @@ def read_buff_create_buff_icon_duration_source_partial(
     }, end
 
 
+def read_buff_create_buff_assign_pair(
+    data: bytes,
+    offset: int,
+    limit: int,
+    field_name: str,
+) -> tuple[dict[str, Any], int]:
+    """One ``Blackboard.AssignPair``: six members in wrapper order."""
+    if offset >= limit or data[offset] != 6:
+        raise ValueError(f"{field_name}:member-count")
+    offset += 1
+    if offset + 4 > limit:
+        raise ValueError(f"{field_name}.directValueType:truncated")
+    direct_value_type = struct.unpack_from("<i", data, offset)[0]
+    offset += 4
+    input_value_key, offset = read_buff_memorypack_utf8_string_strict_bounded(
+        data, offset, limit, f"{field_name}.inputValueKey", max_length=256,
+    )
+    if offset + 4 > limit:
+        raise ValueError(f"{field_name}.numericValue:truncated")
+    numeric_value = struct.unpack_from("<f", data, offset)[0]
+    offset += 4
+    if not math.isfinite(numeric_value):
+        raise ValueError(f"{field_name}.numericValue:non-finite")
+    string_value, offset = read_buff_memorypack_utf8_string_strict_bounded(
+        data, offset, limit, f"{field_name}.stringValue", max_length=512,
+    )
+    target_key, offset = read_buff_memorypack_utf8_string_strict_bounded(
+        data, offset, limit, f"{field_name}.targetKey", max_length=256,
+    )
+    use_direct_value, offset = read_buff_bool_field_bounded(
+        data, offset, limit, f"{field_name}.useDirectValue",
+    )
+    return {
+        "directValueTypeRaw": direct_value_type,
+        "inputValueKey": input_value_key,
+        "numericValue": round(numeric_value, 6),
+        "stringValue": string_value,
+        "targetKey": target_key,
+        "useDirectValue": use_direct_value,
+    }, offset
+
+
 def read_buff_create_buff_input_partial(
     data: bytes,
     offset: int,
     limit: int,
     field_name: str,
 ) -> tuple[dict[str, Any], int]:
+    """One ``CreateBuffActionInput``, read member by member.
+
+    The wrapper's five members are assignBlackboard, assignItems (a list of
+    AssignPair), buffId, buffIdKey and readIdFromBlackboard. An earlier reading
+    took the list count for a reserved word and scanned forward for a ``buff_*``
+    string followed by five zero bytes -- an empty buffIdKey and a false flag --
+    so an input with a buffIdKey matched a later action's id instead of its own.
+    """
     start = offset
-    if offset + 10 > limit:
-        raise ValueError(f"{field_name}:truncated-prefix")
-    member_count = data[offset]
+    if offset >= limit or data[offset] != 5:
+        raise ValueError(f"{field_name}:member-count")
     offset += 1
-    if member_count != 5:
-        raise ValueError(f"{field_name}:member-count={member_count}")
-    flag_candidate, offset = read_buff_bool_field_bounded(data, offset, limit, f"{field_name}.flagCandidate")
-    reserved_u32, offset = read_buff_u32_field_bounded(data, offset, limit, f"{field_name}.reservedU32")
-    # CreateBuffActionInput flattens an inherited dynamic BuffId value.  The
-    # leading discriminator selects several blackboard expression shapes, so
-    # their inner byte length is not fixed.  Every current formatter branch
-    # terminates with the authored BuffId string and the same four zero u32
-    # fields.  Use both anchors and require one unique bounded candidate.
-    scan_end = min(limit, offset + 2048)
-    candidates: list[tuple[int, int, str]] = []
-    for marker in range(offset, max(offset, scan_end - 4)):
-        length = struct.unpack_from("<I", data, marker)[0]
-        if length < 5 or length > 256:
-            continue
-        string_end = marker + 4 + length
-        tail_end = string_end + BUFF_CREATE_BUFF_INPUT_TAIL_BYTES
-        if tail_end > scan_end:
-            continue
-        try:
-            value = data[marker + 4:string_end].decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        if re.fullmatch(r"buff_[A-Za-z0-9_]+", value) is None:
-            continue
-        if data[string_end:tail_end] != b"\x00" * BUFF_CREATE_BUFF_INPUT_TAIL_BYTES:
-            continue
-        candidates.append((marker, tail_end, value))
-    if not candidates:
-        raise ValueError(f"{field_name}.buffIdCandidates=0")
-    # The inherited expression payload precedes the authored fallback BuffId;
-    # later candidates can belong to following action fields/items because the
-    # outer action limit is intentionally broad.  The first terminal anchor is
-    # therefore the only candidate within this input's grammar.
-    marker, offset, buff_id = candidates[0]
-    inherited_value_raw = data[start + 6:marker]
-    tail = data[offset - BUFF_CREATE_BUFF_INPUT_TAIL_BYTES:offset]
+    assign_blackboard, offset = read_buff_bool_field_bounded(
+        data, offset, limit, f"{field_name}.assignBlackboard",
+    )
+    count, offset = read_buff_u32_field_bounded(data, offset, limit, f"{field_name}.assignItems.count")
+    assign_items: list[dict[str, Any]] | None
+    if count == MEMORYPACK_NULL_COUNT:
+        assign_items = None
+    elif count > BUFF_CREATE_BUFF_MAX_ASSIGN_ITEMS:
+        raise ValueError(f"{field_name}.assignItems.count={count}")
+    else:
+        assign_items = []
+        for index in range(count):
+            item, offset = read_buff_create_buff_assign_pair(
+                data, offset, limit, f"{field_name}.assignItems[{index}]",
+            )
+            assign_items.append(item)
+    buff_id, offset = read_buff_memorypack_utf8_string_strict_bounded(
+        data, offset, limit, f"{field_name}.buffId", max_length=256,
+    )
+    buff_id_key, offset = read_buff_memorypack_utf8_string_strict_bounded(
+        data, offset, limit, f"{field_name}.buffIdKey", max_length=256,
+    )
+    read_id_from_blackboard, offset = read_buff_bool_field_bounded(
+        data, offset, limit, f"{field_name}.readIdFromBlackboard",
+    )
     return {
-        "status": "partial",
-        "semanticStatus": "partial-create-buff-input-fields-opaque",
+        "status": "exact",
         "offset": format_offset(start),
         "bytes": offset - start,
-        "memberCount": member_count,
-        "flagCandidate": flag_candidate,
-        "reservedU32": reserved_u32,
-        "buffId": buff_id,
-        "boundedBuffIdCandidateCount": len(candidates),
-        "inheritedValueBytes": len(inherited_value_raw),
-        "inheritedValueRawSha256": hashlib.sha256(inherited_value_raw).hexdigest(),
-        "inheritedValueStringHits": scan_length_prefixed_utf8_string_hits(
-            inherited_value_raw,
-            start=0,
-            max_scan_bytes=len(inherited_value_raw),
-            max_samples=8,
-            max_length=256,
-        ),
-        "tailRaw": tail.hex(" "),
+        "memberCount": 5,
+        "assignBlackboard": assign_blackboard,
+        "assignItems": assign_items,
+        "buffId": buff_id or "",
+        "buffIdKey": buff_id_key or "",
+        "readIdFromBlackboard": read_id_from_blackboard,
     }, offset
 
 
@@ -2114,7 +2146,7 @@ def consume_buff_create_buff_action(
         limit,
         "createBuff.passTargetGroupsToBuff",
     )
-    target_settings, offset = read_buff_target_settings_envelope_partial(
+    target_settings, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -2196,7 +2228,7 @@ def consume_buff_modify_dynamic_blackboard_action(
     calculate_type_name = BUFF_MODIFY_DYNAMIC_BLACKBOARD_CALCULATION_TYPE_NAMES.get(calculate_type)
     if calculate_type_name is None:
         raise ValueError(f"modifyDynamicBlackboard.calculateTypeUnknown={calculate_type}")
-    calculation_target, offset = read_buff_target_settings_envelope_partial(
+    calculation_target, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -2347,7 +2379,7 @@ def consume_buff_effect_action(
         effect_source_start,
         "effectAction.effectActionCfg",
     )
-    effect_source, offset = read_buff_target_settings_envelope_partial(
+    effect_source, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -2357,7 +2389,7 @@ def consume_buff_effect_action(
     bool_fields["forceMainBody"], offset = read_buff_bool_field_bounded(
         data, offset, limit, "effectAction.forceMainBody",
     )
-    guard_lod_source, offset = read_buff_target_settings_envelope_partial(
+    guard_lod_source, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -2385,7 +2417,7 @@ def consume_buff_effect_action(
         raise ValueError(
             f"effectAction.targetSettings:envelope-anchor-not-at-cursor={format_offset(offset)}"
         )
-    target_settings, offset = read_buff_target_settings_envelope_partial(
+    target_settings, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -2440,7 +2472,7 @@ def consume_buff_convert_to_target_context_action(
     blackboard_vector3, offset = read_buff_blackboard_vector3_field_bounded(
         data, offset, limit, "convertToTargetContext.blackboardVector3",
     )
-    convert_from, offset = read_buff_target_settings_envelope_partial(
+    convert_from, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -2571,7 +2603,7 @@ def consume_buff_debug_print_action(
     log_type_names = {0: "TargetSetting", 1: "BlackboardItem"}
     if log_type not in log_type_names:
         raise ValueError(f"debugPrint.logType={log_type}")
-    target_settings, offset = read_buff_target_settings_envelope_partial(
+    target_settings, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -3116,13 +3148,13 @@ def consume_buff_interrupt_action(
         limit,
         "interruptAction.prefix",
     )
-    attacker, offset = read_buff_target_settings_envelope_partial(
+    attacker, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
         "interruptAction.attacker",
     )
-    defender, offset = read_buff_target_settings_envelope_partial(
+    defender, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -3184,13 +3216,13 @@ def consume_buff_spell_infliction_action(
         raise ValueError(f"spellInfliction.inflictionType={infliction_type}")
     infliction_type_name = BUFF_SPELL_INFLICTION_TYPE_NAMES[infliction_type]
     is_extra, offset = read_buff_bool_field_bounded(data, offset, limit, "spellInfliction.isExtra")
-    source, offset = read_buff_target_settings_envelope_partial(
+    source, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
         "spellInfliction.source",
     )
-    target, offset = read_buff_target_settings_envelope_partial(
+    target, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -3360,7 +3392,7 @@ def consume_buff_camera_impulse_action(
     if bool_offset != target_start:
         raise ValueError(f"cameraImpulse.boolTail:tail-at={format_offset(bool_offset)}")
 
-    target_settings, target_end = read_buff_target_settings_envelope_partial(
+    target_settings, target_end = read_buff_target_settings_full_or_partial(
         data,
         target_start,
         limit,
@@ -3601,79 +3633,109 @@ BUFF_SELECTOR_TARGETFINDER_MEMBERS = (
 )
 
 
-BUFF_SELECTOR_FINDER_SUBTYPES: dict[int, tuple[str, tuple | None]] = {
-    0x00: ("AbilityEntityTargetFinder", ()),
-    0x01: ("CharacterTeamFinder", ()),
-    0x02: ("FixedPointFinder", (("positionOffset", "vector3"),
+def _selector_subtypes(
+    family: str, rows: tuple[tuple[str, tuple | None], ...]
+) -> dict[Any, tuple[str, tuple | None]]:
+    """Key selector subtype layouts by the build's tag for each type name.
+
+    A selector tag is the type's rank in its union, so a subtype added to the
+    game shifts every later one; the tag is therefore resolved by name, never
+    written down. Without the recorded build every key is a placeholder that no
+    byte equals, so the reader fails closed. ``None`` marks a layout not proven
+    against the current wrapper. A nested type is written ``Outer.Inner``.
+    """
+    def wrapper(name: str) -> str:
+        if "." in name:
+            return "Core_Selector_" + name.replace(".", "_")
+        return f"Core_Selector_{name}_Data"
+
+    return {
+        union_tags.pair(family, wrapper(name))[0]: (name, layout)
+        for name, layout in rows
+    }
+
+
+BUFF_SELECTOR_FINDER_SUBTYPES: dict[Any, tuple[str, tuple | None]] = _selector_subtypes("SelectorFinder", (
+    ("AbilityEntityTargetFinder", ()),
+    ("CharacterTeamFinder", ()),
+    ("FixedPointFinder", (("positionOffset", "vector3"),
                                 ("rotationOffset", "quaternion"),
                                 ("sampleRadius", "bbparam"),
                                 ("snapToNavmesh", "bool"))),
-    0x03: ("GlobalContextFinder", (("targetGroupKey", "string"),)),
-    0x04: ("GodEntityFinder", ()),
-    0x05: ("GuardAITargetFinder", ()),
-    0x06: ("HitBoxFinder", BUFF_SELECTOR_TARGETFINDER_MEMBERS + (
+    ("GlobalContextFinder", (("targetGroupKey", "string"),)),
+    ("GodEntityFinder", ()),
+    ("GuardAITargetFinder", ()),
+    ("HitBoxFinder", BUFF_SELECTOR_TARGETFINDER_MEMBERS + (
         ("checkIntUnSelectableTag", "bool"), ("shapeList", "shapedatalist"),
         ("targetObjectType", "i32"))),
-    0x07: ("InFightEnemyFinder", ()),
-    0x08: ("InteractiveShapeFinder", (("checkIntUnSelectableTag", "bool"),)),
-    0x09: ("MainTargetFinder", ()),
-    0x0A: ("OwnerPartsFinder", (("partQuery", "tagquery"),)),
-    0x0B: ("OwnerSpawnedEntityFinder", (("spawnedObjectType", "i32"),)),
-    # Current formatter serializes only positionOffset even though the runtime
-    # Data type also retains a rotationOffset field.
-    0x0C: ("PointFinder", (("positionOffset", "bbvector3"),)),
-    0x0D: ("RandomPointFinder", (("angle", "bbparam"),
-                                 ("localPlaneRotationEulers", "bbvector3"),
-                                 ("minRadius", "bbparam"), ("pointNum", "bbparam"),
-                                 ("radius", "bbparam"), ("shape", "i32"),
-                                 ("snapToNavMesh", "bool"))),
-    0x0E: ("ShapeFinder", None),  # shapeData (battle shape data) layout unproven
-    0x0F: ("ShapeFinderData", ()),
-    0x10: ("SmartTargetFinder", (("range", "bbparam"),
-                                 ("selectSetting", "smarttargetselectsetting"),
-                                 ("useCustomRange", "bool"))),
-    0x11: ("SnapPointFinder", (("radius", "bbparam"),
+    ("InFightEnemyFinder", ()),
+    ("InteractiveShapeFinder", None),  # shapeData (ColliderShapeData) layout unproven
+    ("MainTargetFinder", ()),
+    ("OwnerPartsFinder", (("partQuery", "tagquery"),)),
+    ("OwnerMountPointPosFinder", (("mountPoint", "i32"),)),
+    ("OwnerSpawnedEntityFinder", (("spawnedObjectType", "i32"),)),
+    ("PointFinder", (("positionOffset", "bbvector3"), ("rotationOffset", "bbvector3"))),
+    ("RandomPointFinder", (("angle", "bbparam"), ("extent2D", "bbvector2"),
+                           ("localPlaneRotationEulers", "bbvector3"),
+                           ("minRadius", "bbparam"), ("pointNum", "bbparam"),
+                           ("radius", "bbparam"), ("shape", "i32"),
+                           ("snapToNavMesh", "bool"), ("useExtraJitter", "bool"))),
+    ("ProjectileFinder", None),  # shapeData (ColliderShapeData) layout unproven
+    ("ShapeFinder", None),  # shapeData (ColliderShapeData) layout unproven
+    ("ShapeFinder.ShapeFinderData", None),  # shapeData (ColliderShapeData) layout unproven
+    ("SmartTargetFinder", (("limitFallbackRange", "bool"), ("range", "bbparam"),
+                           ("selectSetting", "smarttargetselectsetting"),
+                           ("useCustomRange", "bool"))),
+    ("SnapPointFinder", (("radius", "bbparam"),
                                ("snapTargetSettings", "targetsettings"))),
-    0x12: ("SourceFinder", ()),
-    0x13: ("TargetFinder", BUFF_SELECTOR_TARGETFINDER_MEMBERS),
-}
+    ("SourceFinder", ()),
+    ("TargetFinder", BUFF_SELECTOR_TARGETFINDER_MEMBERS),
+    ("AllEnemyFinder", ()),
+    ("TyphoeaArcherySelectedFinder", ()),
+))
 
 
-BUFF_SELECTOR_VALIDATOR_SUBTYPES: dict[int, tuple[str, tuple | None]] = {
-    0x00: ("AttributeValidator", (("attributeType", "i32"), ("checkMax", "bool"),
+BUFF_SELECTOR_VALIDATOR_SUBTYPES: dict[Any, tuple[str, tuple | None]] = _selector_subtypes("SelectorValidator", (
+    ("AttributeValidator", (("attributeType", "i32"), ("checkMax", "bool"),
                                   ("checkMin", "bool"), ("maxValue", "f64"),
                                   ("minValue", "f64"))),
-    0x01: ("CheckRaycastValidator", (("checkLayerMask", "i32"),
+    ("CheckRaycastValidator", (("checkLayerMask", "i32"),
                                      ("secondCheckLayerMask", "i32"))),
-    0x02: ("CurHpRatioValidator", (("compareType", "i32"), ("value", "bbparam"))),
-    0x03: ("DistanceValidator", (("clampToXZ", "bool"), ("compareType", "i32"),
+    ("CurHpRatioValidator", (("compareType", "i32"), ("value", "bbparam"))),
+    ("DistanceValidator", (("clampToXZ", "bool"), ("compareType", "i32"),
                                  ("value", "bbparam"))),
-    0x04: ("ExcludeOwnerValidator", ()),
-    0x05: ("HittableObjectValidator", ()),
-    0x06: ("InteractiveKeyValidator", (("interactiveKey", "string"),)),
-    0x07: ("MainCharacterValidator", ()),
-    0x08: ("SkillCastIdValidator", ()),
-    0x09: ("TagValidator", (("query", "tagquery"),)),
-    0x0A: ("TargetContainsValidator", (("parentTargetSettings", "targetsettings"),)),
-}
+    ("ExcludeOwnerValidator", ()),
+    ("HittableObjectValidator", ()),
+    ("InteractiveKeyValidator", (("interactiveKey", "string"),)),
+    ("MainCharacterValidator", ()),
+    ("SkillCastIdValidator", ()),
+    ("TagValidator", (("query", "tagquery"),)),
+    ("TargetContainsValidator", (("parentTargetSettings", "targetsettings"),)),
+    ("BuffValidator", None),  # buffFindSettings layout unproven
+    ("InScreenValidator", ()),
+))
 
 
-BUFF_SELECTOR_POSTPROCESSOR_SUBTYPES: dict[int, tuple[str, tuple | None]] = {
-    0x00: ("ConvertToBoxCenterPlaneProjectionPoint", (("boxShape", "shapedatalist"),)),
-    0x01: ("ConvertToPosition", ()),
-    0x02: ("ConvertToSlot", ()),
-    0x03: ("ExcludeTarget", (("excludedTargetSettings", "targetsettings"),)),
-    0x04: ("LockOrMarkTargetFilter", ()),
-    0x05: ("NavMeshPathPositionProcessor", (
+BUFF_SELECTOR_POSTPROCESSOR_SUBTYPES: dict[Any, tuple[str, tuple | None]] = _selector_subtypes("SelectorPostProcessor", (
+    ("ConvertToBoxCenterPlaneProjectionPoint", (("boxShape", "shapedatalist"),)),
+    ("ConvertToPosition", ()),
+    ("ConvertToSlot", ()),
+    ("ExcludeTarget", (("excludedTargetSettings", "targetsettings"),
+                       ("processTargetType", "i32"))),
+    ("LockOrMarkTargetFilter", ()),
+    ("NavMeshPathPositionProcessor", (
         ("allowCheckMainCharPosToDestPathAvailable", "bool"),
         ("checkMaxDistance", "bool"), ("clampDirToXZ", "bool"),
         ("getNavPosInRangeRadius", "bbparam"), ("ignoreNavmeshLink", "bool"),
         ("maxDistance", "f32"), ("snapToFloor", "bool"), ("throughWall", "bool"))),
-    0x06: ("PriorityFilter", None),  # buffFilterSettings layout unproven
-    0x07: ("ShuffleTarget", (("targetNumLimit", "bbparam"),)),
-    0x08: ("TargetPriorityFilter", (("limitMaxNum", "bool"), ("maxNum", "i32"),
+    ("PriorityFilter", None),  # buffFilterSettings layout unproven
+    ("ShuffleTarget", (("processTargetType", "i32"), ("targetNumLimit", "bbparam"))),
+    ("TargetPriorityFilter", (("limitMaxNum", "bool"), ("maxNum", "i32"),
                                     ("targetSettings", "targetsettings"))),
-}
+    ("CircularOrderSort", (("desireCount", "bbparam"), ("heightOffset", "bbparam"),
+                           ("indexKey", "string"), ("rangeCheckTarget", "targetsettings"),
+                           ("rangeThreshold", "bbparam"), ("reverseFlag", "bbparam"))),
+))
 
 
 BUFF_FIND_TARGET_BODY_MEMBERS = (
@@ -3771,12 +3833,14 @@ def read_buff_selector_blackboard_vector3(
     offset: int,
     limit: int,
     field_name: str,
+    axes: tuple[str, ...] = ("x", "y", "z"),
 ) -> tuple[list[Any] | None, int]:
-    present, offset = read_buff_selector_object_header(data, offset, limit, 3, field_name)
+    # BlackboardVector2/3: one BlackboardDouble per axis.
+    present, offset = read_buff_selector_object_header(data, offset, limit, len(axes), field_name)
     if not present:
         return None, offset
     components = []
-    for axis in ("x", "y", "z"):
+    for axis in axes:
         component, offset = read_buff_selector_blackboard_param(
             data, offset, limit, f"{field_name}.{axis}",
         )
@@ -4098,17 +4162,24 @@ def read_buff_target_settings_full_or_partial(
                 data, offset, decoded_end, field_name,
             )
         except (IndexError, UnicodeDecodeError, ValueError, struct.error):
-            decoded = None
-        else:
-            if verified_end == decoded_end:
-                return {
-                    **partial,
-                    **decoded,
-                    "status": "exact",
-                    "semanticStatus": "exact-target-settings-selector-data",
-                    "schemaSource": BUFF_SELECTOR_SCHEMA_SOURCE_NOTE,
-                    "boundarySource": "typed-member-cursor-validated-by-envelope",
-                }, decoded_end
+            partial, verified_end = {}, None
+        # The typed cursor reads all 13 members and every nested selector
+        # subtype through a proven layout; the envelope is a byte-shape
+        # heuristic that expects fixed lengths for common shapes. Where they
+        # differ the typed read is kept (the build's derived plan agrees with
+        # it) and the envelope's disagreement is recorded, not obeyed.
+        return {
+            **partial,
+            **decoded,
+            "status": "exact",
+            "semanticStatus": "exact-target-settings-selector-data",
+            "schemaSource": BUFF_SELECTOR_SCHEMA_SOURCE_NOTE,
+            "boundarySource": (
+                "typed-member-cursor-validated-by-envelope"
+                if verified_end == decoded_end
+                else "typed-member-cursor-envelope-disagreed"
+            ),
+        }, decoded_end
 
     envelope_end = buff_target_settings_envelope_limit(
         data, offset, max_limit, field_name,
@@ -4196,6 +4267,8 @@ def read_buff_selector_member(
         return read_buff_selector_blackboard_param(data, offset, limit, field_name)
     if kind == "bbvector3":
         return read_buff_selector_blackboard_vector3(data, offset, limit, field_name)
+    if kind == "bbvector2":
+        return read_buff_selector_blackboard_vector3(data, offset, limit, field_name, ("x", "y"))
     if kind == "tagquery":
         return read_buff_selector_tag_query(data, offset, limit, field_name)
     if kind == "smarttargetselectsetting":
@@ -4223,7 +4296,7 @@ def read_buff_selector_member(
     raise ValueError(f"{field_name}:unknown-member-kind={kind}")
 
 
-BUFF_CONTINUOUS_FIND_TARGET_ACTION_TAG = 0x0084
+BUFF_CONTINUOUS_FIND_TARGET_ACTION_TAG = 0x008a
 
 
 BUFF_FIND_TARGET_ACTION_VARIANTS = {
@@ -4921,7 +4994,106 @@ def build_buff_consumed_action_item_summary(
     }
 
 
+_DERIVED_ACTION_REGISTRY: list[Any] = []
+
+
+def derived_action_registry() -> Any:
+    """The selected build's derived AbilityActionData plans, loaded once.
+
+    Imported lazily because ``derived_plans`` builds on this module. Without
+    the installed build the registry is empty, so no derived route exists and
+    every item stays with the reviewed decoders.
+    """
+    if not _DERIVED_ACTION_REGISTRY:
+        from scripts.game_data.memorypack.derived_plans import load_registry
+
+        registry, _audit = load_registry()
+        _DERIVED_ACTION_REGISTRY.append(registry)
+    return _DERIVED_ACTION_REGISTRY[0]
+
+
+def consume_buff_ability_action_item_derived(
+    data: bytes,
+    offset: int,
+    limit: int,
+    index: int = 0,
+) -> tuple[dict[str, Any], int] | None:
+    """Consume one item with the build's derived plan, or return ``None``.
+
+    This is the route for an item the reviewed decoders do not admit: a type
+    with no typed consumer, or one whose current wrapper has a different member
+    count than the reviewed layout. The plan frames every member, and the values
+    are kept under the wrapper's member names. A plan agrees with the reviewed
+    reader on every tag both admit, but on its own it is ``direct`` evidence, so
+    the item says ``derived`` rather than ``exact`` and callers still require the
+    whole chain to land on the proven payload end.
+    """
+    from scripts.game_data.memorypack.derived_values import ValueReader
+    from scripts.game_data.memorypack.buff_actions import Unsupported
+
+    registry = derived_action_registry()
+    tag, tag_width, _raw = read_buff_timeline_first_union_tag(data, offset, limit)
+    definition = registry.roots.get(tag) if tag is not None else None
+    if definition is None:
+        return None
+    reader = ValueReader(data, "BuffData", limit, registry=registry)
+    reader.pos = offset + tag_width
+    try:
+        value = reader._value_object(definition, 0)
+    except (Unsupported, ValueError, struct.error):
+        return None
+    end = reader.pos
+    member_count = data[offset + tag_width]
+    wrapper = registry.wrapped_names.get(definition) or ""
+    return {
+        "index": index,
+        "offset": format_offset(offset),
+        "bytes": end - offset,
+        "tag": f"0x{tag:04x}",
+        "name": BUFF_ABILITY_ACTION_TAG_NAMES.get(tag) or wrapper,
+        "tagBytes": tag_width,
+        "memberCount": member_count,
+        "bodyBytes": end - offset - tag_width - 1,
+        "decodeStatus": "derived",
+        "boundaryProof": "derived-plan-consumption",
+        "evidenceTier": "direct",
+        "decoded": value,
+    }, end
+
+
 def consume_buff_ability_action_item(
+    data: bytes,
+    offset: int,
+    limit: int,
+    index: int = 0,
+    depth: int = 0,
+) -> tuple[dict[str, Any], int]:
+    """Consume one item: the reviewed decoder, else the build's derived plan.
+
+    Where both read the item they must end on the same byte. Several reviewed
+    decoders locate a later member by scanning for an anchor, and a scan can
+    run past the item into the next one; a plan frames every member instead.
+    Neither is preferred on a disagreement: the item raises, so the enclosing
+    chain stays opaque and the note names both ends.
+    """
+    try:
+        summary, end = consume_buff_ability_action_item_reviewed(data, offset, limit, index, depth)
+    except (struct.error, UnicodeDecodeError, ValueError):
+        derived = consume_buff_ability_action_item_derived(data, offset, limit, index)
+        if derived is None:
+            raise
+        return derived
+    derived = consume_buff_ability_action_item_derived(data, offset, limit, index)
+    if derived is not None and derived[1] != end:
+        raise ValueError(
+            f"abilityActionItem:reviewed-derived-end-disagree={summary.get('name')}"
+            f" at={format_offset(offset)} reviewed={format_offset(end)}"
+            f" derived={format_offset(derived[1])}"
+        )
+    return summary, end
+
+
+def consume_buff_ability_action_item_reviewed(
     data: bytes,
     offset: int,
     limit: int,
@@ -5186,7 +5358,7 @@ def consume_buff_check_super_armor_action(
         limit,
         "checkSuperArmor.prefix",
     )
-    check_target, offset = read_buff_target_settings_envelope_partial(
+    check_target, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -5245,7 +5417,7 @@ def consume_buff_check_main_character_action(
         limit,
         "checkMainCharacter.prefix",
     )
-    check_target, offset = read_buff_target_settings_envelope_partial(
+    check_target, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -5312,13 +5484,13 @@ def consume_buff_finish_buff_action(
         if not buff_id:
             raise ValueError(f"finishBuff.buffIds[{index}].value:empty")
         buff_ids.append(buff_id)
-    buff_owner, offset = read_buff_target_settings_envelope_partial(
+    buff_owner, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
         "finishBuff.buffOwner",
     )
-    buff_source, offset = read_buff_target_settings_envelope_partial(
+    buff_source, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -5333,7 +5505,7 @@ def consume_buff_finish_buff_action(
     )
     if offset > limit:
         raise ValueError("finishBuff.finishLayerCnt:past-limit")
-    finish_source, offset = read_buff_target_settings_envelope_partial(
+    finish_source, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -5408,7 +5580,7 @@ def consume_buff_create_timed_marker_action(
         limit,
         "createTimedMarker.markerId",
     )
-    target_settings, offset = read_buff_target_settings_envelope_partial(
+    target_settings, offset = read_buff_target_settings_full_or_partial(
         data,
         offset,
         limit,
@@ -5601,7 +5773,7 @@ def consume_buff_check_hp_action(
     offset = item_start + tag_width + 1
     prefix, offset = read_buff_ability_action_common_prefix_bounded(data, offset, limit, "checkHp.prefix")
     compare_type, offset = read_buff_i32_field_bounded(data, offset, limit, "checkHp.compare")
-    hp_owner, offset = read_buff_target_settings_envelope_partial(data, offset, limit, "checkHp.hpOwner")
+    hp_owner, offset = read_buff_target_settings_full_or_partial(data, offset, limit, "checkHp.hpOwner")
     is_ratio, offset = read_buff_bool_field_bounded(data, offset, limit, "checkHp.isRatio")
     value, offset = read_buff_blackboard_float_raw_field_bounded(data, offset, limit, "checkHp.value")
     if offset > limit:
@@ -5642,7 +5814,7 @@ def consume_buff_check_tag_match_action(
         raise ValueError(f"checkTagMatch:header={tag_width}/{member_count}")
     offset = item_start + tag_width + 1
     prefix, offset = read_buff_ability_action_common_prefix_bounded(data, offset, limit, "checkTagMatch.prefix")
-    check_target, offset = read_buff_target_settings_envelope_partial(data, offset, limit, "checkTagMatch.checkTarget")
+    check_target, offset = read_buff_target_settings_full_or_partial(data, offset, limit, "checkTagMatch.checkTarget")
     query, offset = read_buff_gameplay_tag_query_exact(data, offset, limit, "checkTagMatch.query")
     return {
         "type": BUFF_ABILITY_ACTION_TAG_NAMES[tag], "decodeStatus": "exact",
@@ -5662,7 +5834,7 @@ def consume_buff_check_timed_marker_action(
     offset = item_start + tag_width + 1
     prefix, offset = read_buff_ability_action_common_prefix_bounded(data, offset, limit, "checkTimedMarker.prefix")
     blackboard_key, offset = read_buff_memorypack_utf8_string_strict_bounded(data, offset, limit, "checkTimedMarker.blackboardKey", max_length=256)
-    check_target, offset = read_buff_target_settings_envelope_partial(data, offset, limit, "checkTimedMarker.checkTarget")
+    check_target, offset = read_buff_target_settings_full_or_partial(data, offset, limit, "checkTimedMarker.checkTarget")
     marker_id, offset = read_buff_memorypack_utf8_string_strict_bounded(data, offset, limit, "checkTimedMarker.id", max_length=256)
     return_true_if_not_exists, offset = read_buff_bool_field_bounded(data, offset, limit, "checkTimedMarker.returnTrueIfNotExists")
     use_blackboard_key, offset = read_buff_bool_field_bounded(data, offset, limit, "checkTimedMarker.useBlackboardKey")
@@ -5688,7 +5860,7 @@ def consume_buff_check_object_type_action(
     offset = item_start + tag_width + 1
     prefix, offset = read_buff_ability_action_common_prefix_bounded(data, offset, limit, "checkObjectType.prefix")
     object_type_mask, offset = read_buff_i32_field_bounded(data, offset, limit, "checkObjectType.objectTypeMask")
-    target, offset = read_buff_target_settings_envelope_partial(data, offset, limit, "checkObjectType.target")
+    target, offset = read_buff_target_settings_full_or_partial(data, offset, limit, "checkObjectType.target")
     return {
         "type": BUFF_ABILITY_ACTION_TAG_NAMES[tag], "decodeStatus": "exact",
         "semanticStatus": "exact-object-type-condition", "schemaSource": "current-build runtime fields and exact MemoryPack setter order",
@@ -5760,7 +5932,7 @@ def consume_buff_finish_owner_action(
         raise ValueError(f"finishOwner:header={tag_width}/{member_count}")
     offset = item_start + tag_width + 1
     prefix, offset = read_buff_ability_action_common_prefix_bounded(data, offset, limit, "finishOwner.prefix")
-    owner, offset = read_buff_target_settings_envelope_partial(data, offset, limit, "finishOwner.owner")
+    owner, offset = read_buff_target_settings_full_or_partial(data, offset, limit, "finishOwner.owner")
     skip_die_display, offset = read_buff_bool_field_bounded(data, offset, limit, "finishOwner.skipDieDisplay")
     if offset > limit:
         raise ValueError("finishOwner:past-limit")
@@ -5792,7 +5964,7 @@ def consume_buff_check_buff_stack_num_action(
     )
     if not buff_id:
         raise ValueError("checkBuffStackNum.buffId.value:empty")
-    check_target, offset = read_buff_target_settings_envelope_partial(
+    check_target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkBuffStackNum.checkTarget",
     )
     compare_type, offset = read_buff_i32_field_bounded(
@@ -5836,7 +6008,7 @@ def consume_buff_check_buff_stack_num_advanced_action(
     stack_num_type, offset = read_buff_i32_field_bounded(
         data, offset, limit, "checkBuffStackNumAdvanced.buffStackNumType",
     )
-    check_target, offset = read_buff_target_settings_envelope_partial(
+    check_target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkBuffStackNumAdvanced.checkTarget",
     )
     compare_type, offset = read_buff_i32_field_bounded(
@@ -5879,13 +6051,13 @@ def consume_buff_finish_buff_advanced_action(
     prefix, offset = read_buff_ability_action_common_prefix_bounded(
         data, offset, limit, "finishBuffAdvanced.prefix",
     )
-    buff_owner, offset = read_buff_target_settings_envelope_partial(
+    buff_owner, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "finishBuffAdvanced.buffOwner",
     )
     buff_settings, offset = read_buff_find_settings_exact(
         data, offset, limit, "finishBuffAdvanced.buffSettings",
     )
-    buff_source, offset = read_buff_target_settings_envelope_partial(
+    buff_source, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "finishBuffAdvanced.buffSource",
     )
     finish_all, offset = read_buff_bool_field_bounded(
@@ -5894,7 +6066,7 @@ def consume_buff_finish_buff_advanced_action(
     finish_layer_cnt, offset = read_buff_blackboard_float_raw_field_bounded(
         data, offset, limit, "finishBuffAdvanced.finishLayerCnt",
     )
-    finish_source, offset = read_buff_target_settings_envelope_partial(
+    finish_source, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "finishBuffAdvanced.finishSource",
     )
     is_absorbed, offset = read_buff_bool_field_bounded(
@@ -5940,7 +6112,7 @@ def consume_buff_spawn_interactive_gold_coin_action(
     count, offset = read_buff_blackboard_int_field_exact(
         data, offset, limit, "spawnInteractiveGoldCoin.count",
     )
-    spawn_pos, offset = read_buff_target_settings_envelope_partial(
+    spawn_pos, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "spawnInteractiveGoldCoin.spawnPos",
     )
     return {
@@ -5970,7 +6142,7 @@ def consume_buff_save_value_from_ai_blackboard_action(
     ai_bb_key, offset = read_buff_memorypack_utf8_string_strict_bounded(
         data, offset, limit, "saveValueFromAIBlackboard.aiBBKey", max_length=256,
     )
-    bb_owner, offset = read_buff_target_settings_envelope_partial(
+    bb_owner, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "saveValueFromAIBlackboard.bbOwner",
     )
     keys: dict[str, str] = {}
@@ -6038,10 +6210,10 @@ def consume_buff_obtain_cost_action(
     play_obtain_atb_effect, offset = read_buff_bool_field_bounded(
         data, offset, limit, "obtainCost.playObtainAtbEffect",
     )
-    source, offset = read_buff_target_settings_envelope_partial(
+    source, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "obtainCost.source",
     )
-    target, offset = read_buff_target_settings_envelope_partial(
+    target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "obtainCost.target",
     )
     use_usp_recover_tag, offset = read_buff_bool_field_bounded(
@@ -6118,7 +6290,7 @@ def consume_buff_add_global_cd_timer_action(
     cd_time, offset = read_buff_blackboard_float_raw_field_bounded(
         data, offset, limit, "addGlobalCdTimer.cdTime",
     )
-    target, offset = read_buff_target_settings_envelope_partial(
+    target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "addGlobalCdTimer.target",
     )
     return {
@@ -6142,7 +6314,7 @@ def consume_buff_cast_skill_action(
     prefix, offset = read_buff_ability_action_common_prefix_bounded(
         data, offset, limit, "castSkill.prefix",
     )
-    caster, offset = read_buff_target_settings_envelope_partial(
+    caster, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "castSkill.caster",
     )
     inherit_source_skill_cast_id, offset = read_buff_bool_field_bounded(
@@ -6156,7 +6328,7 @@ def consume_buff_cast_skill_action(
     skip_apply_cost, offset = read_buff_bool_field_bounded(
         data, offset, limit, "castSkill.skipApplyCost",
     )
-    target, offset = read_buff_target_settings_envelope_partial(
+    target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "castSkill.target",
     )
     return {
@@ -6223,10 +6395,10 @@ def consume_buff_check_distance_action(
     less_than, offset = read_buff_bool_field_bounded(
         data, offset, limit, "checkDistance.lessThan",
     )
-    source, offset = read_buff_target_settings_envelope_partial(
+    source, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkDistance.source",
     )
-    target, offset = read_buff_target_settings_envelope_partial(
+    target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkDistance.target",
     )
     return {
@@ -6257,7 +6429,7 @@ def consume_buff_check_global_cd_timer_action(
     )
     if not buff_id:
         raise ValueError("checkGlobalCdTimer.buffId:empty")
-    target, offset = read_buff_target_settings_envelope_partial(
+    target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkGlobalCdTimer.target",
     )
     return {
@@ -6284,7 +6456,7 @@ def consume_buff_check_poise_value_action(
     compare_type, offset = read_buff_i32_field_bounded(
         data, offset, limit, "checkPoiseValue.compare",
     )
-    poise_owner, offset = read_buff_target_settings_envelope_partial(
+    poise_owner, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkPoiseValue.poiseOwner",
     )
     return_if_missing, offset = read_buff_bool_field_bounded(
@@ -6317,10 +6489,10 @@ def consume_buff_check_targets_equal_action(
     prefix, offset = read_buff_ability_action_common_prefix_bounded(
         data, offset, limit, "checkTargetsEqual.prefix",
     )
-    first_target, offset = read_buff_target_settings_envelope_partial(
+    first_target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkTargetsEqual.firstTargetSettings",
     )
-    second_target, offset = read_buff_target_settings_envelope_partial(
+    second_target, offset = read_buff_target_settings_full_or_partial(
         data, offset, limit, "checkTargetsEqual.secondTargetSettings",
     )
     return {
@@ -6723,7 +6895,10 @@ def split_buff_ability_action_items_opaque(
     if action_data_count == 1:
         header = read_buff_ability_action_item_header(data, offset, body_end)
         if header is None:
-            return "failed", [], ""
+            derived = consume_buff_ability_action_item_derived(data, offset, body_end)
+            if derived is None or derived[1] != body_end:
+                return "failed", [], ""
+            return "single-item", [derived[0]], ""
         tag, tag_width, member_count = header
         return "single-item", [
             build_buff_ability_action_item_summary(

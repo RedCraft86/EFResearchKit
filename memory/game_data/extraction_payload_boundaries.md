@@ -91,6 +91,12 @@ Saved corpus consumers must recheck live catalog, build, CLI, parser and chunk
 fingerprints at both ends; authenticating the report hash alone does not
 establish freshness after a tool rebuild. Reauthenticate affected bytes with
 the rebuilt tool rather than rewriting old provenance pins.
+A corpus report is authenticated by that live provenance, not by a digest of
+its own bytes pinned in code: the context audit hashes its SkillData basis only
+to prove the file is stable while it runs. Each MemoryPack family report pins
+the static import closure of its own gate inside `memorypack/` (imports inside
+functions included), so an executed helper cannot escape provenance, while an
+unrelated family's reader edit no longer stales every other report.
 DummyDll population and setter declarations do not fill these gaps. Historical
 residual JsonData censuses supply family leads, not current denominators
 without a ledger rejoin. `jsondata_corpus` now owns that block-wide ledger
@@ -317,9 +323,15 @@ out of the native dispatcher one at a time, which is why the table is small.
 The table does not have to be recovered that way. Two facts hold across all 277
 reviewed rows, on three families whose tags run to 1341, 1101 and 216:
 
-- a union's compact tag is its **case-insensitive alphabetical rank** among the
-  `ForMemoryPack` wrapper types of its family, ranked on the name with that
-  suffix removed;
+- a union's compact tag is its **case-insensitive ordinal rank on the wrapped
+  type's full name** among the `ForMemoryPack` wrappers of its family. The
+  wrapper name flattens `.`, `<`, `,` and `>` to `_`, so the key must read them
+  back (`_` as `.`, a generic's closing `_` as `>`). Ranking the flattened name
+  directly -- the earlier rule -- reproduces all 277 reviewed rows yet
+  mis-tags `IFixAction.Data`..`IFixAction3.Data` in AbilityActionData and six
+  `GameConditionClientOnce<...>` instantiations, because `.` and `,` sort below
+  digits and `>` where `_` does not. *A rule that reproduces every reviewed row
+  can still be wrong on rows no reviewed family contains;*
 - a wrapper's members are its `set____name__` setters in **declaration order**,
   base chain first and root first, each typed by that setter's parameter.
 
@@ -334,8 +346,97 @@ bytes, and the divergence is reported instead of failing the run.
 
 Keep the two evidence tiers apart. A reviewed row's boundary is `exact`: its
 `nativeIdentity` was read from the dispatcher. A derived row's is `direct`: an
-observed declaration in the build's managed image, corroborated on 277 rows,
-with nothing here reading the dispatcher that assigns the tag.
+observed declaration in the build's managed image, with nothing in the
+derivation reading the dispatcher that assigns the tag.
+
+**The dispatcher can be read whole, not one row at a time.** Each family's
+`<Base>ForMemoryPackFormatter.Deserialize` guards a jump table with `cmp`/`ja`,
+whose bound equals the derived family size; each entry reaches (through at most
+one `e9` thunk) a body whose first `mov rdx,[rip+disp32]` loads the wrapper's
+type-usage cell. Resolving every cell names every tag natively: all 2,683
+LevelScript entries (ActionBase, PureGetter, ActionHeader), plus
+AbilityActionData, GameCondition and BaseComponentData, agree with the
+corrected derived table and with every reviewed row, with no shared targets.
+That sweep is what exposed the rank-rule error. It is maintained as
+`memorypack.union_dispatch`, which accepts a table only when its entries map
+one-for-one onto the family's derived wrappers with no shared targets; smaller
+families compile to compare chains rather than a jump table and are refused.
+Per-row getter contracts (`entityptr_getter`, `spawnerptr_getter`) now record
+tags, member counts and `GetResult` bodies as regenerated data keyed by managed
+type, and tie each authored reading to the body hash it was reviewed against:
+`--regenerate` refuses a row whose body changed. Between the recorded and the
+current build every such tag moved, one getter gained a member, and two
+recorded same-tag ambiguities split into distinct native tags. Tag identity read this way is native evidence, but a
+derived row's nested struct and enum declarations stay `direct` until their
+own codecs are proved.
+
+**Never write a union tag as a literal.** A tag is a rank, so a client update
+renumbers every type after an insertion; the ActionBase, PureGetter and
+ActionHeader families all shifted between the recorded builds and the current
+one. The Story record-hint lane had accumulated literals from several builds
+and silently matched nothing (published missions carried no Split, IfElse,
+Switch, Branch or While edges), while some stale pairs landed on unrelated
+current actions of equal member count and were decoded as the wrong action.
+LevelScript code now names the type and resolves it through
+`levelscript_union_tags`, regenerated from the native switches. A literal was
+converted only where the code itself named its type and the current member
+count agreed; literals with no recorded name, or whose type gained members,
+were left inert rather than guessed. The same applies to contracts: record
+tags as regenerated data keyed by type name, never as a key the next build
+reuses for another type.
+
+The semantic EntityPtr contracts (script slot, property initialization,
+output alias) are re-proved rather than re-pinned: each reading is authored as
+names -- ordered callees, the argument keys a body loads, the fields a call
+reads -- and `--regenerate` checks every claim on the installed build through
+`il2cpp.call_graph` (direct calls named via each image's method pointers and
+the generic method table, literal usage cells, runtime field offsets). A
+claim that fails refuses the write, and equal body sizes are never accepted in
+place of that check: one recorded 2,080-byte base `Process` is now a chain of
+smaller methods.
+
+**The re-test overturned one inherited reading.** `OnEntityEnterTrigger` was
+recorded as aliasing its SPECIFY_ENTITY filter. On the current build the
+listener is registered on the target's source key, the trigger's own
+`TriggerObserverAllEntityComponent` raises the event with itself as sender,
+and `Process` writes `trigger_cast_entity` -- the entity that *entered* -- to
+the output. The output is therefore not the filter, and the contract now says
+`validated_non_alias`. `OnSpecificEntityDie` does alias, more strongly than
+recorded: `Process` returns unless `@event_receiver` equals `_filterEntity`.
+*A recorded alias is a claim about who raises the event, and that has to be
+traced to the raiser, not read off the header.*
+
+BuffData's frozen reader (`memorypack/buff.py`) carried the same stale-tag
+problem for AbilityActionData (48 of 51 constants named other actions); it is
+rekeyed through its own tag-name table via the AbilityActionData family in
+`levelscript_union_tags`. Every tag-keyed table must move with the names: the
+member-count table was missed once, which rejected most items and broke the
+audio build. Rekeying keeps each *reviewed* count, so an action whose current
+wrapper has a different member count (twelve on this build, EffectAction the
+largest) fails closed at the reviewed header rather than being read with a
+stale layout. The selector unions inside TargetSettings (finder, validator,
+post-processor) are small unions ranked the same way, and their Buff tables
+had shifted by the subtypes added since (`AllEnemyFinder`, `BuffValidator`,
+`CircularOrderSort`, ...); SkillData had papered over this with a hand-kept
+override table. They are now `levelscript_union_tags` families, the Buff
+tables are keyed by name, every current subtype is listed, and each layout is
+the current wrapper's member list or `None` where a member type
+(`ColliderShapeData`, `BuffFindSettings`) has no reviewed reader.
+
+Items the reviewed decoders cannot read, reshaped or never typed, are
+consumed by the build's derived plan (`derived_values.ValueReader`) and
+published as `decodeStatus=derived` with `evidenceTier=direct` and the
+wrapper's member names. A chain still splits only when every item is consumed
+and the cursor lands on the proven payload end, and without the installed
+build there are no plans. Where both decoders read an item they must end on
+the same byte, and a disagreement fails closed instead of choosing a side.
+Every disagreement traced back to a byte-shape heuristic in the reviewed
+reader -- a `CreateBuffActionInput` scan for a `buff_*` string, and the
+TargetSettings "envelope", which assumes fixed lengths for common shapes --
+and both now read by member (a typed TargetSettings read is kept over the
+envelope and the envelope's objection is recorded). The two decoders now
+agree on every item both read. With the fallback, no non-empty BuffData
+action payload remains unsplit or ambiguous.
 
 The derivation also closes the types those layouts refer to: 42 structs and 94
 enums, reached by running the reference set to a fixed point. Both are checked
@@ -813,7 +914,16 @@ the live BLC path set as well as fingerprint contents and executing sources.
 anonymous prefix/candidate framing and `skill_terminal` enumerates each terminal
 branch with complete record ranges. The gate joins current decrypted stream
 bytes to every selected outer-ledger identity and checks overlay, raw chunks,
-CLI and parser provenance at both ends. Historical census rebinding is rejected.
+CLI and parser provenance at both ends. Historical census rebinding is rejected,
+with one narrow, opt-in exception: `--allow-exporter-rebind` carries a cursor
+verification across input sets only when `AnimeStudio.CLI` is the sole moved
+build fingerprint and the identity set, every selected file's logical hash and
+length, and the BLC path set are identical. The rebuilt exporter otherwise
+strands the verified basis the context audit and the capture preflight both
+require, because only a capture can re-verify it and the preflight blocks the
+capture. The output records `cursorVerification.rebinding`; a fresh capture
+under the current input set supersedes it. A timeline continuation the reader
+stopped short of field 42 is a valid unverified state and promotes nothing.
 Unique, ambiguous, unsupported and failed rows remain explicit; no candidate
 establishes whole-schema ownership. Each prefix/candidate binds the input-set
 hash, logical identity/hash, `[start, hardLimit)`, grammar parser cursor, byte

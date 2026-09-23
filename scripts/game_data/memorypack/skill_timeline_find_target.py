@@ -1,10 +1,9 @@
 """Exact current-build SkillData first-timeline FindTarget framing.
 
 The selected SkillData AbilityActionData union uses current physical tag
-``0x00B2`` for ``FindTargetActionData``.  Its nested selector unions do not use
-the older compact tag table retained by the Buff decoder, so this module
-supplies the current, byte-pinned subtype routes explicitly and fails closed
-for every route absent from the contract.
+``0x00B2`` for ``FindTargetActionData``.  Its nested selector unions are read
+through the Buff decoder's name-keyed subtype tables, restricted to the routes
+this contract reviewed, and fail closed for every other route.
 """
 from __future__ import annotations
 
@@ -12,7 +11,7 @@ from functools import lru_cache
 from typing import Any
 
 from scripts.common import NATIVE_EVIDENCE_VALIDATED, check_installed_native_inputs
-from scripts.game_data.il2cpp.native_image import check_dependency_contracts, read_pinned_contract
+from scripts.game_data.il2cpp.native_image import read_reviewed_contract
 from scripts.game_data.memorypack.core import CONTRACTS_DIR, LabelledReader
 from scripts.game_data.memorypack.buff import (
     BUFF_FIND_TARGET_BODY_MEMBERS,
@@ -29,37 +28,34 @@ from scripts.game_data.memorypack.skill_timeline_play_animation import (
 
 CONTRACT_PATH = CONTRACTS_DIR / "skill_timeline_find_target_native.json"
 LABEL = "skillTimelineFindTarget"
-CONTRACT_SHA256 = "3B8E6D59E86A420D0A242F8B0D5BC9032A32FBBD9B97AC94D80551868CE167DF"
 FIND_TARGET_TAG = 0x00B2
 
 
+def _reviewed_routes(table: dict, names: tuple[str, ...]) -> dict:
+    """The Buff table's entries for the subtypes this contract reviewed."""
+    return {tag: entry for tag, entry in table.items() if entry[0] in names}
+
+
+# The Buff tables are keyed by each subtype's current tag; this module admits
+# only the routes its contract reviewed and fails closed on every other one.
 CURRENT_SELECTOR_SUBTYPE_TABLES = {
-    "finder": {
-        0x07: BUFF_SELECTOR_FINDER_SUBTYPES[0x06],  # HitBoxFinder
-        0x08: BUFF_SELECTOR_FINDER_SUBTYPES[0x07],  # InFightEnemyFinder
-        0x0C: BUFF_SELECTOR_FINDER_SUBTYPES[0x0A],  # OwnerPartsFinder
-        0x0D: BUFF_SELECTOR_FINDER_SUBTYPES[0x0B],  # OwnerSpawnedEntityFinder
-        0x13: BUFF_SELECTOR_FINDER_SUBTYPES[0x10],  # SmartTargetFinder
-    },
-    "validator": {
-        0x04: BUFF_SELECTOR_VALIDATOR_SUBTYPES[0x03],  # DistanceValidator
-        0x05: BUFF_SELECTOR_VALIDATOR_SUBTYPES[0x04],  # ExcludeOwnerValidator
-        0x09: BUFF_SELECTOR_VALIDATOR_SUBTYPES[0x07],  # MainCharacterValidator
-        0x0A: BUFF_SELECTOR_VALIDATOR_SUBTYPES[0x08],  # SkillCastIdValidator
-        0x0B: BUFF_SELECTOR_VALIDATOR_SUBTYPES[0x09],  # TagValidator
-    },
-    "postProcessor": {
-        0x04: BUFF_SELECTOR_POSTPROCESSOR_SUBTYPES[0x03],  # ExcludeTarget
-    },
+    "finder": _reviewed_routes(BUFF_SELECTOR_FINDER_SUBTYPES, (
+        "HitBoxFinder", "InFightEnemyFinder", "OwnerPartsFinder",
+        "OwnerSpawnedEntityFinder", "SmartTargetFinder",
+    )),
+    "validator": _reviewed_routes(BUFF_SELECTOR_VALIDATOR_SUBTYPES, (
+        "DistanceValidator", "ExcludeOwnerValidator", "MainCharacterValidator",
+        "SkillCastIdValidator", "TagValidator",
+    )),
+    "postProcessor": _reviewed_routes(BUFF_SELECTOR_POSTPROCESSOR_SUBTYPES, ("ExcludeTarget",)),
 }
 
 
 @lru_cache(maxsize=1)
 def _contract() -> dict[str, Any]:
-    value, _digest = read_pinned_contract(
-        CONTRACT_PATH, sha256=CONTRACT_SHA256, schema="endfield.skill-timeline-find-target-native-contract.v1", label=LABEL
+    value, _digest = read_reviewed_contract(
+        CONTRACT_PATH, schema="endfield.skill-timeline-find-target-native-contract.v1", label=LABEL
     )
-    check_dependency_contracts(value, CONTRACT_PATH.parent, label=LABEL)
     return value
 
 
@@ -75,7 +71,6 @@ def validate_current_native_contract() -> dict[str, Any]:
     timeline = validate_timeline_native_contract()
     return {
         "status": "validated",
-        "inputSetSha256": contract["inputSetSha256"],
         "nativeInputs": expected,
         "timelineValidation": timeline,
         "selectedSubtypeRoutes": contract["selectedSubtypeRoutes"],
@@ -122,13 +117,9 @@ def _decode_find_target(data: bytes, start: int, limit: int) -> tuple[dict[str, 
 def decode_first_timeline_find_target(
     data: bytes,
     *,
-    input_set_sha256: str,
     limit: int | None = None,
 ) -> dict[str, Any]:
     """Decode one-action first TimelineActionData records beginning with tag B2."""
-    contract = _contract()
-    if input_set_sha256.upper() != contract["inputSetSha256"]:
-        raise ValueError("skillTimelineFindTarget.input-set:mismatch")
     hard_limit = len(data) if limit is None else limit
     reader = _Reader(data, hard_limit)
     reader.header(48, "skillData.memberCount")
