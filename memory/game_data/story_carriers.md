@@ -44,9 +44,15 @@ model these carriers feed, and everything about presenting the result, is
   rare paths into separate `.pdata` fragments reached by a conditional jump,
   calls unnamed helpers (struct-argument shims and inlined copies of named
   methods), reallocates saved registers, and uses rel32 `jcc` where a short
-  jump was. Follow one level into a fragment or helper, name a jump from its
+  jump was. A split-off fragment's unwind info carries `UNW_FLAG_CHAININFO`
+  and ends in its owner's RUNTIME_FUNCTION, so a body is the function plus
+  every fragment chained to it (`BodyIndex.chained_fragments`), however the
+  fragment is reached; a jump-target walk misses fragments reached from other
+  fragments. Follow one level into an unnamed helper, name a jump from its
   opcode, and accept any save/restore register pair; label a helper-reached
-  callee as such rather than as a direct call.
+  callee as such rather than as a direct call. Compiler-generated names
+  (`<M>d__N`, `<>c__DisplayClassN_M`, `b__N_M`) renumber between builds; match
+  them with the ordinal normalized, and only when unique.
 - `withinActiveArea` is a hysteresis rule in the current build:
   `!rangeSensitive || hit(enterShapes) || (prevWithin &&
   !IsNullOrEmpty(exitShapes) && hit(exitShapes))`, proved from
@@ -59,21 +65,42 @@ model these carriers feed, and everything about presenting the result, is
   `contracts/dialog_finish_native.json`), not tokens pinned by body hash. On
   the current build DialogTreeIfNode delegates to a new
   `DialogManager.GetIfNextIndex`; the meaning holds (outgoing 1 exactly when
-  `GameCondition.result == 1`). The Timeline option write moved into
-  `TimelineRuntimeUtils.TrySetNewOptionIndex`, so the option-index contract is
-  `pendingReview` and Timeline option routes stay unvalidated until it is
-  re-read. Branch-sequence order edges are admitted only while the
-  `Branch.Execute` list-order claim holds.
+  `GameCondition.result == 1`). The Timeline option index now travels
+  `DialogTimelineOptionData.optionIndex` -> `DialogChooseOption` ->
+  `TimelineRuntimeUtils.TrySetNewOptionIndex` (every director under the root)
+  -> `TimelinePlayable.newOptionIndex`; `Evaluate` commits it to
+  `curOptionIndex` and keeps the previous one in `lastOptionIndex`, and
+  `CheckWillRuntimeElementEnabled` enables an element whose option index is
+  zero or equals the current *or previous* selection -- the gate is wider than
+  the previous build's single matching value during a switch. Branch-sequence
+  order edges are admitted only while the `Branch.Execute` list-order claim
+  holds.
+- An iFix-wrapped method opens with `IsPatched(<its own patch id>)`, and an
+  inlined copy keeps that test, so a caller testing a method's patch id
+  contains that method's body. This is how an inlined hop is proved without a
+  call edge. `TaskCondition.InvokeOnIsCompleteChangeAction` is inlined into
+  `LevelScriptRuntime.UpdateTaskMainObjectiveIsCompleted` on the current
+  build: the server progress path invokes `m_onIsCompleteChangeAction` without
+  calling the named method, so a runtime hook on that method misses this path;
+  `contracts/mission_task_paths.json` still names it and is pinned to the
+  previous build.
 - A generated artifact made on one build is current only when its recorded
   native hashes equal the installed build's. The reverse-PPtr audit (Story
   root playback aliases) and `webui/story/dynamic_scene.json` were made on the
   previous build and publish nothing until regenerated; the latter still names
-  layout-v1 export paths.
-- Mission Pipeline `RUNTIME_CONTRACT` rows are re-verified by name each run.
-  Rows whose recorded chain no longer holds on the current build
-  (`FactoryUtil.CheckBuildingLock`, the objective-completion ->
-  `InvokeOnIsCompleteChangeAction` link) are `link_failed` and need a fresh
-  reading, not a pin.
+  layout-v1 export paths. The reverse audit regenerates through
+  `scripts.webui.story_recovery.audit_story_objects`, but only after an
+  installed-game export published with `--animestudio-object-index`.
+  `dynamic_scene.json` has no generator in the tree: its two builders
+  (`build_dynamic_scene_mission_control_audit.py` and the LevelScript
+  action-bridge audit) were deleted when it was frozen in `74a263c7`, so
+  refreshing it means restoring and porting them from history.
+- Mission Pipeline `RUNTIME_CONTRACT` rows are re-verified by name each run;
+  a hop reached through an inlined copy is `verified_with_inlined_hops`. A row
+  whose chain no longer holds is `link_failed` and needs a fresh reading, not
+  a pin; the building-panel lock row had its chain written backwards (the
+  public `CheckIsBuilding*Locked` checks call `CheckBuildingLock` and build the
+  radio).
 
 ## Spatial carriers
 
