@@ -10,6 +10,7 @@ from scripts.game_data.extraction.unity_overlay import chunk_slot_key, effective
 
 import json
 import re
+import sys
 from collections import Counter, defaultdict, deque
 from struct import unpack_from
 from pathlib import Path, PurePosixPath
@@ -18,10 +19,16 @@ from scripts.webui.audio.semantics.context_utils import iter_asset_map_objects
 from scripts.webui.audio.semantics.context_utils import json_dump
 from scripts.webui.audio.semantics.context_utils import load_json_strict
 from scripts.webui.audio.semantics.context_utils import normalize_posix
+from scripts.webui.audio.semantics.identifiers import fnv1_32
+from scripts.webui.audio.semantics.play_sound_actions import (
+    apply_event_enum_names,
+    selected_event_enum_names,
+)
 
 from scripts.game_data.extraction.animestudio_index_io import ObjectIndexUnavailable
 from scripts.game_data.extraction.animestudio_index_io import iter_effective_layer_objects
-from scripts.game_data.extraction.animestudio_index_io import raw_json_path_for_object
+from scripts.game_data.unity_store import UnityObjectRow, UnityObjectStore, open_store, open_store_if_present
+from scripts.game_data.extraction.animestudio_index_io import indexed_object_row
 
 GAMEPLAY_INDEX_REL = Path("data/lang/{language}/gameplay/index.json")
 
@@ -65,13 +72,29 @@ ANIMATION_AUDIO_FUNCTIONS = frozenset({
     "OnCustomFootStep",
 })
 
-# Export-root-relative Unity type folders (layout v2: one effective tree).
-ANIMATOR_CONTROLLER_REL = Path("game/Unity/AnimatorController")
+# Unity object types read from the export's Unity store (game/Unity.sqlite).
+# The ``*_REL`` values are the ``game/Unity/<Type>`` reference prefixes the
+# published summaries name as their source roots.
+ANIMATOR_CONTROLLER_TYPE = "AnimatorController"
+ANIMATOR_CONTROLLER_REL = Path("game/Unity") / ANIMATOR_CONTROLLER_TYPE
 ANIMATOR_CONTROLLER_RELS = (ANIMATOR_CONTROLLER_REL,)
-ANIMATOR_OVERRIDE_CONTROLLER_REL = Path("game/Unity/AnimatorOverrideController")
+ANIMATOR_OVERRIDE_CONTROLLER_TYPE = "AnimatorOverrideController"
+ANIMATOR_OVERRIDE_CONTROLLER_REL = Path("game/Unity") / ANIMATOR_OVERRIDE_CONTROLLER_TYPE
 ANIMATOR_OVERRIDE_CONTROLLER_RELS = (ANIMATOR_OVERRIDE_CONTROLLER_REL,)
-ANIMATION_CLIP_REL = Path("game/Unity/AnimationClip")
+ANIMATION_CLIP_TYPE = "AnimationClip"
+ANIMATION_CLIP_REL = Path("game/Unity") / ANIMATION_CLIP_TYPE
 ANIMATION_CLIP_RELS = (ANIMATION_CLIP_REL,)
+
+
+def _store_with_type(export_root: Path, type_name: str) -> UnityObjectStore | None:
+    """The export's Unity store when it holds any ``type_name`` document, else None."""
+    store = open_store_if_present(export_root)
+    return store if store is not None and store.count(type_name) else None
+
+
+def _row_sort_key(row: UnityObjectRow) -> tuple[str, str]:
+    # The loose layout sorted case-insensitive Windows paths within one folder.
+    return (row.name.lower(), row.name)
 
 ANIMATOR_OVERRIDE_IDENTITY_RE = re.compile(
     r"(?:^|_)((?:eny|chr)_\d+_[^_]+)", re.IGNORECASE
@@ -156,11 +179,14 @@ def iter_json_strings(value: Any):
         for child in value:
             yield from iter_json_strings(child)
 
-def enemy_template_source_files(export_root: Path) -> dict[str, list[Path]]:
-    """Index EnemyData objects, preferring the published object index."""
+def enemy_template_source_files(export_root: Path) -> dict[str, list[UnityObjectRow]]:
+    """Index EnemyData objects in the Unity store, preferring the published object index."""
 
-    result: dict[str, list[Path]] = defaultdict(list)
-    seen: set[Path] = set()
+    result: dict[str, list[UnityObjectRow]] = defaultdict(list)
+    store = open_store_if_present(export_root)
+    if store is None:
+        return {}
+    seen: set[str] = set()
     index_ok = False
     for source in ("Persistent", "StreamingAssets"):
         try:
@@ -169,37 +195,33 @@ def enemy_template_source_files(export_root: Path) -> dict[str, list[Path]]:
                 if not name.lower().startswith("data_eny_"):
                     continue
                 identity = name.removeprefix("data_")
-                path = raw_json_path_for_object(export_root, source, row)
-                if path is not None and path.resolve() not in seen:
-                    seen.add(path.resolve())
-                    result[identity].append(path)
+                found = indexed_object_row(store, row)
+                if found is not None and found.ref not in seen:
+                    seen.add(found.ref)
+                    result[identity].append(found)
             index_ok = True
         except ObjectIndexUnavailable:
             continue
     if index_ok:
-        return {identity: sorted(paths) for identity, paths in sorted(result.items())}
+        return {identity: sorted(rows, key=_row_sort_key) for identity, rows in sorted(result.items())}
 
     # Explicit fallback when no published object index is available.
-    for root in (ExportLayout(export_root).unity_type_dir("MonoBehaviour"),):
-        if not root.exists():
+    for found in store.rows("MonoBehaviour", "data_eny_*_p*.json"):
+        if found.ref in seen:
             continue
-        for path in root.glob("data_eny_*_p*.json"):
-            resolved = path.resolve()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            prefix, separator, suffix = path.stem.rpartition("_p")
-            if not separator or not suffix or not re.fullmatch(r"[0-9a-f]+", suffix, re.IGNORECASE):
-                continue
-            identity = prefix.removeprefix("data_")
-            result[identity].append(path)
-    return {identity: sorted(paths) for identity, paths in sorted(result.items())}
+        seen.add(found.ref)
+        prefix, separator, suffix = found.stem.rpartition("_p")
+        if not separator or not suffix or not re.fullmatch(r"[0-9a-f]+", suffix, re.IGNORECASE):
+            continue
+        identity = prefix.removeprefix("data_")
+        result[identity].append(found)
+    return {identity: sorted(rows, key=_row_sort_key) for identity, rows in sorted(result.items())}
 
 def enemy_template_skill_references(
     export_root: Path,
     enemies: list[dict[str, Any]],
     known_skill_ids: set[str],
-    source_files: dict[str, list[Path]] | None = None,
+    source_files: dict[str, list[UnityObjectRow]] | None = None,
 ) -> dict[str, dict[str, set[str]]]:
     """Return enemy -> SkillData ids recovered inside AbilitySystemData.
 
@@ -214,7 +236,7 @@ def enemy_template_skill_references(
 
     indexed_files = source_files if source_files is not None else enemy_template_source_files(export_root)
     result: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
-    seen_paths: set[Path] = set()
+    seen_paths: set[str] = set()
     for enemy in enemies:
         owner_id = str(enemy.get("id") or "").strip()
         if not owner_id:
@@ -225,12 +247,11 @@ def enemy_template_skill_references(
             if str(value or "").strip()
         }
         for identity in sorted(identities):
-            for path in indexed_files.get(identity) or []:
-                resolved = path.resolve()
-                if resolved in seen_paths:
+            for found in indexed_files.get(identity) or []:
+                if found.ref in seen_paths:
                     continue
-                seen_paths.add(resolved)
-                payload = load_json_strict(path, {})
+                seen_paths.add(found.ref)
+                payload = open_store(export_root).read_json(found.type, found.name)
                 references = ((payload.get("references") or {}).get("RefIds") or []) if isinstance(payload, dict) else []
                 matched: set[str] = set()
                 for reference in references:
@@ -246,10 +267,7 @@ def enemy_template_skill_references(
                     )
                 if not matched:
                     continue
-                try:
-                    source = normalize_posix(path.relative_to(export_root))
-                except ValueError:
-                    source = normalize_posix(path)
+                source = found.ref
                 for skill_id in matched:
                     result[owner_id][skill_id].add(source)
     return {
@@ -260,7 +278,7 @@ def enemy_template_skill_references(
 def enemy_template_animation_tokens(
     export_root: Path,
     enemies: list[dict[str, Any]],
-    source_files: dict[str, list[Path]] | None = None,
+    source_files: dict[str, list[UnityObjectRow]] | None = None,
 ) -> dict[str, dict[str, set[str]]]:
     """Return enemy -> animation actor tokens with exact source files."""
 
@@ -279,17 +297,13 @@ def enemy_template_animation_tokens(
             direct = ENEMY_ID_TOKEN_RE.match(identity)
             if direct:
                 result[owner_id][direct.group(1).lower()].add("EnemyTable identity")
-            seen_paths: set[Path] = set()
-            for path in indexed_files.get(identity) or []:
-                resolved = path.resolve()
-                if resolved in seen_paths:
+            seen_paths: set[str] = set()
+            for found in indexed_files.get(identity) or []:
+                if found.ref in seen_paths:
                     continue
-                seen_paths.add(resolved)
-                payload = load_json_strict(path, {})
-                try:
-                    source = normalize_posix(path.relative_to(export_root))
-                except ValueError:
-                    source = normalize_posix(path)
+                seen_paths.add(found.ref)
+                payload = open_store(export_root).read_json(found.type, found.name)
+                source = found.ref
                 for value in iter_json_strings(payload):
                     match = ENEMY_ANIM_CONFIG_RE.search(value)
                     if match:
@@ -477,8 +491,11 @@ def animation_clip_audio_events(data: bytes) -> tuple[str, list[dict[str, Any]]]
     finish()
     return clip_name, events
 
-def animation_clip_path_id(path: Path) -> int | None:
-    """Recover the signed Unity PathID encoded in an exported clip filename."""
+def animation_clip_path_id(path: PurePosixPath | Path) -> int | None:
+    """Recover the signed Unity PathID encoded in an exported object's file name.
+
+    ``path`` is a ``game/Unity/<Type>/<name>`` reference, or any path whose
+    last part is the exported name."""
 
     match = ANIMATION_CLIP_PATH_ID_SUFFIX_RE.search(path.stem)
     if not match:
@@ -489,12 +506,12 @@ def animation_clip_path_id(path: Path) -> int | None:
         return None
     return value - (1 << 64) if value >= (1 << 63) else value
 
-def animestudio_storage_root(path: Path) -> str:
-    """Return the storage partition of an exported Unity file.
+def animestudio_storage_root(path: PurePosixPath | Path) -> str:
+    """Return the storage partition of an exported Unity object reference.
 
-    The export keeps one effective game/Unity tree, so every exported file is
-    in the same partition; the empty key is that partition. A path that still
-    names an installed layer (a hand-made fixture) keeps that layer's key.
+    The export keeps one effective Unity store, so every exported object is in
+    the same partition; the empty key is that partition. A path that still
+    names an installed layer keeps that layer's key.
     """
 
     lowered = {part.lower(): part for part in path.parts}
@@ -623,8 +640,8 @@ def collect_animation_controller_index(export_root: Path) -> dict[str, Any]:
     serialized-file context can be resolved without ambiguity.
     """
 
-    roots = [export_root / rel for rel in ANIMATOR_CONTROLLER_RELS]
-    available_roots = [root for root in roots if root.is_dir()]
+    store = _store_with_type(export_root, ANIMATOR_CONTROLLER_TYPE)
+    available_roots = [ANIMATOR_CONTROLLER_REL] if store is not None else []
     by_clip_path_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
     by_clip_storage_path_id: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
     counts = {
@@ -633,9 +650,7 @@ def collect_animation_controller_index(export_root: Path) -> dict[str, Any]:
         "sourceRoots": [
             normalize_posix(rel) for rel in ANIMATOR_CONTROLLER_RELS
         ],
-        "availableSourceRoots": [
-            normalize_posix(root.relative_to(export_root)) for root in available_roots
-        ],
+        "availableSourceRoots": [normalize_posix(rel) for rel in available_roots],
         "filesScanned": 0,
         "filesWithDirectReferences": 0,
         "malformedFiles": 0,
@@ -655,15 +670,13 @@ def collect_animation_controller_index(export_root: Path) -> dict[str, Any]:
 
     seen_controllers: set[tuple[str, str, str]] = set()
     seen_references: set[tuple[int, str, str, str]] = set()
-    controller_paths = sorted(
-        (path for root in available_roots for path in root.glob("*.json")),
-        key=lambda value: normalize_posix(value.relative_to(export_root)).lower(),
-    )
-    for path in controller_paths:
+    # Every published list is sorted below, so the store's name order suffices.
+    for controller_row, data in store.iter_documents(ANIMATOR_CONTROLLER_TYPE, "*.json"):
+        path = PurePosixPath(controller_row.ref)
         counts["filesScanned"] += 1
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError):
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
             counts["malformedFiles"] += 1
             continue
         if not isinstance(payload, dict):
@@ -688,7 +701,7 @@ def collect_animation_controller_index(export_root: Path) -> dict[str, Any]:
         controller_key = (
             controller_source_file,
             str(controller_path_id) if isinstance(controller_path_id, int) else "",
-            normalize_posix(path.relative_to(export_root)),
+            controller_row.ref,
         )
         state_refs_by_slot = animator_controller_state_clip_refs(payload)
         file_contexts: dict[tuple[int, str], dict[str, Any]] = {}
@@ -813,10 +826,8 @@ def collect_animation_override_index(export_root: Path) -> dict[str, Any]:
     join or live override activation.
     """
 
-    roots = [export_root / rel for rel in ANIMATOR_OVERRIDE_CONTROLLER_RELS]
-    available_roots = [root for root in roots if root.is_dir()]
-    clip_roots = [export_root / rel for rel in ANIMATION_CLIP_RELS]
-    controller_roots = [export_root / rel for rel in ANIMATOR_CONTROLLER_RELS]
+    store = _store_with_type(export_root, ANIMATOR_OVERRIDE_CONTROLLER_TYPE)
+    available_roots = [ANIMATOR_OVERRIDE_CONTROLLER_REL] if store is not None else []
     counts = {
         "status": "unavailable" if not available_roots else "complete",
         "sourceRoot": normalize_posix(ANIMATOR_OVERRIDE_CONTROLLER_REL),
@@ -913,15 +924,13 @@ def collect_animation_override_index(export_root: Path) -> dict[str, Any]:
     # files within one VFS storage root, not over names. Ambiguous or missing
     # IDs remain visible but are excluded from stronger reachability claims.
     clip_paths_by_storage_id: dict[tuple[str, int], list[str]] = defaultdict(list)
-    for clip_root in clip_roots:
-        if clip_root.is_dir():
-            storage_root = animestudio_storage_root(clip_root)
-            for path in clip_root.glob("*.anim"):
-                clip_path_id = animation_clip_path_id(path)
-                if clip_path_id is None:
-                    continue
-                relative_path = normalize_posix(path.relative_to(export_root))
-                clip_paths_by_storage_id[(storage_root, clip_path_id)].append(relative_path)
+    storage_root = animestudio_storage_root(ANIMATION_CLIP_REL)
+    for clip_name in store.names(ANIMATION_CLIP_TYPE, "*.anim"):
+        clip_ref = PurePosixPath(ANIMATION_CLIP_REL.as_posix(), clip_name)
+        clip_path_id = animation_clip_path_id(clip_ref)
+        if clip_path_id is None:
+            continue
+        clip_paths_by_storage_id[(storage_root, clip_path_id)].append(clip_ref.as_posix())
     for paths in clip_paths_by_storage_id.values():
         paths.sort()
 
@@ -931,51 +940,48 @@ def collect_animation_override_index(export_root: Path) -> dict[str, Any]:
     controller_paths_by_storage_id: dict[
         tuple[str, int], list[dict[str, Any]]
     ] = defaultdict(list)
-    for controller_root in controller_roots:
-        if controller_root.is_dir():
-            storage_root = animestudio_storage_root(controller_root)
-            for path in controller_root.glob("*.json"):
-                try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
-                except (OSError, UnicodeDecodeError, ValueError):
-                    continue
-                if not isinstance(payload, dict):
-                    continue
-                metadata = payload.get("$animestudio")
-                if not isinstance(metadata, dict) or metadata.get("type") != "AnimatorController":
-                    continue
-                controller_path_id = path_id(metadata.get("pathId"))
-                if controller_path_id is None:
-                    continue
-                context = {
-                    "name": str(payload.get("m_Name") or metadata.get("name") or path.stem),
-                    "sourcePath": normalize_posix(path.relative_to(export_root)),
-                    "sourceFile": str(metadata.get("sourceFile") or ""),
-                    "pathId": controller_path_id,
-                    "storageRoot": storage_root,
-                    "assetMapSources": list(asset_sources.get(
-                        (storage_root, "AnimatorController", controller_path_id), []
-                    )),
-                }
-                controller_paths_by_storage_id[
-                    (storage_root, controller_path_id)
-                ].append(context)
+    storage_root = animestudio_storage_root(ANIMATOR_CONTROLLER_REL)
+    for controller_row, data in store.iter_documents(ANIMATOR_CONTROLLER_TYPE, "*.json"):
+        path = PurePosixPath(controller_row.ref)
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        metadata = payload.get("$animestudio")
+        if not isinstance(metadata, dict) or metadata.get("type") != "AnimatorController":
+            continue
+        controller_path_id = path_id(metadata.get("pathId"))
+        if controller_path_id is None:
+            continue
+        context = {
+            "name": str(payload.get("m_Name") or metadata.get("name") or path.stem),
+            "sourcePath": controller_row.ref,
+            "sourceFile": str(metadata.get("sourceFile") or ""),
+            "pathId": controller_path_id,
+            "storageRoot": storage_root,
+            "assetMapSources": list(asset_sources.get(
+                (storage_root, "AnimatorController", controller_path_id), []
+            )),
+        }
+        controller_paths_by_storage_id[
+            (storage_root, controller_path_id)
+        ].append(context)
 
     by_clip_path_id: dict[int, list[dict[str, Any]]] = defaultdict(list)
     by_clip_storage_path_id: dict[
         tuple[str, int], list[dict[str, Any]]
     ] = defaultdict(list)
     identity_tokens: set[str] = set()
-    override_paths = sorted(
-        (path for root in available_roots for path in root.glob("*.json")),
-        key=lambda value: normalize_posix(value.relative_to(export_root)).lower(),
-    )
-    for path in override_paths:
+    # Every published list is sorted below, so the store's name order suffices.
+    for override_row, data in store.iter_documents(ANIMATOR_OVERRIDE_CONTROLLER_TYPE, "*.json"):
+        path = PurePosixPath(override_row.ref)
         storage_root = animestudio_storage_root(path)
         counts["filesScanned"] += 1
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError):
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
             counts["malformedFiles"] += 1
             continue
         if not isinstance(payload, dict) or not isinstance(payload.get("m_Clips"), list):
@@ -1067,7 +1073,7 @@ def collect_animation_override_index(export_root: Path) -> dict[str, Any]:
                 counts["effectiveClipMissingReferences"] += 1
             context = {
                 "overrideName": override_name,
-                "overrideSourcePath": normalize_posix(path.relative_to(export_root)),
+                "overrideSourcePath": override_row.ref,
                 "overrideControllerPathId": controller_path_id,
                 "overrideAssetMapSource": override_source,
                 "controllerJoinStatus": controller_join_status,
@@ -1128,7 +1134,7 @@ def collect_animation_override_index(export_root: Path) -> dict[str, Any]:
     }
 
 def animation_controller_contexts(
-    controller_index: dict[str, Any], path: Path
+    controller_index: dict[str, Any], path: PurePosixPath | Path
 ) -> list[dict[str, Any]]:
     """Return direct controller contexts for one exported AnimationClip."""
 
@@ -1139,7 +1145,7 @@ def animation_controller_contexts(
     return [dict(row) for row in contexts if isinstance(row, dict)]
 
 def animation_override_contexts(
-    override_index: dict[str, Any], path: Path
+    override_index: dict[str, Any], path: PurePosixPath | Path
 ) -> list[dict[str, Any]]:
     """Return corpus-unique override substitutions for one AnimationClip."""
 
@@ -1184,7 +1190,7 @@ def collect_gameplay_animation_audio(
     export_root: Path,
     entries: list[dict[str, Any]],
     enemies: list[dict[str, Any]],
-    enemy_source_files: dict[str, list[Path]] | None = None,
+    enemy_source_files: dict[str, list[UnityObjectRow]] | None = None,
 ) -> dict[str, Any]:
     """Collect exact AnimationClip audio callbacks with bounded actor ownership."""
 
@@ -1206,7 +1212,6 @@ def collect_gameplay_animation_audio(
                 "ownershipSources": sorted(sources),
             })
 
-    roots = [export_root / rel for rel in ANIMATION_CLIP_RELS]
     owners: dict[tuple[str, str], dict[str, Any]] = {}
     unowned_events: dict[str, list[dict[str, Any]]] = defaultdict(list)
     controller_index_data = collect_animation_controller_index(export_root)
@@ -1226,113 +1231,110 @@ def collect_gameplay_animation_audio(
     unowned_clips = 0
     owned_callback_rows = 0
     unowned_callback_rows = 0
-    for root in roots:
-        if not root.exists():
+    # One streamed pass keeps only each clip's parsed callbacks; the clips are
+    # then visited in the case-insensitive name order the evidence lists keep.
+    clip_store = open_store_if_present(export_root)
+    parsed_clips: list[tuple[UnityObjectRow, tuple[str, list[dict[str, Any]]] | None]] = []
+    if clip_store is not None:
+        for pattern in ("A_actor_*.anim", "A_monster_*.anim"):
+            for clip_row, data in clip_store.iter_documents(ANIMATION_CLIP_TYPE, pattern):
+                has_audio = b"functionName: PostAudio" in data or b"functionName: OnCustomFootStep" in data
+                parsed_clips.append((clip_row, animation_clip_audio_events(data) if has_audio else None))
+    parsed_clips.sort(key=lambda item: _row_sort_key(item[0]))
+    for clip_row, parsed in parsed_clips:
+        path = PurePosixPath(clip_row.ref)
+        scanned_clips += 1
+        filename_clip_name = ANIMATION_CLIP_HASH_SUFFIX_RE.sub("", path.stem)
+        filename_match = ANIMATION_ACTOR_RE.match(filename_clip_name)
+        matched_owners = (
+            token_owners.get(
+                (filename_match.group(1).lower(), filename_match.group(2).lower())
+            ) or []
+            if filename_match
+            else []
+        )
+        if parsed is None:
             continue
-        candidate_paths = sorted([
-            *root.glob("A_actor_*.anim"),
-            *root.glob("A_monster_*.anim"),
-        ])
-        for path in candidate_paths:
-            scanned_clips += 1
-            filename_clip_name = ANIMATION_CLIP_HASH_SUFFIX_RE.sub("", path.stem)
-            filename_match = ANIMATION_ACTOR_RE.match(filename_clip_name)
-            matched_owners = (
-                token_owners.get(
-                    (filename_match.group(1).lower(), filename_match.group(2).lower())
-                ) or []
-                if filename_match
-                else []
-            )
-            try:
-                data = path.read_bytes()
-            except OSError:
-                continue
-            if b"functionName: PostAudio" not in data and b"functionName: OnCustomFootStep" not in data:
-                continue
-            clip_name, clip_events = animation_clip_audio_events(data)
-            if not clip_events:
-                continue
-            clip_kind = animation_clip_action_kind(clip_name)
-            clip_context = animation_clip_context(clip_name)
-            controller_contexts = animation_controller_contexts(controller_index, path)
-            clip_reachability = (
-                "directAnimatorController" if controller_contexts else "unresolved"
-            )
-            override_contexts = animation_override_contexts(override_index, path)
-            override_reachability = animation_override_reachability_status(override_contexts)
-            if controller_contexts:
-                controller_reachable_clips += 1
-                controller_reachable_callback_rows += len(clip_events)
-            else:
-                controller_unresolved_clips += 1
-                controller_unresolved_callback_rows += len(clip_events)
-            if override_reachability != "unresolved":
-                override_reachable_clips += 1
-                override_reachable_callback_rows += len(clip_events)
-            else:
-                override_unresolved_clips += 1
-                override_unresolved_callback_rows += len(clip_events)
-            try:
-                clip_source = normalize_posix(path.relative_to(export_root))
-            except ValueError:
-                clip_source = normalize_posix(path)
-            base_evidence = {
-                "kind": "animationClipEvent",
-                "clip": clip_name,
-                "clipSource": clip_source,
-                "actionKind": clip_kind,
-                "clipContext": clip_context,
-                "clipReachability": clip_reachability,
-                "animatorControllerCount": len(controller_contexts),
-                "animatorControllerContexts": controller_contexts,
-                "overrideReachability": override_reachability,
-                "animatorOverrideCount": len(override_contexts),
-                "animatorOverrideContexts": override_contexts,
-            }
-            if matched_owners:
-                matched_clips += 1
-                owned_callback_rows += len(clip_events)
-                for owner in matched_owners:
-                    owner_key = (owner["ownerKind"], owner["ownerId"])
-                    record = owners.setdefault(owner_key, {
-                        **owner,
-                        "events": defaultdict(list),
-                    })
-                    for event in clip_events:
-                        authored_event_id = str(event.get("eventId") or "").strip()
-                        event_key = authored_event_id.lower()
-                        if not event_key:
-                            continue
-                        record["events"][event_key].append({
-                            **base_evidence,
-                            "authoredEventId": authored_event_id,
-                            "eventIndex": event.get("index"),
-                            "time": event.get("time"),
-                            "function": event.get("function"),
-                            "floatParameter": event.get("floatParameter"),
-                            "intParameter": event.get("intParameter"),
-                        })
-            else:
-                unowned_clips += 1
-                unowned_callback_rows += len(clip_events)
+        clip_name, clip_events = parsed
+        if not clip_events:
+            continue
+        clip_kind = animation_clip_action_kind(clip_name)
+        clip_context = animation_clip_context(clip_name)
+        controller_contexts = animation_controller_contexts(controller_index, path)
+        clip_reachability = (
+            "directAnimatorController" if controller_contexts else "unresolved"
+        )
+        override_contexts = animation_override_contexts(override_index, path)
+        override_reachability = animation_override_reachability_status(override_contexts)
+        if controller_contexts:
+            controller_reachable_clips += 1
+            controller_reachable_callback_rows += len(clip_events)
+        else:
+            controller_unresolved_clips += 1
+            controller_unresolved_callback_rows += len(clip_events)
+        if override_reachability != "unresolved":
+            override_reachable_clips += 1
+            override_reachable_callback_rows += len(clip_events)
+        else:
+            override_unresolved_clips += 1
+            override_unresolved_callback_rows += len(clip_events)
+        clip_source = clip_row.ref
+        base_evidence = {
+            "kind": "animationClipEvent",
+            "clip": clip_name,
+            "clipSource": clip_source,
+            "actionKind": clip_kind,
+            "clipContext": clip_context,
+            "clipReachability": clip_reachability,
+            "animatorControllerCount": len(controller_contexts),
+            "animatorControllerContexts": controller_contexts,
+            "overrideReachability": override_reachability,
+            "animatorOverrideCount": len(override_contexts),
+            "animatorOverrideContexts": override_contexts,
+        }
+        if matched_owners:
+            matched_clips += 1
+            owned_callback_rows += len(clip_events)
+            for owner in matched_owners:
+                owner_key = (owner["ownerKind"], owner["ownerId"])
+                record = owners.setdefault(owner_key, {
+                    **owner,
+                    "events": defaultdict(list),
+                })
                 for event in clip_events:
                     authored_event_id = str(event.get("eventId") or "").strip()
                     event_key = authored_event_id.lower()
                     if not event_key:
                         continue
-                    unowned_events[event_key].append({
+                    record["events"][event_key].append({
                         **base_evidence,
                         "authoredEventId": authored_event_id,
-                        "ownerStatus": "unresolved",
-                        "actorKindToken": filename_match.group(1).lower() if filename_match else "",
-                        "actorIdentityToken": filename_match.group(2).lower() if filename_match else "",
                         "eventIndex": event.get("index"),
                         "time": event.get("time"),
                         "function": event.get("function"),
                         "floatParameter": event.get("floatParameter"),
                         "intParameter": event.get("intParameter"),
                     })
+        else:
+            unowned_clips += 1
+            unowned_callback_rows += len(clip_events)
+            for event in clip_events:
+                authored_event_id = str(event.get("eventId") or "").strip()
+                event_key = authored_event_id.lower()
+                if not event_key:
+                    continue
+                unowned_events[event_key].append({
+                    **base_evidence,
+                    "authoredEventId": authored_event_id,
+                    "ownerStatus": "unresolved",
+                    "actorKindToken": filename_match.group(1).lower() if filename_match else "",
+                    "actorIdentityToken": filename_match.group(2).lower() if filename_match else "",
+                    "eventIndex": event.get("index"),
+                    "time": event.get("time"),
+                    "function": event.get("function"),
+                    "floatParameter": event.get("floatParameter"),
+                    "intParameter": event.get("intParameter"),
+                })
 
     event_names = {
         event_key
@@ -1448,12 +1450,14 @@ def seed_buff_play_sound_events(
         record_events = record.setdefault("events", set())
         for event_key, actions in sorted((events or {}).items()):
             authored_ids = {
-                str(action.get("eventId") or "").strip()
+                str(action.get("eventId") or "")
                 for action in actions or []
-                if isinstance(action, dict) and str(action.get("eventId") or "").strip()
+                if isinstance(action, dict)
+                and str(action.get("eventId") or "").strip()
+                and str(action.get("eventId") or "") == str(action.get("eventId") or "").strip()
             }
-            if not authored_ids and str(event_key or "").strip():
-                authored_ids.add(str(event_key).strip())
+            if not authored_ids and str(event_key or "") and str(event_key) == str(event_key).strip():
+                authored_ids.add(str(event_key))
             for event_id in sorted(authored_ids):
                 if event_id in record_events:
                     continue
@@ -1509,13 +1513,21 @@ def collect_buff_play_sound_actions(
 
     if decoder is None:
         from scripts.game_data.memorypack.buff import (
-            BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS,
             BUFF_PLAY_SOUND_ACTION_TAG,
             consume_buff_play_sound_action,
         )
         from scripts.game_data.memorypack.core import MEMORYPACK_UNION_WIDE_TAG
+        from scripts.game_data import levelscript_union_tags
 
-        member_count = BUFF_ABILITY_ACTION_TAG_MEMBER_COUNTS[BUFF_PLAY_SOUND_ACTION_TAG]
+        play_sound_pair = levelscript_union_tags.pair(
+            "AbilityActionData", "Core_PlaySoundAction_PlaySoundActionData"
+        )
+        if (
+            not isinstance(play_sound_pair[0], int)
+            or play_sound_pair[0] != BUFF_PLAY_SOUND_ACTION_TAG
+        ):
+            raise ValueError("Buff PlaySound action union pair is unavailable for the selected build")
+        member_count = play_sound_pair[1]
         signature = bytes([MEMORYPACK_UNION_WIDE_TAG]) + int(BUFF_PLAY_SOUND_ACTION_TAG).to_bytes(2, "little") + bytes([member_count])
 
         def decoder(_path: Path, data: bytes, _size: int) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]:
@@ -1585,8 +1597,8 @@ def collect_buff_play_sound_actions(
                 continue
             source_has_play_sound = False
             for action_index, (timeline, sequence, action) in enumerate(decoded_actions):
-                event_id = str(action.get("soundEvent") or "").strip()
-                if not event_id:
+                event_id = str(action.get("soundEvent") or "")
+                if not event_id.strip():
                     continue
                 source_has_play_sound = True
                 prefix = action.get("prefix") or {}
@@ -1594,6 +1606,11 @@ def collect_buff_play_sound_actions(
                 row = {
                     "buffId": buff_id,
                     "eventId": event_id,
+                    "eventLiteralStatus": (
+                        "outerWhitespaceUnresolved"
+                        if event_id != event_id.strip()
+                        else "asSerialized"
+                    ),
                     "timelineActionIndex": timeline.get("index"),
                     "actionDataIndex": action_index,
                     "startFrame": timeline.get("startFrame"),
@@ -1664,6 +1681,10 @@ def collect_buff_play_sound_actions(
             "buffPlaySoundDecodeFailures": decode_failures,
             "buffPlaySoundActionOccurrences": len(merged),
             "buffPlaySoundUniqueEvents": len({str(row["eventId"]).lower() for row in merged.values()}),
+            "buffPlaySoundOuterWhitespaceEventLiterals": sum(
+                row["eventLiteralStatus"] == "outerWhitespaceUnresolved"
+                for row in merged.values()
+            ),
         },
     }
 
@@ -1766,6 +1787,7 @@ def collect_gameplay_audio_references(
         str(row.get("eventId") or "").lower()
         for row in authored_play_sound_actions
         if str(row.get("eventId") or "")
+        and row.get("eventLiteralStatus") != "outerWhitespaceUnresolved"
     }
     owned_skill_ids: set[str] = set()
 
@@ -1841,10 +1863,9 @@ def collect_gameplay_audio_references(
             if actions:
                 evidence["playSoundActions"] = actions
             event_evidence[event_id].append(evidence)
-        if not event_evidence:
-            continue
-        owned_skill_ids.add(skill_id)
-        event_names.update(event_evidence)
+        if event_evidence:
+            owned_skill_ids.add(skill_id)
+            event_names.update(event_evidence)
         seen_owner_keys: set[tuple[str, str, str]] = set()
         for matched_owner in matched_owners:
             owner_key = (
@@ -1866,7 +1887,7 @@ def collect_gameplay_audio_references(
         owner_id = str(enemy.get("id") or "")
         born_buffs = {str(value or "").strip() for value in enemy.get("bornBuffs") or [] if str(value or "").strip()}
         buff_events = gameplay_buff_audio(born_buffs, buff_records)
-        if not buff_events:
+        if not born_buffs:
             continue
         event_names.update(buff_events)
         owners.append({
@@ -1878,6 +1899,7 @@ def collect_gameplay_audio_references(
             "ownershipMethod": "enemyBornBuffField",
             "ownershipSources": [],
             "sources": [],
+            "bornBuffIds": sorted(born_buffs),
             "events": {
                 event_id: [{
                     "kind": "enemyBornBuffData",
@@ -1955,13 +1977,294 @@ def collect_gameplay_audio_references(
             "skillPlaySoundUniqueEvents": int(
                 (skill_play_sound.get("counts") or {}).get("buffPlaySoundUniqueEvents") or 0
             ),
+            "skillPlaySoundOuterWhitespaceEventLiterals": int(
+                (skill_play_sound.get("counts") or {}).get("buffPlaySoundOuterWhitespaceEventLiterals") or 0
+            ),
             "skillPlaySoundSeededEventRefs": seeded_skill_play_sound_events,
             **play_sound_owner_counts,
             **(animation_audio.get("counts") or {}),
             **(profile_voices.get("counts") or {}),
         },
         "animationControllerIndex": animation_audio.get("animationControllerIndex") or {},
+        "_skillRecords": skill_records,
+        "_buffRecords": buff_records,
     }
+
+
+def reachable_buff_ids(
+    starts: set[str] | list[str],
+    buff_records: dict[str, dict[str, Any]],
+) -> set[str]:
+    """Follow only authored BuffData references from the given config IDs."""
+    reached: set[str] = set()
+    queue = deque(str(value) for value in starts if str(value))
+    while queue:
+        buff_id = queue.popleft()
+        if buff_id in reached:
+            continue
+        reached.add(buff_id)
+        queue.extend(
+            str(value) for value in (buff_records.get(buff_id) or {}).get("buffs") or set()
+            if str(value) and str(value) not in reached
+        )
+    return reached
+
+
+def compact_exact_play_sound_action(
+    row: dict[str, Any],
+    hirc_hashes: set[int],
+) -> dict[str, Any]:
+    """Keep a whole-record action raw until a selected HIRC hash claims it."""
+    literal = str(row.get("eventLiteral") or "")
+    literal_status = str(row.get("eventLiteralStatus") or "empty")
+    if literal_status == "empty":
+        identity_status = "emptyLiteral"
+    elif literal_status == "outerWhitespaceUnresolved":
+        identity_status = "outerWhitespaceUnresolved"
+    elif fnv1_32(literal.lower()) in hirc_hashes:
+        identity_status = "selectedHircEventObject"
+    else:
+        identity_status = "eventHashAbsentFromScannedBankSet"
+    fields = row.get("serializedAction") or {}
+    source = str(row.get("sourcePath") or "")
+    compact = {
+        "configKind": row.get("configKind"),
+        "configId": row.get("configId"),
+        "sourcePath": source,
+        "sourcePaths": [source] if source else [],
+        "sourceSha256": row.get("sourceSha256"),
+        "actionPath": row.get("actionPath"),
+        "eventLiteral": literal,
+        "eventLiteralStatus": literal_status,
+        "eventIdentityStatus": identity_status,
+        "startFrame": row.get("startFrame"),
+        "endFrame": row.get("endFrame"),
+        "buffEvent": row.get("buffEvent"),
+        "buffEventName": row.get("buffEventName"),
+        "abilityEvent": row.get("abilityEvent"),
+        "abilityEventName": row.get("abilityEventName"),
+        "enclosingActionTypes": row.get("enclosingActionTypes") or [],
+        "onlyExecuteWhenSourceIsGuard": row.get("onlyExecuteWhenSourceIsGuard"),
+        "onlyExecuteWhenSourceIsMainChar": row.get("onlyExecuteWhenSourceIsMainChar"),
+        "isEnabled": fields.get("isEnable"),
+        "priorityLevel": fields.get("priorityLevel"),
+        "priorityOffset": fields.get("priorityOffset"),
+        "serverActionIndex": fields.get("serverActionIndex"),
+        "canInterruptTimeMs": fields.get("_canInterruptTimeMs"),
+        "interruptFadeDurationMs": fields.get("_intrptFadeDurationMs"),
+        "jumpToWhenPlayMs": fields.get("_jumpToWhenPlayMs"),
+        "stopFadeDurationMs": fields.get("_stopFadeDurationMs"),
+        "stopOnEnd": fields.get("_stopOnEnd"),
+        "useTempEmitter": fields.get("_useTempEmitter"),
+        "followMountPoint": fields.get("followMountPoint"),
+        "mountPoint": fields.get("mountPoint"),
+        "targetSettings": fields.get("targetSettings"),
+        "targetSettingsStatus": "exactWholeRecord",
+        "timeDilationFadeInDurationMs": fields.get("timeDilationFadeInDurationMs"),
+        "timeDilationFadeOutDurationMs": fields.get("timeDilationFadeOutDurationMs"),
+        "timeDilationPauseThreshold": fields.get("timeDilationPauseThreshold"),
+        "timeDilationSeekThreshold": fields.get("timeDilationSeekThreshold"),
+        "useTimeDilationPauseAndSeek": fields.get("useTimeDilationPauseAndSeek"),
+        "useWeaponMountPoint": fields.get("useWeaponMountPoint"),
+        "weaponIndex": fields.get("weaponIndex"),
+        "weaponMountPoint": fields.get("weaponMountPoint"),
+        "runtimeConditionStatus": "unresolved",
+        "evidence": "exactWholeRecordMemoryPackPlaySoundActionData",
+    }
+    if row.get("configKind") == "BuffData":
+        compact["buffId"] = row.get("configId")
+    elif row.get("configKind") == "SkillData":
+        compact["skillId"] = row.get("configId")
+    if identity_status == "selectedHircEventObject":
+        compact["eventId"] = literal.lower()
+        compact["eventHash"] = fnv1_32(literal.lower())
+    return compact
+
+
+def enrich_gameplay_play_sound_actions(
+    references: dict[str, Any],
+    decoded_actions: list[dict[str, Any]],
+    decoded_audit: dict[str, Any],
+    wwise_event_inventory: list[dict[str, Any]],
+    *,
+    gameassembly: Path,
+    metadata: Path,
+) -> dict[str, Any]:
+    """Attach exact actions through config ownership after HIRC identity is known."""
+    families = decoded_audit.get("families") or {}
+    reason = ""
+    if decoded_audit.get("status") != "validated":
+        reason = f"decoded-native-gate={decoded_audit.get('status', 'missing')}"
+    elif any(
+        not isinstance(families.get(family), dict)
+        or families[family].get("status") != "read"
+        or not int(families[family].get("decoded") or 0)
+        or int(families[family].get("refused") or 0)
+        for family in ("SkillData", "BuffData")
+    ):
+        reason = "incomplete-exact-payload-family"
+    hirc_hashes = {
+        int(row["eventHash"]) & 0xFFFFFFFF
+        for row in wwise_event_inventory
+        if isinstance(row, dict) and isinstance(row.get("eventHash"), int)
+    }
+    if not reason and (
+        not wwise_event_inventory or not hirc_hashes
+        or any(
+            not isinstance(row, dict) or not isinstance(row.get("eventHash"), int)
+            for row in wwise_event_inventory
+        )
+    ):
+        reason = "missing-selected-hirc-inventory"
+    if not reason and (
+        any(row.get("configKind") not in ("SkillData", "BuffData") for row in decoded_actions)
+        or any(
+            sum(row.get("configKind") == family for row in decoded_actions)
+            != int(families[family].get("playSoundActions") or 0)
+            for family in ("SkillData", "BuffData")
+        )
+    ):
+        reason = "incomplete-exact-action-rows"
+    if reason:
+        audit = {"status": "unavailable", "reason": reason}
+        references["exactPlaySoundActionAudit"] = audit
+        print(f"Exact Gameplay PlaySound actions skipped: {reason}", file=sys.stderr)
+        return audit
+    try:
+        enum_names, enum_audit = selected_event_enum_names(gameassembly, metadata)
+        apply_event_enum_names(decoded_actions, enum_names)
+    except (OSError, ValueError, RuntimeError, KeyError, IndexError) as error:
+        audit = {"status": "unavailable", "reason": f"selected-event-enums={error}"}
+        references["exactPlaySoundActionAudit"] = audit
+        print(f"Exact Gameplay PlaySound actions skipped: {error}", file=sys.stderr)
+        return audit
+
+    compact_rows = [compact_exact_play_sound_action(row, hirc_hashes) for row in decoded_actions]
+    owners = references.get("owners") or []
+    skill_records = references.get("_skillRecords") or {}
+    buff_records = references.get("_buffRecords") or {}
+    by_skill: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_buff: dict[str, list[tuple[dict[str, Any], str]]] = defaultdict(list)
+    for owner in owners:
+        skill_id = str(owner.get("skillId") or "")
+        if skill_id:
+            by_skill[skill_id].append(owner)
+            starts = (skill_records.get(skill_id) or {}).get("buffs") or set()
+            for buff_id in reachable_buff_ids(starts, buff_records):
+                by_buff[buff_id].append((owner, "skillBuffData"))
+        elif owner.get("ownershipMethod") == "enemyBornBuffField":
+            for buff_id in reachable_buff_ids(owner.get("bornBuffIds") or [], buff_records):
+                by_buff[buff_id].append((owner, "enemyBornBuffData"))
+
+    grouped: dict[tuple[int, str, str, str], tuple[dict[str, Any], list[dict[str, Any]]]] = {}
+    linked_config_events: set[tuple[str, str, str]] = set()
+    for row in compact_rows:
+        event_id = str(row.get("eventId") or "")
+        matches: list[tuple[dict[str, Any], str]] = []
+        if event_id and row.get("configKind") == "SkillData":
+            matches = [(owner, "skillData") for owner in by_skill.get(str(row["configId"]), [])]
+        elif event_id and row.get("configKind") == "BuffData":
+            matches = by_buff.get(str(row["configId"]), [])
+        seen_owner_ids: set[int] = set()
+        for owner, kind in matches:
+            owner_key = id(owner)
+            if owner_key in seen_owner_ids:
+                continue
+            seen_owner_ids.add(owner_key)
+            owner_events = owner.setdefault("events", {})
+            existing_id = next((key for key in owner_events if key.lower() == event_id), event_id)
+            key = (owner_key, existing_id, kind, str(row["configId"]))
+            if key not in grouped:
+                grouped[key] = (owner, [])
+            grouped[key][1].append(row)
+        row["ownerLinkCount"] = len(seen_owner_ids)
+        row["ownerLinkStatus"] = "linkedThroughAuthoredConfig" if seen_owner_ids else "unresolved"
+        if seen_owner_ids:
+            linked_config_events.add((str(row["configKind"]), str(row["configId"]), event_id))
+
+    for owner in owners:
+        for evidence_rows in (owner.get("events") or {}).values():
+            for evidence in evidence_rows:
+                if isinstance(evidence, dict):
+                    evidence.pop("playSoundActions", None)
+    for (_owner_id, event_id, kind, config_id), (owner, action_rows) in grouped.items():
+        evidence = {
+            "kind": kind,
+            "skillId": str(owner.get("skillId") or ""),
+            "playSoundActions": action_rows,
+        }
+        if kind != "skillData":
+            evidence["buffIds"] = [config_id]
+        owner.setdefault("events", {}).setdefault(event_id, []).append(evidence)
+
+    references["authoredPlaySoundActions"] = [
+        row for row in compact_rows if row.get("configKind") == "BuffData"
+    ]
+    references["authoredSkillPlaySoundActions"] = [
+        row for row in compact_rows if row.get("configKind") == "SkillData"
+    ]
+    references["authoredConfigEventReferences"] = [
+        row for row in references.get("authoredConfigEventReferences") or []
+        if (str(row.get("configKind") or ""), str(row.get("configId") or ""),
+            str(row.get("eventId") or "").lower()) not in linked_config_events
+    ]
+    references.setdefault("eventNames", set()).update(
+        row["eventId"] for row in compact_rows if row.get("eventId")
+    )
+    counts = references.setdefault("counts", {})
+    for family, prefix in (("BuffData", "buff"), ("SkillData", "skill")):
+        rows = [row for row in compact_rows if row.get("configKind") == family]
+        counts[f"local{prefix.capitalize()}PlaySoundActionOccurrences"] = counts.get(
+            f"{prefix}PlaySoundActionOccurrences", 0
+        )
+        counts[f"{prefix}PlaySoundDecodedSourceFiles"] = len({
+            str(row["sourcePath"]) for row in rows
+        })
+        counts[f"{prefix}PlaySoundActionOccurrences"] = len(rows)
+        counts[f"{prefix}PlaySoundUniqueEvents"] = len({
+            str(row["eventId"]) for row in rows if row.get("eventId")
+        })
+        counts[f"{prefix}PlaySoundOuterWhitespaceEventLiterals"] = sum(
+            row["eventLiteralStatus"] == "outerWhitespaceUnresolved" for row in rows
+        )
+    counts["buffPlaySoundActionsLinkedToGameplayOwner"] = sum(
+        bool(row["ownerLinkCount"]) for row in references["authoredPlaySoundActions"]
+    )
+    counts["buffPlaySoundActionsOwnerUnresolved"] = sum(
+        not row["ownerLinkCount"] for row in references["authoredPlaySoundActions"]
+    )
+    counts["skillPlaySoundActionsLinkedToGameplayOwner"] = sum(
+        bool(row["ownerLinkCount"]) for row in references["authoredSkillPlaySoundActions"]
+    )
+    counts["skillPlaySoundActionsOwnerUnresolved"] = sum(
+        not row["ownerLinkCount"] for row in references["authoredSkillPlaySoundActions"]
+    )
+    counts["audioReferences"] = sum(len(owner.get("events") or {}) for owner in owners)
+    counts["audioEventNames"] = len(references["eventNames"])
+    counts["audioOwnedSkills"] = len({
+        str(owner.get("skillId") or "") for owner in owners
+        if owner.get("skillId") and owner.get("events")
+    })
+    counts["authoredConfigEventReferences"] = len(references["authoredConfigEventReferences"])
+    counts["authoredConfigEventReferenceEvents"] = len({
+        str(row.get("eventId") or "") for row in references["authoredConfigEventReferences"]
+    })
+    audit = {
+        "status": "validated",
+        "decodedActionCount": len(compact_rows),
+        "hircMatchedActions": sum(row.get("eventIdentityStatus") == "selectedHircEventObject" for row in compact_rows),
+        "ownerLinkedActions": sum(bool(row["ownerLinkCount"]) for row in compact_rows),
+        "eventEnumFields": {
+            key: value["fieldType"] for key, value in enum_audit.items()
+        },
+        "evidenceBoundary": (
+            "Exact whole-record PlaySound action path and selected HIRC Event identity; "
+            "Skill/Buff owner links follow authored config dependencies. Enum labels are "
+            "serialized trigger slots, not observed execution or audible playback."
+        ),
+    }
+    references["exactPlaySoundActionAudit"] = audit
+    return audit
 
 def compact_gameplay_audio_link(entry: dict[str, Any]) -> dict[str, Any]:
     compact = {
@@ -2038,7 +2341,12 @@ def link_gameplay_audio(
                 if status != "inferredSkillConfigOwner"
                 else "inferredOwnerExactAuthoredPlaySoundAction"
             )
-            activation_status = "authoredFrameWindowRecoveredConditionUnresolved"
+            activation_status = (
+                "authoredFrameWindowRecoveredConditionUnresolved"
+                if all(action.get("startFrame") is not None and action.get("endFrame") is not None
+                       for action in play_sound_actions)
+                else "authoredTriggerContextRecoveredConditionUnresolved"
+            )
         else:
             request_evidence = (
                 "exactAuthoredDependency"
@@ -2909,18 +3217,20 @@ def link_gameplay_audio(
         **animation_evidence,
     })
     json_dump(path, {
-        "schemaVersion": 5,
+        "schemaVersion": 6,
         "language": language,
         "counts": stats,
         "animationEventCatalogPath": GAMEPLAY_SFX_ANIMATION_CATALOG_NAME,
         "animationEvidencePath": GAMEPLAY_SFX_ANIMATION_EVIDENCE_NAME,
         "authoredPlaySoundActions": references.get("authoredPlaySoundActions") or [],
+        "authoredSkillPlaySoundActions": references.get("authoredSkillPlaySoundActions") or [],
+        "exactPlaySoundActionAudit": references.get("exactPlaySoundActionAudit") or {"status": "unavailable"},
         "authoredConfigEventReferences": references.get("authoredConfigEventReferences") or [],
         "characters": characters,
         "enemies": enemies,
         "scope": {
-            "source": "SkillData/BuffData event references, decoded BuffData PlaySound actions, EnemyData ability bundles, AnimationClip audio callbacks, CharacterTable profile voices, and Wwise HIRC traversal",
-            "playSoundActionBoundary": "Current MemoryPack PlaySoundActionData yields exact event, frame window, stop/fade, routing, time-dilation controls, and typed TargetSettings when the nested reader lands exactly; runtime activation conditions and selected targets remain unresolved.",
+            "source": "SkillData/BuffData event references and exact whole-record PlaySound actions, EnemyData ability bundles, AnimationClip audio callbacks, CharacterTable profile voices, and Wwise HIRC traversal",
+            "playSoundActionBoundary": "Exact whole-record SkillData/BuffData PlaySound actions preserve raw literals, enclosing frame or trigger context, stop/fade, routing, time-dilation controls, and typed TargetSettings. A selected HIRC Event object hash is required for Event identity; authored config ownership links remain distinct from runtime activation, target selection, and audible playback. Empty, outer-whitespace, and HIRC-unmatched literals remain raw action catalog rows without Event links.",
             "characterOwnership": "direct gameplay skill id",
             "characterFamilyOwnership": "longest playable skill id prefix inferred for authored child SkillData",
             "enemyOwnership": "exact SkillData identifiers recovered from enemy-template AbilitySystemData, with enemy-id prefix fallback and exact born-buff fields",

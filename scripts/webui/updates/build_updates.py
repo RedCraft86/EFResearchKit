@@ -7,8 +7,19 @@ between two exported game-data trees, such as ``export_1d2/`` and
 previous export is cached as the scanner baseline, then the current export is
 scanned against that baseline using the same focused roots.
 
+``--full-export-scan`` walks every file of both roots instead. A root's
+SQLite stores are not compared as one file each: the scanner expands the Unity
+object store (``game/Unity.sqlite``) into one entry per stored object at its
+logical path ``game/Unity/<Type>/<name>``, and the packed game-file store
+(``game/GameFiles.sqlite``, the ``PACKED_GAME_DIRS`` such as
+``Json/LipSync``) into one entry per stored file at its ``game/<path>``, so
+the broad audit reports per-file changes. The focused default scan does not
+include a packed folder. ``--prune-previous-export-untracked`` never deletes a
+store file, whatever its bytes: a store holds a whole family of the previous
+export in one file.
+
 Run from the repo root:
-    python scripts/webui/updates/build_updates.py
+    python -m scripts.webui.updates.build_updates
 """
 from __future__ import annotations
 
@@ -50,7 +61,7 @@ from scripts.webui.audio.semantics.identifiers import (
     audio_dialog_external_media_id,
 )
 from scripts.source_paths import ExportLayout, ExportLayoutError, prune_nested_source_dirs, resolve_asset_source_roots
-from scripts.webui.updates.scanner import ScanConfig, scan_export_changes
+from scripts.webui.updates.scanner import ScanConfig, is_export_store_relative_path, scan_export_changes
 from scripts.webui.updates.characters import build_character_updates, comparison_character_catalog_dir
 
 DEFAULT_STATE_DIR = ROOT / ".game-data-tracker"
@@ -65,7 +76,13 @@ SCHEMA_VERSION = 1
 # cached under v1 labels (StreamingAssets/, Persistent-structured/) must not be
 # reused, or every old asset appears deleted.
 ASSET_STATE_SCHEMA_VERSION = 2
-EXPORT_BASELINE_CONFIG_SCHEMA_VERSION = 3
+# v4: layout-v3 roots. A full-scan baseline now holds one entry per Unity
+# store row (fingerprinted by its SHA256) instead of loose object files or the
+# store as one opaque file, so an older cached baseline must be rebuilt.
+# v5: layout-v4 roots. Files under PACKED_GAME_DIRS (Json/LipSync) are
+# game-file store rows fingerprinted by SHA256, not loose files hashed with
+# BLAKE2b; a v4 baseline would report every one of them as modified.
+EXPORT_BASELINE_CONFIG_SCHEMA_VERSION = 5
 STATUS_ORDER = {"added": 0, "modified": 1, "deleted": 2}
 ASSET_HASH_CHUNK_SIZE = 1024 * 1024
 ASSET_DEFAULT_FINGERPRINT_MODE = "size"
@@ -185,7 +202,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Use the older broad export-folder scan instead of the focused "
-            "WebUI text JSON scan."
+            "WebUI text JSON scan. The Unity object store (game/Unity.sqlite) "
+            "is expanded into one entry per object at game/Unity/<Type>/<name>, "
+            "and the packed game-file store (game/GameFiles.sqlite) into one "
+            "entry per file at game/<path>."
         ),
     )
     parser.add_argument(
@@ -213,7 +233,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "After a successful comparison, delete previous-export files that "
             "exist byte-identically at the same relative path in the current "
-            "export root."
+            "export root. The export stores (game/Unity.sqlite, "
+            "game/GameFiles.sqlite) are never deleted."
         ),
     )
     parser.add_argument(
@@ -375,10 +396,14 @@ def normalized_entry(status: str, raw: dict[str, Any], *, domain: str = "game") 
     ):
         if raw.get(key) is not None:
             entry[key] = raw[key]
+    if raw.get("text_kind"):
+        entry["text_kind"] = raw["text_kind"]
     if raw.get("text_diff"):
         entry["text_diff"] = raw["text_diff"]
         if raw.get("text_diff_truncated"):
             entry["text_diff_truncated"] = True
+    if raw.get("text_diff_note"):
+        entry["text_diff_note"] = raw["text_diff_note"]
     return entry
 
 
@@ -594,10 +619,24 @@ def files_match_for_prune(previous_path: Path, current_path: Path) -> bool:
         return False
 
 
+def is_never_pruned_relative_path(rel_path: str) -> bool:
+    """Files the previous-export prune keeps regardless of their bytes.
+
+    The Unity object store and the packed game-file store each hold a whole
+    family of that export in one file (plus SQLite sidecars while open). A
+    store is not a duplicate copy of one game file, byte-comparing two
+    multi-gigabyte databases is not a cheap check, and deleting one would
+    strip the previous export of every object or packed file it holds.
+    """
+    return is_export_store_relative_path(rel_path)
+
+
 def collect_unchanged_current_relative_files(previous_root: Path, current_root: Path) -> set[str]:
     """Return previous files that current export already carries unchanged."""
     unchanged: set[str] = set()
     for rel_path in iter_existing_relative_files(previous_root):
+        if is_never_pruned_relative_path(rel_path):
+            continue
         previous_path = previous_root / rel_path
         current_path = current_root / rel_path
         try:
@@ -624,7 +663,7 @@ def assert_safe_previous_export_prune(previous_export_root: Path, current_export
     try:
         ExportLayout(previous_resolved).require()
     except ExportLayoutError as exc:
-        raise SystemExit(f"--prune-previous-export-untracked needs a complete v2 export root: {exc}") from exc
+        raise SystemExit(f"--prune-previous-export-untracked needs a complete current-layout export root: {exc}") from exc
 
 
 def remove_empty_dirs(root: Path) -> int:

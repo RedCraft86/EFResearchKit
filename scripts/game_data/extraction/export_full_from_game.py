@@ -40,8 +40,10 @@ from scripts.game_data.extraction.animestudio_object_index import (
 
 
 from scripts.repo_paths import REPO_ROOT
-from scripts.source_paths import INSTALLED_LAYERS, ExportLayout, configured_export_root
+from scripts.source_paths import INSTALLED_LAYERS, PACKED_GAME_DIRS, ExportLayout, configured_export_root
 from scripts.game_data.extraction.unity_overlay import load_overlay_catalog, normalize_chunk_path
+from scripts.game_data.unity_store import UnityObjectStore, UnityObjectStoreWriter, is_store_file
+from scripts.game_data.game_file_store import GameFileStoreWriter
 
 ROOT = REPO_ROOT
 DEFAULT_GAME_ROOT = resolve_installed_game_data_root()
@@ -2875,7 +2877,8 @@ def summarize_vfs_indexes(
 
 def animestudio_source_root(output_root: Path, source: str) -> Path:
     # Per-layer AnimeStudio staging. It doubles as the per-asset reuse cache;
-    # publish_unity_outputs mirrors it into game/Unity as hardlinks.
+    # publish_unity_outputs syncs its documents into game/Unity.sqlite and
+    # mirrors its media into game/Unity as hardlinks.
     return animestudio_work_dir(output_root) / source
 
 
@@ -3016,10 +3019,39 @@ def publish_structured_dump(output_root: Path, layer: str) -> dict[str, Any]:
             published.append(entry.name)
         else:
             raise SystemExit(f"structured dump produced {entry}, which has no place in game/")
+    packed = pack_published_game_dirs(layout, published)
     if graveyard.exists():
         shutil.rmtree(graveyard)
     log(f"  published structured dump from {layer}: {', '.join(published) or 'nothing'}")
-    return {"layer": layer, "folders": published}
+    return {"layer": layer, "folders": published, "packed": packed}
+
+
+def pack_published_game_dirs(layout: ExportLayout, published: list[str]) -> dict[str, dict[str, int]]:
+    """Move each PACKED_GAME_DIRS folder of a just-published game/ tree into GameFiles.sqlite.
+
+    Publishing replaced the whole top-level folder, so a packed folder's rows
+    are synced to exactly what this dump wrote (an absent folder empties its
+    rows) and its loose files are then removed. An unreadable file fails the
+    publish (strict sync) with the root still marked as being written.
+    """
+    counts: dict[str, dict[str, int]] = {}
+    folders = [folder for folder in PACKED_GAME_DIRS if folder.split("/", 1)[0] in published]
+    if not folders:
+        return counts
+    with GameFileStoreWriter(layout.game_file_store_path) as writer:
+        for folder in folders:
+            base = layout.game.joinpath(*folder.split("/"))
+            files: dict[str, Path] = {}
+            if base.is_dir():
+                for dirpath, _dirnames, filenames in os.walk(base):
+                    for filename in filenames:
+                        path = Path(dirpath) / filename
+                        files[path.relative_to(base).as_posix()] = path
+            counts[folder] = writer.sync_folder(folder, files, remove_missing=True)
+            if base.is_dir():
+                shutil.rmtree(base)
+            log(f"  packed game/{folder} into {layout.game_file_store_path.name}: {counts[folder]}")
+    return counts
 
 
 def _link_or_copy(source: Path, target: Path) -> None:
@@ -3039,17 +3071,19 @@ def publish_unity_outputs(
     *,
     completed_types: dict[str, set[str]] | None = None,
 ) -> dict[str, Any]:
-    """Mirror every layer's AnimeStudio staging into game/Unity/<Type> as hardlinks.
+    """Publish every layer's AnimeStudio staging: documents into the store, media as hardlinks.
 
     Staging already holds only effective objects (--skip_sources_file), so
-    the mirror is a plain union; on a same-name tie the later layer wins, which
-    is the same asset from the newer bundle. A type is synced only when every
-    installed layer ran the stage that exports it (its staging stage folder
-    exists; a layer may legitimately hold no objects of the type), so a lost
-    or partial staging cache never deletes published data. With
-    ``completed_types`` (the exporter passes it), every installed layer must
-    also have finished that type's item in this run; a run that covered only
-    some layers or types leaves the rest as published.
+    the publish is a plain union; on a same-name tie the later layer wins,
+    which is the same asset from the newer bundle. Object documents
+    (``is_store_file``: .json, .anim) are synced into ``game/Unity.sqlite``;
+    converted media is mirrored into ``game/Unity/<Type>`` as hardlinks. A
+    type is synced only when every installed layer ran the stage that exports
+    it (its staging stage folder exists; a layer may legitimately hold no
+    objects of the type), so a lost or partial staging cache never deletes
+    published data. With ``completed_types`` (the exporter passes it), every
+    installed layer must also have finished that type's item in this run; a
+    run that covered only some layers or types leaves the rest as published.
     """
     layout = ExportLayout(output_root)
     desired: dict[str, dict[str, os.DirEntry]] = {}
@@ -3069,7 +3103,7 @@ def publish_unity_outputs(
                 for entry in os.scandir(type_dir.path):
                     if entry.is_file():
                         files[entry.name] = entry
-    counts = {"linked": 0, "unchanged": 0, "removed": 0}
+    counts = {"linked": 0, "unchanged": 0, "removed": 0, "storeWritten": 0, "storeUnchanged": 0, "storeRemoved": 0}
     def missing_layers(type_name: str) -> list[str]:
         staged = staged_layers.get(stage_of_type[type_name], set())
         missing = set(required_layers) - staged
@@ -3081,32 +3115,62 @@ def publish_unity_outputs(
     for type_name in incomplete:
         log(f"  game/Unity/{type_name} left as published: {stage_of_type[type_name]} not completed this run for {missing_layers(type_name)}")
         desired.pop(type_name, None)
+    store_types: set[str] = set()
+    if layout.unity_store_path.is_file():
+        store = UnityObjectStore(layout.unity_store_path)
+        try:
+            store_types = set(store.types())
+        finally:
+            store.close()
     if completed_types is not None and required_layers:
         # A type every layer completed with no output has no staging folder;
-        # sync it as empty so its previously published files go too.
+        # sync it as empty so its previously published rows and media go too.
         everywhere = set.intersection(*(set(completed_types.get(layer, set())) for layer in required_layers))
         for type_name in sorted(everywhere - set(stage_of_type)):
-            if layout.unity_type_dir(type_name).is_dir():
+            if layout.unity_type_dir(type_name).is_dir() or type_name in store_types:
                 desired[type_name] = {}
-    for type_name, files in sorted(desired.items()):
-        target_dir = ensure_dir(layout.unity_type_dir(type_name))
-        existing = {entry.name: entry for entry in os.scandir(target_dir) if entry.is_file()}
-        for name, source_entry in files.items():
-            current = existing.pop(name, None)
-            if current is not None:
-                a, b = current.stat(), source_entry.stat()
-                if a.st_size == b.st_size and a.st_mtime_ns == b.st_mtime_ns:
-                    counts["unchanged"] += 1
-                    continue
-                os.unlink(current.path)
-            _link_or_copy(Path(source_entry.path), target_dir / name)
-            counts["linked"] += 1
-        for stale in existing.values():
-            os.unlink(stale.path)
-            counts["removed"] += 1
+    writer: UnityObjectStoreWriter | None = None
+    try:
+        for type_name, files in sorted(desired.items()):
+            documents = {name: Path(entry.path) for name, entry in files.items() if is_store_file(name)}
+            media = {name: entry for name, entry in files.items() if not is_store_file(name)}
+            if documents or type_name in store_types:
+                if writer is None:
+                    writer = UnityObjectStoreWriter(layout.unity_store_path)
+                synced = writer.sync_type(type_name, documents, remove_missing=True)
+                counts["storeWritten"] += synced["written"]
+                counts["storeUnchanged"] += synced["unchanged"]
+                counts["storeRemoved"] += synced["removed"]
+            target_dir = layout.unity_type_dir(type_name)
+            if not media and not target_dir.is_dir():
+                continue
+            ensure_dir(target_dir)
+            # Every loose file here is media or stale: a store-suffix file is a
+            # leftover layout-v2 document, which the store now owns.
+            existing = {entry.name: entry for entry in os.scandir(target_dir) if entry.is_file()}
+            for name, source_entry in media.items():
+                current = existing.pop(name, None)
+                if current is not None:
+                    a, b = current.stat(), source_entry.stat()
+                    if a.st_size == b.st_size and a.st_mtime_ns == b.st_mtime_ns:
+                        counts["unchanged"] += 1
+                        continue
+                    os.unlink(current.path)
+                _link_or_copy(Path(source_entry.path), target_dir / name)
+                counts["linked"] += 1
+            for stale in existing.values():
+                os.unlink(stale.path)
+                counts["removed"] += 1
+            if not media and not any(os.scandir(target_dir)):
+                os.rmdir(target_dir)
+    finally:
+        if writer is not None:
+            writer.close()
     log(
-        f"  published game/Unity: {len(desired)} type(s), linked={counts['linked']} "
-        f"unchanged={counts['unchanged']} removed={counts['removed']}"
+        f"  published game/Unity: {len(desired)} type(s), media linked={counts['linked']} "
+        f"unchanged={counts['unchanged']} removed={counts['removed']}; "
+        f"{layout.unity_store_path.name} written={counts['storeWritten']} "
+        f"unchanged={counts['storeUnchanged']} removed={counts['storeRemoved']}"
     )
     return {"types": sorted(desired), "skippedIncompleteTypes": incomplete, **counts}
 

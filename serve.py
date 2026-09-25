@@ -8,11 +8,33 @@ Serves the `webui` app at `/`, raw current exported assets at
 `/export_full/...` (the export root: game/ and meta/), final game files from the
 export's game/ tree at `/export_data/...`, and
 saved previous-export assets at `/export_previous/...`.
+
+Layout-v3 export roots keep every Unity object document (.json, .anim) in
+`game/Unity.sqlite` rather than under `game/Unity/<Type>/`. A request under one
+of the three export routes for a `.../Unity/<Type>/<name>` document that is not
+on disk is answered from the `Unity.sqlite` beside that `Unity/` folder, so
+published links to those documents keep working.
+
+Layout-v4 roots also pack every file under `PACKED_GAME_DIRS`
+(`scripts/source_paths.py`, e.g. `Json/LipSync`) into `game/GameFiles.sqlite`.
+A request under an export route for a missing file whose path below a `game/`
+folder lies inside a packed folder is answered from the `GameFiles.sqlite` in
+that `game/` folder, with the file's exact bytes. Its Content-Type follows the
+suffix, except that a `.json` file is `application/json` only when its bytes
+are UTF-8 text: LipSync `.json` files are binary MemoryPack and are served as
+`application/octet-stream`.
+
+Either store is opened read-only per request and imported only when such a
+request arrives; 304, HEAD and 404 behave as for files, and an unreadable
+store answers 500.
 """
 from __future__ import annotations
 
+import email.utils
 import http.server
+import io
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -30,6 +52,17 @@ CHARACTER_MERGES_OVERRIDE_PATH = WEBUI_ROOT / "overrides" / "character_merges.js
 CHARACTER_NAME_OVERRIDES_PATH = WEBUI_ROOT / "overrides" / "character_name_overrides.json"
 AUDIO_NOTES_OVERRIDE_PATH = WEBUI_ROOT / "overrides" / "audio_notes.json"
 MAX_WRITE_BYTES = 5 * 1024 * 1024
+EXPORT_ROUTE_PREFIXES = ("/export_full", "/export_data", "/export_previous")
+# Read-only query API over the export stores, used by the Data page.
+STORE_API_PREFIX = "/api/stores"
+UNITY_STORE_FILE = "Unity.sqlite"
+# Object documents the Unity store holds, by suffix, with the type they are served as.
+UNITY_STORE_CONTENT_TYPES = {
+    ".json": "application/json; charset=utf-8",
+    ".anim": "text/plain; charset=utf-8",
+}
+GAME_FILE_STORE_FILE = "GameFiles.sqlite"
+BINARY_CONTENT_TYPE = "application/octet-stream"
 
 
 def read_paths_bat_value(name: str) -> str:
@@ -61,7 +94,8 @@ def resolve_export_full_root() -> Path:
 
 
 EXPORT_FULL_ROOT = resolve_export_full_root()
-# The export's game/ tree: Table/, Json/, Video/, Audio/, Unity/ (layout v2).
+# The export's game/ tree: Table/, Json/, Video/, Audio/, Unity/, and the
+# Unity.sqlite / GameFiles.sqlite stores (layout v4).
 DEFAULT_DATA_EXPORT_ROOT = EXPORT_FULL_ROOT / "game"
 
 
@@ -96,6 +130,114 @@ def resolve_previous_export_root() -> Path:
 
 
 DATA_EXPORT_ROOT = resolve_data_export_root()
+
+
+def is_export_route(request_path: str) -> bool:
+    return any(
+        request_path == prefix or request_path.startswith(prefix + "/")
+        for prefix in EXPORT_ROUTE_PREFIXES
+    )
+
+
+def unity_store_document(translated_path: str) -> tuple[Path, str, str] | None:
+    """``(store, type, name)`` when a missing file is a Unity store document.
+
+    ``translated_path`` is the filesystem path a request resolved to. It
+    names a store document when it is ``<game>/Unity/<Type>/<name>`` with a
+    store suffix, the file itself does not exist, and ``<game>/Unity.sqlite``
+    does. Whether the row exists is the store's answer, not this one.
+    """
+
+    path = Path(translated_path)
+    if path.suffix.lower() not in UNITY_STORE_CONTENT_TYPES:
+        return None
+    type_dir = path.parent
+    unity_dir = type_dir.parent
+    if not path.name or not type_dir.name or unity_dir.name.lower() != "unity":
+        return None
+    if path.exists():
+        return None
+    store = unity_dir.parent / UNITY_STORE_FILE
+    if not store.is_file():
+        return None
+    return store, type_dir.name, path.name
+
+
+def read_unity_store_document(store: Path, type_name: str, name: str) -> bytes | None:
+    """One document's exact bytes, or None when the store has no such row.
+
+    The store module is imported here, not at startup, and each call opens
+    its own read-only connection and closes it: the server keeps no handle on
+    the database between requests, so an export can replace it.
+    """
+
+    from scripts.game_data.unity_store import UnityObjectStore
+
+    with UnityObjectStore(store) as unity_store:
+        try:
+            return unity_store.read_bytes(type_name, name)
+        except KeyError:
+            return None
+
+
+def game_file_store_document(translated_path: str, served_root: str) -> tuple[Path, str] | None:
+    """``(store, game/-relative path)`` when a missing file is a packed game file.
+
+    ``translated_path`` is the filesystem path a request resolved to and
+    ``served_root`` the directory its route serves. The nearest ancestor at or
+    below ``served_root`` holding a ``GameFiles.sqlite`` is the ``game/``
+    folder; the path names a packed file when its path below that folder lies
+    strictly inside one of ``PACKED_GAME_DIRS`` and the file itself does not
+    exist. Whether the row exists is the store's answer, not this one.
+    """
+
+    path = Path(translated_path)
+    if not path.name or path.exists():
+        return None
+    from scripts.source_paths import packed_game_dir
+
+    root = os.path.normcase(os.path.abspath(served_root))
+    for game_dir in path.parents:
+        candidate = os.path.normcase(os.path.abspath(game_dir))
+        if candidate != root and not candidate.startswith(root.rstrip(os.sep) + os.sep):
+            return None
+        store = game_dir / GAME_FILE_STORE_FILE
+        if store.is_file():
+            relative = path.relative_to(game_dir).as_posix()
+            folder = packed_game_dir(relative)
+            if folder is None or len(relative) <= len(folder) + 1:
+                return None
+            return store, relative
+    return None
+
+
+def read_game_file_store_document(store: Path, relative: str) -> bytes | None:
+    """One packed file's exact bytes, or None when the store has no such row.
+
+    Imported on demand and opened read-only per call, like the Unity store.
+    """
+
+    from scripts.game_data.game_file_store import GameFileStore
+
+    with GameFileStore(store) as game_files:
+        try:
+            return game_files.read_bytes(relative)
+        except KeyError:
+            return None
+
+
+def game_file_content_type(name: str, data: bytes) -> str:
+    """The Content-Type for a packed file: by suffix, but ``.json`` only when UTF-8 text."""
+
+    suffix = Path(name).suffix.lower()
+    if suffix == ".json":
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            return BINARY_CONTENT_TYPE
+        return "application/json; charset=utf-8"
+    guessed, _encoding = mimetypes.guess_type(name)
+    return guessed or BINARY_CONTENT_TYPE
 
 
 ERROR_PAGE_TEMPLATE = """<!doctype html>
@@ -202,8 +344,63 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return True
 
     def do_GET(self) -> None:
+        if urlsplit(self.path).path.startswith(STORE_API_PREFIX):
+            self._handle_store_api()
+            return
         if not self._redirect_webui_alias():
             super().do_GET()
+
+    def _handle_store_api(self) -> None:
+        """Answer ``/api/stores[/rows|/sql]`` from scripts.webui.data_inspector.store_browser.
+
+        ``root`` is ``current`` (the export root) or ``previous`` (the saved
+        previous export); every other parameter is passed through and validated
+        by the browser module, whose refusals are HTTP 400.
+        """
+        from urllib.parse import parse_qs
+
+        try:
+            from scripts.webui.data_inspector import store_browser
+        except ImportError as exc:  # served outside the repository
+            self._send_json(503, {"error": f"store API unavailable: {exc}"})
+            return
+        request = urlsplit(self.path)
+        params = {key: values[-1] for key, values in parse_qs(request.query).items()}
+        which = params.get("root", "current")
+        if which == "current":
+            root, route = EXPORT_FULL_ROOT, "/export_data"
+        elif which == "previous":
+            root, route = resolve_previous_export_root(), "/export_previous"
+        else:
+            self._send_json(400, {"error": f"unknown root {which!r}; expected current or previous"})
+            return
+        endpoint = request.path[len(STORE_API_PREFIX):].strip("/")
+        try:
+            if endpoint == "":
+                payload = store_browser.list_stores(root, route=route)
+            elif endpoint == "rows":
+                payload = store_browser.query_rows(
+                    root,
+                    route=route,
+                    store=params.get("store", ""),
+                    group=params.get("group", ""),
+                    query=params.get("q", ""),
+                    field=params.get("field", "name"),
+                    offset=int(params.get("offset", "0") or 0),
+                    limit=int(params.get("limit", str(store_browser.DEFAULT_ROW_LIMIT)) or 0),
+                )
+            elif endpoint == "sql":
+                payload = store_browser.run_sql(root, store=params.get("store", ""), sql=params.get("q", ""))
+            else:
+                self._send_json(404, {"error": f"unknown store endpoint {request.path}"})
+                return
+        except (store_browser.StoreBrowserError, ValueError) as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001 - report, never crash the server thread
+            self._send_json(500, {"error": f"{type(exc).__name__}: {exc}"})
+            return
+        self._send_json(200, payload)
 
     def do_HEAD(self) -> None:
         if not self._redirect_webui_alias():
@@ -327,7 +524,62 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if args and isinstance(args[0], str) and args[0].startswith(("4", "5")):
             super().log_message(fmt, *args)
 
+    def send_store_head(self):
+        """Answer an export-route file that lives in one of the export stores.
+
+        Returns ``(handled, body)``. ``handled`` is False when the request is
+        not a store document, so normal file serving applies; otherwise the
+        response head is sent and ``body`` is the document or None.
+        """
+        request_path = urlsplit(self.path).path or "/"
+        if not is_export_route(request_path):
+            return False, None
+        translated = self.translate_path(self.path)
+        document = unity_store_document(translated)
+        if document is not None:
+            store, type_name, name = document
+            label = "Unity object store"
+            read = lambda: read_unity_store_document(store, type_name, name)  # noqa: E731
+            content_type = lambda data: UNITY_STORE_CONTENT_TYPES[Path(name).suffix.lower()]  # noqa: E731
+        else:
+            packed = game_file_store_document(translated, self.directory)
+            if packed is None:
+                return False, None
+            store, relative = packed
+            label = "Game file store"
+            read = lambda: read_game_file_store_document(store, relative)  # noqa: E731
+            content_type = lambda data: game_file_content_type(relative, data)  # noqa: E731
+        try:
+            data = read()
+        except Exception as exc:  # the store is unreadable or another schema
+            self.send_error(500, f"{label} unreadable: {exc}")
+            return True, None
+        if data is None:
+            self.send_error(404, "File not found")
+            return True, None
+        modified = int(os.path.getmtime(store))
+        since = self.headers.get("If-Modified-Since")
+        if since:
+            try:
+                since_time = email.utils.parsedate_to_datetime(since).timestamp()
+            except (TypeError, ValueError, IndexError, OverflowError):
+                since_time = None
+            if since_time is not None and modified <= since_time:
+                self.send_response(304)
+                self.end_headers()
+                return True, None
+        self.send_response(200)
+        self.send_header("Content-type", content_type(data))
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Last-Modified", self.date_time_string(modified))
+        self.end_headers()
+        return True, io.BytesIO(data)
+
     def send_head(self):
+        handled, body = self.send_store_head()
+        if handled:
+            return body
+
         range_header = self.headers.get("Range")
         if not range_header:
             return super().send_head()

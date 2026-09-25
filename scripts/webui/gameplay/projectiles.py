@@ -1,14 +1,14 @@
-"""Build a compact projectile inspector payload from AnimeStudio JSON.
+"""Build a compact projectile inspector payload from AnimeStudio JSON (game/Unity.sqlite).
 
 The source records are ``data_projectile_*`` MonoBehaviour objects whose
 managed references (``ProjectileTemplateData`` and
 ``ProjectileComponentData``) the local AnimeStudio fork decoded through the
 serialized managed-reference TypeTree that ships inside the bundle.  That
 TypeTree names every field and the decode consumed the bounded payload
-exactly, so field order and values are exact.  What the TypeTree does not
-carry is meaning: enum members, Wwise event hashes, layer masks, and
-blackboard keys stay numeric here, because nothing in this builder has
-independently recovered their runtime names.
+exactly, so field order and values are exact. Its enum integers stay on each
+row. An optional selected-native join publishes EffectActionCfg enum names
+only when the installed pair, declaring fields, and all published values
+validate; it does not infer runtime use.
 
 Any other object shape is skipped and counted.  The retired hand-written
 decoders published inferred field names and partial tails; the exporter's
@@ -19,19 +19,22 @@ regression to surface, not data to guess at.
 Examples:
     python -m scripts.webui.gameplay.build_gameplay --stage projectiles
     python -m scripts.webui.gameplay.projectiles --pretty
-    python -m scripts.webui.gameplay.projectiles --input-root PATH --output PATH
+    python -m scripts.webui.gameplay.projectiles --export-root PATH --output PATH
 """
 
 from __future__ import annotations
-from scripts.common import EXPORT_LAYOUT
+from scripts.common import EXPORT_LAYOUT, check_installed_native_inputs
 
 import argparse
 import json
+import sys
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
+from scripts.game_data.unity_store import UnityObjectStore, open_store_if_present
 from scripts.repo_paths import REPO_ROOT
+from scripts.source_paths import ExportLayout
 
 if __package__ in {None, ""}:
     raise SystemExit(
@@ -40,11 +43,11 @@ if __package__ in {None, ""}:
     )
 
 EXPORT_ROOT = EXPORT_LAYOUT.root
-DEFAULT_INPUTS = (
-    EXPORT_ROOT / "game/Unity/MonoBehaviour",
-)
+#: The scanned Unity type; its documents are rows of game/Unity.sqlite.
+PROJECTILE_UNITY_TYPE = "MonoBehaviour"
+PROJECTILE_NAME_GLOB = "*projectile*.json"
 DEFAULT_OUTPUT = REPO_ROOT / "webui/data/gameplay/projectiles.json"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SOURCE_LABEL = "AnimeStudio exact managed-reference TypeTree decode"
 EFFECT_LIST_FIELDS = (
     ("main", "mainEffects"),
@@ -309,7 +312,7 @@ def effect_payload(value: Any) -> dict[str, Any]:
         confidence={
             "structure": "exact",
             "semantics": "qualified",
-            "note": "EffectActionCfg fields come from the serialized managed-reference TypeTree; enum members and mount-point ids stay numeric.",
+            "note": "EffectActionCfg fields come from the serialized managed-reference TypeTree; selected enum names are optional top-level enrichment and stored ids remain numeric.",
         },
     )
 
@@ -318,6 +321,104 @@ def effect_list_payload(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [effect_payload(item) for item in value if isinstance(item, dict)]
+
+
+def load_effect_config_enums() -> tuple[dict[str, dict[str, str]], dict[str, Any]]:
+    """Resolve selected EffectActionCfg field enums without changing raw rows."""
+    gate = check_installed_native_inputs()
+    evidence: dict[str, Any] = {
+        "status": gate.status,
+        "detail": gate.detail,
+        "source": "selected GameAssembly.dll + global-metadata.dat",
+    }
+    if not gate.validated:
+        return {}, evidence
+    try:
+        from scripts.game_data.il2cpp.native_image import NativeImage
+        from scripts.game_data.memorypack.derived_plans import load_registry
+        from scripts.game_data.memorypack.effect_config_corpus import (
+            EFFECT_TYPE, ENUM_FIELDS, effect_definition,
+        )
+        from scripts.game_data.memorypack.target_settings_corpus import selected_enum_fields
+
+        registry, plan_gate = load_registry(
+            gameassembly=gate.gameassembly, metadata=gate.metadata,
+        )
+        if plan_gate.get("status") != "validated":
+            raise ValueError(f"selected EffectActionCfg plan unavailable: {plan_gate.get('status')}")
+        names, _audit = selected_enum_fields(
+            NativeImage(gate.gameassembly, gate.metadata, label="projectile-effect-config"),
+            registry, effect_definition(registry),
+            owner_type=EFFECT_TYPE, enum_fields=ENUM_FIELDS,
+        )
+        evidence.update({
+            "status": "validated",
+            "nativeInputs": {
+                "GameAssembly.dll": gate.gameassembly_sha256,
+                "global-metadata.dat": gate.metadata_sha256,
+            },
+            "boundary": (
+                "selected native field-to-enum types and serialized plan; "
+                "names describe authored EffectActionCfg values, not spawned or active effects"
+            ),
+        })
+        return {
+            field: {str(value): name for value, name in members.items()}
+            for field, members in names.items()
+        }, evidence
+    except Exception as error:
+        evidence.update({
+            "status": "unavailable",
+            "detail": f"{type(error).__name__}: {error}",
+        })
+        return {}, evidence
+
+
+def validate_effect_config_enums(
+    entries: list[dict[str, Any]], enums: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Require every exported effect value to have a selected enum member."""
+    if not enums:
+        return {"status": "incomplete", "checkedConfigs": 0,
+                "failureCount": 1, "failureExamples": [{"gate": "empty-enum-fields"}]}
+    checked = 0
+    failure_count = 0
+    failures: list[dict[str, Any]] = []
+
+    def check(entry: dict[str, Any], slot: str, index: int, effect: dict[str, Any]) -> None:
+        nonlocal checked, failure_count
+        checked += 1
+        for field, members in enums.items():
+            value = effect.get(field) if field == "fxType" else (effect.get("behavior") or {}).get(field)
+            if type(value) is int and str(value) in members:
+                continue
+            failure_count += 1
+            if len(failures) < 12:
+                source = entry.get("source") or {}
+                failures.append({
+                    "gate": "selected-effect-enum-member",
+                    "projectile": entry.get("id"),
+                    "source": source.get("jsonPath"),
+                    "sourceSha256": source.get("rawDataSha256"),
+                    "slot": slot, "index": index, "field": field,
+                    "expectedCount": len(members),
+                    "expectedFirst": sorted(members, key=int)[:8],
+                    "actual": value,
+                })
+
+    for entry in entries:
+        effects = entry.get("effects") or {}
+        for slot, values in (effects.get("lists") or {}).items():
+            for index, effect in enumerate(values or []):
+                if not isinstance(effect, dict) or not effect:
+                    continue
+                check(entry, slot, index, effect)
+        alert = effects.get("alert")
+        if isinstance(alert, dict) and alert:
+            check(entry, "alert", 0, alert)
+    return {"status": "validated" if checked and not failure_count else "incomplete",
+            "checkedConfigs": checked, "failureCount": failure_count,
+            "failureExamples": failures}
 
 
 def source_label(path: Path) -> str:
@@ -379,11 +480,15 @@ def registry_fully_decoded(payload: dict[str, Any]) -> bool:
     )
 
 
-def build_entry(path: Path, root: Path) -> tuple[dict[str, Any] | None, str | None]:
-    """Return ``(entry, None)`` or ``(None, skip_reason)``."""
+def build_entry(path: Path, root: Path, data: bytes) -> tuple[dict[str, Any] | None, str | None]:
+    """Return ``(entry, None)`` or ``(None, skip_reason)``.
+
+    ``path`` is the document's logical ``game/Unity/<Type>/<name>`` path under
+    the export root and ``data`` its exact bytes from the object store.
+    """
     try:
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
+        payload = json.loads(data.decode("utf-8-sig"))
+    except (UnicodeError, json.JSONDecodeError):
         return None, SKIP_NOT_JSON
     if not isinstance(payload, dict):
         return None, SKIP_NOT_JSON
@@ -535,10 +640,9 @@ def build_entry(path: Path, root: Path) -> tuple[dict[str, Any] | None, str | No
     return result, None
 
 
-def candidate_files(root: Path) -> Iterable[Path]:
-    if not root.exists():
-        return ()
-    return sorted(root.rglob("*projectile*.json"), key=lambda item: item.as_posix().lower())
+def candidate_names(store: UnityObjectStore) -> list[str]:
+    """Projectile candidate document names; a names-only pass, bytes are read per match."""
+    return sorted(store.names(PROJECTILE_UNITY_TYPE, PROJECTILE_NAME_GLOB), key=str.lower)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -546,10 +650,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Build compact WebUI projectile data from exact AnimeStudio MonoBehaviour JSON.",
     )
     parser.add_argument(
-        "--input-root",
+        "--export-root",
         type=Path,
-        action="append",
-        help="MonoBehaviour JSON directory to scan; repeat for multiple source roots. Defaults to the export root's game/Unity/MonoBehaviour.",
+        default=EXPORT_ROOT,
+        help=(
+            "Export root whose game/Unity.sqlite object store holds the "
+            f"*projectile*.json MonoBehaviour documents (default: {EXPORT_ROOT})."
+        ),
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help=f"Output JSON path (default: {DEFAULT_OUTPUT})")
     parser.add_argument("--pretty", action="store_true", help="Write indented JSON for inspection instead of compact JSON.")
@@ -563,22 +670,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    roots = tuple(path.resolve() for path in (args.input_root or DEFAULT_INPUTS))
+    export_root = args.export_root.resolve()
+    layout = ExportLayout(export_root)
+    root = layout.unity_type_dir(PROJECTILE_UNITY_TYPE)
+    roots = (root,)
     entries: list[dict[str, Any]] = []
     scanned = 0
     missing = []
     skipped: dict[str, list[str]] = {}
-    for root in roots:
-        if not root.exists():
-            missing.append(str(root))
-            continue
-        for path in candidate_files(root):
+    store = open_store_if_present(export_root)
+    if store is None:
+        missing.append(str(layout.unity_store_path))
+    else:
+        for name in candidate_names(store):
             scanned += 1
-            entry, reason = build_entry(path, root)
+            entry, reason = build_entry(root / name, root, store.read_bytes(PROJECTILE_UNITY_TYPE, name))
             if entry:
                 entries.append(entry)
             elif reason:
-                skipped.setdefault(reason, []).append(path.name)
+                skipped.setdefault(reason, []).append(name)
     entries.sort(key=lambda row: (str(row.get("id") or ""), str(row.get("source", {}).get("root") or ""), str(row.get("source", {}).get("pathId") or "")))
     source_counts: dict[str, int] = {}
     for row in entries:
@@ -614,6 +724,17 @@ def main(argv: list[str] | None = None) -> int:
         for reason, names in skipped.items()
         if reason in (SKIP_NOT_EXACT_TYPETREE, SKIP_REGISTRY_NOT_FULLY_DECODED)
     }
+    effect_enums, effect_enum_evidence = load_effect_config_enums()
+    if effect_enum_evidence["status"] == "validated":
+        checked = validate_effect_config_enums(entries, effect_enums)
+        effect_enum_evidence.update(checked)
+        if checked["status"] != "validated":
+            effect_enums = {}
+            first = (checked.get("failureExamples") or [{}])[0]
+            effect_enum_evidence["detail"] = (
+                f"projectile EffectActionCfg enum audit failed: "
+                f"{checked['failureCount']} field values; first {first}"
+            )
     output = {
         "schemaVersion": SCHEMA_VERSION,
         "source": SOURCE_LABEL,
@@ -633,10 +754,12 @@ def main(argv: list[str] | None = None) -> int:
             "uniqueAuthoredSkills": len(set(authored_skill_refs)),
         },
         "skippedFiles": {reason: sorted(names) for reason, names in sorted(non_exact_skips.items())},
+        "effectConfigEnums": effect_enums,
+        "effectConfigEnumEvidence": effect_enum_evidence,
         "confidence": {
             "structure": "exact" if entries and not non_exact_skips else ("mixed" if entries else "empty"),
             "semantics": "qualified",
-            "note": "Every published entry is an exact managed-reference TypeTree decode. Structural completeness does not imply recovered runtime enum/hash meanings or evaluated blackboard values.",
+            "note": "Every published entry is an exact managed-reference TypeTree decode. Selected EffectActionCfg enum names are optional and describe stored values; runtime effect behavior, event hashes, and evaluated blackboard values remain unresolved.",
         },
         "entries": entries,
     }
@@ -648,10 +771,12 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"projectiles: {len(entries)} entries from {scanned} candidate files "
         f"({', '.join(f'{reason}={len(names)}' for reason, names in sorted(skipped.items())) or 'no skips'}); "
-        f"wrote {args.output}",
+        f"effect-enums={effect_enum_evidence['status']}; wrote {args.output}",
     )
+    if effect_enum_evidence["status"] == "incomplete":
+        print(f"[projectiles.effect-config-enums] {effect_enum_evidence['detail']}", file=sys.stderr)
     if missing:
-        print(f"missing input roots: {', '.join(missing)}")
+        print(f"missing Unity object store: {', '.join(missing)}")
     if args.require_exact and non_exact_skips:
         for reason, names in sorted(non_exact_skips.items()):
             print(f"non-exact skip {reason}: {', '.join(sorted(names)[:5])}{' ...' if len(names) > 5 else ''}")

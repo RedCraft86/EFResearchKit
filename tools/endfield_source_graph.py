@@ -36,7 +36,9 @@ from scripts.game_data.memorypack.tables import (
     decode_model_view_state_controller_memorypack,
 )
 from scripts.common import EXPORT_LAYOUT, WEBUI_BUILD_DIR, unity_asset_rel
-from scripts.source_paths import ExportLayout, ExportLayoutError
+from scripts.source_paths import ExportLayout, ExportLayoutError, packed_game_dir
+from scripts.game_data.game_file_store import read_game_file
+from scripts.game_data.unity_store import is_store_file, open_store_if_present, split_logical_ref
 EXPORT_ROOT = EXPORT_LAYOUT.root
 WEBUI_DATA = ROOT / "webui" / "data"
 MISSION_PIPELINE_ROOT = WEBUI_DATA / "mission_pipeline"
@@ -4779,6 +4781,25 @@ class SourceGraphBuilder:
 
     def read_decoded_config_bytes(self, entry: dict[str, Any]) -> bytes:
         path = self.decoded_config_raw_path(entry)
+        parts = split_logical_ref(path)
+        if parts is not None and is_store_file(parts[1]):
+            # A game/Unity/<Type>/<name> object document is a store row (layout v3).
+            store = open_store_if_present(self.export_root)
+            try:
+                return store.read_bytes(*parts) if store is not None else b""
+            except KeyError:
+                return b""
+        layout = ExportLayout(self.export_root)
+        try:
+            game_relative = path.relative_to(layout.game).as_posix()
+        except ValueError:
+            game_relative = ""
+        if game_relative and packed_game_dir(game_relative) is not None:
+            # A file under a packed folder (Json/LipSync) is a game-file store row (layout v4).
+            try:
+                return read_game_file(layout.root, game_relative)
+            except (FileNotFoundError, KeyError):
+                return b""
         try:
             return path.read_bytes()
         except OSError:
@@ -14057,16 +14078,21 @@ class SourceGraphBuilder:
                     self.add_edge(story_node, mission_node, "story_used_by_source", source=row.get("source") or "story_source_links")
 
     def ingest_materials(self) -> None:
+        # Material documents live in the export's Unity object store (layout v3);
+        # an export without the Material stage has none, as before.
+        store = open_store_if_present(EXPORT_LAYOUT.root)
         for source in ("Unity",):
-            root = EXPORT_LAYOUT.unity_type_dir("Material")
-            if not root.is_dir():
+            if store is None:
                 continue
-            if self.include_all_material_json:
-                material_paths = root.glob("*.json")
-            else:
-                material_paths = root.glob("M_actor*.json")
-            for path in sorted(material_paths):
-                payload = read_json(path, {})
+            pattern = "*.json" if self.include_all_material_json else "M_actor*.json"
+            for row, data in store.iter_documents("Material", pattern):
+                path = EXPORT_LAYOUT.root / row.ref
+                try:
+                    payload = json.loads(data.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    payload = {}
+                if not isinstance(payload, dict):
+                    payload = {}
                 name = safe_key(payload.get("m_Name") or payload.get("Name") or path.stem)
                 material_node = self.add_node(
                     "material",
