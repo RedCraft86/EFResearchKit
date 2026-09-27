@@ -44,11 +44,13 @@ starting the server. When setup finishes, the **Story** and **Text** pages are
 ready to browse. The remaining pages are separate so the first useful build
 finishes sooner.
 
-For a complete refresh from the installed client, including exported media and
-CN audio, run this after setup:
+The other pages are built page by page, and each extracts only what it reads
+from the installed client. Build one of them, or all of them including
+exported media and CN audio, after setup:
 
 ```bat
-.\export.bat --from-game --with-assets
+.\export.bat map --from-game
+.\export.bat --from-game
 ```
 
 Asset decoding can take several hours and requires substantially more disk
@@ -66,34 +68,68 @@ space and memory than the initial Story/Text setup.
   projectiles, related assets, and recovered sound effects.
 - **Audio** exposes decoded voices, music, sound effects, event relationships,
   and playback evidence.
-- **Assets** browses exported images, videos, materials, models, and their
-  recovered references.
+- **Assets** browses exported images, videos, and models with their linked
+  materials and recovered references.
+- **Data** is a file viewer and SQL console over every decoded export output
+  the other pages do not show: every Unity object document (MonoBehaviour,
+  TextAsset, Material, AnimationClip, ...), every packed game file (such as
+  LipSync), and the loose tables, JsonData, Lua, Terrain, shaders and fonts,
+  plus the files nothing decodes yet (streaming chunks, irradiance volumes,
+  extend data, patches), shown as bytes. Search by
+  name, object name, PathID, or CAB; read JSON as a tree with base64 decoded
+  inline; or query with read-only SQL. It also keeps the decoded datasets of
+  the maintained binary readers.
 - **Text** provides searchable localized tables and source records.
 - **Updates** compares exported game data across two saved versions.
 
 ### Pages prepared by each command
 
-After a command succeeds, the named pages are ready or refreshed. Pages not
-listed keep their previously generated data.
+`export.bat` is grouped by page: name the pages to build (none means all of
+them). After a command succeeds, the named pages are ready or refreshed; pages
+not named keep their previously generated data.
 
 | Command | Pages ready or refreshed | What it uses |
 | --- | --- | --- |
 | `.\setup.bat` | **Story**, **Text** | Installed client; also builds AnimeStudio and starts the WebUI server by default |
-| `.\export.bat` | **Story**, **Text**, **Map**, **Characters**, **Gameplay** | The current, freshness-checked export; existing Assets and Audio are unchanged |
-| `.\export.bat --from-game` | **Story**, **Text**, **Map**, **Characters**, **Gameplay** | Refreshes structured data from the installed client first |
-| `.\export.bat --with-assets` | Every page except **Updates** | Reuses the current export and its existing media; also rebuilds Assets and relinks Audio |
-| `.\export.bat --with-assets --skip-freshness` | Every page except **Updates** | Same as above, but bypasses the export freshness guard for this run |
-| `.\export.bat --from-game --with-assets` | Every page except **Updates** | Complete installed-client refresh, including asset extraction and CN audio decoding |
-| `.\export_assets.bat` | **Map**, **Characters**, **Gameplay**, **Audio**, **Assets** | Reuses current Story/Text and existing exported media |
-| `.\export_assets.bat --from-game` | **Map**, **Characters**, **Gameplay**, **Audio**, **Assets** | Keeps Story/Text, but refreshes assets and CN audio from the installed client |
+| `.\export.bat` | Every page except **Updates** | The current export, after checking that every input the pages read is present and current |
+| `.\export.bat map audio` | **Map**, **Audio** | The same, for the named pages only |
+| `.\export.bat --from-game` | Every page except **Updates** | Extracts only what the pages read, decodes CN audio, then builds them |
+| `.\export.bat story --from-game` | **Story**, **Text** | Text only: tables, JsonData and the Story Unity classes; no image, video or audio |
+| `.\export.bat story-media --from-game` | **Story**, **Text**, **Audio** | Story with its images, videos and voice lines; decodes CN audio, so it also rebuilds Audio |
+| `.\export.bat map --from-game` | **Map**, **Assets** | Extracts Map's inputs and the asset index that colours its render |
+| `.\export.bat debug --from-game` | Every page except **Updates** | Extracts every supported structured block and Unity class, then builds every page |
+| `.\export.bat --changed-only` | Every page except **Updates** | Applies only changed structured files from the installed client and reuses exported media |
 | `.\build_updates.bat OLD NEW` | **Updates** | Compares two complete export folders |
 
-Asset-enabled commands without `--from-game` can only publish media already
-present in the current export. Use `--from-game` when that media has not yet
-been extracted or the installed client changed.
+The pages are `story` (with Text; `story-media` adds its images, videos and
+voice), `map`, `characters`, `gameplay`, `audio`, `assets` and `data`;
+`.\export.bat --help` lists what each one includes. A build without
+`--from-game` refuses inputs extracted from an older client build, and names
+the pages to re-extract.
+
+### What each page extracts
+
+The chart below shows what each page reads from the export and how the pages
+depend on each other. A page run extracts only its column. Map, Characters and
+Gameplay also build the Assets index. Pages that read Story's output use the
+published copy unless Story is built in the same run. Data shows every
+decodable output the other pages do not, so extracting every page (no page
+named) extracts everything, the same as `debug`. The page registry,
+[`scripts/webui/pages.py`](scripts/webui/pages.py), is the source of truth;
+`.\export.bat PAGE --from-game --show-plan` prints the same information for a
+run.
+
+<p align="center">
+  <img src="res/export_pages.svg" alt="Matrix of the structured blocks, Unity classes and indexes each export.bat page extracts, and a diagram of the page build dependencies" width="100%">
+</p>
 
 `python serve.py` serves whatever has already been generated; it does not build
-page data. `python -m scripts.webui.package` packages the current generated WebUI
+page data. The **Data** page's file viewer and SQL console are the exception:
+they query the export's `Unity.sqlite` and `GameFiles.sqlite` live through
+`serve.py`, so they need no build step but do need the repository's
+`serve.py` (restart it after updating the code). A packaged WebUI has no such
+server, so there the Data page shows only its decoded datasets.
+`python -m scripts.webui.package` packages the current generated WebUI
 without refreshing it.
 
 Mission Pipeline recovery remains available as a separate direct Python
@@ -122,7 +158,7 @@ export_full/
     cab_map/ extraction/      container map, failures, incremental state
 ```
 
-Rough size of a complete export (`--from-game --with-assets`), from the current
+Rough size of a complete export (`--from-game`), from the current
 client:
 
 | Part | Files | Size |
@@ -131,7 +167,8 @@ client:
 | `game/Unity` media | ~0.2 M | ~64 GB |
 | `game/Audio` | ~93 K | ~30 GB |
 | `game/Video` | ~600 | ~6 GB |
-| `game/Json` | ~95 K | ~0.8 GB |
+| `game/Json` | ~21 K | ~0.2 GB |
+| `game/GameFiles.sqlite` | 1 (~74 K files) | ~0.3 GB |
 | `game/Table` | ~700 | ~0.3 GB |
 | `meta` | ~120 | ~3 GB |
 | **Total** | **~0.4 M** | **~110 GB** |
@@ -141,15 +178,15 @@ Budget roughly double that during a run: AnimeStudio stages into
 then publishes into `game/`: media as hardlinks, object documents into
 `Unity.sqlite`, and `Json/LipSync` into `GameFiles.sqlite`. An export saved
 before those stores existed (layout v2 or v3) is converted once with
-`python -m scripts.game_data.extraction.pack_export_stores --export-root <folder>`. Generated browser data in
-`webui/data/` adds a few GB more.
+`python -m scripts.game_data.extraction.pack_export_stores --export-root <folder>`.
+Generated browser data in `webui/data/` adds a few GB more.
 
 Time and memory, measured on a desktop with 8 AnimeStudio workers (the
 `--asset-jobs` default):
 
 | Step | Time | Peak RAM |
 | --- | --- | --- |
-| `--from-game --with-assets` extraction | ~3-4 h | up to ~40 GB |
+| `--from-game` extraction of every page | ~3-4 h | up to ~40 GB |
 | Story build (`export.bat` without `--from-game`) | ~25 min | a few GB |
 | Post-Story pages (Gameplay, Characters, Map, source graph) | ~15 min | a few GB |
 | `build_updates.bat` between two exports | ~10 min | a few GB |

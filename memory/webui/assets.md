@@ -2,8 +2,10 @@
 
 ## Purpose
 
-Assets inventories browser-visible exported images, video, JSON, OBJ, FBX, and
-related resource metadata. It is a resource browser and evidence source for
+Assets inventories browser-visible exported images, video, OBJ, FBX, and
+related resource metadata. Exported JSON documents are not listed: they are
+rows of the export's Unity object store, browsed on the Data page, and Assets
+links a material to its Data-page document. It is a resource browser and evidence source for
 other pages, not proof that an asset was used at runtime.
 
 ## Inputs and recovery flow
@@ -24,8 +26,10 @@ other pages, not proof that an asset was used at runtime.
 5. Packaging may publish a compact normal-page media index and a complete
    resource index. Extract the resources archive last so the complete index wins.
 
-Primary outputs: `webui/data/assets/{index,story_media,table_owners,videos}.json`;
-Gameplay separately owns `gameplay_refs.json`.
+Primary outputs: `webui/data/assets/{index,table_owners,videos}.json`
+(`build_assets --publish index`); Story media owns `story_media.json`
+(`--publish story-media`, the `story_media` task) and Gameplay owns
+`gameplay_refs.json`.
 
 ## Evidence boundary
 
@@ -45,12 +49,13 @@ Gameplay separately owns `gameplay_refs.json`.
 
 ```bat
 python -m scripts.webui.assets.build_assets
-.\export_assets.bat --from-game --focused-assets
-.\export_assets.bat --from-game --default-assets
+.\export.bat assets --from-game
+.\export.bat assets
 ```
 
-Use `--debug-assets` only for broad investigation. Prefer
-`.\export.bat --from-game --with-assets` when Story also needs refresh.
+The Assets page extracts Table, video, Material JSON and the Texture2D,
+Sprite, Mesh and Animator media. Use `.\export.bat debug --from-game` only for
+broad investigation; the index then also carries every debug class.
 
 ## Remaining gaps
 

@@ -60,7 +60,24 @@ Important options:
 --dummy_dlls        Optional DummyDll folder for MonoBehaviour script schema recovery.
 --object_index_jsonl  Compact object/schema/MonoScript JSONL sidecar for binary-first joins.
 --filter_data       JSON list of source, offset, name, pathID, and type items.
+--document_store    SQLite file for JSON or Convert .json/.anim documents.
+--packed-game-store SQLite file for dump's Data/Json/LipSync files.
 ```
+
+`--document_store` writes each `.json` or `.anim` document a JSON or Convert
+target would have written to disk as a row of an `endfield.unity-object-store.v1` SQLite file
+(`scripts/game_data/unity_store.py`): key (type folder, file name), the exact
+file bytes zlib-compressed, their SHA256, and the header columns
+`describe_document` computes. No document file or folder is created; media
+and Raw/Dump targets stay on disk, and the export manifest
+keeps the same logical paths. The store is built at `<file>.partial` and
+renamed only when the export completes. Without the option, output is
+byte-for-byte unchanged.
+
+`dump --packed-game-store` writes `Data/Json/LipSync/*` directly as rows of a
+staged `endfield.game-file-store.v1` SQLite file. Other dump outputs remain
+loose. The full structured wrapper merges those rows into `game/GameFiles.sqlite`
+after a successful dump and deletes the staged store.
 
 `--object_index_jsonl` is opt-in and writes schema-v1 rows documented by
 `AnimeStudio.CLI\Resources\ObjectIndexSchemaV1.json`. Use a unique sidecar per
@@ -129,6 +146,12 @@ FLAKE encoder, without an intermediate WAV file. `setup_vgmstream.bat` installs
 the decoder under `tools/vgmstream/`; `ANIMESTUDIO_VGMSTREAM_CLI` remains an
 explicit override. Use `--format wav` or `--format wem` only when that
 compatibility output is explicitly required.
+`--category-map <JSON>` accepts a media-ID-to-folder map (`sfx`, `music`,
+`voice_events`, `cues`, `ambience`, or `ui`) and writes unmatched Wwise media to
+`wwise/unknown/`. AudioDialog voice paths are written in the final Story,
+character, enemy, or other voice folder. `--source-manifest <JSON>` records the
+written absolute paths, source blocks, and PCK bank tags for the wrapper; the
+wrapper supplies both options on every decode path.
 `vfs-index --jsonl` writes compact streaming metadata records while its default
 output remains the existing JSON document.
 `list` prints the known dumpable VFS block types. The WebUI wrappers default to this same
@@ -505,9 +528,9 @@ family leads, not a current denominator without a ledger rejoin. Do not treat Sk
 Use the payload-understanding report's current blocker/evidence pointers before
 adding another family-specific probe.
 
-`export_assets.bat --from-game` writes the lightweight bundle VFS index
-through `vfs-index`, then decodes CN audio through `audio` before relinking
-browser conversations.
+Every `export.bat PAGE --from-game` AnimeStudio run writes the lightweight
+bundle VFS index through `vfs-index`; the Audio page then decodes CN audio
+through `audio` before relinking browser conversations.
 
 The canonical post-Story map phase also runs
 `recover_map_streaming_instances.py --all-published-map-scenes` before map
@@ -532,27 +555,27 @@ Updates remains the separate `build_updates.bat OLD NEW` workflow.
 
 ## Wrapper Integration
 
-`export.bat --from-game` calls:
+`export.bat PAGE --from-game` calls the exporter with the page's explicit
+scope; `export.bat story --from-game` resolves to:
 
 ```bat
-python -m scripts.game_data.extraction.export_full_from_game --animestudio-scope story --animestudio-stages maps json_by_type
+python -m scripts.game_data.extraction.export_full_from_game --structured table json-data video audit-video lua --unity-json TextAsset MonoBehaviour PlayableDirector --animestudio-object-index
 ```
 
-Its structured VFS dump defaults to `--structured-dump-mode focused`, which dumps
-only `table`, `json-data`, and video blocks. This skips raw asset bundles
-(`Bundle`, `InitBundle`, and `BundleManifest`), audio PCK/media files, world
-streaming, dynamic streaming, irradiance volumes, extend-data bins, patch bytes,
-and Lua. `build_audio.py` streams Wwise bank metadata directly from VFS when
-relinking audio events.
-`--structured-dump-mode default` adds only Terrain `_H` height grids (not the
-larger `C/T/S/A/N` families) while keeping the same production exclusions; pass
-a bounded `AnimeStudio.CLI dump --block-type ...` into `tmp\` when diagnosing VFS
-coverage.
+Run `export.bat PAGE --from-game --show-plan` to see any page's scope. No
+scope dumps raw asset bundles (`Bundle`, `InitBundle`, `BundleManifest`), audio
+PCK/media files, world streaming, dynamic streaming, irradiance volumes,
+extend-data bins or patch bytes: they have no place in `game/`.
+`build_audio.py` streams Wwise bank metadata directly from VFS when relinking
+audio events. The Map page's `terrain-height` block adds only Terrain `_H`
+height grids (not the larger `C/T/S/A/N` families); `debug` takes Terrain
+whole. Pass a bounded `AnimeStudio.CLI dump --block-type ...` into `tmp\` when
+diagnosing VFS coverage.
 
 Pass an optional usable DummyDll folder to the story JSON export with:
 
 ```bat
-.\export.bat --from-game --animestudio-dummy-dlls path\to\DummyDll
+.\export.bat story --from-game --animestudio-dummy-dlls path\to\DummyDll
 ```
 
 Generate or refresh the preferred repo-local folder with:
@@ -612,13 +635,8 @@ validate. Missing, unverified,
 stale, invalid, or degraded paths warn and continue without DummyDlls instead
 of failing the export.
 
-`export_assets.bat --from-game` defaults to the default asset mode:
-
-```bat
-python -m scripts.game_data.extraction.export_full_from_game --skip-structured --animestudio-scope assets --animestudio-asset-mode default --animestudio-stages maps convert_by_type json_by_type
-```
-
-Full asset mode uses the MessagePack asset map for per-type stages when safe:
+The exporter's `default` asset level (`--animestudio-scope assets --asset-mode
+default`, the media classes the pages read) uses the MessagePack asset map for per-type stages when safe:
 each type worker loads only source bundles that contain that type, and
 AnimeStudio indexes matched map/filter rows once so it can jump to selected
 Endfield block offsets without re-scanning the full filter list for every file.
@@ -627,15 +645,15 @@ model/material/texture relations. Animator conversion stays on the broad path
 because FBX export may need related GameObject, Mesh, Material, and Texture2D
 dependencies.
 
-Pass `--focused-assets` to `export_assets.bat` or `--animestudio-asset-mode focused`
-for the lean WebUI-focused mode. That mode exports only WebUI-referenced
+Pass `--asset-mode focused` to the exporter directly for the lean
+WebUI-focused mode; no page run uses it. That mode exports only WebUI-referenced
 `Texture2D` media. It writes a generated name-filter file from current Story/Wiki
 media references, builds JSON plus MessagePack AnimeStudio maps, then loads the
 MessagePack map with `--map_op AssetMap,Load` so matching map rows seed bundle
 offset filtering.
 
-Pass `--debug-assets` to `export_assets.bat` or `--animestudio-asset-mode debug`
-for the exhaustive diagnostic mode. That mode restores the old broad conversion
+Run `export.bat debug --from-game` (or pass `--asset-mode debug` to the
+exporter) for the exhaustive diagnostic mode. That mode restores the old broad conversion
 set plus the default asset JSON set, then builds the normal complete Assets browser
 index from whatever files are browser-visible.
 
@@ -668,7 +686,10 @@ Stage outputs:
 export_full\meta\<Layer>\asset_map
 export_full\meta\<Layer>\export_manifest
 export_full\game\Unity\<Type>
-tmp\game_data\export\<root>-<hash>\animestudio\<Layer>\{convert_by_type,json_by_type}  (staging and reuse cache)
+tmp\game_data\export\<root>-<hash>\animestudio\<Layer>\convert_by_type\<Type>.sqlite  (persistent document cache)
+tmp\game_data\export\<root>-<hash>\animestudio\convert_document_calls\<Layer>\<Type>_<hash>.sqlite  (per-call store, merged after success)
+tmp\game_data\export\<root>-<hash>\animestudio\<Layer>\convert_by_type\<Type>  (loose media staging)
+tmp\game_data\export\<root>-<hash>\animestudio\<Layer>\json_by_type\<Type>.sqlite  (staged document store, deleted after publish)
 ```
 
 Story JSON types:
@@ -791,7 +812,8 @@ When fixing a suspected memory leak:
 3. Prefer `ReadInt32Count` with a realistic `minBytesPerItem`.
 4. For variable-length records, use the smallest conservative item size.
 5. Keep per-object failure local when possible so one malformed asset does not kill the full worker.
-6. Rebuild the CLI and rerun the smallest matching stage/type with `--animestudio-refresh-types`.
+6. Rebuild the CLI and rerun the smallest page that exports the matching class
+   (`export.bat PAGE --from-game --show-plan` shows each page's classes).
 
 ## Useful Searches
 
@@ -807,14 +829,14 @@ For parser or exporter edits:
 
 ```bat
 .\scripts\game_data\extraction\animestudio\rebuild.bat -Target CLI -NoRestore
-.\export.bat --from-game --asset-jobs 4 --animestudio-refresh-types StreamingAssets:json_by_type:MonoBehaviour
+.\export.bat story --from-game --asset-jobs 4
 ```
 
 For asset conversion edits:
 
 ```bat
 .\scripts\game_data\extraction\animestudio\rebuild.bat -Target CLI -NoRestore
-.\export_assets.bat --from-game --asset-jobs 4 --animestudio-refresh-types StreamingAssets:convert_by_type:Texture2D
+.\export.bat assets --from-game --asset-jobs 4
 ```
 
 Lower `--animestudio-jobs` if the targeted run exceeds available memory.

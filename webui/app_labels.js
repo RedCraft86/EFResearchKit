@@ -27,7 +27,7 @@ const UI_TEXTS = {
     referencePageTitle: "\u6587\u672c\u8868",
     updatesPageTitle: "\u6570\u636e\u66f4\u65b0",
     recoveryPageTitle: "\u6062\u590d\u8fdb\u5ea6",
-    dataInspectorPageTitle: "\u89e3\u7801\u6570\u636e\u68c0\u67e5\u5668",
+    dataInspectorPageTitle: "\u5bfc\u51fa\u6570\u636e",
     appTitle: "\u5267\u60c5\u5bf9\u8bdd",
     countLabel: "\u6761\u4f1a\u8bdd",
     searchPlaceholder: "\u641c\u7d22 ID / \u4efb\u52a1 / \u89d2\u8272 / \u6587\u672c",
@@ -464,7 +464,7 @@ const UI_TEXTS = {
     referencePageTitle: "Text Tables",
     updatesPageTitle: "Data Updates",
     recoveryPageTitle: "Recovery Progress",
-    dataInspectorPageTitle: "Decoded Data Inspector",
+    dataInspectorPageTitle: "Export Data",
     appTitle: "Story Dialogue",
     countLabel: "conversations",
     searchPlaceholder: "Search ID / mission / actor / text",
@@ -1571,14 +1571,6 @@ function compareDataTypeKeys(a, b, counts = null) {
   return dataTypeLabel(a).localeCompare(dataTypeLabel(b), undefined, { numeric: true });
 }
 
-function compareTypeFilterKeys(a, b, counts = null) {
-  const aMedia = isMediaTypeFilterKey(a);
-  const bMedia = isMediaTypeFilterKey(b);
-  if (aMedia && bMedia) return MEDIA_TYPE_FILTER_KEYS.indexOf(a) - MEDIA_TYPE_FILTER_KEYS.indexOf(b);
-  if (aMedia !== bMedia) return aMedia ? -1 : 1;
-  return compareDataTypeKeys(a, b, counts);
-}
-
 const CONTENT_TYPE_PIN_ORDER = ["e", "a", "gm", "c", "sm", "m", "f"];
 const MISSION_STORY_TYPE_KEYS = new Set(["e", "a", "gm", "c", "sm", "m", "f", "db", "dm"]);
 
@@ -1626,15 +1618,6 @@ function storyIssueLabel(code) {
 function entryStoryIssues(entry) {
   if (!entry || !Array.isArray(entry.storyIssues)) return [];
   return entry.storyIssues.filter(Boolean);
-}
-
-function entryMatchesStoryIssueFilters(entry, filters) {
-  if (!filters || !filters.size) return true;
-  const issues = new Set(entryStoryIssues(entry));
-  for (const code of filters) {
-    if (!issues.has(code)) return false;
-  }
-  return true;
 }
 
 function recoveryMethodLabel(method) {
@@ -1692,15 +1675,6 @@ function compareRecoveryMethodKeys(a, b, counts = null) {
 function entryRecoveryMethods(entry) {
   if (!entry || !Array.isArray(entry.recoveryMethods)) return [];
   return entry.recoveryMethods.filter(Boolean);
-}
-
-function entryMatchesRecoveryMethodFilters(entry, filters) {
-  if (!filters || !filters.size) return true;
-  const methods = new Set(entryRecoveryMethods(entry));
-  for (const method of filters) {
-    if (!methods.has(method)) return false;
-  }
-  return true;
 }
 
 function entryHasTag(entry, tag) {
@@ -1805,30 +1779,6 @@ function shouldSuppressKindChip(kind) {
 
 function kindFilterToken(kind) {
   return `kind:${kind}`;
-}
-
-function entryKindFilterTokens(entry) {
-  const tokens = new Set();
-  if (!entry) return tokens;
-
-  const kindKey = entryGroupedKindKey(entry);
-  if (kindKey) tokens.add(kindFilterToken(kindKey));
-  return tokens;
-}
-
-function pruneFilterSet(set, availableValues) {
-  if (!set || !(set instanceof Set)) return;
-  for (const value of Array.from(set)) {
-    if (!availableValues.has(value)) set.delete(value);
-  }
-}
-
-function entryMatchesKindFilters(entry, filters) {
-  if (!filters || !filters.size) return true;
-  for (const token of entryKindFilterTokens(entry)) {
-    if (filters.has(token)) return true;
-  }
-  return false;
 }
 
 function normalizeGroupedTagLabel(label) {
@@ -2355,29 +2305,6 @@ function entryMediaTypeFilterKeys(entry) {
   if (!out.includes("media:video") && (tags.has("narrativeVideo") || entry.vid)) out.unshift("media:video");
   entry._mediaTypeFilterKeys = out;
   return out;
-}
-
-function entryTypeFilterKeys(entry) {
-  return [...entryDataTypes(entry), ...entryMediaTypeFilterKeys(entry)];
-}
-
-function entryMatchesDataTypeFilters(entry, filters) {
-  if (!filters || !filters.size) return true;
-  return entryDataTypes(entry).some((dataType) => filters.has(dataType));
-}
-
-function entryMatchesTypeFilters(entry, filters) {
-  if (!filters || !filters.size) return true;
-  return entryTypeFilterKeys(entry).some((key) => filters.has(key));
-}
-
-function entryMatchesMediaFilters(entry, filters) {
-  if (!filters || !filters.size) return true;
-  const keys = new Set(entryMediaTypeFilterKeys(entry));
-  for (const key of filters) {
-    if (!keys.has(key)) return false;
-  }
-  return true;
 }
 
 function extractBraceText(text) {

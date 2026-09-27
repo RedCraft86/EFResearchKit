@@ -61,7 +61,51 @@
     return `/export_data/${normalizedRel.split("/").map(encodeURIComponent).join("/")}`;
   }
 
+  // The Data page (#data-inspector) opens rows from these query parameters:
+  // dataRoot (current|previous), dataStore (repeated: a whole source, unity |
+  // game-files | decoded), dataGroup (repeated: `<source>:<group>`, a Unity
+  // type, packed game folder or decoded dataset; an unqualified group belongs
+  // to dataStore), dataName (a store row name to select), dataQ/dataField (the
+  // search), dataStatus/dataFolder/dataTag (repeated decoded filters),
+  // dataSort (decoded order). dataMode picks the page mode (files|sql).
+  const DATA_PAGE_PARAMS = Object.freeze([
+    "dataMode", "dataRoot", "dataStore", "dataGroup", "dataName", "dataField", "dataQ",
+    "dataStatus", "dataFolder", "dataTag", "dataSort",
+  ]);
+
+  function dataPageUrl({ root = "", store = "", group = "", name = "" } = {}, base = window.location.href) {
+    const url = new URL(base);
+    for (const key of DATA_PAGE_PARAMS) url.searchParams.delete(key);
+    url.searchParams.delete("inspectDataset");
+    url.searchParams.delete("inspect");
+    url.searchParams.set("dataMode", "files");
+    if (root && root !== "current") url.searchParams.set("dataRoot", root);
+    if (store && group) url.searchParams.set("dataGroup", `${store}:${group}`);
+    else if (store) url.searchParams.set("dataStore", store);
+    else if (group) url.searchParams.set("dataGroup", group);
+    if (name) url.searchParams.set("dataName", name);
+    url.hash = "#data-inspector";
+    return url.toString();
+  }
+
+  // A Unity object document ref ("Unity/<Type>/<name>" or
+  // "game/Unity/<Type>/<name>") is a row of the export's Unity store. Only the
+  // document suffixes the store holds qualify; loose media stays a file.
+  function unityStoreDocumentRef(relPath) {
+    const match = normalizeRelPath(relPath).match(/^(?:game\/)?Unity\/([^/]+)\/([^/]+\.(?:json|anim))$/i);
+    return match ? { store: "unity", group: match[1], name: match[2] } : null;
+  }
+
+  function dataPageUrlForRel(relPath) {
+    const ref = unityStoreDocumentRef(relPath);
+    return ref ? dataPageUrl(ref) : "";
+  }
+
   Object.assign(WebUI, {
+    DATA_PAGE_PARAMS,
+    dataPageUrl,
+    unityStoreDocumentRef,
+    dataPageUrlForRel,
     normalizeRelPath,
     splitPathIdExportStem,
     pathIdExportBaseStem,

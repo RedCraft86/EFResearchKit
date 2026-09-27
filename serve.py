@@ -365,7 +365,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._send_json(503, {"error": f"store API unavailable: {exc}"})
             return
         request = urlsplit(self.path)
-        params = {key: values[-1] for key, values in parse_qs(request.query).items()}
+        multi = parse_qs(request.query)
+        params = {key: values[-1] for key, values in multi.items()}
         which = params.get("root", "current")
         if which == "current":
             root, route = EXPORT_FULL_ROOT, "/export_data"
@@ -383,7 +384,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     root,
                     route=route,
                     store=params.get("store", ""),
-                    group=params.get("group", ""),
+                    # Repeated `group=` parameters select several groups; none
+                    # selects the whole store.
+                    group=multi.get("group", []),
                     query=params.get("q", ""),
                     field=params.get("field", "name"),
                     offset=int(params.get("offset", "0") or 0),
@@ -745,6 +748,9 @@ def main(argv: list[str] | None = None) -> None:
     argv = argv or sys.argv
     port = int(argv[1]) if len(argv) > 1 else DEFAULT_PORT
 
+    # The default listen backlog of 5 refuses connections on Windows when a page
+    # opens many requests at once (ERR_CONNECTION_REFUSED); allow a real burst.
+    http.server.ThreadingHTTPServer.request_queue_size = 256
     with http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler) as httpd:
         url = f"http://127.0.0.1:{port}/"
         print(

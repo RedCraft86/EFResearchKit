@@ -2,9 +2,6 @@
   const ASSET_GROUP_ROW_H = 28;
   const ASSET_ITEM_ROW_H = 70;
   const ASSET_OVERSCAN_PX = 240;
-  const JSON_PREVIEW_CHAR_LIMIT = 250000;
-  const SCRIPT_DECODE_CHAR_LIMIT = 500000;
-  const SCRIPT_SEARCH_CHAR_LIMIT = 20000;
   const DEFAULT_PREVIEW_BACKGROUND = "#0b1015";
   const PREVIEW_BG_STORAGE_KEY = "asset_browser_preview_background";
   const FILTER_PANEL_STORAGE_KEY = "asset_browser_filters_collapsed";
@@ -22,9 +19,11 @@
     "recovery",
     "data-inspector",
   ]);
-  const DEBUG_ONLY_VIEWS = new Set(["data-inspector", "recovery"]);
-  const DEBUG_VIEW_FALLBACKS = Object.freeze({ "data-inspector": "characters", recovery: "story" });
+  const DEBUG_ONLY_VIEWS = new Set(["recovery"]);
+  const DEBUG_VIEW_FALLBACKS = Object.freeze({ recovery: "story" });
   const RETIRED_VIEW_FALLBACKS = Object.freeze({ projectiles: "gameplay" });
+  // Facet value for files directly under the export root (empty source).
+  const ROOT_SOURCE = "(root)";
   const SHARED_ASSET_NAME_PREFIXES = new Set(["S", "T", "P", "M"]);
   const MODEL_PREFIX_RE = /^([A-Z])_(.+)$/;
   const MODEL_UNPATTERNED_OBJ_GROUP = Object.freeze({
@@ -115,7 +114,6 @@
       images: "\u56fe\u7247",
       models: "\u6a21\u578b",
       videos: "\u89c6\u9891",
-      jsonFiles: "JSON \u6587\u4ef6",
       rootFolder: "(\u6839\u76ee\u5f55)",
       none: "(\u65e0)",
       unresolved: "\u672a\u89e3\u6790",
@@ -136,13 +134,6 @@
       factRelativePath: "\u76f8\u5bf9\u8def\u5f84",
       factImageCategory: "\u56fe\u7247\u5206\u7c7b",
       factModelTags: "\u6a21\u578b\u6807\u7b7e",
-      factJsonCategory: "JSON \u5bf9\u8c61\u7c7b\u578b",
-      jsonUnityMaterial: "Unity / \u6750\u8d28 (Material)",
-      jsonUnityPlayableDirector: "Unity / \u65f6\u95f4\u8f74 (PlayableDirector)",
-      jsonUnityTextAsset: "Unity / \u6587\u672c\u8d44\u6e90 (TextAsset)",
-      jsonUnityAnimatorController: "Unity / \u52a8\u753b\u63a7\u5236\u5668 (AnimatorController)",
-      jsonUnityAnimatorOverrideController: "Unity / \u52a8\u753b\u8986\u76d6\u63a7\u5236\u5668 (AnimatorOverrideController)",
-      jsonOther: "\u5176\u4ed6 JSON",
       factTextureRole: "\u8d34\u56fe\u89d2\u8272",
       factLod: "LOD",
       factFamily: "\u7cfb\u5217",
@@ -152,6 +143,7 @@
       textureRoleMaterial: "\u6750\u8d28 / \u5f15\u64ce\u8d34\u56fe",
       textureRoleRegular: "\u5e38\u89c4\u56fe\u7247",
       materialJson: "{name}.json",
+      openInDataPage: "\u5728\u6570\u636e\u9875\u6253\u5f00",
       relationTextureResolved: "{slots} / {name}",
       relationTextureUnresolved: "{slots} / {name} / \u672a\u89e3\u6790",
       relationMaterial: "\u6750\u8d28 / {slots}",
@@ -163,11 +155,6 @@
       loadingVideoPreview: "\u6b63\u5728\u52a0\u8f7d\u89c6\u9891\u9884\u89c8...",
       videoPreviewUnavailable: "\u65e0\u6cd5\u9884\u89c8\u8fd9\u4e2a\u89c6\u9891\u3002",
       videoDuration: "\u65f6\u957f {duration}",
-      loadingJsonPreview: "\u6b63\u5728\u52a0\u8f7d JSON \u9884\u89c8...",
-      jsonPreviewUnavailable: "\u65e0\u6cd5\u9884\u89c8\u8fd9\u4e2a JSON \u6587\u4ef6\u3002",
-      jsonPreviewLoaded: "{size} / \u5df2\u683c\u5f0f\u5316 JSON",
-      jsonPreviewTruncated: "{size} / \u5df2\u683c\u5f0f\u5316 JSON / \u4ec5\u663e\u793a\u524d {limit}",
-      jsonScriptOriginal: "\u663e\u793a\u539f\u59cb m_Script",
       filePreviewUnavailable: "\u6b64\u6587\u4ef6\u6ca1\u6709\u53ef\u7528\u7684\u9875\u5185\u9884\u89c8\u3002",
       loadingObjPreview: "\u6b63\u5728\u52a0\u8f7d OBJ \u9884\u89c8...",
       loadingFbxSummary: "\u6b63\u5728\u8bfb\u53d6 FBX \u7ed3\u6784...",
@@ -231,7 +218,6 @@
       images: "Images",
       models: "Models",
       videos: "Videos",
-      jsonFiles: "JSON files",
       rootFolder: "(root)",
       none: "(none)",
       unresolved: "unresolved",
@@ -252,13 +238,6 @@
       factRelativePath: "Relative path",
       factImageCategory: "Image category",
       factModelTags: "Model tags",
-      factJsonCategory: "JSON object type",
-      jsonUnityMaterial: "Unity / Material",
-      jsonUnityPlayableDirector: "Unity / PlayableDirector",
-      jsonUnityTextAsset: "Unity / TextAsset",
-      jsonUnityAnimatorController: "Unity / AnimatorController",
-      jsonUnityAnimatorOverrideController: "Unity / AnimatorOverrideController",
-      jsonOther: "Other JSON",
       factTextureRole: "Texture role",
       factLod: "LOD",
       factFamily: "Family",
@@ -268,6 +247,7 @@
       textureRoleMaterial: "Material / engine texture",
       textureRoleRegular: "Regular image",
       materialJson: "{name}.json",
+      openInDataPage: "Open in Data",
       relationTextureResolved: "{slots} / {name}",
       relationTextureUnresolved: "{slots} / {name} / unresolved",
       relationMaterial: "Material / {slots}",
@@ -279,11 +259,6 @@
       loadingVideoPreview: "Loading video preview...",
       videoPreviewUnavailable: "Unable to preview this video.",
       videoDuration: "Duration {duration}",
-      loadingJsonPreview: "Loading JSON preview...",
-      jsonPreviewUnavailable: "Unable to preview this JSON file.",
-      jsonPreviewLoaded: "{size} / formatted JSON",
-      jsonPreviewTruncated: "{size} / formatted JSON / showing first {limit}",
-      jsonScriptOriginal: "Show original m_Script",
       filePreviewUnavailable: "No in-page preview is available for this file.",
       loadingObjPreview: "Loading OBJ preview...",
       loadingFbxSummary: "Reading FBX structure...",
@@ -336,11 +311,11 @@
     pager: null,
     initialAssetHandled: false,
     previewBackground: DEFAULT_PREVIEW_BACKGROUND,
-    showOriginalMScript: false,
     qTimer: null,
     detailToken: 0,
     imageObjectUrl: "",
     filters: createDefaultFilters(),
+    facets: createAssetFacets(),
     modelCache: new Map(),
     fbxSummaryCache: new Map(),
     viewer: {
@@ -414,13 +389,27 @@
   }
 
   function createDefaultFilters() {
-    return {
-      q: "",
-      types: new Set(),
-      categories: new Set(),
-      sources: new Set(),
-      sort: "path",
-    };
+    return { q: "", sort: "path" };
+  }
+
+  // Type/category/source chips. Counts are totals over every asset (not
+  // narrowed by search); the score-ranked search stays in applyAssetFilters.
+  function createAssetFacets() {
+    return window.WebUI.facets.create({
+      countMode: "total",
+      chipClassName: "asset-filter-chip",
+      groups: [
+        { id: "type", container: "#asset-type-filter", section: "asset-type", order: "count",
+          values: (entry) => entry.ext || entry.kind, label: assetTypeLabel },
+        { id: "category", container: "#asset-category-filter", section: "asset-category",
+          className: "asset-category-chip", values: assetCategoryValues, label: assetCategoryLabel,
+          order: (a, b) => naturalCompare(assetCategoryLabel(a), assetCategoryLabel(b)) || naturalCompare(a, b) },
+        { id: "source", container: "#asset-source-filter", section: "asset-source", order: "count",
+          className: "asset-source-chip", values: (entry) => entry.source || ROOT_SOURCE,
+          label: (value) => (value === ROOT_SOURCE ? assetUiText("rootFolder") : value) },
+      ],
+      onChange: () => applyAssetFilters(),
+    });
   }
 
   function isMobileLayout() {
@@ -526,7 +515,6 @@
     if (kind === "image") return assetUiText("images");
     if (kind === "model") return assetUiText("models");
     if (kind === "video") return assetUiText("videos");
-    if (kind === "json") return assetUiText("jsonFiles");
     return assetTypeLabel(kind);
   }
 
@@ -534,7 +522,6 @@
     if (kind === "image") return "asset-badge-image";
     if (kind === "model") return "asset-badge-model";
     if (kind === "video") return "asset-badge-video";
-    if (kind === "json") return "asset-badge-json";
     return "asset-badge-file";
   }
 
@@ -571,7 +558,6 @@
     $("#asset-preview-bg-color").title = assetUiText("previewBackgroundCustom");
     $("#asset-preview-bg-color").setAttribute("aria-label", assetUiText("previewBackgroundCustom"));
     syncPreviewBackgroundControls();
-    $("#asset-json-script-original-label").textContent = assetUiText("jsonScriptOriginal");
     $("#asset-preview-placeholder").textContent = assetUiText("previewPlaceholder");
     $("#asset-inspector-label").textContent = assetUiText("inspector");
     $("#asset-related-label").textContent = assetUiText("relatedFiles");
@@ -588,9 +574,7 @@
     setDocumentTitleForView(ASSET_STATE.activeView);
 
     if (!refresh || !ASSET_STATE.loaded) return;
-    buildTypeChips();
-    buildCategoryChips();
-    buildSourceChips();
+    ASSET_STATE.facets.render();
     applyAssetFilters();
     if (ASSET_STATE.selectedEntry) renderSelectedAsset();
   }
@@ -759,8 +743,7 @@
       ASSET_STATE.filters = createDefaultFilters();
       $("#asset-q").value = "";
       $("#asset-sort").value = "path";
-      $$(".asset-filter-chip.on").forEach((chip) => chip.classList.remove("on"));
-      applyAssetFilters();
+      ASSET_STATE.facets.reset();
     });
 
     $("#asset-preview-bg-color").addEventListener("input", (ev) => {
@@ -771,10 +754,6 @@
       const button = ev.target.closest(".asset-preview-bg-swatch");
       if (!button) return;
       setPreviewBackground(button.dataset.color || DEFAULT_PREVIEW_BACKGROUND);
-    });
-    $("#asset-json-script-original").addEventListener("change", (ev) => {
-      ASSET_STATE.showOriginalMScript = !!ev.target.checked;
-      if (ASSET_STATE.selectedEntry?.kind === "json") renderSelectedAsset();
     });
     $("#asset-list-wrap").addEventListener("scroll", renderAssetList);
     window.addEventListener("resize", () => {
@@ -860,9 +839,7 @@
         window.WebUI.updateLoader("assets", 0.7);
         await window.WebUI.nextPaint();
 
-        buildTypeChips();
-        buildCategoryChips();
-        buildSourceChips();
+        ASSET_STATE.facets.render(ASSET_STATE.entries);
         seedAssetExpansions();
         window.WebUI.updateLoader("assets", 0.85);
         await window.WebUI.nextPaint();
@@ -899,19 +876,6 @@
     const prefixMatch = value.match(/^model-prefix-([a-z])$/);
     if (prefixMatch) return `Model Prefix ${prefixMatch[1].toUpperCase()}`;
     if (MODEL_CATEGORY_LABELS[value]) return MODEL_CATEGORY_LABELS[value];
-    const unityJsonLabels = {
-      "json-unity-material": "jsonUnityMaterial",
-      "json-unity-playabledirector": "jsonUnityPlayableDirector",
-      "json-unity-textasset": "jsonUnityTextAsset",
-      "json-unity-animatorcontroller": "jsonUnityAnimatorController",
-      "json-unity-animatoroverridecontroller": "jsonUnityAnimatorOverrideController",
-    };
-    if (unityJsonLabels[value]) return assetUiText(unityJsonLabels[value]);
-    const unityJsonMatch = value.match(/^json-unity-(.+)$/);
-    if (unityJsonMatch) return `Unity / ${unityJsonMatch[1].replace(/[_-]/g, " ").replace(/\b[a-z]/g, (char) => char.toUpperCase())}`;
-    const sourceJsonMatch = value.match(/^json-source-(.+)$/);
-    if (sourceJsonMatch) return `${sourceJsonMatch[1].replace(/[_-]/g, " ").replace(/\b[a-z]/g, (char) => char.toUpperCase())} JSON`;
-    if (value === "json-other") return assetUiText("jsonOther");
     return value
       .replace(/[_-]/g, " ")
       .replace(/\b[a-z]/g, (char) => char.toUpperCase());
@@ -1012,15 +976,6 @@
     return categories;
   }
 
-  function deriveJsonCategories(kind, source, dirParts) {
-    if (kind !== "json") return [];
-    const normalizedSource = String(source || "").trim().toLowerCase();
-    const objectType = String(dirParts?.[0] || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    if (normalizedSource === "unity" && objectType) return [`json-unity-${objectType}`];
-    if (normalizedSource) return [`json-source-${normalizedSource.replace(/[^a-z0-9]+/g, "-")}`];
-    return ["json-other"];
-  }
-
   function chooseImageExtraCategories(entries) {
     const values = new Set();
     for (const entry of entries || []) {
@@ -1046,9 +1001,6 @@
     if (entry.kind === "model") {
       return Array.isArray(entry.modelCategories) ? entry.modelCategories.filter(Boolean) : [];
     }
-    if (entry.kind === "json") {
-      return Array.isArray(entry.jsonCategories) ? entry.jsonCategories.filter(Boolean) : [];
-    }
     return [];
   }
 
@@ -1059,8 +1011,10 @@
 
   function hydrateEntries(entries) {
     const hydrated = entries.map((raw) => {
-      const rawKind = String(raw.k || "");
-      const kind = ["image", "model", "video", "json"].includes(rawKind) ? rawKind : "image";
+      // Unity object documents are browsed on the Data page; an index built
+      // before they left this page may still list them, so unknown kinds drop.
+      const kind = String(raw.k || "image");
+      if (!["image", "model", "video"].includes(kind)) return null;
       const rel = String(raw.r || "");
       const parts = rel.split("/").filter(Boolean);
       const name = parts[parts.length - 1] || rel;
@@ -1081,7 +1035,6 @@
       const imageExtraCategories = kind === "image" ? deriveImageExtraCategories({ imageCategory, stem, rawStem: stemInfo.rawStem }) : [];
       const materialLike = kind === "image" && !!raw.mt;
       const modelCategories = kind === "model" ? deriveModelCategories(kind, stem, ext) : [];
-      const jsonCategories = deriveJsonCategories(kind, source, dirParts);
       return {
         kind,
         rel,
@@ -1105,9 +1058,7 @@
         imageExtraCategories,
         materialLike,
         modelCategories,
-        jsonCategories,
         previewRel: String(raw.p || ""),
-        decodedScriptSearchText: String(raw.sx || ""),
         searchText: "",
         variantLabel: "",
         grouped: false,
@@ -1215,9 +1166,7 @@
         entry.imageCategory,
         ...(entry.imageExtraCategories || []),
         ...(entry.modelCategories || []),
-        ...(entry.jsonCategories || []),
         entry.materialLike ? "material material-like texture engine" : "",
-        entry.decodedScriptSearchText,
         entry.ext,
         entry.kind,
       ].join(" ").toLowerCase();
@@ -1282,7 +1231,6 @@
     for (const bucket of buckets.values()) {
       bucket.sort((a, b) => compareAssets(a, b, "path"));
       const primary = { ...bucket[0] };
-      primary.jsonCategories = Array.from(new Set(bucket.flatMap((entry) => entry.jsonCategories || []))).sort(naturalCompare);
       primary.duplicateCount = bucket.length;
       primary.rawRels = bucket.map((entry) => entry.rel);
       if (assetContentHash(primary)) {
@@ -1308,7 +1256,6 @@
           primary.searchText,
           ...bucket.slice(1).flatMap((entry) => [entry.rel, entry.dir, entry.pathId, entry.name]),
           ...primary.variants.map((variant) => variant.variantLabel),
-          ...primary.jsonCategories,
         ].join(" ").toLowerCase();
       }
       deduped.push(primary);
@@ -1355,7 +1302,6 @@
           imageExtraCategories: [],
           materialLike: false,
           modelCategories: [],
-          jsonCategories: [],
           variantCount: 0,
           duplicateCount: 0,
           contentHash: "",
@@ -1406,7 +1352,6 @@
         group.imageCategory,
         ...(group.imageExtraCategories || []),
         ...(group.modelCategories || []),
-        ...(group.jsonCategories || []),
         group.materialLike ? "material material-like texture engine" : "",
         ...group.variants.map((variant) => variant.searchText),
       ].join(" ").toLowerCase();
@@ -1461,52 +1406,6 @@
     };
   }
 
-  function buildTypeChips() {
-    const counts = countBy(ASSET_STATE.entries, (entry) => entry.ext || entry.kind);
-    const items = Object.keys(counts)
-      .filter((type) => counts[type])
-      .sort((a, b) => counts[b] - counts[a] || naturalCompare(a, b))
-      .map((type) => ({ value: type, label: assetTypeLabel(type), count: counts[type] }));
-    window.WebUI.filters.buildChips("#asset-type-filter", items, {
-      active: ASSET_STATE.filters.types,
-      className: "asset-filter-chip",
-      prune: false,
-      onToggle: () => applyAssetFilters(),
-    });
-  }
-
-  function buildCategoryChips() {
-    const counts = {};
-    for (const entry of ASSET_STATE.entries) {
-      for (const category of assetCategoryValues(entry)) {
-        counts[category] = (counts[category] || 0) + 1;
-      }
-    }
-    const items = Object.keys(counts)
-      .filter((name) => counts[name])
-      .sort((a, b) => naturalCompare(assetCategoryLabel(a), assetCategoryLabel(b)) || naturalCompare(a, b))
-      .map((name) => ({ value: name, label: assetCategoryLabel(name), count: counts[name] }));
-    window.WebUI.filters.buildChips("#asset-category-filter", items, {
-      active: ASSET_STATE.filters.categories,
-      className: "asset-filter-chip asset-category-chip",
-      prune: false,
-      onToggle: () => applyAssetFilters(),
-    });
-  }
-
-  function buildSourceChips() {
-    const counts = countBy(ASSET_STATE.entries, (entry) => entry.source);
-    const items = Object.keys(counts)
-      .sort((a, b) => counts[b] - counts[a] || naturalCompare(a, b))
-      .map((name) => ({ value: name, label: name || assetUiText("rootFolder"), count: counts[name] }));
-    window.WebUI.filters.buildChips("#asset-source-filter", items, {
-      active: ASSET_STATE.filters.sources,
-      className: "asset-filter-chip asset-source-chip",
-      prune: false,
-      onToggle: () => applyAssetFilters(),
-    });
-  }
-
   function seedAssetExpansions() {
     if (ASSET_STATE.expanded.size) return;
     const sources = Array.from(new Set(ASSET_STATE.entries.map((entry) => entry.source).filter(Boolean)));
@@ -1518,9 +1417,6 @@
   function syncFilterSectionActiveCounts() {
     window.WebUI.setFilterSectionActiveCounts?.({
       "asset-basic": ASSET_STATE.filters.q ? 1 : 0,
-      "asset-type": ASSET_STATE.filters.types.size,
-      "asset-category": ASSET_STATE.filters.categories.size,
-      "asset-source": ASSET_STATE.filters.sources.size,
       "asset-sort-section": ASSET_STATE.filters.sort === "path" ? 0 : 1,
     });
   }
@@ -1532,19 +1428,11 @@
     const tokens = window.WebUI.parseQuery(filters.q);
     const scores = new Map();
 
-    ASSET_STATE.filtered = ASSET_STATE.entries.filter((entry) => {
-      if (tokens.length) {
-        const score = window.WebUI.queryScore(entry.searchText, tokens);
-        if (score <= 0) return false;
-        scores.set(entry, score);
-      }
-      if (filters.sources.size && !filters.sources.has(entry.source)) return false;
-      if (filters.types.size && !filters.types.has(entry.ext || entry.kind)) return false;
-      if (filters.categories.size) {
-        const categories = assetCategoryValues(entry);
-        if (!categories.some((category) => filters.categories.has(category))) return false;
-      }
-      return true;
+    ASSET_STATE.filtered = ASSET_STATE.facets.filter(ASSET_STATE.entries).filter((entry) => {
+      if (!tokens.length) return true;
+      const score = window.WebUI.queryScore(entry.searchText, tokens);
+      if (score > 0) scores.set(entry, score);
+      return score > 0;
     });
 
     ASSET_STATE.searchTokens = tokens;
@@ -1979,8 +1867,6 @@
       renderModelPreview(entry);
     } else if (entry.kind === "video") {
       renderVideoPreview(activeVariant || entry);
-    } else if (entry.kind === "json") {
-      renderJsonPreview(activeVariant || entry);
     } else {
       renderFilePreview(activeVariant || entry);
     }
@@ -2049,11 +1935,6 @@
       const modelCategories = assetCategoryValues(activeFile).length ? assetCategoryValues(activeFile) : assetCategoryValues(entry);
       if (modelCategories.length) {
         facts.push([assetUiText("factModelTags"), modelCategories.map(assetCategoryLabel).join(" / ")]);
-      }
-    } else if (entry.kind === "json") {
-      const jsonCategories = assetCategoryValues(activeFile).length ? assetCategoryValues(activeFile) : assetCategoryValues(entry);
-      if (jsonCategories.length) {
-        facts.push([assetUiText("factJsonCategory"), jsonCategories.map(assetCategoryLabel).join(" / ")]);
       }
     }
     if (hasHiddenDuplicateFiles(entry)) {
@@ -2290,20 +2171,31 @@
     return Array.from(grouped.values());
   }
 
+  // Material documents live in the export's Unity store and open on the Data
+  // page. Without a store reference the rel is shown as plain text.
+  function createDataPageLink(rel) {
+    const url = window.WebUI.dataPageUrlForRel?.(rel) || "";
+    if (!url) {
+      const label = document.createElement("div");
+      label.textContent = rel;
+      return label;
+    }
+    const link = document.createElement("a");
+    link.href = url;
+    link.dataset.dataPageLink = "1";
+    link.title = assetUiText("openInDataPage");
+    link.textContent = rel;
+    return link;
+  }
+
   function renderMaterialRelationItem(item) {
     const block = document.createElement("div");
     block.className = "asset-related-item";
-
-    const link = document.createElement("a");
-    link.href = assetHref(item.rel);
-    link.target = "_blank";
-    link.rel = "noopener";
-    link.textContent = item.rel;
-    block.appendChild(link);
+    block.appendChild(createDataPageLink(item.rel));
 
     const meta = document.createElement("div");
     meta.className = "asset-related-meta";
-      meta.textContent = assetUiText("materialJson", { name: item.name });
+    meta.textContent = `${assetUiText("materialJson", { name: item.name })} / ${assetUiText("openInDataPage")}`;
     block.appendChild(meta);
     return block;
   }
@@ -2348,6 +2240,8 @@
 
     if (item.kind === "model" && item.rel && ASSET_STATE.entryByRel.has(item.rel)) {
       block.appendChild(createAssetSelectLink(item.rel));
+    } else if (item.kind === "material" && item.rel) {
+      block.appendChild(createDataPageLink(item.rel));
     } else if (item.rel) {
       const link = document.createElement("a");
       link.href = assetHref(item.rel);
@@ -2390,14 +2284,11 @@
   function resetAssetPreviewSurface() {
     const img = $("#asset-preview-image");
     const video = $("#asset-preview-video");
-    const text = $("#asset-preview-text");
     const canvas = $("#asset-model-canvas");
     const placeholder = $("#asset-preview-placeholder");
     const note = $("#asset-preview-note");
     const modelWrap = $("#asset-model-stats-wrap");
     const bgControls = $("#asset-preview-bg-controls");
-    const jsonScriptControls = $("#asset-json-script-controls");
-    const jsonScriptOriginal = $("#asset-json-script-original");
     const stage = $("#asset-preview-stage");
 
     ASSET_STATE.viewer.model = null;
@@ -2415,14 +2306,8 @@
       video.load();
       video.hidden = true;
     }
-    if (text) {
-      text.textContent = "";
-      text.hidden = true;
-    }
     if (canvas) canvas.hidden = true;
     if (bgControls) bgControls.hidden = true;
-    if (jsonScriptControls) jsonScriptControls.hidden = true;
-    if (jsonScriptOriginal) jsonScriptOriginal.checked = ASSET_STATE.showOriginalMScript;
     if (stage) stage.classList.remove("has-preview-bg");
     if (placeholder) {
       placeholder.hidden = true;
@@ -2496,202 +2381,6 @@
     };
     video.src = assetHref(entry.rel);
     video.load();
-  }
-
-  function decodeJsonPreviewPayload(raw, { showOriginalScript = false } = {}) {
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (_error) {
-      return { formatted: raw, decodedSearchText: "", hasDecodedScript: false };
-    }
-
-    const decodedTexts = [];
-    const enhanced = cloneJsonWithDecodedScripts(parsed, decodedTexts, { showOriginalScript });
-    return {
-      formatted: JSON.stringify(enhanced, null, 2),
-      decodedSearchText: decodedTexts.join("\n"),
-      hasDecodedScript: decodedTexts.length > 0,
-    };
-  }
-
-  function cloneJsonWithDecodedScripts(value, decodedTexts, options = {}) {
-    if (Array.isArray(value)) {
-      return value.map((item) => cloneJsonWithDecodedScripts(item, decodedTexts, options));
-    }
-    if (!value || typeof value !== "object") return value;
-
-    const out = {};
-    for (const [key, child] of Object.entries(value)) {
-      if (key === "m_Script") {
-        const decoded = decodeMScriptValue(child);
-        if (decoded) {
-          decodedTexts.push(decoded.search);
-          out[key] = options.showOriginalScript
-            ? cloneJsonWithDecodedScripts(child, decodedTexts, options)
-            : decoded.display;
-          continue;
-        }
-      }
-      out[key] = cloneJsonWithDecodedScripts(child, decodedTexts, options);
-    }
-    return out;
-  }
-
-  function decodeMScriptValue(value) {
-    let text = "";
-    if (typeof value === "string") {
-      const base64Candidate = looksLikeBase64Text(value);
-      text = base64Candidate ? decodeBase64Utf8(value) : normalizeDecodedScriptText(value);
-    } else if (isByteArray(value)) {
-      text = decodeBytesToText(Uint8Array.from(value));
-    }
-
-    if (!text) return null;
-    return {
-      display: parseDecodedScriptDisplay(text),
-      search: text,
-    };
-  }
-
-  function looksLikeBase64Text(value) {
-    const compact = String(value || "").replace(/\s+/g, "");
-    return compact.length >= 8 && compact.length % 4 !== 1 && /^[A-Za-z0-9+/]+={0,2}$/.test(compact);
-  }
-
-  function decodeBase64Utf8(value) {
-    let compact = String(value || "").replace(/\s+/g, "");
-    if (!looksLikeBase64Text(compact)) return "";
-    const remainder = compact.length % 4;
-    if (remainder) compact += "=".repeat(4 - remainder);
-
-    try {
-      const binary = atob(compact);
-      const bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index += 1) {
-        bytes[index] = binary.charCodeAt(index);
-      }
-      return decodeBytesToText(bytes);
-    } catch (_error) {
-      return "";
-    }
-  }
-
-  function isByteArray(value) {
-    return Array.isArray(value) && value.length > 0 && value.every((item) => {
-      return Number.isInteger(item) && item >= 0 && item <= 255;
-    });
-  }
-
-  function decodeBytesToText(bytes) {
-    let text = "";
-    try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    } catch (_error) {
-      text = new TextDecoder("utf-8").decode(bytes);
-    }
-    return normalizeDecodedScriptText(text);
-  }
-
-  function normalizeDecodedScriptText(text) {
-    const cleaned = String(text || "").replace(/\u0000/g, "").trim();
-    if (!cleaned || !isMostlyReadableText(cleaned)) return "";
-    if (cleaned.length <= SCRIPT_DECODE_CHAR_LIMIT) return cleaned;
-    return `${cleaned.slice(0, SCRIPT_DECODE_CHAR_LIMIT)}\n[decoded m_Script truncated]`;
-  }
-
-  function isMostlyReadableText(text) {
-    let checked = 0;
-    let bad = 0;
-    for (const char of String(text || "")) {
-      const code = char.charCodeAt(0);
-      checked += 1;
-      if (code === 0xfffd || (code < 32 && char !== "\n" && char !== "\r" && char !== "\t")) {
-        bad += 1;
-      }
-      if (checked >= 4096) break;
-    }
-    return checked > 0 && bad / checked <= 0.04;
-  }
-
-  function parseDecodedScriptDisplay(text) {
-    const trimmed = String(text || "").trim();
-    if (!trimmed || !/^[\[{]/.test(trimmed)) return text;
-    try {
-      return JSON.parse(trimmed);
-    } catch (_error) {
-      return text;
-    }
-  }
-
-  function appendDecodedScriptSearchText(entry, decodedSearchText) {
-    const normalized = String(decodedSearchText || "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, SCRIPT_SEARCH_CHAR_LIMIT);
-    if (!normalized) return;
-
-    const targets = new Set([entry, getActiveAssetFile(entry)]);
-    for (const target of targets) {
-      if (!target) continue;
-      if (target.decodedScriptSearchText === normalized) continue;
-      target.decodedScriptSearchText = normalized;
-      if (!String(target.searchText || "").includes(normalized)) {
-        target.searchText = `${target.searchText || ""} ${normalized}`.toLowerCase();
-      }
-    }
-  }
-
-  async function renderJsonPreview(entry) {
-    const text = $("#asset-preview-text");
-    const placeholder = $("#asset-preview-placeholder");
-    const note = $("#asset-preview-note");
-    if (!text) {
-      renderFilePreview(entry);
-      return;
-    }
-
-    const token = ++ASSET_STATE.detailToken;
-    text.hidden = true;
-    placeholder.hidden = false;
-    placeholder.textContent = assetUiText("loadingJsonPreview");
-    note.hidden = false;
-    note.textContent = formatBytes(entry.size);
-
-    try {
-      const res = await fetch(assetHref(entry.rel));
-      if (!res.ok) throw new Error(`JSON HTTP ${res.status}`);
-      const raw = await res.text();
-      const previewPayload = decodeJsonPreviewPayload(raw, {
-        showOriginalScript: ASSET_STATE.showOriginalMScript,
-      });
-      let formatted = previewPayload.formatted;
-
-      const truncated = formatted.length > JSON_PREVIEW_CHAR_LIMIT;
-      if (truncated) formatted = formatted.slice(0, JSON_PREVIEW_CHAR_LIMIT);
-      if (token !== ASSET_STATE.detailToken) return;
-
-      const scriptControls = $("#asset-json-script-controls");
-      const scriptOriginal = $("#asset-json-script-original");
-      if (scriptControls) scriptControls.hidden = !previewPayload.hasDecodedScript;
-      if (scriptOriginal) scriptOriginal.checked = ASSET_STATE.showOriginalMScript;
-
-      placeholder.hidden = true;
-      text.hidden = false;
-      text.textContent = formatted;
-      appendDecodedScriptSearchText(entry, previewPayload.decodedSearchText);
-      note.textContent = assetUiText(truncated ? "jsonPreviewTruncated" : "jsonPreviewLoaded", {
-        size: formatBytes(entry.size),
-        limit: JSON_PREVIEW_CHAR_LIMIT.toLocaleString(),
-      });
-    } catch (error) {
-      if (token !== ASSET_STATE.detailToken) return;
-      text.hidden = true;
-      placeholder.hidden = false;
-      placeholder.textContent = assetUiText("jsonPreviewUnavailable");
-      note.textContent = String(error);
-    }
   }
 
   function renderFilePreview(entry) {
@@ -3468,7 +3157,7 @@
     window.addEventListener("webui:debug-changed", syncDebugViewVisibility);
     ensureAssetPanelToggle();
     setActiveView(resolveViewFromHash());
-    Object.assign(window.WebUI, { setViewBusy, setShellStatus, clearShellStatus });
+    Object.assign(window.WebUI, { setViewBusy, setShellStatus, clearShellStatus, setActiveView });
   }
 
   init();

@@ -1,11 +1,43 @@
-# Decoded Data Inspector
+# Data page (export stores and decoded datasets)
 
 ## Purpose
 
-The Decoded Data Inspector is a debug-only WebUI page for reviewing maintained
-decoder output without adding a bespoke page for every recovered format. It is
-revealed by `Show debug info`; normal semantic navigation remains Story, Map,
-Characters, Gameplay, Audio, Assets, Text, and Updates.
+The Data page (`data-inspector`, after Assets in normal navigation) shows
+every decodable export output that no other page shows. **Files** is one list
+and one viewer over four sources: the export's Unity object documents
+(`game/Unity.sqlite`), its packed game files (`game/GameFiles.sqlite`), the
+loose decoded files (tables, JsonData outside the packed folders, Lua, Terrain,
+and converted Shader, Font and TextAsset under `game/Unity/`), the undecoded
+files under `raw/` (Streaming, DynamicStreaming, IV, ExtendData, IFixPatch, the
+bundle manifest), always shown as a hex dump, and the decoded datasets below. Media the Assets and Audio pages show -- videos, Texture2D,
+Sprite, Mesh, Animator FBX, decoded audio -- are left out on both sides:
+`scripts/webui/pages.py` `PAGE_MEDIA` keeps them out of the page's
+extraction, and `store_browser.PAGE_MEDIA_FOLDERS` out of its list; a local
+test keeps the two equal. Sources and their groups (Unity types, packed
+folders, loose folders, datasets) are multi-select `WebUI.facets` chips;
+nothing selected lists every source, and a selected group narrows its own
+source. Decoded-only filters (status, source folder, tags) appear only while
+decoded data is selected. **SQL** is a read-only console over either SQLite
+store; the file sources have none.
+
+The store sources, the loose files and SQL need the repository's `serve.py`,
+whose `/api/stores` endpoints (`scripts/webui/data_inspector/store_browser.py`)
+answer bounded questions: the sources and their groups, a filtered page of rows
+across any set of groups (name glob or substring, object name, PathID, CAB;
+loose files match by name only), or one read-only statement with `inflate(data)` and `doc(data, '$.path')`,
+capped at 500 rows and 15 s. Connections are read-only with an authorizer
+refusing writes and ATTACH. Documents are fetched from the URLs `serve.py`
+already answers from the stores and `game/`, so the viewer shows exact
+exported bytes:
+JSON as a lazy tree with base64 decoded inline, text as text, anything else as
+hex. The viewer reads no schema; PathID "find" is an index lookup, not a
+resolved reference (a PPtr with a non-zero `m_FileID` points into another
+file). A static package has no API, so Files lists only the decoded datasets.
+Assets no longer lists exported JSON, because every such document is a store
+row here.
+
+The rest of this guide is the decoded-dataset contract: what a decoded record
+is and how the shared viewer renders it.
 
 Publishers cover two kinds of source. Families with a maintained
 `scripts/game_data/` reader -- `AnimationConfig`, NPC montages, `LevelConfig`,
@@ -210,7 +242,14 @@ python -m scripts.webui.data_inspector.build_data_inspector --dataset buff-actio
 python -m scripts.webui.data_inspector.build_data_inspector --force
 ```
 
-The normal post-Story build graph runs the first command. Buff action receipts
+`export.bat data --from-game` extracts the page's own inputs and everything
+it serves as files: Table, JsonData, Lua, whole Terrain, the undecoded blocks,
+every Unity JSON class, and the AnimationClip, Shader, Font and TextAsset
+conversions. The
+freshness check covers only what the dataset builder reads (JsonData and the
+animator controllers); served files are shown as exported. The loose-file list
+is indexed once per export (the layout marker, or a minute, invalidates it).
+The build graph runs the first command. Buff action receipts
 are optional: the dataset requires the current generated Buff corpus and action
 receipt reports under `reports/animestudio/`; explicit report paths are available
 through `--buff-corpus-report` and `--buff-action-receipts-report`. A relative-path,

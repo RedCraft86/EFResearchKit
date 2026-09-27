@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 from dataclasses import asdict, dataclass
@@ -40,9 +41,19 @@ from scripts.game_data.extraction.animestudio_object_index import (
 
 
 from scripts.repo_paths import REPO_ROOT
-from scripts.source_paths import INSTALLED_LAYERS, PACKED_GAME_DIRS, ExportLayout, configured_export_root
+from scripts.source_paths import INSTALLED_LAYERS, PACKED_GAME_DIRS, ExportLayout, ExportLayoutError, configured_export_root
+from scripts.game_data.extraction.scope import (
+    OBJECT_INDEX_JSON_TYPES as ANIMESTUDIO_OBJECT_INDEX_TYPES,
+    STRUCTURED_BLOCKS,
+    STRUCTURED_LEVELS,
+    UNITY_CONVERT_TYPES,
+    UNITY_JSON_TYPES,
+    UNITY_LEVELS,
+    ExtractionScope,
+    structured_dump_steps,
+)
 from scripts.game_data.extraction.unity_overlay import load_overlay_catalog, normalize_chunk_path
-from scripts.game_data.unity_store import UnityObjectStore, UnityObjectStoreWriter, is_store_file
+from scripts.game_data.unity_store import UnityObjectStore, UnityObjectStoreWriter, UnityStoreError, is_store_file
 from scripts.game_data.game_file_store import GameFileStoreWriter
 
 ROOT = REPO_ROOT
@@ -57,42 +68,12 @@ SOURCE_FINGERPRINT_EXCLUDED_TOP_LEVEL = {
     "Persistent": frozenset({"HGDownload", "Logs", "Temp"}),
 }
 ANIMESTUDIO_STAGES = ("maps", "convert_by_type", "json_by_type")
+#: Presets for direct use. `--animestudio-scope` picks the Story carriers, an
+#: asset level, or both; `--asset-mode` picks the asset level. The explicit
+#: `--unity-json`/`--unity-convert` selection replaces both.
 ANIMESTUDIO_SCOPES = ("story", "assets", "all")
 ANIMESTUDIO_ASSET_MODES = ("focused", "default", "debug")
-# Only final files are dumped. Raw VFS containers (bundles, audio PCKs, world
-# streaming chunks) are read in place by AnimeStudio and are never dumped.
-STRUCTURED_DUMP_MODES = ("focused", "default", "full")
-FOCUSED_STRUCTURED_BLOCK_TYPES = (
-    "table",
-    "json-data",
-    "video",
-    "audit-video",
-    # Lua is 1,339 files and about 16 MB decoded, which is noise beside the
-    # video in this same level, and it has a maintained consumer: the Mission
-    # Pipeline reads the index `scripts/webui/story/lua_consumer_references.py`
-    # builds from plaintext Lua. Leaving it out is what forced that refresh to
-    # be a separate hand-run extraction. The exporter already decodes the
-    # base64+XXTEA wrapper and writes `Lua/<name>.lua`.
-    "lua",
-)
-
-#: Everything else the structured dump can reach. These are recovery inputs
-#: rather than page inputs, and together they cost roughly 6.4 GB, so they sit
-#: behind their own level instead of being carried by every refresh. Before
-#: this level existed none of them was reachable through the wrapper at all --
-#: they needed a hand-run bounded CLI dump, which is a poor place to keep a
-#: reproducible input.
-FULL_STRUCTURED_BLOCK_TYPES = (
-    "terrain",
-    "streaming",
-    "dynamic-streaming",
-    "iv",
-    "extend-data",
-    "initial-extend-data",
-    "i-fix-patch",
-    "bundle-manifest",
-)
-TERRAIN_HEIGHT_FILE_REGEX = r"^Data/Terrain/PC/[^/]+/Terrain_[0-9]+_[0-9]+_[0-9]+_H\.bytes$"
+STRUCTURED_DUMP_MODES = tuple(STRUCTURED_LEVELS)
 ANIMESTUDIO_STAGE_MERGE_MODES = ("auto", "never", "aggressive")
 ANIMESTUDIO_STAGE_MERGE_PRIMARY_STAGE = "convert_by_type"
 ANIMESTUDIO_STAGE_MERGE_SECONDARY_STAGE = "json_by_type"
@@ -124,7 +105,6 @@ ANIMESTUDIO_LOGGER_FLAGS = ("Warning", "Error")
 ANIMESTUDIO_DEFAULT_JOBS = 8
 ANIMESTUDIO_DEFAULT_SHARDS = 16
 ANIMESTUDIO_DUMMY_DLL_ENV = "ANIMESTUDIO_DUMMY_DLLS"
-ANIMESTUDIO_OBJECT_INDEX_TYPES = frozenset({"MonoBehaviour", "PlayableDirector"})
 ANIMESTUDIO_OBJECT_INDEX_IDENTITY = "serialized-file-source-offset-pathid-v1"
 ANIMESTUDIO_OBJECT_INDEX_EXTERNAL_RESOLUTION = "unique-expected-cab-pathid-v1"
 ANIMESTUDIO_OBJECT_INDEX_SCALAR_POLICY = "identifier-and-state-v1"
@@ -201,66 +181,12 @@ ANIMESTUDIO_RESERVED_FILE_NAMES = frozenset(
     }
 )
 WINDOWS_INVALID_FILE_NAME_CHARS = frozenset('<>:"/\\|?*')
-# Asset maps for Endfield have no GameObject, AudioClip, VideoClip,
-# MovieTexture, or MiHoYoBinData entries, so the WebUI export skips them.
-ANIMESTUDIO_FULL_CONVERT_TYPES = (
-    "Texture2D:Both",
-    "Mesh:Both",
-    "Sprite:Both",
-    "Animator:Both",
-    # Audio semantics consumes serialized AnimationClip callbacks in the normal
-    # asset workflow; keeping this debug-only leaves authored Event requests
-    # unavailable after a production refresh.
-    "AnimationClip:Both",
-)
-ANIMESTUDIO_DEBUG_CONVERT_TYPES = (
-    "Texture2D:Both",
-    "Shader:Both",
-    "TextAsset:Both",
-    "Font:Both",
-    "Mesh:Both",
-    "Sprite:Both",
-    "Animator:Both",
-    "AnimationClip:Both",
-)
-ANIMESTUDIO_WEBUI_CONVERT_TYPES = (
-    "Texture2D:Both",
-)
-ANIMESTUDIO_STORY_JSON_TYPES = (
-    "TextAsset:Both",
-    "MonoBehaviour:Both",
-    "PlayableDirector:Both",
-)
-ANIMESTUDIO_FULL_JSON_TYPES = (
-    "Material:Both",
-    # These controller types provide authored clip reachability and override
-    # substitutions for AnimationClip audio callbacks.
-    "AnimatorController:Both",
-    "AnimatorOverrideController:Both",
-)
-ANIMESTUDIO_DEBUG_JSON_TYPES = (
-    "TextAsset:Both",
-    "MonoBehaviour:Both",
-    "Material:Both",
-    "AssetBundle:Both",
-    "IndexObject:Both",
-    "AnimatorController:Both",
-    "AnimatorOverrideController:Both",
-    "MonoScript:Both",
-    "PlayerSettings:Both",
-    "PlayableDirector:Both",
-    "ResourceManager:Both",
-    "SpriteAtlas:Both",
-    "NapAssetBundleIndexAsset:Both",
-    # PreloadData (Unity ClassID 150) exposes per-bundle asset-cohort PPtrs,
-    # useful for identifying which assets load together with each cutscene.
-    # AvatarMask (319) carries body-part transform masks per animation, which
-    # validates which body parts move during each cutscene. Both rely on the
-    # generic TypeTree fallback in AnimeStudio (no dedicated parser needed).
-    "PreloadData:Both",
-    "AvatarMask:Both",
-)
-ANIMESTUDIO_WEBUI_JSON_TYPES: tuple[str, ...] = ()
+# The exported Unity classes and their named levels live in `scope.py`. Every
+# class is exported from both the asset map and the loaded bundles (`:Both`).
+# The default level converts AnimationClip because Audio semantics consumes its
+# serialized callbacks, and exports AnimatorController/AnimatorOverrideController
+# JSON for the clip reachability and override substitutions of those callbacks.
+ANIMESTUDIO_TYPE_SPEC_SUFFIX = ":Both"
 # json_by_type types that may load through the generated asset map.
 #
 # Two conditions must hold, and matching object counts alone are NOT enough:
@@ -919,17 +845,24 @@ def build_animestudio_output_path_id_index(
     source: str,
     stage: str,
     type_name: str,
+    store_names: set[str] | None = None,
 ) -> dict[str, list[Path]]:
     type_dir = animestudio_stage_dir(output_root, source, stage) / type_name
-    if not animestudio_convert_output_suffixes(type_name) or not type_dir.is_dir():
+    if not animestudio_convert_output_suffixes(type_name):
         return {}
     index: dict[str, list[Path]] = {}
-    for path in type_dir.iterdir():
+    for path in type_dir.iterdir() if type_dir.is_dir() else ():
         if not path.is_file() or not animestudio_path_has_output_suffix(path, type_name):
             continue
         path_id_suffix = animestudio_output_path_id_suffix(path, type_name)
         if path_id_suffix is not None:
             index.setdefault(path_id_suffix, []).append(path)
+    for name in store_names or ():
+        path = type_dir / name
+        if animestudio_path_has_output_suffix(path, type_name):
+            path_id_suffix = animestudio_output_path_id_suffix(path, type_name)
+            if path_id_suffix is not None:
+                index.setdefault(path_id_suffix, []).append(path)
     return index
 
 
@@ -939,6 +872,7 @@ def resolve_animestudio_convert_output_path(
     stage: str,
     entry: dict[str, Any],
     output_path_id_index: dict[str, list[Path]],
+    store_names: set[str] | None = None,
 ) -> dict[str, Any]:
     predicted_path = predict_animestudio_convert_output_path(output_root, source, stage, entry)
     if predicted_path is None:
@@ -950,7 +884,7 @@ def resolve_animestudio_convert_output_path(
             "path_id_output_candidate_count": 0,
             "output_is_marker": False,
         }
-    if predicted_path.is_file():
+    if predicted_path.is_file() or (store_names is not None and predicted_path.name.casefold() in store_names):
         return {
             "output_path": predicted_path,
             "predicted_output_path": predicted_path,
@@ -1063,10 +997,18 @@ def asset_cache_entry_is_valid(
     manifest_key: str,
     cache_key: str,
     output_path: Path,
+    *,
+    store_stamp: tuple[str, int, int] | None = None,
+    store_backed: bool = False,
 ) -> bool:
     entry = (cache.get("entries") or {}).get(manifest_key)
     if not isinstance(entry, dict) or entry.get("cache_key") != cache_key:
         return False
+    if store_backed:
+        if store_stamp is None or entry.get("missing_output"):
+            return False
+        return (entry.get("output_size") == store_stamp[1]
+                and entry.get("output_mtime_ns") == store_stamp[2])
     if not output_path.exists():
         return bool(entry.get("missing_output"))
     if entry.get("missing_output"):
@@ -1090,17 +1032,38 @@ def update_asset_cache_entries(
     output_root: Path,
     source: str,
     stage: str,
+    store_stamps: dict[str, tuple[str, int, int]] | None = None,
 ) -> int:
     cache_entries = cache.setdefault("entries", {})
     updated = 0
     completed_at_epoch = int(time.time())
     type_name = animestudio_type_name(item.get("type_spec"))
+    if store_stamps is None:
+        store_stamps = (
+            animestudio_convert_store_stamps(output_root, source, type_name)
+            if stage == "convert_by_type" else {}
+        )
     allow_missing_output = type_name in ANIMESTUDIO_ALLOW_MISSING_CONVERT_OUTPUT_TYPES
     for entry in entries:
         output_path = predict_animestudio_convert_output_path(output_root, source, stage, entry)
         if output_path is None:
             continue
         manifest_key = asset_entry_manifest_key(entry, item, plan)
+        if stage == "convert_by_type" and is_store_file(output_path.name):
+            stamp = store_stamps.get(output_path.name.casefold())
+            if stamp is None:
+                continue
+            cache_entries[manifest_key] = {
+                "cache_key": asset_entry_cache_key(entry, item, plan),
+                "output_path": str(output_path),
+                "missing_output": False,
+                "output_size": stamp[1],
+                "output_mtime_ns": stamp[2],
+                "completed_at_epoch": completed_at_epoch,
+                "asset": asset_entry_identity(entry),
+            }
+            updated += 1
+            continue
         if not output_path.exists():
             if not allow_missing_output:
                 continue
@@ -1273,8 +1236,6 @@ def prune_unmatched_animestudio_asset_outputs(
     type_name: str,
 ) -> int:
     type_dir = animestudio_stage_dir(output_root, source, stage) / type_name
-    if not type_dir.is_dir():
-        return 0
     # Predicted outputs and dir entries are all under the resolved output_root, so
     # normcase(abspath) normalizes for comparison without a filesystem-touching
     # resolve() per path (matters for large Texture2D sets pruned every export).
@@ -1284,7 +1245,7 @@ def prune_unmatched_animestudio_asset_outputs(
         for path in animestudio_candidate_convert_output_paths(output_root, source, stage, entry)
     }
     removed = 0
-    for path in type_dir.iterdir():
+    for path in type_dir.iterdir() if type_dir.is_dir() else ():
         if not path.is_file():
             continue
         if os.path.normcase(os.path.abspath(path)) in expected:
@@ -1294,6 +1255,13 @@ def prune_unmatched_animestudio_asset_outputs(
             removed += 1
         except OSError as exc:
             log(f"  warning: unable to prune stale AnimeStudio output {path}: {exc}")
+    if stage == "convert_by_type":
+        store_path = animestudio_convert_store_path(output_root, source, type_name)
+        if store_path.is_file():
+            expected_names = {Path(path).name.casefold() for path in expected if is_store_file(Path(path).name)}
+            with UnityObjectStoreWriter(store_path) as writer:
+                stale = [name for name in writer.stamps(type_name) if name.casefold() not in expected_names]
+                removed += writer.delete(type_name, stale)
     return removed
 
 
@@ -1305,12 +1273,15 @@ def remove_animestudio_asset_outputs(
 ) -> int:
     removed = 0
     seen: set[str] = set()
+    store_names: dict[str, set[str]] = {}
     for entry in entries:
         for path in animestudio_candidate_convert_output_paths(output_root, source, stage, entry):
             key = os.path.normcase(os.path.abspath(path))
             if key in seen:
                 continue
             seen.add(key)
+            if stage == "convert_by_type" and is_store_file(path.name):
+                store_names.setdefault(str(entry.get("Type") or ""), set()).add(path.name)
             if not path.is_file():
                 continue
             try:
@@ -1318,6 +1289,14 @@ def remove_animestudio_asset_outputs(
                 removed += 1
             except OSError as exc:
                 log(f"  warning: unable to remove stale AnimeStudio output {path}: {exc}")
+    for type_name, names in store_names.items():
+        store_path = animestudio_convert_store_path(output_root, source, type_name)
+        if store_path.is_file():
+            with UnityObjectStoreWriter(store_path) as writer:
+                existing = {name.casefold(): name for name in writer.stamps(type_name)}
+                removed += writer.delete(
+                    type_name, [existing[name.casefold()] for name in names if name.casefold() in existing]
+                )
     return removed
 
 
@@ -1462,7 +1441,15 @@ def build_animestudio_asset_output_status(
     records_by_output_path: dict[str, list[dict[str, Any]]] = {}
     records_by_ab: dict[str, list[dict[str, Any]]] = {}
     ab_identities: dict[str, dict[str, Any]] = {}
-    output_path_id_index = build_animestudio_output_path_id_index(output_root, source, stage, type_name)
+    store_stamps = (
+        animestudio_convert_store_stamps(output_root, source, type_name)
+        if stage == "convert_by_type" else {}
+    )
+    store_names = {stamp[0] for stamp in store_stamps.values()}
+    store_name_keys = set(store_stamps)
+    output_path_id_index = build_animestudio_output_path_id_index(
+        output_root, source, stage, type_name, store_names
+    )
     # Objects in bundles the effective manifest replaced were skipped on
     # purpose (--skip_sources_file); they are not missing outputs.
     entries, overlay_skipped_entry_count = without_overlay_skipped_entries(source, entries)
@@ -1474,6 +1461,7 @@ def build_animestudio_asset_output_status(
             stage,
             entry,
             output_path_id_index,
+            store_name_keys,
         )
         output_path = resolved_output["output_path"]
         output_key = os.path.normcase(os.path.abspath(output_path)) if output_path is not None else ""
@@ -1719,7 +1707,10 @@ def build_animestudio_asset_output_status(
         )
 
     type_dir = animestudio_stage_dir(output_root, source, stage) / type_name
-    actual_output_file_count = sum(1 for path in type_dir.iterdir() if path.is_file()) if type_dir.is_dir() else 0
+    actual_output_file_count = (
+        (sum(1 for path in type_dir.iterdir() if path.is_file()) if type_dir.is_dir() else 0)
+        + len(store_names)
+    )
     export_error_count = int((log_issues or {}).get("export_error_count") or 0)
     summary = {
         "source": source,
@@ -1975,57 +1966,6 @@ def animestudio_type_name(type_spec: str | None) -> str:
     return str(type_spec).split(":", 1)[0]
 
 
-def animestudio_known_asset_type_names() -> set[str]:
-    specs = (
-        ANIMESTUDIO_FULL_CONVERT_TYPES
-        + ANIMESTUDIO_DEBUG_CONVERT_TYPES
-        + ANIMESTUDIO_WEBUI_CONVERT_TYPES
-        + ANIMESTUDIO_FULL_JSON_TYPES
-        + ANIMESTUDIO_DEBUG_JSON_TYPES
-        + ANIMESTUDIO_WEBUI_JSON_TYPES
-    )
-    return {animestudio_type_name(spec).lower() for spec in specs}
-
-
-def normalize_animestudio_asset_type_filter(values: tuple[str, ...] | list[str]) -> set[str]:
-    selected = {
-        animestudio_type_name(value).lower()
-        for value in values
-        if str(value or "").strip()
-    }
-    known = animestudio_known_asset_type_names()
-    unknown = sorted(selected - known)
-    if unknown:
-        known_text = ", ".join(sorted(known))
-        raise SystemExit(
-            f"Unknown --animestudio-asset-types value(s): {', '.join(unknown)}. "
-            f"Known asset type names: {known_text}"
-        )
-    return selected
-
-
-def apply_animestudio_asset_type_filter(
-    stage_options: dict[str, dict[str, Any]],
-    selected_types: set[str],
-) -> None:
-    if not selected_types:
-        return
-    for stage in ("convert_by_type", "json_by_type"):
-        options = stage_options.get(stage)
-        if not options:
-            continue
-        filtered_types = tuple(
-            type_spec
-            for type_spec in options.get("types", ())
-            if animestudio_type_name(type_spec).lower() in selected_types
-        )
-        options["types"] = filtered_types
-        options["asset_type_filter"] = sorted(selected_types)
-        if not filtered_types:
-            options["asset_map_filter"] = False
-            options["webui_asset_filter"] = False
-
-
 def animestudio_log_suffix(item_name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", item_name).strip("._") or "item"
 
@@ -2036,40 +1976,44 @@ def animestudio_stage_items(stage: str, types: tuple[str, ...]) -> list[tuple[st
     return [(type_spec, animestudio_type_name(type_spec)) for type_spec in types]
 
 
-def animestudio_stage_options_for_scope(scope: str, asset_mode: str = "focused") -> dict[str, dict[str, Any]]:
+def animestudio_type_specs(type_names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(f"{name}{ANIMESTUDIO_TYPE_SPEC_SUFFIX}" for name in type_names)
+
+
+def preset_unity_scope(scope: str, asset_mode: str) -> ExtractionScope:
+    """The Unity selection an `--animestudio-scope`/`--asset-mode` preset names."""
     if scope == "story":
-        json_types = ANIMESTUDIO_STORY_JSON_TYPES
-        convert_types: tuple[str, ...] = ()
-    else:
-        if asset_mode == "focused":
-            asset_json_types = ANIMESTUDIO_WEBUI_JSON_TYPES
-            convert_types = ANIMESTUDIO_WEBUI_CONVERT_TYPES
-        elif asset_mode == "debug":
-            asset_json_types = ANIMESTUDIO_DEBUG_JSON_TYPES
-            convert_types = ANIMESTUDIO_DEBUG_CONVERT_TYPES
-        else:
-            asset_json_types = ANIMESTUDIO_FULL_JSON_TYPES
-            convert_types = ANIMESTUDIO_FULL_CONVERT_TYPES
-        if scope == "all":
-            json_types = ordered_unique(ANIMESTUDIO_STORY_JSON_TYPES + asset_json_types)
-        else:
-            json_types = asset_json_types
+        return UNITY_LEVELS["story"]
+    assets = UNITY_LEVELS[asset_mode]
+    return UNITY_LEVELS["story"] | assets if scope == "all" else assets
+
+
+def animestudio_stage_options(extraction: ExtractionScope) -> dict[str, dict[str, Any]]:
+    """Per-stage AnimeStudio options for one Unity selection.
+
+    Convert always loads through the asset map. JSON loads through it only when
+    no Story carrier is selected: Story TextAssets include DialogTree sources
+    the generated map does not list, and a map-filtered MonoBehaviour load loses
+    script names and cross-bundle PPtr targets, so any carrier keeps the whole
+    JSON stage on the broad load (the per-type TextAsset map filter still
+    applies there). Classes that must resolve across bundles
+    (`ANIMESTUDIO_ASSET_MAP_FILTER_UNSAFE_TYPES`) fall back to a broad load per
+    call either way.
+    """
+    convert_types = animestudio_type_specs(extraction.convert_classes)
+    json_types = animestudio_type_specs(extraction.json_classes)
     return {
         "maps": {"map_op": "Both", "map_type": "JSON,MessagePack"},
         "convert_by_type": {
             "export_type": "Convert",
             "types": convert_types,
-            "asset_map_filter": scope != "story" and bool(convert_types),
-            "webui_asset_filter": scope != "story" and asset_mode == "focused",
+            "asset_map_filter": bool(convert_types),
+            "webui_asset_filter": extraction.webui_textures_only,
         },
         "json_by_type": {
             "export_type": "JSON",
             "types": json_types,
-            # Story TextAssets include DialogTree sources that are not present in
-            # the generated asset map.  A combined Story+asset export must keep
-            # the JSON load broad just like the Story-only path; otherwise the
-            # build silently loses authored option anchors and branch routes.
-            "asset_map_filter": scope == "assets" and bool(json_types),
+            "asset_map_filter": bool(json_types) and not extraction.exports_story_carriers,
         },
     }
 
@@ -2222,6 +2166,7 @@ def clear_animestudio_stage_outputs(
             shutil.rmtree(target)
         elif target.exists():
             target.unlink()
+        remove_staged_document_stores(stage_root, animestudio_type_name(type_spec))
 
 
 def plan_animestudio_stage(
@@ -2308,14 +2253,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--structured-dump-mode",
         choices=STRUCTURED_DUMP_MODES,
-        default="focused",
+        default=None,
         help=(
-            "Each level contains the one below. `focused` dumps what the WebUI pages consume: "
-            "Table, JsonData, video and Lua. `default` adds the Terrain `_H` height grids map recovery "
-            "reads. `full` adds Terrain whole, Streaming, DynamicStreaming, IV, ExtendData, IFixPatch "
-            "and the bundle manifest, about 6.4 GB more. Raw asset bundles and audio packages are a "
-            "separate axis (--asset-mode); no structured level carries them, and raw containers are "
-            "never dumped."
+            "Structured preset; each level contains the one below. `focused` (the default) dumps "
+            "Table, JsonData, video and Lua. `default` adds the Terrain `_H` height grids map "
+            "recovery reads. `full` takes Terrain whole and adds the undecoded blocks (Streaming, "
+            "DynamicStreaming, IV, ExtendData, IFixPatch, the bundle manifest), published "
+            "byte-for-byte under raw/. Bundles and audio packages are never dumped."
+        ),
+    )
+    parser.add_argument(
+        "--structured",
+        nargs="+",
+        choices=STRUCTURED_BLOCKS,
+        metavar="BLOCK",
+        default=None,
+        help=(
+            "Dump exactly these structured blocks instead of a --structured-dump-mode preset: "
+            + ", ".join(STRUCTURED_BLOCKS)
+            + ". `terrain-height` is Terrain limited to its `_H` height grids."
         ),
     )
     parser.add_argument(
@@ -2399,32 +2355,46 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--animestudio-scope",
         choices=ANIMESTUDIO_SCOPES,
-        default="all",
+        default=None,
         help=(
-            "`story` exports only maps plus TextAsset/MonoBehaviour/PlayableDirector JSON. "
-            "`assets` uses --asset-mode to choose focused, default, or debug assets. "
-            "`all` combines story JSON with the selected asset mode."
+            "Unity preset. `story` exports the Story carriers (TextAsset, MonoBehaviour and "
+            "PlayableDirector JSON). `assets` exports the --asset-mode level. `all` (the default) "
+            "combines both."
         ),
     )
     parser.add_argument(
         "--asset-mode",
         dest="animestudio_asset_mode",
         choices=ANIMESTUDIO_ASSET_MODES,
-        default="focused",
+        default=None,
         help=(
-            "`focused` exports only browser-referenced Texture2D media by loading the AnimeStudio asset map "
-            "with generated name filters. `default` exports the normal image/model assets plus Material JSON. "
-            "`debug` exports the exhaustive conversion and JSON diagnostic sets."
+            "Asset level of the Unity preset. `focused` (the default) converts only the Texture2D "
+            "the generated WebUI references. `default` converts the image/model/animation media and "
+            "exports Material and animator-controller JSON. `debug` exports every class."
         ),
     )
     parser.add_argument(
-        "--animestudio-asset-types",
+        "--unity-json",
         nargs="+",
-        default=(),
+        choices=UNITY_JSON_TYPES,
+        metavar="CLASS",
+        default=None,
+        help="Export exactly these Unity classes as JSON instead of a Unity preset.",
+    )
+    parser.add_argument(
+        "--unity-convert",
+        nargs="+",
+        choices=UNITY_CONVERT_TYPES,
+        metavar="CLASS",
+        default=None,
+        help="Convert exactly these Unity classes instead of a Unity preset.",
+    )
+    parser.add_argument(
+        "--webui-textures-only",
+        action="store_true",
         help=(
-            "Limit asset-scope AnimeStudio convert/json stages to one or more Unity asset type names, "
-            "for example Sprite, Texture2D, Mesh, Animator, Material, Shader, or AnimationClip. "
-            "Maps still run when selected."
+            "With `--unity-convert Texture2D`, convert only the textures the generated WebUI "
+            "references (the `focused` asset level)."
         ),
     )
     parser.add_argument(
@@ -2496,9 +2466,8 @@ def parse_args() -> argparse.Namespace:
             "How many broad Story JSON type jobs `auto` mode may run at once. "
             "These are the unfiltered json_by_type loads, and each retains a full "
             "Endfield object graph, so this bounds peak memory directly. Leave it "
-            "at 1: JSON export is bound on single-disk small-file creation, and "
-            "measured concurrency over the same objects ran 0.65-0.95x versus one "
-            "process, so values above 1 are not supported by any measurement."
+            "at 1 until concurrency is measured with the staged SQLite writer; "
+            "earlier loose-file measurements do not establish a safe faster value."
         ),
     )
     parser.add_argument(
@@ -2540,7 +2509,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-vfs-index",
         action="store_true",
-        help="Skip the lightweight VFS metadata index used by asset exports",
+        help="Skip regenerating VFS metadata indexes; Unity overlay processing still requires existing valid indexes",
     )
     parser.add_argument(
         "--skip-animestudio",
@@ -2564,7 +2533,48 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.report_runs_to_keep < 0:
         parser.error("--report-runs-to-keep must be 0 or greater")
+    try:
+        args.extraction = resolve_extraction_scope(args)
+    except ValueError as exc:
+        parser.error(str(exc))
     return args
+
+
+def resolve_extraction_scope(args: argparse.Namespace) -> ExtractionScope:
+    """The one scope this run exports, from explicit selections or presets.
+
+    An explicit selection replaces its preset rather than narrowing it, so the
+    two spellings of one axis cannot be combined.
+    """
+    if args.structured is not None and args.structured_dump_mode is not None:
+        raise ValueError("choose --structured or --structured-dump-mode, not both")
+    explicit_unity = args.unity_json is not None or args.unity_convert is not None
+    if explicit_unity and (args.animestudio_scope is not None or args.animestudio_asset_mode is not None):
+        raise ValueError("choose --unity-json/--unity-convert or --animestudio-scope/--asset-mode, not both")
+    if args.webui_textures_only and not explicit_unity:
+        raise ValueError("--webui-textures-only needs --unity-convert Texture2D; the preset spelling is --asset-mode focused")
+    if args.skip_structured:
+        blocks: tuple[str, ...] = ()
+    elif args.structured is not None:
+        blocks = tuple(args.structured)
+    else:
+        blocks = STRUCTURED_LEVELS[args.structured_dump_mode or "focused"]
+    if explicit_unity:
+        unity = ExtractionScope.of(
+            json_types=args.unity_json or (),
+            convert_types=args.unity_convert or (),
+            webui_textures_only=args.webui_textures_only,
+        )
+    else:
+        unity = preset_unity_scope(args.animestudio_scope or "all", args.animestudio_asset_mode or "focused")
+    if args.skip_animestudio:
+        unity = ExtractionScope()
+    return ExtractionScope(
+        frozenset(blocks),
+        unity.json_types,
+        unity.convert_types,
+        unity.webui_textures_only,
+    )
 
 
 def ensure_dir(path: Path) -> Path:
@@ -2681,42 +2691,6 @@ def load_structured_incremental_manifest(
         if drift:
             raise ValueError(f"incremental structured manifest source drift for {source}: {drift}")
     return payload
-
-
-def structured_dump_steps(mode: str) -> list[dict[str, Any]]:
-    if mode not in STRUCTURED_DUMP_MODES:
-        raise ValueError(f"unsupported structured dump mode: {mode}")
-    steps = [
-        {
-            "name": "required",
-            "block_types": FOCUSED_STRUCTURED_BLOCK_TYPES,
-            "file_regexes": (),
-        },
-    ]
-    if mode == "default":
-        # Terrain's six equal-sized record families total roughly 1.1 GiB in
-        # the current build. Map recovery needs only the compact `_H` height
-        # grids (about 64 MiB), so keep the production dump proportional to its
-        # consumer instead of exporting C/T/S/A/N payloads speculatively.
-        steps.append(
-            {
-                "name": "terrain_height",
-                "block_types": ("terrain",),
-                "file_regexes": (TERRAIN_HEIGHT_FILE_REGEX,),
-            }
-        )
-    if mode == "full":
-        # `full` takes Terrain whole rather than stacking the height-only step,
-        # because a regex-filtered step and an unfiltered one over the same
-        # block would dump the height grids twice.
-        steps.append(
-            {
-                "name": "recovery",
-                "block_types": FULL_STRUCTURED_BLOCK_TYPES,
-                "file_regexes": (),
-            }
-        )
-    return steps
 
 
 def structured_dump_steps_for_source(steps: list[dict[str, Any]], source: str) -> list[dict[str, Any]]:
@@ -2888,6 +2862,107 @@ def animestudio_stage_dir(output_root: Path, source: str, stage: str) -> Path:
     return animestudio_source_root(output_root, source) / stage
 
 
+#: Both JSON and Convert route .json/.anim documents to the same store format.
+#: Convert retains per-type staged stores so its per-asset cache can query rows.
+ANIMESTUDIO_DOCUMENT_STORE_STAGE = "json_by_type"
+ANIMESTUDIO_DOCUMENT_STORE_SUFFIX = ".sqlite"
+
+
+def animestudio_document_store_path(
+    output_root: Path, source: str, type_specs: tuple[str, ...], *,
+    stage: str = ANIMESTUDIO_DOCUMENT_STORE_STAGE, filter_data: Path | None = None,
+) -> Path:
+    """A call's store; sharded Convert calls land apart from the persistent type store."""
+    names = ordered_unique(tuple(animestudio_type_name(spec) for spec in type_specs))
+    if len(names) == 1:
+        stem = names[0]
+    else:
+        stem = "merged_" + stable_hash(list(names))[:12]
+    stage_dir = animestudio_stage_dir(output_root, source, stage)
+    if stage == "convert_by_type" and filter_data is not None:
+        return (
+            animestudio_work_dir(output_root) / "convert_document_calls" / source
+            / f"{stem}_{stable_hash(str(filter_data))[:12]}.sqlite"
+        )
+    return stage_dir / f"{stem}{ANIMESTUDIO_DOCUMENT_STORE_SUFFIX}"
+
+
+def animestudio_convert_store_path(output_root: Path, source: str, type_name: str) -> Path:
+    return animestudio_stage_dir(output_root, source, "convert_by_type") / f"{type_name}.sqlite"
+
+
+def animestudio_convert_store_stamps(
+    output_root: Path, source: str, type_name: str,
+) -> dict[str, tuple[str, int, int]]:
+    """Case-insensitive output names and (size, mtime) for cached Convert documents."""
+    path = animestudio_convert_store_path(output_root, source, type_name)
+    if not path.is_file():
+        return {}
+    with UnityObjectStore(path) as store:
+        return {row.name.casefold(): (row.name, row.size, row.mtime_ns) for row in store.iter_rows(type_name)}
+
+
+def staged_document_stores(stage_dir: Path) -> dict[Path, dict[str, int]]:
+    """Every completed staged document store in a stage folder with its row count per type.
+
+    AnimeStudio renames ``<store>.partial`` to the store only when the export
+    finishes, so an interrupted call leaves nothing here. A store that is not
+    of the object-store schema raises (UnityStoreError).
+    """
+    if not stage_dir.is_dir():
+        return {}
+    stores: dict[Path, dict[str, int]] = {}
+    for path in sorted(stage_dir.glob(f"*{ANIMESTUDIO_DOCUMENT_STORE_SUFFIX}")):
+        if not path.is_file():
+            continue
+        store = UnityObjectStore(path)
+        try:
+            stores[path] = store.counts()
+        finally:
+            store.close()
+    return stores
+
+
+def remove_staged_document_stores(stage_dir: Path, type_name: str) -> list[Path]:
+    """Delete the staged stores that belong to ``type_name``: its own, and any merged store holding its rows."""
+    removed: list[Path] = []
+    if not stage_dir.is_dir():
+        return removed
+    for path in sorted(stage_dir.glob(f"*{ANIMESTUDIO_DOCUMENT_STORE_SUFFIX}*")):
+        if not path.is_file():
+            continue
+        stem = path.name.split(ANIMESTUDIO_DOCUMENT_STORE_SUFFIX, 1)[0]
+        owned = stem == type_name
+        if not owned and path.name.endswith(ANIMESTUDIO_DOCUMENT_STORE_SUFFIX):
+            try:
+                store = UnityObjectStore(path)
+                try:
+                    owned = store.count(type_name) > 0
+                finally:
+                    store.close()
+            except (UnityStoreError, sqlite3.Error):
+                owned = True  # unreadable staging is stale by definition
+        elif not owned:
+            owned = True  # a leftover .partial of any call is stale before a rerun
+        if owned:
+            path.unlink()
+            removed.append(path)
+    return removed
+
+
+def count_animestudio_stage_outputs(output_root: Path, source: str, stage: str) -> int:
+    """Loose output files plus staged document rows of one stage."""
+    stage_dir = animestudio_stage_dir(output_root, source, stage)
+    if not stage_dir.exists():
+        return 0
+    loose = sum(
+        1 for item in stage_dir.rglob("*")
+        if item.is_file() and ANIMESTUDIO_DOCUMENT_STORE_SUFFIX not in item.name
+    )
+    rows = sum(sum(counts.values()) for counts in staged_document_stores(stage_dir).values())
+    return loose + rows
+
+
 def animestudio_object_index_dir(output_root: Path, source: str) -> Path:
     return ExportLayout(output_root).object_index_dir(source)
 
@@ -2962,10 +3037,10 @@ def animestudio_object_index_plan_is_relevant(
 
 def animestudio_object_index_is_enabled(
     requested: bool,
-    scope: str,
+    extraction: ExtractionScope,
     skip_animestudio: bool,
 ) -> bool:
-    return bool(requested and not skip_animestudio and scope in {"story", "all"})
+    return bool(requested and not skip_animestudio and extraction.exports_object_index_types)
 
 
 def invalidate_animestudio_object_index_commit_marker(
@@ -3002,16 +3077,36 @@ def _replace_tree(source: Path, target: Path, graveyard: Path) -> None:
 
 
 def publish_structured_dump(output_root: Path, layer: str) -> dict[str, Any]:
-    """Publish the effective structured dump into game/, dropping the VFS `Data/` prefix."""
+    """Publish the effective structured dump, dropping the VFS `Data/` prefix.
+
+    Decoded blocks go to game/; undecoded ones (Streaming, IV, ExtendData, ...)
+    go byte-for-byte to raw/. A folder with a place in neither stops the publish.
+    """
     layout = ExportLayout(output_root)
     staging = structured_output_dir(output_root, layer)
+    staged_game_files = staging / "packed_game_files.sqlite"
     # Inside the export root: same volume as game/, so every move is a rename.
     graveyard = layout.root / ".publish-replaced"
     published: list[str] = []
+    published_raw: list[str] = []
     for entry in sorted(staging.iterdir()) if staging.is_dir() else []:
+        if entry == staged_game_files and entry.is_file():
+            continue
         if entry.name == "Data" and entry.is_dir():
             for data_entry in sorted(entry.iterdir()):
-                target = layout.game_file(f"Data/{data_entry.name}/x").parent
+                logical = f"Data/{data_entry.name}/x"
+                try:
+                    target = layout.game_file(logical).parent
+                except ExportLayoutError:
+                    try:
+                        target = layout.raw_file(logical).parent
+                    except ExportLayoutError:
+                        raise SystemExit(
+                            f"structured dump produced {data_entry}, which has no place in game/ or raw/"
+                        ) from None
+                    _replace_tree(data_entry, target, graveyard)
+                    published_raw.append(target.name)
+                    continue
                 _replace_tree(data_entry, target, graveyard)
                 published.append(target.name)
         elif entry.name in ("Table", "Lua") and entry.is_dir():
@@ -3019,14 +3114,28 @@ def publish_structured_dump(output_root: Path, layer: str) -> dict[str, Any]:
             published.append(entry.name)
         else:
             raise SystemExit(f"structured dump produced {entry}, which has no place in game/")
-    packed = pack_published_game_dirs(layout, published)
+    packed = pack_published_game_dirs(
+        layout, published, skip={"Json/LipSync"} if staged_game_files.is_file() else set()
+    )
+    if staged_game_files.is_file():
+        loose_lipsync = layout.game / "Json" / "LipSync"
+        if loose_lipsync.exists():
+            raise RuntimeError(f"direct LipSync store conflicts with loose output: {loose_lipsync}")
+        with GameFileStoreWriter(layout.game_file_store_path) as writer:
+            packed["Json/LipSync"] = writer.merge_staged("Json/LipSync", [staged_game_files])
+        staged_game_files.unlink()
     if graveyard.exists():
         shutil.rmtree(graveyard)
-    log(f"  published structured dump from {layer}: {', '.join(published) or 'nothing'}")
-    return {"layer": layer, "folders": published, "packed": packed}
+    log(
+        f"  published structured dump from {layer}: {', '.join(published) or 'nothing'}"
+        + (f"; undecoded into raw/: {', '.join(published_raw)}" if published_raw else "")
+    )
+    return {"layer": layer, "folders": published, "rawFolders": published_raw, "packed": packed}
 
 
-def pack_published_game_dirs(layout: ExportLayout, published: list[str]) -> dict[str, dict[str, int]]:
+def pack_published_game_dirs(
+    layout: ExportLayout, published: list[str], *, skip: set[str] | None = None
+) -> dict[str, dict[str, int]]:
     """Move each PACKED_GAME_DIRS folder of a just-published game/ tree into GameFiles.sqlite.
 
     Publishing replaced the whole top-level folder, so a packed folder's rows
@@ -3035,7 +3144,10 @@ def pack_published_game_dirs(layout: ExportLayout, published: list[str]) -> dict
     publish (strict sync) with the root still marked as being written.
     """
     counts: dict[str, dict[str, int]] = {}
-    folders = [folder for folder in PACKED_GAME_DIRS if folder.split("/", 1)[0] in published]
+    folders = [
+        folder for folder in PACKED_GAME_DIRS
+        if folder.split("/", 1)[0] in published and folder not in (skip or set())
+    ]
     if not folders:
         return counts
     with GameFileStoreWriter(layout.game_file_store_path) as writer:
@@ -3075,20 +3187,28 @@ def publish_unity_outputs(
 
     Staging already holds only effective objects (--skip_sources_file), so
     the publish is a plain union; on a same-name tie the later layer wins,
-    which is the same asset from the newer bundle. Object documents
-    (``is_store_file``: .json, .anim) are synced into ``game/Unity.sqlite``;
-    converted media is mirrored into ``game/Unity/<Type>`` as hardlinks. A
-    type is synced only when every installed layer ran the stage that exports
-    it (its staging stage folder exists; a layer may legitimately hold no
-    objects of the type), so a lost or partial staging cache never deletes
-    published data. With ``completed_types`` (the exporter passes it), every
-    installed layer must also have finished that type's item in this run; a
-    run that covered only some layers or types leaves the rest as published.
+    which is the same asset from the newer bundle. JSON and Convert documents
+    arrive as staged document stores (AnimeStudio ``--document_store``), which
+    are merged into ``game/Unity.sqlite`` with SQL (``merge_staged``: only rows
+    whose SHA256 changed are written). JSON call stores are removed after
+    publication; Convert stores remain for cache reuse. Legacy loose object
+    documents (``is_store_file``: .json, .anim) are synced by (size, mtime);
+    converted media is mirrored into
+    ``game/Unity/<Type>`` as hardlinks. A type is synced only when every
+    installed layer ran the stage that exports it (its staging stage folder
+    exists; a layer may legitimately hold no objects of the type), so a lost
+    or partial staging cache never deletes published data. With
+    ``completed_types`` (the exporter passes it), every installed layer must
+    also have finished that type's item in this run; a run that covered only
+    some layers or types leaves the rest as published.
     """
     layout = ExportLayout(output_root)
-    desired: dict[str, dict[str, os.DirEntry]] = {}
+    # Each type's staged sources in overlay order (layer, then stage): the
+    # loose files of a type folder, or a staged document store.
+    desired: dict[str, list[tuple[str, Any]]] = {}
     stage_of_type: dict[str, str] = {}
     staged_layers: dict[str, set[str]] = {}
+    staged_store_types: dict[Path, set[str]] = {}
     for layer in INSTALLED_LAYERS:
         for stage in UNITY_STAGING_STAGES:
             stage_dir = animestudio_stage_dir(output_root, layer, stage)
@@ -3099,10 +3219,16 @@ def publish_unity_outputs(
                 if not type_dir.is_dir():
                     continue
                 stage_of_type[type_dir.name] = stage
-                files = desired.setdefault(type_dir.name, {})
-                for entry in os.scandir(type_dir.path):
-                    if entry.is_file():
-                        files[entry.name] = entry
+                files = {entry.name: entry for entry in os.scandir(type_dir.path) if entry.is_file()}
+                desired.setdefault(type_dir.name, []).append(("files", files))
+            for store_path, type_counts in staged_document_stores(stage_dir).items():
+                staged_store_types[store_path] = set(type_counts)
+                for type_name in type_counts:
+                    stage_of_type[type_name] = stage
+                    type_sources = desired.setdefault(type_name, [])
+                    if any(kind == "store" and value.parent == stage_dir for kind, value in type_sources):
+                        raise UnityStoreError(f"{type_name} is staged by more than one document store under {stage_dir}")
+                    type_sources.append(("store", store_path))
     counts = {"linked": 0, "unchanged": 0, "removed": 0, "storeWritten": 0, "storeUnchanged": 0, "storeRemoved": 0}
     def missing_layers(type_name: str) -> list[str]:
         staged = staged_layers.get(stage_of_type[type_name], set())
@@ -3128,13 +3254,52 @@ def publish_unity_outputs(
         everywhere = set.intersection(*(set(completed_types.get(layer, set())) for layer in required_layers))
         for type_name in sorted(everywhere - set(stage_of_type)):
             if layout.unity_type_dir(type_name).is_dir() or type_name in store_types:
-                desired[type_name] = {}
+                desired[type_name] = []
+    loose_store_dir = animestudio_work_dir(output_root) / "publish_loose_documents"
     writer: UnityObjectStoreWriter | None = None
     try:
-        for type_name, files in sorted(desired.items()):
-            documents = {name: Path(entry.path) for name, entry in files.items() if is_store_file(name)}
-            media = {name: entry for name, entry in files.items() if not is_store_file(name)}
-            if documents or type_name in store_types:
+        for type_name, type_sources in sorted(desired.items()):
+            documents: dict[str, Path] = {}
+            media: dict[str, os.DirEntry] = {}
+            for kind, value in type_sources:
+                if kind != "files":
+                    continue
+                for name, entry in value.items():
+                    if is_store_file(name):
+                        documents[name] = Path(entry.path)
+                    else:
+                        media[name] = entry
+            if any(kind == "store" for kind, _ in type_sources):
+                # Merge in overlay order. A loose-document folder that shares
+                # the type (a debug Convert TextAsset beside its JSON store)
+                # is staged into a temporary store at its place in that order.
+                ordered: list[Path] = []
+                for index, (kind, value) in enumerate(type_sources):
+                    if kind == "store":
+                        ordered.append(value)
+                        continue
+                    loose = {name: Path(entry.path) for name, entry in value.items() if is_store_file(name)}
+                    if not loose:
+                        continue
+                    temporary = ensure_dir(loose_store_dir) / f"{animestudio_log_suffix(type_name)}_{index}.sqlite"
+                    if temporary.exists():
+                        temporary.unlink()
+                    with UnityObjectStoreWriter(temporary) as loose_writer:
+                        loose_writer.sync_type(type_name, loose, remove_missing=False)
+                    ordered.append(temporary)
+                if writer is None:
+                    writer = UnityObjectStoreWriter(layout.unity_store_path)
+                started = time.time()
+                synced = writer.merge_staged(type_name, ordered)
+                log(
+                    f"  merged {len(ordered)} staged store(s) into {layout.unity_store_path.name} for {type_name} "
+                    f"in {time.time() - started:.1f}s: written={synced['written']} "
+                    f"unchanged={synced['unchanged']} removed={synced['removed']}"
+                )
+                counts["storeWritten"] += synced["written"]
+                counts["storeUnchanged"] += synced["unchanged"]
+                counts["storeRemoved"] += synced["removed"]
+            elif documents or type_name in store_types:
                 if writer is None:
                     writer = UnityObjectStoreWriter(layout.unity_store_path)
                 synced = writer.sync_type(type_name, documents, remove_missing=True)
@@ -3166,13 +3331,118 @@ def publish_unity_outputs(
     finally:
         if writer is not None:
             writer.close()
+        if loose_store_dir.exists():
+            shutil.rmtree(loose_store_dir)
+    # JSON call stores are disposable after publication. Convert type stores
+    # remain as the per-asset reuse cache and are pruned/updated on later runs.
+    published = set(desired)
+    removed_stores = 0
+    for store_path, type_names in staged_store_types.items():
+        if store_path.parent.name == "convert_by_type":
+            continue
+        if type_names <= published:
+            store_path.unlink()
+            removed_stores += 1
+    counts["stagedStoresRemoved"] = removed_stores
     log(
         f"  published game/Unity: {len(desired)} type(s), media linked={counts['linked']} "
         f"unchanged={counts['unchanged']} removed={counts['removed']}; "
         f"{layout.unity_store_path.name} written={counts['storeWritten']} "
-        f"unchanged={counts['storeUnchanged']} removed={counts['storeRemoved']}"
+        f"unchanged={counts['storeUnchanged']} removed={counts['storeRemoved']}; "
+        f"staged stores removed={removed_stores}"
     )
     return {"types": sorted(desired), "skippedIncompleteTypes": incomplete, **counts}
+
+
+EXTRACTION_PROVENANCE_SCHEMA = "endfield.export-provenance.v1"
+#: The source-fingerprint fields that decide whether an output is current.
+PROVENANCE_FINGERPRINT_FIELDS = ("files", "bytes", "latest_mtime_ns", "fingerprint")
+
+
+def provenance_stamp(source_sizes: dict[str, Any], run_id: str | None) -> dict[str, Any]:
+    return {
+        "run": run_id,
+        "sources": {
+            source: {field: (info or {}).get(field) for field in PROVENANCE_FINGERPRINT_FIELDS}
+            for source, info in sorted(source_sizes.items())
+        },
+    }
+
+
+def record_extraction_provenance(
+    output_root: Path,
+    *,
+    structured_blocks: tuple[str, ...],
+    unity_types: tuple[str, ...],
+    partial_unity_types: dict[str, str],
+    asset_map_refreshed: bool,
+    source_sizes: dict[str, Any],
+    previous_summary: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    """Record which installed build each output published by this run came from.
+
+    A run exports only its scope and leaves every other output as published, so
+    one whole-export fingerprint cannot say whether a given output is current.
+    Each structured block, Unity class and the asset maps carry their own stamp.
+    Outputs published before this file existed share the `default` stamp: the
+    previous summary's structured fingerprint, which was their only authority.
+    A class exported through a name filter is stamped `partial` with the reason,
+    so a build that needs the whole class can refuse it.
+    """
+    path = ExportLayout(output_root).extraction_provenance_path
+    try:
+        provenance = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        provenance = {}
+    if provenance.get("schema") != EXTRACTION_PROVENANCE_SCHEMA:
+        previous_sizes = previous_summary.get("source_sizes") or {}
+        provenance = {
+            "schema": EXTRACTION_PROVENANCE_SCHEMA,
+            "default": provenance_stamp(previous_sizes, previous_summary.get("report_run_id")) if previous_sizes else None,
+            "structured": {},
+            "unity": {},
+            "meta": {},
+        }
+    stamp = provenance_stamp(source_sizes, run_id)
+    structured = provenance.setdefault("structured", {})
+    for block in structured_blocks:
+        structured[block] = stamp
+    # A block shares its game/ folder with the other spelling of itself: whole
+    # Terrain includes the height grids, and a height-only dump replaces game/Terrain.
+    if "terrain" in structured_blocks:
+        structured["terrain-height"] = stamp
+    elif "terrain-height" in structured_blocks:
+        structured.pop("terrain", None)
+    unity = provenance.setdefault("unity", {})
+    for type_name in unity_types:
+        unity[type_name] = (
+            {**stamp, "partial": partial_unity_types[type_name]}
+            if type_name in partial_unity_types else stamp
+        )
+    if asset_map_refreshed:
+        provenance.setdefault("meta", {})["asset_map"] = stamp
+    ensure_dir(path.parent)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(provenance, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+    return {
+        "path": str(path),
+        "structured": list(structured_blocks),
+        "unity": list(unity_types),
+        "partial": dict(partial_unity_types),
+        "assetMap": asset_map_refreshed,
+    }
+
+
+def partial_unity_exports(args: argparse.Namespace, extraction: ExtractionScope) -> dict[str, str]:
+    """The classes this run exported only in part, with the filter that narrowed them."""
+    partial: dict[str, str] = {}
+    if args.animestudio_story_monobehaviour_names and "MonoBehaviour" in extraction.json_types:
+        partial["MonoBehaviour"] = "story MonoBehaviour name filter"
+    if extraction.webui_textures_only:
+        partial["Texture2D"] = "WebUI-referenced Texture2D names only"
+    return partial
 
 
 def effective_structured_layer(game_root: Path, sources: tuple[str, ...]) -> str:
@@ -3286,6 +3556,8 @@ def refresh_animestudio_plan_output_counts(
     file_counts: dict[str, int] = {}
     marker_counts: dict[str, int] = {}
     stage_root = animestudio_stage_dir(output_root, source, stage)
+    # JSON documents are rows of the staged document stores, not files.
+    staged_stores = staged_document_stores(stage_root)
     for item in plan.get("items", []):
         type_spec = item.get("type_spec")
         if type_spec is None:
@@ -3301,10 +3573,24 @@ def refresh_animestudio_plan_output_counts(
             # direct listing so unrelated nested diagnostic files cannot inflate
             # the emitted asset count.
             files = [path for path in type_dir.iterdir() if path.is_file()]
-        file_counts[type_name] = len(files)
+        files = [path for path in files if ANIMESTUDIO_DOCUMENT_STORE_SUFFIX not in path.name]
+        stored = sum(counts.get(type_name, 0) for counts in staged_stores.values())
+        file_counts[type_name] = len(files) + stored
         marker_counts[type_name] = sum(
             1 for path in files if animestudio_is_marker_output_path(path, type_name)
         )
+        marker_suffixes = animestudio_convert_output_marker_suffixes(type_name)
+        if stored and marker_suffixes:
+            for store_path, counts in staged_stores.items():
+                if not counts.get(type_name):
+                    continue
+                store = UnityObjectStore(store_path)
+                try:
+                    marker_counts[type_name] += sum(
+                        1 for name in store.names(type_name) if name.lower().endswith(marker_suffixes)
+                    )
+                finally:
+                    store.close()
     plan["item_file_counts"] = file_counts
     plan["item_marker_file_counts"] = marker_counts
 
@@ -4064,6 +4350,7 @@ def run_animestudio_stage(
     names: str | Path | None = None,
     containers: str | Path | None = None,
     filter_data: str | Path | None = None,
+    document_store_shard: bool = False,
     types: tuple[str, ...] = (),
     command_name: str | None = None,
     secondary_export: AnimeStudioSecondaryExport | None = None,
@@ -4179,6 +4466,26 @@ def run_animestudio_stage(
     if expanded_types:
         cmd.append("--types")
         cmd.extend(expanded_types)
+    # Every document destined for Unity.sqlite goes into a staged store; media
+    # remains loose so its file-based conversion cache and browser paths work.
+    document_store: Path | None = None
+    if stage in ("json_by_type", "convert_by_type") and export_type in ("JSON", "Convert"):
+        document_store = animestudio_document_store_path(
+            output_root, source, tuple(types), stage=stage,
+            filter_data=Path(filter_data) if document_store_shard and filter_data is not None else None,
+        )
+    elif (
+        secondary_export is not None
+        and secondary_export.stage == ANIMESTUDIO_DOCUMENT_STORE_STAGE
+        and secondary_export.export_type == "JSON"
+    ):
+        document_store = animestudio_document_store_path(output_root, source, tuple(secondary_export.types))
+    if document_store is not None:
+        ensure_dir(document_store.parent)
+        for stale_path in (document_store, document_store.with_name(document_store.name + ".partial")):
+            if stale_path.exists():
+                stale_path.unlink()
+        cmd.extend(["--document_store", str(document_store)])
     if secondary_export is not None:
         ensure_dir(secondary_export.output_path)
         cmd.extend([ANIMESTUDIO_SECONDARY_EXPORT_FLAGS["output"], str(secondary_export.output_path)])
@@ -4405,6 +4712,7 @@ def prepare_animestudio_asset_shards(
 
     cached_entries: list[dict[str, Any]] = []
     pending_entries: list[dict[str, Any]] = []
+    store_stamps = animestudio_convert_store_stamps(output_root, source, type_name)
     for entry in matched_entries:
         output_path = predict_animestudio_convert_output_path(output_root, source, stage, entry)
         if output_path is None:
@@ -4415,7 +4723,11 @@ def prepare_animestudio_asset_shards(
         if cache_enabled:
             manifest_key = asset_entry_manifest_key(entry, item, plan)
             cache_key = asset_entry_cache_key(entry, item, plan)
-            if asset_cache_entry_is_valid(asset_cache, manifest_key, cache_key, output_path):
+            if asset_cache_entry_is_valid(
+                asset_cache, manifest_key, cache_key, output_path,
+                store_stamp=store_stamps.get(output_path.name.casefold()),
+                store_backed=is_store_file(output_path.name),
+            ):
                 cached_entries.append(entry)
                 continue
         pending_entries.append(entry)
@@ -4605,6 +4917,30 @@ def finalize_animestudio_asset_shard_work(
         result_by_shard[index]
         for index in sorted(result_by_shard)
     ]
+    if stage == "convert_by_type":
+        completed_calls: list[Path] = []
+        for shard in shards:
+            result = result_by_shard.get(int(shard["index"]))
+            if result is None or result.returncode != 0:
+                continue
+            call_store = animestudio_document_store_path(
+                output_root, source, (asset_work["type_spec"],),
+                stage=stage, filter_data=Path(shard["filter_data"]),
+            )
+            if not call_store.is_file():
+                raise UnityStoreError(f"completed Convert shard has no document store: {call_store}")
+            completed_calls.append(call_store)
+        if completed_calls:
+            persistent = animestudio_convert_store_path(output_root, source, type_name)
+            with UnityObjectStoreWriter(persistent) as writer:
+                for call_store in completed_calls:
+                    writer.merge_staged(type_name, [call_store], remove_missing=False)
+            for call_store in completed_calls:
+                call_store.unlink()
+    document_stamps = (
+        animestudio_convert_store_stamps(output_root, source, type_name)
+        if stage == "convert_by_type" else {}
+    )
     updated_cache_entries = 0
     if asset_work["cache_enabled"]:
         for shard in shards:
@@ -4619,6 +4955,7 @@ def finalize_animestudio_asset_shard_work(
                 output_root=output_root,
                 source=source,
                 stage=stage,
+                store_stamps=document_stamps,
             )
         # The in-memory cache was loaded from disk and is only mutated by adding
         # entries, so when nothing was updated the file is unchanged; skip the write.
@@ -4891,19 +5228,9 @@ def build_animestudio_stage_merge_attempt(
         attempt["option_mismatches"] = mismatches
         return attempt
 
-    attempt.update(
-        {
-            "effective_mode": "aggressive",
-            "mergeable": True,
-            "command_name": f"{source}_animestudio_{primary_stage}_{secondary_stage}_merged",
-            "primary_items": [item["item_name"] for item in primary_items],
-            "secondary_items": [item["item_name"] for item in secondary_items],
-            "primary_types": list(primary_types),
-            "secondary_types": list(secondary_types),
-            "asset_cache_bypassed": bool(primary_options.get("asset_cache_enabled")),
-            "reason": "Convert primary export can carry JSON as a secondary export",
-        }
-    )
+    # The CLI has one document-store target per process. Each stage must keep
+    # its own completed store so its type cache and publication gates agree.
+    attempt["reason"] = "Convert and JSON document stores require separate stage calls"
     return attempt
 
 
@@ -5231,6 +5558,7 @@ def run_animestudio_stage_plan(
                         "export_type": options.get("export_type"),
                         "names": shard["names"],
                         "filter_data": shard["filter_data"],
+                        "document_store_shard": True,
                         "types": (type_spec,) if type_spec is not None else (),
                         "command_name": command_name,
                         "object_index_enabled": object_index_enabled,
@@ -5658,7 +5986,7 @@ def summarize_animestudio_source(
             counts = plan.get("item_file_counts")
             if isinstance(counts, dict) and counts:
                 return sum(int(value) for value in counts.values())
-        return count_files(animestudio_stage_dir(output_root, source, stage_name))
+        return count_animestudio_stage_outputs(output_root, source, stage_name)
 
     result: dict[str, Any] = {
         "root": str(animestudio_source_root(output_root, source)),
@@ -5823,6 +6151,11 @@ def build_manifest_missing_text(
     return lines
 
 
+def should_build_vfs_indexes(*, skip_vfs_index: bool, skip_animestudio: bool) -> bool:
+    """Overlay identity needs fresh indexes for every AnimeStudio scope."""
+    return not skip_vfs_index and not skip_animestudio
+
+
 def main() -> int:
     args = parse_args()
     game_root = args.game_root.resolve()
@@ -5847,9 +6180,10 @@ def main() -> int:
     selected_sources = ordered_unique(args.sources)
     selected_animestudio_stages = ordered_unique(args.animestudio_stages)
     animestudio_object_index_requested = bool(args.animestudio_object_index)
+    extraction: ExtractionScope = args.extraction
     animestudio_object_index_enabled = animestudio_object_index_is_enabled(
         animestudio_object_index_requested,
-        args.animestudio_scope,
+        extraction,
         bool(args.skip_animestudio),
     )
     managed_reference_diagnostics_enabled = bool(args.animestudio_managed_reference_diagnostics)
@@ -5881,22 +6215,22 @@ def main() -> int:
             "at least one --animestudio-managed-reference-diagnostic-type"
         )
     if managed_reference_diagnostics_enabled and (
-        args.skip_animestudio or args.animestudio_scope not in {"story", "all"}
+        args.skip_animestudio or "MonoBehaviour" not in extraction.json_types
     ):
         raise SystemExit(
-            "--animestudio-managed-reference-diagnostics requires a Story or all-scope "
-            "AnimeStudio MonoBehaviour JSON export"
+            "--animestudio-managed-reference-diagnostics requires a MonoBehaviour JSON export"
         )
-    structured_dump_plan = structured_dump_steps(args.structured_dump_mode)
-    animestudio_stage_options = animestudio_stage_options_for_scope(args.animestudio_scope, args.animestudio_asset_mode)
-    animestudio_asset_type_filter = normalize_animestudio_asset_type_filter(tuple(args.animestudio_asset_types))
-    if animestudio_asset_type_filter and args.animestudio_scope == "story":
-        raise SystemExit("--animestudio-asset-types applies only to asset or all AnimeStudio scopes")
-    apply_animestudio_asset_type_filter(animestudio_stage_options, animestudio_asset_type_filter)
-    vfs_index_enabled = not args.skip_vfs_index and not args.skip_animestudio and args.animestudio_scope != "story"
+    structured_dump_plan = structured_dump_steps(extraction.structured_blocks)
+    animestudio_stage_options = animestudio_stage_options(extraction)
+    # Overlay skip lists need both layers' indexes even for Story-only exports.
+    # A first-time Story export has no cached indexes to reuse.
+    vfs_index_enabled = should_build_vfs_indexes(
+        skip_vfs_index=args.skip_vfs_index,
+        skip_animestudio=args.skip_animestudio,
+    )
     webui_texture_name_filter: Path | None = None
     webui_texture_name_filter_signature: dict[str, Any] | None = None
-    if not args.skip_animestudio and args.animestudio_scope != "story" and args.animestudio_asset_mode == "focused":
+    if not args.skip_animestudio and extraction.webui_textures_only:
         webui_texture_name_filter, webui_texture_name_filter_signature = write_webui_texture_name_filter(output_root)
     if args.animestudio_jobs < 1:
         raise SystemExit("--asset-jobs must be at least 1")
@@ -5984,16 +6318,16 @@ def main() -> int:
     log(f"  selected sources: {', '.join(selected_sources)}")
     log(f"  structured export: {'disabled' if args.skip_structured else 'enabled'}")
     if not args.skip_structured:
-        log(f"  structured dump mode: {args.structured_dump_mode}")
+        log(f"  structured blocks: {', '.join(extraction.structured_blocks)}")
         log(f"  structured dump plan: {describe_structured_dump_steps(structured_dump_plan)}")
     log(f"  vfs index: {'enabled' if vfs_index_enabled else 'disabled'}")
     log("  raw vfs export: disabled")
     log(f"  animestudio export: {'disabled' if args.skip_animestudio else 'enabled'}")
-    log(f"  animestudio scope: {args.animestudio_scope}")
-    log(f"  animestudio asset mode: {args.animestudio_asset_mode}")
+    log(f"  animestudio JSON classes: {', '.join(extraction.json_classes) or 'none'}")
     log(
-        "  animestudio asset type filter: "
-        f"{', '.join(sorted(animestudio_asset_type_filter)) if animestudio_asset_type_filter else 'none'}"
+        "  animestudio Convert classes: "
+        f"{', '.join(extraction.convert_classes) or 'none'}"
+        f"{' (WebUI-referenced Texture2D names only)' if extraction.webui_textures_only else ''}"
     )
     log(f"  animestudio stages: {', '.join(selected_animestudio_stages)}")
     log(f"  animestudio type job mode: {args.animestudio_type_job_mode}")
@@ -6041,8 +6375,8 @@ def main() -> int:
         )
     if animestudio_object_index_requested and not animestudio_object_index_enabled:
         log(
-            "  animestudio object index ignored: asset-only scope cannot replace "
-            "the broad Story object index"
+            "  animestudio object index ignored: no MonoBehaviour or PlayableDirector "
+            "JSON is exported, so the Story object index cannot be replaced"
         )
     if webui_texture_name_filter is not None and webui_texture_name_filter_signature is not None:
         log(
@@ -6077,7 +6411,7 @@ def main() -> int:
                 output_root=output_root,
                 selected_sources=selected_sources,
                 current_source_sizes=source_sizes,
-                structured_dump_mode=args.structured_dump_mode,
+                structured_dump_mode=args.structured_dump_mode or "focused",
             )
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
@@ -6111,9 +6445,9 @@ def main() -> int:
         "dummy_dlls_source": animestudio_dummy_dll_source,
         "dummy_dll_signature": animestudio_dummy_dll_signature,
         "game": ANIMESTUDIO_GAME,
-        "scope": args.animestudio_scope,
-        "asset_mode": args.animestudio_asset_mode,
-        "asset_type_filter": sorted(animestudio_asset_type_filter),
+        "json_types": list(extraction.json_classes),
+        "convert_types": list(extraction.convert_classes),
+        "webui_textures_only": extraction.webui_textures_only,
         "webui_texture_name_filter": str(webui_texture_name_filter) if webui_texture_name_filter else None,
         "webui_texture_name_filter_signature": webui_texture_name_filter_signature,
         "mono_behaviour_type_tree_priority": animestudio_mono_behaviour_type_tree_priority,
@@ -6231,6 +6565,8 @@ def main() -> int:
             for step in source_structured_dump_plan:
                 command_name = structured_dump_command_name(source, step, len(source_structured_dump_plan))
                 cmd = [str(structured_dumper), "dump", "-s", str(source_root), "-o", str(structured_out)]
+                if "json-data" in (step.get("block_types") or ()):
+                    cmd.extend(["--packed-game-store", str(structured_out / "packed_game_files.sqlite")])
                 for block_type in step.get("block_types") or ():
                     cmd.extend(["-b", str(block_type)])
                 for file_regex in step.get("file_regexes") or ():
@@ -6286,7 +6622,8 @@ def main() -> int:
                 "returncode": (
                     current_structured_returncode if current_structured_returncode is not None else previous_structured.get("returncode")
                 ),
-                "dump_mode": args.structured_dump_mode,
+                "dump_mode": args.structured_dump_mode or ("custom" if args.structured is not None else "focused"),
+                "blocks": list(extraction.structured_blocks),
                 "dump_plan": describe_structured_dump_steps(source_structured_dump_plan),
                 "steps": structured_steps,
                 "block_types": sorted(
@@ -6390,7 +6727,6 @@ def main() -> int:
 
             carrier_refresh_will_run = (
                 not args.report_only
-                and args.animestudio_scope in {"story", "all"}
                 and animestudio_object_index_plan_is_relevant(
                     animestudio_stage_plans
                 )
@@ -6673,6 +7009,23 @@ def main() -> int:
                 tuple(layer for layer in INSTALLED_LAYERS if (game_root / layer / "VFS").is_dir()),
                 completed_types=unity_types_completed,
             )
+        refreshed_blocks: tuple[str, ...] = ()
+        if "structured" in publish_summary:
+            refreshed_blocks = extraction.structured_blocks
+        elif structured_incremental_manifest is not None:
+            refreshed_blocks = STRUCTURED_LEVELS[
+                str(structured_incremental_manifest.get("structuredDumpMode") or "focused")
+            ]
+        publish_summary["provenance"] = record_extraction_provenance(
+            output_root,
+            structured_blocks=refreshed_blocks,
+            unity_types=tuple((publish_summary.get("unity") or {}).get("types") or ()),
+            partial_unity_types=partial_unity_exports(args, extraction),
+            asset_map_refreshed=not args.skip_animestudio and "maps" in selected_animestudio_stages,
+            source_sizes=source_sizes,
+            previous_summary=previous_summary,
+            run_id=report_run_id,
+        )
 
     unresolved_dir = ensure_dir(ExportLayout(output_root).extraction_failures_dir)
     log(f"writing unresolved summaries to {unresolved_dir}")
@@ -6840,11 +7193,10 @@ def main() -> int:
     else:
         md_lines.append(f"- Executable: `{animestudio}`")
         md_lines.append(f"- Game: `{ANIMESTUDIO_GAME}`")
-        md_lines.append(f"- Scope: `{args.animestudio_scope}`")
-        md_lines.append(f"- Asset mode: `{args.animestudio_asset_mode}`")
+        md_lines.append(f"- JSON classes: `{', '.join(extraction.json_classes) or 'none'}`")
         md_lines.append(
-            "- Asset type filter: "
-            f"`{', '.join(sorted(animestudio_asset_type_filter)) if animestudio_asset_type_filter else 'none'}`"
+            f"- Convert classes: `{', '.join(extraction.convert_classes) or 'none'}`"
+            + (" (WebUI-referenced Texture2D names only)" if extraction.webui_textures_only else "")
         )
         md_lines.append(f"- Selected stages: `{', '.join(selected_animestudio_stages)}`")
         md_lines.append(f"- Type job mode: `{args.animestudio_type_job_mode}`")
