@@ -13,198 +13,19 @@ the binding evidence order that several pages and the source graph reuse.
 
 ## Current status
 
-Asset extraction and discovery are strong. The project can index images,
-models, materials, textures, shaders, animations, effects, audio, and video;
-resolve many PathID-backed dependencies; and connect authored gameplay or Story
-records to asset candidates with explicit provenance.
+Asset extraction and discovery are strong: the project indexes every asset
+kind, resolves many PathID-backed dependencies, and connects authored gameplay
+or Story records to asset candidates with explicit provenance. The main gap is
+semantic binding. Exporting an object does not prove its live prefab
+composition, selected material variant, animation state, effect activation, or
+placement time.
 
-The main gap is semantic binding. Exporting an object does not prove its live
-prefab composition, selected material variant, animation state, effect
-activation, or placement time.
-
-## Refresh
-
-```bat
-.\export.bat assets --from-game
-.\export.bat --from-game
-.\export.bat debug --from-game
-python -m scripts.webui.assets.build_assets
-python tools\endfield_source_graph.py build
-```
-
-A page run exports only the Unity classes its build tasks read
-(`scripts/webui/pages.py`); `debug` exports every class. The exporter's asset
-levels (`focused`, `default`, `debug`) remain presets for direct use.
-
-Primary outputs:
-
-```text
-<export root>/game/Unity.sqlite
-<export root>/game/Unity/<Type>/
-<export root>/game/Audio/
-webui/data/assets/index.json
-webui/data/assets/gameplay_refs.json
-webui/data/assets/story_media.json
-webui/data/assets/videos.json
-webui/data/lang/<LANG>/audio/index.json
-webui/data/lang/<LANG>/audio/{events,media}.json
-webui/data/lang/<LANG>/gameplay/sound_effects.json
-reports/assets/
-reports/source_graph/
-```
-
-## The MonoBehaviour corpus is a few hundred classes, not a million files
-
-MonoBehaviour is the largest exported type by a wide margin -- more objects
-than every other exported Unity type combined -- and every one of them decodes
-against an exact serialized TypeTree. What the export does not carry is the
-class name: `m_Script` points into a MonoScript CAB outside the WebUI export
-scope, so each object resolves only to an anonymous `scriptPathId`.
-
-Two facts make that tractable, and both are measured rather than assumed:
-
-- **A script PPtr is a class key, and the corpus collapses onto it.** Objects
-  sharing a `scriptPathId` share one serialized layout, so the file count
-  reduces to a few hundred distinct classes.
-  `scripts/game_data/monobehaviour/census.py` measures the collapse and records
-  each class's layout, object count and source containers.
-- **One MonoScript container names all of them**, and it is
-  `CAB-5f527d7b7706baccdad9f794cf46420c`, holding the ~1,000 MonoScripts that
-  carry `m_ClassName`, `m_Namespace` and `m_AssemblyName` outright.
-  `scripts/game_data/monobehaviour/monoscript_catalog.py` parses the dump into the
-  `scriptPathId -> class` table. Two independent routes name that CAB rather
-  than one: every resolved `m_Script` in the corpus points at it across both
-  VFS roots, and it is separately the most depended-on container in both
-  CABMaps, at dependency slot 1 in 99.96% of the streaming CABs that reference
-  it while declaring no dependencies itself. Resolve its chunk path through the
-  CABMap at the time of use rather than recording it -- it sits in block
-  `0CE8FA57`, which ships a *different chunk filename in each VFS root*, so a
-  recorded literal picks one root and rots.
-
-A second, independent route exists and is worth keeping as a check rather than
-a fallback. Unity serializes a subset of a class's IL2CPP field declaration
-chain and never reorders it, so a layout must be an ordered subsequence of that
-chain, and the class that declares the layout's last field is the most-derived
-one. `scripts/game_data/monobehaviour/script_names.py` runs both and reports
-their agreement. Two limits are structural, not defects: a class that
-serializes nothing is invisible to the layout route, and a subclass adding no
-serialized field writes a byte-identical layout, so layout evidence names the
-field-contributing base and must state the alternatives instead of choosing.
-The script PPtr settles both.
-
-A named class is an exact identity for the *script*. It does not establish what
-an instance owns, when it runs, or that anything reaches it at runtime; that is
-still the binding-evidence order below.
-
-## What a named class owns is measured per field, not inferred from its name
-
-`scripts/game_data/monobehaviour/field_semantics.py` sweeps the whole corpus a
-second time and records, for each of the 44,844 flattened field paths across
-the 1,045 classes, the declared TypeTree type beside what the 1.35M objects
-actually hold there. Declaration and observation are kept apart because they
-answer different questions: a declared `PPtr` *is* a reference field whether or
-not anything fills it, and 1,029 of the 4,931 declared reference fields are
-null in every object in the corpus. So is a third of the corpus's fields: over
-16,000 hold one single value across every instance, which is authored default,
-not configuration.
-
-**A PathID resolves to exactly one exported object in this export, and that is
-measured rather than assumed.** 1,874,804 exported objects carry 1,874,804
-distinct PathIDs with no collision in any type directory. Resolution is still
-tiered, because uniqueness inside the export does not make a cross-file PPtr a
-proven binding:
-
-- `exact` -- the container the CABMap rule predicts is the one the resolved
-  file names. That is source root plus PathID, the second rung of the evidence
-  order below.
-- `container_only` -- the container is named and nothing exported sits at that
-  PathID to check it against. This is most of the corpus, because most
-  MonoBehaviour references point at GameObjects, Transforms and MonoScripts the
-  export scope never writes. It is weaker than a verified row and much stronger
-  than an unresolved one, and it is the tier that used to read as nothing.
-- `contradicted` -- the prediction and the target disagree. None in the corpus:
-  4,998 of 4,998 checks agree. The one contradiction this produced before the
-  root selection was fixed is recorded in
-  [`containers_cabmap.md`](containers_cabmap.md), because how little it showed
-  is the lesson.
-- `unresolved` -- the CABMap could not answer. The sweep never falls back to
-  matching a PathID globally.
-
-**A cross-file reference is no longer structural.** `m_FileID` indexes the
-referrer's ordered CABMap dependency list at `m_FileID - 1`; the rule, its
-measurement and the two-root trap it depends on live in
-[`containers_cabmap.md`](containers_cabmap.md). Every one of the 3,902 filled
-reference fields now names a container, where before the rule only 1,205 did
-and 2,697 resolved to nothing.
-
-**The rule reaches only the types that record where they came from**, and
-Material is not one of them. Material, TextAsset and AnimatorOverrideController
-carry no provenance in the export, so their cross-file references -- including
-all 243,124 material-to-texture links, 97.7% of them cross-file -- still rest
-on a global PathID match that cannot be checked. That is an exporter gap, and
-it is stated in [`extraction_pipeline.md`](extraction_pipeline.md).
-
-Three results worth carrying, all at the top of the corpus by object count:
-
-- **`Beyond.UI.UIImage.imgRefPath` carries authored asset paths**
-  (`Assets/Beyond/Arts/UI/Sprites/...`), which is the *first* rung of the
-  evidence order rather than a PathID join. Its `m_Sprite` is filled in the
-  large majority of 226,436 objects, and that reference now names its
-  container.
-- **Timeline's clip fields are the animation binding at scale.**
-  `AnimationPlayableAsset.m_Clip` is filled in essentially every one of 188,970
-  objects, and `DialogNPCMorphPlayableAsset.m_Clip` in all 9,082.
-- **The `autoBindingPath` family is a scene-hierarchy binding, not a name.**
-  The Dialog tracks (`DialogSkeletalMorphTrack`, `DialogMuteAutoBlinkTrack`,
-  `DialogLipSyncTrack`) spell a transform path that names the character prefab
-  and its `FacialMorphCtrlGO`, and `CutsceneRootComponent._director` resolves
-  to a `PlayableDirector` at the exact tier in every one of its 1,284 objects.
-
-Per-class and per-field rows belong to
-`reports/assets/monobehaviour_field_semantics.json`; the command is in
-`scripts/README.md`. A row there describes a *layout and its occupancy*. It
-still does not establish when a class runs or that a filled reference is
-reached at runtime.
-
-## Which string fields are table keys, and why numeric ones cannot be
-
-`scripts/game_data/monobehaviour/table_keys.py` joins the recorded field values
-against the 724 exported tables' key sets. The join's whole shape comes from
-one measurement: of 269,570 distinct keys, the 178,582 numeric ones are unique
-to a single table **0.5%** of the time -- `"1"` is a key in 94 tables -- while
-the 90,988 named ones are unique **90.5%** of the time. A numeric match
-therefore names nothing and is refused outright; pooling the two would convert
-a bounded candidate list into thousands of invented references.
-
-Requiring *every* observed value to belong is what makes the rest hold up.
-`UIStateController.states[].stateName` misses 59 of its 61 values and coincides
-with `FactoryMachineCraftModeTable` on exactly one (`normal`); a
-majority-match rule would have called it a factory key. Fields that match on
-few values are reported and flagged rather than trusted, and a field matching
-several tables keeps them all, because 9.5% of named keys legitimately belong
-to more than one.
-
-The bindings this establishes are strongest where Story needs them:
-`DialogLipSyncPlayableAsset._trunkId` and `DialogTrunkPlayableAsset._trunkId`
-are `DialogTextTable` keys, `DialogOptionPlayableAsset.options[]._optionId` is
-a `DialogOptionTable` key, and `UIButton.hintTextId` is a `TextTable` key --
-each over the full 64-value sample.
-
-A match says the values are drawn from that key set. It does not establish
-that any consumer reads the field as a key.
-
-**A field no table fully covers is graded by how much its best table covers,
-and that axis matters more than it looks.** The tempting split -- values in
-another table versus values in none -- is the wrong one: `states[].stateName`
-has 59 of 61 values in no table, and reading those as unresolved ids would
-dress a single coincidental hit as evidence. It is simply not a key field.
-Above a dominant share of 0.75 the field *is* that table's key with
-exceptions, and only then are the exceptions worth chasing. That leaves 18
-fields whose unresolved ids are a real queue, and the two largest are
-different in kind: `UIText._textId`'s 13 are mostly `PH_*` authoring
-placeholders, while `SubtitlePlayableAsset._textId`'s are cutscene and FMV
-subtitle ids that resolve nowhere at all -- a Story finding, owned by
-[`../webui/story_recovery.md`](../webui/story_recovery.md).
+Every exported Unity type is already in a decoded or standard format:
+AnimationClip as YAML with its curves and keyframes; Animator, AnimatorController,
+AnimatorOverrideController, PlayableDirector, Material, MonoBehaviour and
+TextAsset as JSON; Mesh as FBX; Texture2D as images; Sprite as crop documents.
+No binary framing is left to recover here, which is why MonoBehaviour
+*semantics*, not parsing, is what this file records as open.
 
 ## Evidence order
 
@@ -220,95 +41,266 @@ Prefer:
 
 Preserve source roots, PathIDs, LOD/state suffixes, material slots, texture
 roles, and evidence kind. Never treat a global PathID or similar filename as a
-unique binding.
+unique binding; keep bindings at `(source root, CAB, PathID)`.
+
+## Bundle identity and dependency joins
+
+Each join below is a stored container relationship; none establishes Unity
+object ownership, load order, or runtime use. The gates and their full readings
+are `scripts/game_data/cabmap.py`, `bundle_cab_dependency_corpus.py`,
+`bundle_cab_exceptions.py` and `bundle_external_identity_corpus.py`; the
+manifest fields are proved by `scripts/game_data/contracts/bundle_manifest_native.json`.
+Per-build counts and source hashes are in `reports/animestudio/`.
+
+- **Container location is exact.** The VFS outer ledger verifies each selected
+  logical Bundle's bytes and the inner ledger its Unity structure; joining the
+  Persistent CABMap's source root, chunk path and offset to those spans gives
+  every added or changed Bundle file one named CAB.
+- **An AssetMap row is source containment, not an object check.** Some new
+  bundles have no AssetMap row although their CABMap offsets and inner
+  structure verify: an AssetMap coverage gap, never an empty container. Select
+  StreamingAssets fallback rows by exact source chunk **and offset
+  containment** in a verified current Bundle span; chunk membership alone
+  cannot promote the fallback AssetMap to current overlay evidence.
+- **Path/physical-Bundle disagreements are dependency placements.** Every
+  Persistent disagreement and nearly every StreamingAssets one places the
+  physical Bundle in the path's listed Bundle's `directDependencies`, with the
+  reciprocal reverse entry.
+- **The CAB graph matches the manifest.** Every projected external CAB is in
+  the manifest direct list (plus a small manifest-only residual that the native
+  loaders can consume, cause unproved); the reverse list is its inverse and
+  `dependencies` its transitive closure. Unselected CAB targets stay unresolved.
+- **`unity default resources` is an authored serialized identity**: an indexed
+  pointer through that external reaches the `Capsule` Mesh in the exact-name
+  installed Resources file. A second, CAB-shaped external stays unlocated. The
+  resolver binding still needs a native or live trace.
+- **AssetMap labels from before the ordinal-interning fix are historical.** The
+  apparent no-dependency fallback residual was an exporter-label bug:
+  `StringCache.Get` in AnimeStudio's `AssetMap.cs` interned by CRC32 alone, so a
+  same-CRC path could replace the authored key; every corrected key (the
+  Bundle's own `AssetBundle.m_Container` key) maps to that Bundle in both
+  manifests. A smaller UI subset's old labels have a *different* CRC from the
+  raw keys, so their mislabel mechanism remains open.
+- **The no-AssetMap group is parse-only classes.** A ledger-matched dump and an
+  opt-in metadata map agree on every `(logical file, CAB, type, PathID)`: mostly
+  scene bundles (`AssetBundle`, `GameObject`, `Transform`, `PlayableDirector`),
+  the rest controllers or avatars, each `AssetBundle` holding one authored
+  `m_Container` path (level sequences, cutscene transitions, dialog timelines,
+  UI model controllers, one avatar). All six classes are parse-only in the
+  normal CLI configuration, so `AssetsHelper.BuildAssetMap` never emits them:
+  that explains the gap without claiming empty bundles or ruling out others.
+
+## Refresh
+
+```bat
+.\export.bat assets --from-game
+.\export.bat --from-game
+.\export.bat debug --from-game
+python -m scripts.webui.assets.build_assets
+python tools\endfield_source_graph.py build
+```
+
+A page run exports only the Unity classes its build tasks read
+(`scripts/webui/pages.py`); `debug` exports every class. Primary outputs:
+`<export root>/game/{Unity.sqlite,Unity/<Type>/,Audio/}`,
+`webui/data/assets/{index,gameplay_refs,story_media,videos}.json`,
+`webui/data/lang/<LANG>/audio/{index,events,media}.json`,
+`webui/data/lang/<LANG>/gameplay/sound_effects.json`, `reports/assets/` and
+`reports/source_graph/`.
+
+## MonoBehaviour: from anonymous objects to named fields
+
+Every MonoBehaviour decodes against an exact serialized TypeTree, but the export
+carries only an anonymous `scriptPathId`: `m_Script` points into a MonoScript CAB
+outside the export scope. The `scripts/game_data/monobehaviour/` modules close
+that in steps, each measured; their docstrings hold the full rules and the
+commands are in `scripts/README.md`.
+
+| Module | Establishes | Does not establish |
+| --- | --- | --- |
+| `census.py` | objects sharing a `scriptPathId` share one layout; the corpus collapses to a few hundred classes | any name |
+| `monoscript_catalog.py` | `scriptPathId -> class` from the one MonoScript CAB every `m_Script` reaches | what an instance owns |
+| `script_names.py` | an independent layout-to-IL2CPP-class check | a class that serializes nothing, or which subclass of a field-contributing base |
+| `field_semantics.py` | per field: declared TypeTree type beside observed occupancy, and PPtr tiers `exact`/`container_only`/`contradicted`/`unresolved` | when a class runs, or that a filled reference is reached |
+| `table_keys.py` | string fields whose values are keys of an exported Table | that a consumer reads the field as a key |
+
+A named class is an exact identity for the *script*, and a field row describes a
+layout and its occupancy; ownership and runtime use still follow the evidence
+order. Conclusions worth carrying:
+
+- **Resolution.** PathIDs are measured unique across this export, and no CABMap
+  prediction is contradicted where the target is exported. Most references are
+  `container_only` (their GameObject, Transform or MonoScript targets are never
+  exported); every filled reference field names a container through the
+  ordered-dependency rule ([`containers_cabmap.md`](containers_cabmap.md)), with
+  no fallback to a global PathID match. A field null in every object, or
+  holding one value in every instance (about a third of all fields), records an
+  authored default, not configuration.
+- **Material links are uncheckable.** Material, TextAsset and
+  AnimatorOverrideController carry no provenance, so Material texture links rest
+  on a global PathID match the export cannot check
+  ([`extraction_pipeline.md`](extraction_pipeline.md) owns the exporter gap).
+- **Bindings at scale.** `Beyond.UI.UIImage.imgRefPath` carries authored asset
+  paths (`Assets/Beyond/Arts/UI/Sprites/...`), the first rung of the evidence
+  order, and its `m_Sprite` is filled in most objects and names its container.
+  Timeline clip fields are the animation binding at scale:
+  `AnimationPlayableAsset.m_Clip` is filled in nearly every object and
+  `DialogNPCMorphPlayableAsset.m_Clip` in all. The `autoBindingPath` family
+  (`DialogSkeletalMorphTrack`, `DialogMuteAutoBlinkTrack`, `DialogLipSyncTrack`)
+  is a scene-hierarchy binding that names the character prefab and its
+  `FacialMorphCtrlGO`, and `CutsceneRootComponent._director` resolves to a
+  `PlayableDirector` at the exact tier in every object.
+- **Table keys.** Numeric keys are refused outright, and a `key_of` needs every
+  observed value in one table (`UIStateController.states[].stateName` coincides
+  with a factory table on one value of 61 and is not a key field). Story's
+  strongest bindings: `DialogLipSyncPlayableAsset._trunkId` and
+  `DialogTrunkPlayableAsset._trunkId` are `DialogTextTable` keys,
+  `DialogOptionPlayableAsset.options[]._optionId` a `DialogOptionTable` key,
+  and `UIButton.hintTextId` a `TextTable` key, each over its full value sample.
+  Grade a partial field by its best table's coverage, not by "in another table
+  versus in none": only a dominant table (`mostly_key_of`) makes exceptions
+  worth chasing. `UIText._textId`'s are mostly `PH_*` placeholders;
+  `SubtitlePlayableAsset._textId`'s are cutscene and FMV subtitle ids that
+  resolve nowhere, a Story finding owned by
+  [`../webui/story_recovery.md`](../webui/story_recovery.md).
+
+## Controllers and Sprites
+
+`m_Controller` is structural, not an opaque blob: layers, state machines, state
+and transition constants, blend-tree nodes, parameter ids and `m_TOSData`
+transform paths all decode, so the controller-to-clip chain a character render
+needs closes from the export alone, at the exact-serialized-object tier. For
+example `P_actor_endminf_ui_overview_01` is one layer, one state machine and
+one entry-selected state playing `A_actor_endminf_ui_overview_02`, a 60 fps
+uncompressed clip with position, rotation and scale curves, and the
+`ui_overview_start`/`_loop`/`_to_*` clips the lab's targets name all exist.
+Runtime state selection is not observed.
+
+A Sprite is exported as a crop of its Texture2D (`endfield.sprite-crop.v1`)
+that reproduces AnimeStudio's image pixel for pixel; the crop steps, evidence
+and texture PPtr join are in `scripts/game_data/sprite_crops.py`. Name matching
+is not identity.
 
 ## Current strengths
 
-- WebUI asset and Story-media indexes.
-- Renderable asset-entity grouping for many models and prefabs.
-- Material, texture, shader, controller, animation, audio, and video links.
-- Compact Gameplay-to-image/model links and playable Wwise-event media
-  candidates for projectiles, character skills, and bounded enemy ownership.
-- Debug-only audio semantics that keep Wwise Event identity, numeric media id,
-  and each physical `(storageRoot, relativePath)` occurrence separate. Same-id
-  files in different folders or language/shared scopes remain visible instead
-  of being collapsed by filename stem.
-- Exact character post-model enumeration and baseline prefab generation.
-- `chen` and `chenpast` are separate identities: the playable `chen` row owns
-  the `P_actor_chen_*` model family, while the historical NPC `chenpast` row
-  owns the independent `S_npc_major_chenpast_*` mesh family; their exported
-  model PathIDs do not overlap. The Characters builder keeps them as two
-  records accordingly, so folding them together is a display-layer error, not a
-  recovery conclusion. Note that `webui/overrides/character_merges.json` is
-  applied by the Characters page in the browser and never by a builder: a merge
-  entry there overrides this conclusion for every reader of the page while
-  leaving generated data correct, so a contradiction between the two is
-  invisible in the exported JSON.
-- NPC CPU-animation templates have a native-gated path rule in
-  `npc_animation_template_native`. The reconstruction audit joins the
-  resulting asset path to effective source/CAB/PathID identity and declared base
-  and blend-tree clips. A validMontages tag describes authored hierarchy, not
-  runtime montage selection or Character Info ownership.
-- Selected static world placements and gameplay/entity associations.
-
-## The animation lane needs no framing work
-
-Every exported Unity type is already in a decoded or standard format -- 101 GB
-across 1.88M files, with AnimationClip as YAML, Animator / AnimatorController /
-AnimatorOverrideController / PlayableDirector / Material / MonoBehaviour /
-TextAsset as JSON, Mesh as FBX, and Texture2D / Sprite as images. There is no
-binary framing left to recover here, which is why MonoBehaviour *semantics*,
-not parsing, is what this file records as open.
-
-`m_Controller` is structural, not an opaque blob: layers, state machines,
-state constants, transition constants, blend-tree nodes, parameter ids and the
-`m_TOSData` transform paths all decode. The chain a character render needs
-therefore closes end to end from the export alone, at the exact-serialized-
-object tier. Worked through for one character:
-`P_actor_endminf_ui_overview_01` is one layer, one state machine, one state
-with an entry-only selector transition and no state transitions, playing
-`A_actor_endminf_ui_overview_02` -- a 60 fps, 5.883 s uncompressed clip with
-position, rotation and scale curves over 435 keyframes. 3,285 Endminf clips
-exist, including the `ui_overview_start`, `_loop`, `_to_equip`, `_to_skill` and
-`_to_upgrade` set the lab's entrance-and-loop target names.
+- WebUI asset and Story-media indexes, renderable asset-entity grouping,
+  material/texture/shader/controller/animation/audio/video links, exact
+  character post-model enumeration and baseline prefabs, and selected static
+  world placements and gameplay/entity associations.
+- Gameplay-to-image/model links and playable Wwise-event media candidates for
+  projectiles, character skills, and bounded enemy ownership; debug-only audio
+  semantics keep Event identity, media id, and each physical
+  `(storageRoot, relativePath)` occurrence separate.
+- `chen` and `chenpast` are separate identities (`P_actor_chen_*` versus the
+  independent `S_npc_major_chenpast_*` mesh family, with no shared model
+  PathID), so folding them is a display-layer error.
+  `webui/overrides/character_merges.json` is applied in the browser, never by a
+  builder, so a merge there overrides this for every reader while generated
+  data stays correct and the contradiction is invisible in the exported JSON.
+- NPC CPU-animation templates have a native-gated path rule
+  (`npc_animation_template_native`) joined to effective source/CAB/PathID and
+  declared base and blend-tree clips; a validMontages tag describes authored
+  hierarchy, not runtime montage selection or Character Info ownership.
 
 ## Remaining gaps
 
-- Integer fields that are table ids remain unidentifiable from values alone,
-  and that is a property of the data rather than a missing tool: a numeric key
-  belongs to one table only 0.5% of the time. Naming them needs a consumer, not
-  a wider join.
-- The `mostly_key_of` rows are the open list worth working: 18 fields that are
-  a table's key apart from a handful of ids the tables do not hold. Each
-  remainder is either a second key space or content that does not ship, and
-  the report does not choose.
-- **How much is unexplained is a range, and the lower bound flatters us.**
-  Of 936 game-specific named classes, **382 (295,845 objects)** have no
-  class-specific signal at all under the loose test, where any non-null
-  reference counts. Requiring a reference to actually *land on something named*
-  -- a named target class, or an exported asset type rather than another
-  anonymous MonoBehaviour -- raises it to **662 classes (331,986 objects), 71%
-  of the game-specific set**. The 280 classes between the two bounds hold
-  filled references that resolve to nothing named:
-  `Beyond.UI.UIActionKeyHint` has thirteen of them and not one lands on a name.
-  Quote the range, not the floor: a filled reference is evidence that a field
-  is a reference, and no evidence about what it means. Three rules decide the
-  count and must not be relaxed if it is re-measured: the four universal fields
-  (`m_GameObject`, `m_Enabled`, `m_Script`, `m_Name`) are excluded before
-  anything counts; public engine namespaces are excluded by prefix, so game
-  namespaces such as `ScriptAnimation.*` stay in; and the class whose script
-  could not be named stays in. A string field joining a Table key set, or a
-  path-shaped string field, also counts as signal.
-- Which classes a page actually consumes is still open, and is a question about consumers rather than about layouts.
-- Exact runtime prefab assembly and entity-to-renderable ownership.
-- Material keyword/pass/queue selection and runtime overrides.
-- Native texture descriptors and mip payloads outside validated families.
-- Animation/effect activation and controller execution.
-- Modular NPC and VFX composition.
-- World visibility/spawn policy.
-- Broader exact audio/video trigger ownership.
-- Runtime-selected Wwise switch/random media and stronger inferred
-  skill/enemy sound ownership.
+- Integer fields that are table ids cannot be identified from values alone: a
+  numeric key belongs to one table only 0.5% of the time. Naming them needs a
+  consumer, not a wider join.
+- The `mostly_key_of` rows are the open list: fields that are a table's key
+  apart from a few ids the tables do not hold. Each remainder is either a
+  second key space or content that does not ship; the report does not choose.
+- **How much is unexplained is a range; quote the range, not the floor.** Of
+  the game-specific named classes, 382 (295,845 objects) have no
+  class-specific signal when any non-null reference counts; requiring a
+  reference to land on something named (a named target class or an exported
+  asset type) raises it to 662 classes (331,986 objects), 71% of the set.
+  `Beyond.UI.UIActionKeyHint` has thirteen filled references and none lands on
+  a name. Three rules decide the count and must not be relaxed on re-measure:
+  the four universal fields (`m_GameObject`, `m_Enabled`, `m_Script`,
+  `m_Name`) are excluded first; public engine namespaces are excluded by
+  prefix, so game namespaces such as `ScriptAnimation.*` stay in; and the
+  unnamed-script class stays in. A Table-key or path-shaped string field also
+  counts as signal.
+- Which classes a page actually consumes (a question about consumers, not
+  layouts); exact runtime prefab assembly, entity-to-renderable ownership, and
+  modular NPC and VFX composition; world visibility/spawn policy.
+- Material keyword/pass/queue selection and runtime overrides; native texture
+  descriptors and mip payloads outside validated families.
+- `InitChunkData` proves entity ids, names and matrices but currently exposes no
+  prefab Source+PathID/hash field. The Map page's generic entity-name to Mesh
+  family join therefore remains a presentation candidate, even if the Mesh
+  object itself has an exact AssetMap source/offset/PathID. A current example
+  is a world instance named `P_prop_com_plane+1_001_01` whose selected Mesh
+  object is cataloged under a dialog-timeline prefab: the shared family name
+  alone cannot establish that the world instance uses that prefab or Mesh.
+  A targeted parse of that dialog actor prefab did recover its AssetBundle
+  root GameObject and reciprocal Transform hierarchy, with direct MeshFilter
+  PPtrs resolving through the ordered CABMap dependency to the candidate Mesh.
+  That closes prefab-to-Mesh identity inside the actor prefab, but no serialized
+  source identity links the streamed entity to this prefab. The Unity object
+  store contains AssetBundle documents for the chain, while its published class
+  set has no GameObject, Transform, MeshFilter, or MeshRenderer documents;
+  those built-in objects required a targeted installed-bundle parse. A runtime
+  observation from the streamed entity id to a prefab resource path or root
+  source CAB+PathID would close the remaining selection gap.
+  Current runtime capture profiles do not observe this pair. The reviewed
+  Streaming native rows remain anonymous at the relevant edge, so hooking a
+  nearby scene read and correlating by name, timestamp or position would not
+  establish ownership. A capture hook needs a validated same-call entity id
+  and selected prefab identity, authenticated against the installed native
+  inputs and emitted with a bounded completeness receipt.
+  Only the separate level/HLOD/grid/cluster hash contract closes HLOD Mesh
+  identity; generic objects still need a streamed entity-to-prefab selection
+  relation or a direct entity-to-renderer/Mesh runtime observation.
+  A bounded current-build native probe rejects the generic
+  `FlatBufferConvertContextV2::ConvertAssetFromImpl_Injected` internal call as
+  that Map hook: it takes a conversion context and property key, reads the
+  context's packed property table, and returns a Unity object pointer. A
+  separate named getter reads the context's entity-name string, but the
+  reviewed native path does not bind the Init row's ID/name column, a prefab
+  root, and a source CAB+PathID/resource path at either call boundary. The
+  managed wrapper's one literal direct caller does not supply the missing
+  identity pair; other dispatch routes remain unexcluded. A checked runtime
+  entity-construction caller/selection ABI is still needed before a dedicated
+  capture profile can be built or a game session requested.
+  A further selected-build probe of the Init group branch found an ID-keyed
+  runtime map: each slot-6 numeric ID can be paired with an eight-byte value
+  from a per-group runtime vector. That value's meaning is anonymous, and the
+  conditional branch carries no prefab or renderer source identity. A bounded
+  follow-up traced the first selected new-record consumer: the second root's
+  field-3 ID is used to look up that map, the value is passed to a scope
+  setup and copied into an anonymous child record. The scope puts the first
+  root's selected row field-3 table and field-0 string into a conversion
+  context, then forwards the map value to a dynamic callback. The selected
+  group loader constructs the value as a 32-bit descriptor-slot index plus
+  a 32-bit counter, rather than a Unity object pointer. The selected default
+  callback uses the low 32 bits to index an anonymous context table and then
+  select a 576-byte group row. The immediate helpers use the row's bit masks,
+  stride and data pointer to resolve anonymous fields. The callback takes up
+  to three eight-byte field values, interns each nonzero value as an opaque
+  key, and appends 24-byte external-asset request records containing the
+  original key, a kind value, and its local index. A named native conversion
+  call appends the same record shape. A checked consumer of the matching native
+  context field walks a 24-byte request vector and deduplicates its opaque
+  keys into another local table; this consumer does not resolve a source path,
+  Unity object, or CAB+PathID. Its execution for the target scene is unproved.
+  The selected manager constructor receives the group table pointer from its
+  owner and stores both a copy of that pointer and the address of the owner's
+  pointer field. Thus the group-loader table and the callback context's first
+  pointer alias at construction. A later mutation of that owner field or
+  either manager field is not excluded by this static trace, and there is no
+  live pointer receipt. In the exported target pair, both roots carry the same entity
+  ID at the selected ordinal;
+  this remains a serialized pair witness, not a runtime load receipt. The
+  selected callback's runtime override state and the external-asset request
+  consumer have no proven edge to a prefab source identity. A hook at the
+  current ID lookup or field-intern call would record only an ID plus opaque
+  numeric state; it is not yet a useful prefab-selection capture. A dedicated
+  capture hook or WebUI join still needs that keyed resource-selection edge.
+- Animation/effect activation and controller execution; broader exact
+  audio/video trigger ownership, runtime-selected Wwise switch/random media,
+  and stronger inferred skill/enemy sound ownership.
 
 The goal is an evidence-first catalog, not a claim that every gameplay id has
 one uniquely reconstructed renderable prefab.

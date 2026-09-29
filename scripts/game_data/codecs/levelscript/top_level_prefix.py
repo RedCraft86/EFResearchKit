@@ -1,10 +1,26 @@
 """Sequential prefix codec for the current 27-member ``LevelScriptData``.
 
 The generated current wrapper fixes the member order.  This codec is narrow:
-it starts immediately after a proved complete empty ``ActionMapAssetRaw`` and
-advances through primitive members and null/empty collections only.  A positive
-collection whose element codec is not owned here is returned as a named stop;
-no later byte is scanned to guess its extent.
+it starts immediately after a proved action-map boundary (by default the
+complete 20-byte empty ``ActionMapAssetRaw``) and advances through primitive
+members and null/empty collections.  A positive collection whose element codec
+is not owned here is returned as a named stop; no later byte is scanned to
+guess its extent.
+
+Order after ``actionMap``: ``activeShapeList``, ``allowStartOnTravelPole``,
+``allowTick``, ``enablePreload``, ``endType``, ``enemies``, ``exitBuffer``,
+``exitBufferOverride``, ``interactiveLocks``, ``interactives``,
+``levelScriptType``, ``lstTemplatePath``, ``maxStage``, ``modules``, ``npcs``,
+``parentLevelScriptId``, ``properties``, ``propertyIdToKeyMap``,
+``refWorldEntityIdList``, ``resetModeWhenActive``, ``resetModeWhenEnd``; the
+final five (``scriptId`` through ``triggerVolumes``) belong to
+``top_level_tail``.  Shapes, signed enums (``END_TYPE_NAMES``,
+``LEVEL_SCRIPT_TYPE_NAMES``, ``RESET_MODE_NAMES``), finite floats, strict
+booleans and UTF-8 strings are validated at the physical cursor.  Positive
+``enemies``, ``interactiveLocks``, ``interactives``, ``modules`` and ``npcs``
+dictionaries are delegated to their exact codecs; a codec refusal becomes the
+named stop for that field.  ``properties``, ``propertyIdToKeyMap`` and
+``refWorldEntityIdList`` are accepted only null or empty.
 """
 
 from __future__ import annotations
@@ -19,6 +35,7 @@ from scripts.game_data.codecs.levelscript import (
     interactive_locks,
     interactives,
     modules,
+    npcs,
 )
 
 
@@ -301,20 +318,29 @@ def decode_empty_action_map_owner_prefix(
     ranges["modules"] = {"startOffset": start, "endOffset": module_end}
     cursor = module_end
 
-    for name in ("npcs",):
-        collection, next_cursor = _empty_collection(data, cursor, name)
-        if next_cursor is None:
-            return {
-                "startOffset": offset,
+    start = cursor
+    try:
+        npc_rows, npc_end = npcs.decode_npc_dictionary(data, cursor)
+    except npcs.LevelScriptNpcCodecError as error:
+        raise LevelScriptPrefixCodecError(str(error)) from error
+    if npc_rows is None:
+        count, _ = _i32(data, cursor, "npcs.count")
+        return {
+            "startOffset": offset,
+            "endOffset": cursor,
+            "fields": fields,
+            "ranges": ranges,
+            "stopField": "npcs",
+            "stopDetail": {
+                "startOffset": cursor,
                 "endOffset": cursor,
-                "fields": fields,
-                "ranges": ranges,
-                "stopField": name,
-                "stopDetail": collection,
-            }
-        fields[name] = collection
-        ranges[name] = {"startOffset": cursor, "endOffset": next_cursor}
-        cursor = next_cursor
+                "status": "unsupported-positive",
+                "count": count,
+            },
+        }
+    fields["npcs"] = npc_rows
+    ranges["npcs"] = {"startOffset": start, "endOffset": npc_end}
+    cursor = npc_end
 
     start = cursor
     fields["parentLevelScriptId"], cursor = _u64(

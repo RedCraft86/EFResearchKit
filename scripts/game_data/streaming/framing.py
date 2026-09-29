@@ -24,6 +24,43 @@ as six 32-bit floating-point loads, and every field-5 vector element as a
 small DevOnly subset is raw despite sharing the first two path families, so the
 decoder accepts raw only after independently validating the observed root
 shape.
+
+Root layout (both data families, every file): eight fields at vtable offsets
+(4, 8, 16, 20, 24, 28, 32, 36) in a 40-byte object. Field 0 is a u32 that is
+47 in every file. Field 1 is eight inline bytes, two int32 that equal the
+``<x>_<y>`` filename coordinates times 128 (the chunk origin; 128 is the
+chunk edge in world units, and the Global files store INT32_MAX, INT32_MIN).
+That join to the filename is exact in both families, with the axis-swapped
+and other-scale controls matching only the x == y and origin chunks. Fields
+2--7 are all uoffsets to vectors: field 2 is the terminal vector framed by
+``_parse_field2_terminal_subgraph`` (always empty in InitChunkData, populated
+in StreamingChunkData), fields 3/4/5 the parallel vectors, and 6/7 the
+paired groups. These readings are structural; they come from dereferencing,
+not from a schema.
+
+Retracted readings kept so they are not retried (memory:
+``world_chunks_families.md`` and ``world_chunk_union_vectors.md``). Fields 2,
+3 and 4 were first typed as scalar sizes because every InitChunkData file
+satisfies ``field2 == len - root - 20`` and ``field3 == len - root - 28 -
+4 * len(field 5)``. Those identities are where the uoffsets land when the
+empty field-2 vector's count word is the last four bytes of the file and the
+field-3 vector sits a fixed distance before it; every StreamingChunkData file
+fails both because its field 2 is populated. The same mistake recurred for
+the group field 3, the group field 4, root field 6's wrapper field and the
+StreamingChunkInfo row field 1: each stored value (often the short offset 4)
+is a uoffset, not a size or constant. Dereference a width-4 field before
+typing it; an arithmetic identity over every file proves a value, not a type.
+
+No managed schema matches this root. ``FBDynamicSceneChunkData`` (five
+fields) was refused: reading its Grids and TotalStr over the eight fields
+gave identical length distributions, no Grids element resolved to a table,
+and none of the six IL2CPP types with a ``GetRootAs`` accessor has eight
+fields. ``MapManager+LoaderChunkStaticData`` (grids, tiers, mists) was refused
+as fields 5/6/7: the loader config widths do not match the group widths,
+fields 6 and 7 have equal counts in every file, and the resolved field types
+make tiers and mists dictionaries while grids is a list. No ``*.fbs``,
+``*.bfbs``, ``*.schema`` or ``*.proto`` file ships in the table, json-data or
+extend-data blocks, so field names can only come from the native reader.
 """
 
 from __future__ import annotations
@@ -154,6 +191,45 @@ def _field_address(layout: dict[str, Any], index: int) -> int | None:
     return int(layout["tableOffset"]) + int(fields[index])
 
 
+def _checked_parallel_row_name(
+    family: str, name_bytes: bytes, object_id: int, row_index: int, offset: int
+) -> int | None:
+    """Check one row name against its family's stored form and parallel ID."""
+
+    if family == "streaming":
+        if name_bytes:
+            raise ValueError(
+                f"Streaming {family} field 5 row {row_index} field 0 expected "
+                f"empty bytes, actual length {len(name_bytes)}"
+            )
+        return None
+    if family != "init":
+        raise ValueError(f"unknown Streaming row-name family {family!r}")
+    if not name_bytes:
+        raise ValueError(
+            f"Streaming {family} field 5 row {row_index} field 0 expected "
+            "a name, actual empty bytes"
+        )
+    marker = name_bytes.rfind(b"#")
+    ordinal_bytes, separator, hex_bytes = name_bytes[marker + 1 :].partition(b"_")
+    if (marker < 0 or separator != b"_" or not ordinal_bytes.isdigit()
+            or not hex_bytes or any(ch not in b"0123456789abcdefABCDEF" for ch in hex_bytes)):
+        raise ValueError(
+            f"Streaming {family} field 5 row {row_index} field 0 "
+            f"name has no #decimal_hex suffix at {offset}"
+        )
+    ordinal = int(ordinal_bytes)
+    suffix = int(hex_bytes, 16)
+    expected_suffix = object_id & 0x07FFFFFF
+    if suffix != expected_suffix:
+        raise ValueError(
+            f"Streaming {family} field 5 row {row_index} name suffix "
+            f"expected {expected_suffix:X} from parallel ID {object_id:08X}, "
+            f"actual {suffix:X} at {offset}"
+        )
+    return ordinal
+
+
 def _bounded_vector(
     data: bytes,
     layout: dict[str, Any],
@@ -194,7 +270,17 @@ def _info_slot_partition(layout, widths, label):
 
 
 def _parse_info_inner(data: bytes, root: dict[str, Any]) -> dict[str, Any]:
-    """Exactly frame the selected-build anonymous StreamingChunkInfo graph."""
+    """Exactly frame the selected-build anonymous StreamingChunkInfo graph.
+
+    StreamingChunkInfo is a plain FlatBuffer, not inverted-LZ4 like its
+    directory neighbours. The standard root has four fields (object 20) with
+    field 3 the row vector; the one DevOnly file keeps a three-field legacy
+    root and is left out of the catalog projection. A standard row holds
+    eight inline bytes (two int32, the raw ``x, y`` grid indices, not scaled
+    by 128) and a uoffset -- stored as 4 and once misread as a constant -- to
+    a counted vector of 8-byte elements. The four words of each (row,
+    element) pair are what ``corpus._join_info_catalog`` joins to filenames.
+    """
 
     ranges: list[tuple[int, int]] = [(0, 4)]
     shapes: Counter[tuple[int, int, tuple[int, ...]]] = Counter()
@@ -342,7 +428,38 @@ def _parse_paired_group_subgraph(
     data: bytes, root: dict[str, Any], family: str,
     *, range_sink: list[tuple[int, int, str]] | None = None,
 ) -> dict[str, Any]:
-    """Frame one selected-build paired group subgraph without naming fields."""
+    """Frame one selected-build paired group subgraph without naming fields.
+
+    Root field 6 holds one-field wrapper tables whose field 0 reaches a
+    counted u32 ID vector; root field 7 holds the parallel group tables (five
+    fields, object 56 or 60 bytes). Group field 1 is an inline count that
+    must equal the paired ID-vector count. Group field 3 is a forward uoffset
+    to a counted vector of 8-byte descriptors (u16 id, u16 stride, u32 that
+    must be zero). Group field 4 stores a short forward uoffset (4 in the
+    current corpus) to a one-field wrapper whose field 0 reaches a counted
+    byte vector; its length must equal ``count * sum(strides)``. Raising one
+    stride by one makes a real file fail this check, so the equality is
+    tested, not assumed. StreamingChunkData files carry no groups.
+
+    The selected native consumer (``streaming_field2_native.json``) reads the
+    byte vector descriptor-major: one ``count * stride`` column per descriptor
+    in descriptor order, advancing by that extent and only logging a length
+    mismatch. This reader is stricter and rejects it. Descriptor 21 (stride
+    64) holds NUL-terminated name prefixes that join by index to the root
+    IDs and names (``descriptor_names``); other descriptor IDs are anonymous
+    bit positions of a 128-bit mask (``descriptor_mask_native``), not
+    ``StreamingComponentType`` indices (``descriptor_component_index_gate``).
+    Group fields 0 (16 or 20 inline bytes) and 2 (24 inline bytes, measured
+    as a centre and non-negative extents) are not read here; field 0's
+    128 bits are the group's own descriptor IDs, gated corpus-wide by
+    ``descriptor_mask_corpus``.
+
+    Retracted readings: group field 3 as a byte offset into a runtime
+    "slot-4 region", or as an alternating (code, 0) list of 4-byte words
+    (that read stopped halfway through each 8-byte descriptor); group field 4
+    and root field 6's wrapper field as the constant 4 (a uoffset to the next
+    object); root field 6 as a vector carrying no information.
+    """
 
     ranges: list[tuple[int, int, str, str]] = []
     shapes: Counter[tuple[int, int, tuple[int, ...]]] = Counter()
@@ -702,6 +819,20 @@ def _parse_parallel_root_subgraph(
     representation is compatible with both a FlatBuffer string and a byte
     vector followed by alignment, so this parser deliberately keeps the
     serialized type ambiguous.
+
+    Current-corpus relations checked here (memory:
+    ``world_chunk_union_vectors.md``): Init row field 0 holds
+    ``<base>#<N>_<HEX>`` and ``HEX == root field-3 ID & 0x07FFFFFF`` at the
+    same index; Streaming row field 0 is empty at every index. ``#N`` is not
+    row field 1: the complete per-tag census records both independently.
+    Root field 3 holds 32-bit object IDs, never offsets; the root field-4
+    byte (1, 2 or 3)
+    fixes the row's vtable slot count (5, 6 and 4 slots), which is the shape
+    a FlatBuffers union type vector produces; ``field4ByteToRowShapes``
+    publishes that join by exact index only. Censuses of row fields must be
+    taken per tag: pooling the three row shapes mixes different fields under
+    one index. Paired Init/Streaming files carry identical ordered field-3
+    and field-4 vectors (``corpus._join_root_witnesses``).
     """
 
     ranges: list[tuple[int, int, str, str]] = []
@@ -730,6 +861,12 @@ def _parse_parallel_root_subgraph(
     marker13_rows = []
     selector5_ranges = []
     row_field0_digest = hashlib.sha256()
+    row_field0_empty = 0
+    name_ordinal_field1_equal = Counter()
+    name_ordinal_field1_different = Counter()
+    name_ordinals = Counter()
+    scalar_words = Counter()
+    scalar_absent = Counter()
 
     def own(start: int, end: int, kind: str, label: str) -> None:
         if start < 0 or end < start or end > len(data):
@@ -808,7 +945,32 @@ def _parse_parallel_root_subgraph(
         shapes[shape] += 1
 
         # Join by the exact vector index, never by equal marginal counts.
-        marker_shapes[(data[field4_start + 4 + index], *shape)] += 1
+        tag = data[field4_start + 4 + index]
+        marker_shapes[(tag, *shape)] += 1
+        row_scalar_values = {}
+        for field_index in (1, 2):
+            address = _field_address(row, field_index)
+            if address is None:
+                scalar_absent[(tag, field_index)] += 1
+                row_scalar_values[field_index] = None
+                continue
+            next_address = min(
+                [
+                    int(other)
+                    for present_index in row["presentFields"]
+                    if (other := _field_address(row, int(present_index))) is not None
+                    and other > address
+                ]
+                + [int(row["tableOffset"]) + int(row["objectSize"])]
+            )
+            if next_address - address < 4:
+                raise ValueError(
+                    f"Streaming {family} field 5 row {index} field {field_index} "
+                    f"has {next_address - address} slot bytes, expected at least 4"
+                )
+            value = _u32(data, address)
+            scalar_words[(tag, field_index, value)] += 1
+            row_scalar_values[field_index] = value
         field0 = _field_address(row, 0)
         if field0 is None:
             raise ValueError(
@@ -842,8 +1004,9 @@ def _parse_parallel_root_subgraph(
                 f"Streaming {family} field 5 row {index} field 0 expected "
                 f"following zero at offset {value_end}, actual {data[value_end]}"
             )
+        name_bytes = data[value_target + 4 : value_end]
         try:
-            data[value_target + 4 : value_end].decode("utf-8", errors="strict")
+            name_bytes.decode("utf-8", errors="strict")
         except UnicodeDecodeError as exc:
             raise ValueError(
                 f"Streaming {family} field 5 row {index} field 0 is not "
@@ -856,6 +1019,17 @@ def _parse_parallel_root_subgraph(
             f"{family} field 5 row {index} field 0",
         )
         referenced_bytes += value_length
+        object_id = _u32(data, field3_start + 4 + index * 4)
+        ordinal = _checked_parallel_row_name(family, name_bytes, object_id, index, value_target)
+        if family == "streaming":
+            row_field0_empty += 1
+        else:
+            assert ordinal is not None
+            name_ordinals[(tag, ordinal)] += 1
+            if ordinal == (row_scalar_values[1] or 0):
+                name_ordinal_field1_equal[tag] += 1
+            else:
+                name_ordinal_field1_different[tag] += 1
         # Include each length before its bytes so concatenation cannot erase
         # row boundaries. These are ordered anonymous values, not name ids.
         row_field0_digest.update(data[value_target:value_end])
@@ -1147,6 +1321,26 @@ def _parse_parallel_root_subgraph(
         ],
         "field5Field0ReferenceCount": field5_count,
         "field5Field0ReferencedBytes": referenced_bytes,
+        "field5Field0EmptyCount": row_field0_empty,
+        "field5Field0NameIdentity": {
+            "status": "exact-current-corpus-suffix-to-parallel-id",
+            "nameCount": field5_count - row_field0_empty,
+            "nameOrdinalByTag": [
+                {"tag": tag, "ordinal": ordinal, "count": count}
+                for (tag, ordinal), count in sorted(name_ordinals.items())
+            ],
+            "ordinalEqualsField1ByTag": dict(sorted(name_ordinal_field1_equal.items())),
+            "ordinalDiffersFromField1ByTag": dict(sorted(name_ordinal_field1_different.items())),
+            "field1AbsentComparisonUsesZero": True,
+        },
+        "field5Field1And2ScalarWordsByTag": [
+            {"tag": tag, "fieldIndex": field_index, "value": value, "count": count}
+            for (tag, field_index, value), count in sorted(scalar_words.items())
+        ],
+        "field5Field1And2AbsentByTag": [
+            {"tag": tag, "fieldIndex": field_index, "count": count}
+            for (tag, field_index), count in sorted(scalar_absent.items())
+        ],
         "field5Field0Representation": "ambiguous",
         "field5Field0RepresentationCandidates": [
             "flatbuffer-string",
@@ -1215,6 +1409,11 @@ def _parse_field2_terminal_subgraph(
     key namespace, and meanings remain unresolved. The current-corpus gate
     independently revalidates that native contract before publishing these
     representations as current evidence.
+
+    In InitChunkData the vector is always empty and its count word is the
+    last four bytes of the file. That fixed position is why root fields 2
+    and 3 satisfied the retracted "payload size" formulas in every Init file
+    and in no StreamingChunkData file (module docstring).
     """
 
     root_layout = {
@@ -1583,6 +1782,12 @@ def parse_streaming_file(
     ``include_certified_ranges`` exposes only successfully checked structural
     ranges and marker13 reference identities for downstream gap analysis. It
     does not own those targets, infer their lengths, or fill unknown gaps.
+
+    Measure file coverage from these certified ranges, not from a generic
+    FlatBuffers walker. The deleted walker behind the coverage figures in
+    ``memory/game_data/world_chunk_unread_region.md`` accepted only vectors
+    of tables, offsets or strings, so it never marked the byte vectors behind
+    the group field-4 wrappers; its "unreached" share measured the walker.
     """
 
     if kind not in {"init", "streaming", "info"}:

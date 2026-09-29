@@ -1,3 +1,79 @@
+// Map page behavior contract (webui/README.md links here; evidence grades are
+// in memory/webui/map.md and memory/game_data/story_carriers.md).
+//
+// Plots authored Unity X/Z; a background is drawn only when the image and its
+// world bounds share an explicit transform. Rectangles and markers use X/Z
+// with image top at +Z, and needInverseXZ applies the evidenced quarter-turn.
+// Stitched bounds are derived here from the loaded background rectangles.
+//
+// Payload handling
+//   * An elevationUnderlay with status terrain_height_grid_diagnostic is the
+//     Terrain _H byte preview: it gets its own control, separate from
+//     mesh-derived grayscale elevation, and shows the byte-composite
+//     boundary; its valueRange is the preview's composite, not world Y.
+//   * Every point layer owns its height mask (pointCloudOverlay.heightMask);
+//     there is no top-level mask fallback. Streaming-instance meshes feed
+//     static render layers only and are never duplicated as clickable nodes.
+//   * mapMark annotations are shown on existing registry nodes only; marks
+//     are never plotted from group keys.
+//
+// Panel and layers
+//   * A map opens as clean geography. The resizable left panel is a
+//     three-column map/task/object-filter tree whose outer body scrolls all
+//     three columns; map status sits in the task column, and the JSON/file
+//     inspector is also resizable.
+//   * The third column combines entity, quest, story and mission filters
+//     with minimap, Terrain byte preview, elevation, surface, water, point
+//     and point-height controls; there is no inner layer container and no
+//     bottom filter dock.
+//   * The Authored marks preset (offered when the map has exact
+//     ID-and-position mapMark annotations) selects only those registry
+//     nodes, clears mission and quest filters and keeps the authored floor
+//     selection; another preset or a mission selection leaves it.
+//   * Each raster layer is one row with a visibility checkbox and its own
+//     opacity slider; opacity persists across maps and while hidden.
+//   * Authored floor overlays are discovered by hovering their area and
+//     cycled by clicking; there is no global floor slider.
+//   * Entity size is independent of zoom. Opacity and the two-thumb point
+//     world-Y filter change presentation only.
+//   * The bottom-centre range switch defaults Map01/Map02 to the selected
+//     zone; All zones loads and stitches every Wuling or Valley-IV member,
+//     and switching back releases the cached sibling payloads.
+//
+// Navigation and markers
+//   * Physical level variants of one authored place are one map entry whose
+//     levels stay selectable in the task column; only the duplicate
+//     navigation entry is collapsed. Unnamed single-mission maps use the
+//     localized mission code/name; authored cross-map Story continuations are
+//     explicit links.
+//   * Map01, Map02 and config-proven shared blackbox scenes stitch by exact
+//     regionKey; dungeons with a source-art dependency stay independent.
+//   * Quest routes group by mission, ordered by authored questOrder;
+//     shared-file or shared-script relation webs are not drawn.
+//   * NPC proxies with explicit npcProxyDialogAttachments expose their owning
+//     mission and quest ids as selectable phases; no order is derived from
+//     proxy ids, registration order or coordinates.
+//   * Selecting a mission keeps missionless level-world entities available
+//     through type/floor filters; compact maps enable every recovered type.
+//   * Enemy, device, scenery and travel markers use distinct glyphs; grenade
+//     towers keep their Factory/Combat/Model evidence. Enemy labels resolve
+//     through EnemyTemplateDisplayInfo plus localized text; reading points use
+//     the generated Story title instead of their text_* key.
+//   * Unresolved evidence gets default-hidden layers: empty int_empty shells
+//     in an unresolved-empty-slot layer, unresolved script-target references
+//     in a candidate layer.
+//
+// Inspector
+//   * Strong identity links stay separate from weak spatial or mission
+//     context; proximity is never upgraded into ownership.
+//   * Opening WorldEntityRegistry.json from a registry-backed point resolves
+//     its exact world id or script-id/slot pair, jumps to the matched row and
+//     paired brief-info index, and highlights the excerpt.
+//   * A node with a generated Story conversation shows that conversation as
+//     its reader-facing file; placement, registry and script files stay
+//     behind Show debug info. Map-wide files and weak links are debug-only
+//     unless they have an exact Story deep link, and turning debug off closes
+//     a file viewer whose link is no longer visible.
 (() => {
   // The SVG world projection below is authoritative: viewBox size, padding and
   // plot() must stay byte-identical to the published coordinate contract.
@@ -227,7 +303,7 @@
       ["terrain", "terrainBytePreview", hasTerrainPreview],
       ["elevation", "modelElevation", underlays.some((row) => !isTerrainBytePreview(row))],
       ["surface", "modelSurface", state.modelBackgrounds.some((row) => row.status !== "inferred_registry_point_cloud_preview")],
-      ["water", "modelWater", state.modelBackgrounds.some((row) => row.waterOverlay?.src)],
+      ["water", "modelWater", state.modelBackgrounds.some((row) => row.waterOverlay?.src || row.authoredWaterSurfaces?.length)],
       ["points", "modelPoints", state.modelBackgrounds.some((row) => row.pointCloudOverlay?.src)],
     ];
     const available = [
@@ -473,11 +549,21 @@
       evidence: "Evidence",
       surfaceAccuracy: "Surface accuracy",
       surface_inferred_hlod_crop: "Inferred HLOD crop",
-      surface_exact_mesh_color_unverified: "Exact mesh placement - color unverified",
-      surface_exact_mesh_partial_base_color: "Exact mesh placement - partial base color",
+      surface_exact_mesh_color_unverified: "Name-matched mesh preview - color unverified",
+      surface_exact_mesh_partial_base_color: "Name-matched mesh preview - partial base color",
+      surface_name_candidate_mesh_color_unverified: "Name-matched mesh preview - color unverified",
+      surface_name_candidate_mesh_partial_base_color: "Name-matched mesh preview - partial base color",
+      surface_exact_hlod_key_mesh_color_unverified: "Exact HLOD mesh placement - color unverified",
+      surface_exact_hlod_key_mesh_partial_base_color: "Exact HLOD mesh placement - partial base color",
+      surface_legacy_streaming_ungraded: "Legacy streaming surface - Mesh relation ungraded",
       surfaceNote_inferred_hlod_crop: "Exact danger markers define the crop; the source-art HLOD grid is inferred.",
-      surfaceNote_exact_mesh_color_unverified: "Mesh geometry and placement are exact; no reliable texture color was recovered.",
-      surfaceNote_exact_mesh_partial_base_color: "Mesh geometry and placement are exact; base color appears only where material bindings were recovered.",
+      surfaceNote_exact_mesh_color_unverified: "The instance matrix is exact; prefab-to-Mesh ownership remains unproved.",
+      surfaceNote_exact_mesh_partial_base_color: "The instance matrix is exact; Mesh ownership remains unproved and base color is partial.",
+      surfaceNote_name_candidate_mesh_color_unverified: "The instance matrix is exact; prefab-to-Mesh ownership remains unproved.",
+      surfaceNote_name_candidate_mesh_partial_base_color: "The instance matrix is exact; Mesh ownership remains unproved and base color is partial.",
+      surfaceNote_exact_hlod_key_mesh_color_unverified: "The instance matrix and level/HLOD mesh key agree; color remains unverified.",
+      surfaceNote_exact_hlod_key_mesh_partial_base_color: "The instance matrix and level/HLOD mesh key agree; base color is partial.",
+      surfaceNote_legacy_streaming_ungraded: "This publication has no per-Mesh binding grade; ownership remains unverified.",
       controls: "Controls",
       collapse: "Collapse panel",
       expand: "Expand panel",
@@ -500,7 +586,18 @@
       modelElevation: "Grayscale elevation",
       terrainBytePreview: "Terrain _H byte preview",
       terrainBytePreviewBoundary: "This grayscale preview combines each two-byte _H texel as a little-endian integer. The game's scalar height decode, value ordering, and world-Y scale are unresolved.",
-      modelWater: "Recovered water",
+      modelWater: "Water evidence",
+      authoredWaterFootprint: "Authored water footprint: exact LevelData to Mesh identity",
+      observedWaterMesh: "Live capture: GetMesh returned a surface and delivered a Mesh to UpdataMesh. Final height and renderer visibility unobserved.",
+      waterRequestedPosition: "Requested position",
+      waterNoTickSamples: "No selected Tick calls or Transform position samples were captured.",
+      waterNearStopPosition: "Observed near-stop Transform position (not final height)",
+      waterSetupReturnPosition: "Observed Transform position at Setup return (not final height)",
+      waterSetterReturnPosition: "Last observed selected set_position return",
+      waterSetterSamples: "Selected set_position return samples",
+      waterPostSetupIdMatched: "The post-Setup waterVolumeId matches the selected source ID.",
+      waterLegacyIdCheck: "The saved v1 post-Setup ID check compared a string pointer as a number; ID equality is unknown.",
+      waterPostSetupIdMismatch: "The post-Setup waterVolumeId field did not match the selected source ID.",
       modelPoints: "Colored point cloud",
       fit: "Fit",
       fitLong: "Fit all plotted nodes",
@@ -611,7 +708,9 @@
       minimapTier: "layer",
       scene3d: "Recovered 3D models",
       scene3dHint: "Open a representative OBJ in the existing Assets 3D viewer. Mesh placement is inferred and diagnostic only.",
-      streamingSceneHint: "The instance transform is exact, and matched static OBJ geometry is rasterized into the top-down background.",
+      streamingSceneHint: "The instance transform is exact. Static OBJ candidates match by name; prefab-to-Mesh ownership remains unproved.",
+      exactHlodSceneHint: "The instance transform and level/HLOD Mesh key agree. This identifies the placed HLOD Mesh; runtime visibility remains unobserved.",
+      legacyStreamingBoundary: "Recovered instance matrices place exported OBJ geometry. This older publication does not grade the Mesh relation; its ownership remains unverified.",
       scene3dUnplacedHint: "These level-matched OBJ exports have no recovered scene transform. Open them in Assets for inspection; they are not placed on this map.",
       scene3dUnavailable: "No safe OBJ model is published for this level; the map stays marker-only.",
       documentTitle: "\u6587\u6863\u540d",
@@ -641,11 +740,21 @@
       evidence: "证据",
       surfaceAccuracy: "表面准确度",
       surface_inferred_hlod_crop: "推断的 HLOD 裁切",
-      surface_exact_mesh_color_unverified: "精确网格放置 - 颜色未验证",
-      surface_exact_mesh_partial_base_color: "精确网格放置 - 部分基础色",
+      surface_exact_mesh_color_unverified: "按名称匹配的网格预览 - 颜色未验证",
+      surface_exact_mesh_partial_base_color: "按名称匹配的网格预览 - 部分基础色",
+      surface_name_candidate_mesh_color_unverified: "按名称匹配的网格预览 - 颜色未验证",
+      surface_name_candidate_mesh_partial_base_color: "按名称匹配的网格预览 - 部分基础色",
+      surface_exact_hlod_key_mesh_color_unverified: "精确 HLOD 网格放置 - 颜色未验证",
+      surface_exact_hlod_key_mesh_partial_base_color: "精确 HLOD 网格放置 - 部分基础色",
+      surface_legacy_streaming_ungraded: "旧版 Streaming 表面 - 网格关联未分级",
       surfaceNote_inferred_hlod_crop: "裁切范围由精确的危险地图标记确定；源美术 HLOD 网格为推断放置。",
-      surfaceNote_exact_mesh_color_unverified: "网格几何与放置精确；尚未恢复可靠的贴图颜色。",
-      surfaceNote_exact_mesh_partial_base_color: "网格几何与放置精确；仅已恢复材质绑定的表面显示基础色。",
+      surfaceNote_exact_mesh_color_unverified: "实例矩阵精确；预制体到网格的归属尚未证实。",
+      surfaceNote_exact_mesh_partial_base_color: "实例矩阵精确；网格归属尚未证实，基础色仅部分恢复。",
+      surfaceNote_name_candidate_mesh_color_unverified: "实例矩阵精确；预制体到网格的归属尚未证实。",
+      surfaceNote_name_candidate_mesh_partial_base_color: "实例矩阵精确；网格归属尚未证实，基础色仅部分恢复。",
+      surfaceNote_exact_hlod_key_mesh_color_unverified: "实例矩阵与关卡 HLOD 网格键一致；颜色尚未验证。",
+      surfaceNote_exact_hlod_key_mesh_partial_base_color: "实例矩阵与关卡 HLOD 网格键一致；基础色仅部分恢复。",
+      surfaceNote_legacy_streaming_ungraded: "此版数据没有逐网格的关联等级；归属仍未验证。",
       controls: "控制面板",
       collapse: "收起面板",
       expand: "展开面板",
@@ -668,7 +777,18 @@
       modelElevation: "灰度高程",
       terrainBytePreview: "Terrain _H 字节预览",
       terrainBytePreviewBoundary: "此灰度预览将每个 _H 纹素的两个字节按小端整数合并。游戏的标量高度解码、数值顺序及世界 Y 比例尚未证实。",
-      modelWater: "恢复水体",
+      modelWater: "水体证据",
+      authoredWaterFootprint: "关卡配置水体范围：LevelData 与 Mesh 精确对应",
+      observedWaterMesh: "实时采集：GetMesh 返回水面对象，Mesh 已传入 UpdataMesh；最终水位和渲染可见性尚未观测。",
+      waterRequestedPosition: "请求位置",
+      waterNoTickSamples: "本次没有采集到所选水面的 Tick 调用或 Transform 位置样本。",
+      waterNearStopPosition: "停止前观测到的 Transform 位置（非最终水位）",
+      waterSetupReturnPosition: "Setup 返回时观测到的 Transform 位置（非最终水位）",
+      waterSetterReturnPosition: "最后一次观测到的选定 set_position 返回位置",
+      waterSetterSamples: "选定 set_position 返回样本数",
+      waterPostSetupIdMatched: "Setup 后的 waterVolumeId 与选定的源 ID 相同。",
+      waterLegacyIdCheck: "已保存的 v1 采集将字符串指针当作数字比较；Setup 后的 ID 是否相等尚不确定。",
+      waterPostSetupIdMismatch: "Setup 后的 waterVolumeId 字段与选定的源 ID 不一致。",
       modelPoints: "彩色点云",
       fit: "适配",
       fitLong: "适配全部节点",
@@ -774,7 +894,9 @@
       minimapTier: "\u56fe\u5c42",
       scene3d: "Recovered 3D models",
       scene3dHint: "Open a representative OBJ in the existing Assets 3D viewer. Mesh placement is inferred and diagnostic only.",
-      streamingSceneHint: "实例变换为精确恢复，已匹配的静态 OBJ 网格已栅格化进俯视背景。",
+      streamingSceneHint: "实例变换为精确恢复。静态 OBJ 候选按名称匹配；预制体到网格的归属尚未证实。",
+      exactHlodSceneHint: "实例变换与关卡 HLOD 网格键一致，因而可确定放置的 HLOD 网格；运行时可见性尚未观测。",
+      legacyStreamingBoundary: "导出的 OBJ 几何体按已恢复的精确实例矩阵放置。此旧版数据未标注网格关联等级，其归属仍未经验证。",
       scene3dUnavailable: "No safe OBJ model is published for this level; the map stays marker-only.",
     },
   };
@@ -2025,7 +2147,7 @@
           ? `<image class="mr-bg-image mr-bg-model-surface${overMinimap ? " is-overlay" : ""}" href="data/map_recovery/${esc(bg.src)}?v=${MAP_ASSET_VERSION}" ${geometry} style="opacity:${layerOpacity("surface")}"><title>${esc(bg.levelId)}</title></image>`
           : "";
         const water = state.modelLayers.has("water") && bg.waterOverlay?.src
-          ? `<image class="mr-bg-image mr-bg-water" href="data/map_recovery/${esc(bg.waterOverlay.src)}?v=${MAP_ASSET_VERSION}" ${geometry}><title>${esc(`${bg.levelId} water`)}</title></image>`
+          ? `<image class="mr-bg-image mr-bg-water" href="data/map_recovery/${esc(bg.waterOverlay.src)}?v=${MAP_ASSET_VERSION}" ${geometry}><title>${esc(`${bg.levelId} authored minimap water-color mask`)}</title></image>`
           : "";
         const visiblePointSrc = pointSrc;
         const pointUrl = visiblePointSrc ? `data/map_recovery/${visiblePointSrc}?v=${MAP_ASSET_VERSION}` : "";
@@ -2090,8 +2212,45 @@
     const waterUnion = waterImages
       ? `<defs><filter id="mr-water-union-alpha" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncA type="discrete" tableValues="0 0.6588235"/></feComponentTransfer></filter></defs><g class="mr-bg-water-union" filter="url(#mr-water-union-alpha)" style="opacity:${layerOpacity("water")}">${waterImages}</g>`
       : "";
+    const waterFootprints = state.modelLayers.has("water")
+      ? [...new Map(modelOverlayRects.flatMap(({ bg }) => (bg.authoredWaterSurfaces || []).map((surface) => ({ bg, surface })))
+        .map((row) => [`${row.surface.sceneId}:${row.surface.waterVolumeId}`, row])).values()]
+        .filter(({ bg, surface }) => surface.evidence === "exact_authored_leveldata_mesh_join"
+          && surface.sceneId === bg.levelId && Array.isArray(surface.worldPoints)
+          && surface.worldPoints.length >= 3
+          && surface.worldPoints.every((point) => Array.isArray(point) && point.length === 3
+            && point.every((value) => Number.isFinite(Number(value)))))
+        .map(({ bg, surface }) => {
+          const points = surface.worldPoints.map((point) => {
+            const p = plot(oriented({ x: Number(point[0]), z: Number(point[2]) }, bg));
+            return `${p.x.toFixed(3)},${p.y.toFixed(3)}`;
+          }).join(" ");
+          const live = surface.runtimeObservation?.status === "observed_mesh_delivered_to_updata_mesh"
+            && surface.runtimeObservation.meshAssetDeliveredToUpdataMesh === true;
+          const requested = surface.runtimeObservation?.requestedPosition;
+          const nearStopPosition = surface.runtimeObservation?.nearStopObservedPosition;
+          const setupReturnPosition = surface.runtimeObservation?.setupReturnObservedPosition;
+          const setterReturnPosition = surface.runtimeObservation?.lastSetterReturnPosition;
+          const setterSamples = surface.runtimeObservation?.selectedSetPositionCalls;
+          const runtimeTitle = live
+            ? ` ${t("observedWaterMesh")}${Array.isArray(requested) && requested.length === 3
+              ? ` ${t("waterRequestedPosition")}: ${requested.map((value) => Number(value).toFixed(3)).join(", ")}.` : ""}${surface.runtimeObservation.transformObservationStatus === "no_tick_samples"
+              ? ` ${t("waterNoTickSamples")}` : ""}${Array.isArray(nearStopPosition) && nearStopPosition.length === 3
+              ? ` ${t("waterNearStopPosition")}: ${nearStopPosition.map((value) => Number(value).toFixed(3)).join(", ")}.` : ""}${Array.isArray(setupReturnPosition) && setupReturnPosition.length === 3
+              ? ` ${t("waterSetupReturnPosition")}: ${setupReturnPosition.map((value) => Number(value).toFixed(3)).join(", ")}.` : ""}${Number.isInteger(setterSamples)
+              ? ` ${t("waterSetterSamples")}: ${setterSamples}.` : ""}${Array.isArray(setterReturnPosition) && setterReturnPosition.length === 3
+              ? ` ${t("waterSetterReturnPosition")}: ${setterReturnPosition.map((value) => Number(value).toFixed(3)).join(", ")}.` : ""}${surface.runtimeObservation.postSetupIdComparison === "legacy_pointer_compared_as_integer"
+              ? ` ${t("waterLegacyIdCheck")}`
+              : surface.runtimeObservation.postSetupWaterVolumeIdMatched === true
+                ? ` ${t("waterPostSetupIdMatched")}`
+              : surface.runtimeObservation.postSetupWaterVolumeIdMatched === false
+                ? ` ${t("waterPostSetupIdMismatch")}` : ""}`
+            : "";
+          return `<polygon class="mr-authored-water-footprint${live ? " has-live-mesh" : ""}" points="${points}" fill="#1c9dbb" fill-opacity="0.38" stroke="${live ? "#b6ffbd" : "#8ceaf3"}" stroke-width="1.5" vector-effect="non-scaling-stroke" style="opacity:${layerOpacity("water")}"><title>${esc(`${surface.sceneId} ${surface.waterVolumeId}: ${t("authoredWaterFootprint")}${runtimeTitle}`)}</title></polygon>`;
+        }).join("")
+      : "";
     const pointImages = modelOverlayRects.map((rect) => modelImages(rect, rect.overMinimap, "points")).join("");
-    const backgroundImages = `${minimapLayer}${underlayFilter}${terrainLayer}${elevationLayer}${modelBaseImages}${waterUnion}${pointImages}`;
+    const backgroundImages = `${minimapLayer}${underlayFilter}${terrainLayer}${elevationLayer}${modelBaseImages}${waterUnion}${waterFootprints}${pointImages}`;
     // Level display names describe gameplay scenes, not geographic ownership
     // of the whole (overlapping) map-screen rectangle. Location labels come
     // from the map UI's own staticElements text anchors instead. Keep them as
@@ -2269,7 +2428,13 @@
           <p class="mr-note">${esc(mapMarkCoverage.boundary || "")}</p></details>`
       : "";
     const bg = data.renderBackground || {};
-    const surfaceEvidence = bg.surfaceEvidence && typeof bg.surfaceEvidence === "object" ? bg.surfaceEvidence : null;
+    const renderBoundary = String(bg.status || "").startsWith("recovered_streaming_")
+      && !bg.render?.meshBindingStatus ? t("legacyStreamingBoundary") : (bg.boundary || "");
+    const surfaceEvidence = bg.surfaceEvidence && typeof bg.surfaceEvidence === "object"
+      ? bg.surfaceEvidence
+      : String(bg.status || "").startsWith("recovered_streaming_")
+        ? { accuracy: "legacy_streaming_ungraded" }
+        : null;
     const surfaceAccuracy = surfaceEvidence?.accuracy
       ? `<div class="mr-surface-evidence" data-accuracy="${esc(surfaceEvidence.accuracy)}"><span>${esc(t("surfaceAccuracy"))}</span><b>${esc(t(`surface_${surfaceEvidence.accuracy}`))}</b><small>${esc(t(`surfaceNote_${surfaceEvidence.accuracy}`))}</small></div>`
       : "";
@@ -2291,7 +2456,9 @@
     }).join("");
     const sceneHint = scene.positionStatus === "unplaced"
       ? t("scene3dUnplacedHint")
-      : (scene.positionStatus === "exact_streaming_matrix" ? t("streamingSceneHint") : t("scene3dHint"));
+      : (scene.positionStatus === "exact_streaming_matrix"
+        ? t(scene.meshBindingStatus === "exact_level_hlod_key" ? "exactHlodSceneHint" : "streamingSceneHint")
+        : t("scene3dHint"));
     const sceneBlock = sceneMeshes.length
       ? `<details><summary>${esc(`${t("scene3d")} (${scene.meshCount || sceneMeshes.length})`)}</summary><p class="mr-note">${esc(sceneHint)}</p><ul class="mr-file-list">${sceneFiles}</ul></details>`
       : `<p class="mr-note"><code>${esc(scene.status || "obj_cluster_files_unavailable")}</code> ${esc(t("scene3dUnavailable"))}</p>`;
@@ -2357,7 +2524,7 @@
           <p class="mr-note"><code>${esc(minimapBg.status || "unknown")}</code>${minimapBg.src
             ? ` · ${t("minimapFrom")}: <b>${minimapBg.tileCount}</b> ${t("minimapTiles")} / ${t("minimapTier")} <b>${minimapBg.layer}</b>`
             : ""}${esc(minimapBg.boundary || "")}</p>
-          <p class="mr-note"><code>${esc(bg.status || "unknown")}</code>${esc(bg.boundary || "")}</p>
+          <p class="mr-note"><code>${esc(bg.status || "unknown")}</code>${esc(renderBoundary)}</p>
           ${sceneBlock}
           ${bg.gridFit ? `<p class="mr-note">${esc(t("gridFit"))}: <b>${Math.round((bg.gridFit.coverage || 0) * 100)}%</b> ${esc(t("gridFitOf"))} ${bg.gridFit.samplePoints} ${esc(t("gridFitMarkers"))} — <code>origin ${bg.gridFit.originX}, ${bg.gridFit.originZ}</code> / <code>${bg.gridFit.baseCellSize}m</code></p>` : ""}
           <p class="mr-note">${esc(data.npcCoverage?.boundary || "")}</p>
@@ -2870,6 +3037,7 @@
         elevationUnderlay: background.elevationUnderlay || null,
         pointCloudOverlay: background.pointCloudOverlay || null,
         waterOverlay: background.waterOverlay || null,
+        authoredWaterSurfaces: background.authoredWaterSurfaces || [],
         sourceKind: background.sourceKind,
         status: background.status || "",
         mapInverted,
@@ -2882,6 +3050,7 @@
         elevationUnderlay: model.elevationUnderlay || null,
         pointCloudOverlay: model.pointCloudOverlay || null,
         waterOverlay: model.waterOverlay || null,
+        authoredWaterSurfaces: model.authoredWaterSurfaces || [],
         status: model.status || "",
         mapInverted,
       });

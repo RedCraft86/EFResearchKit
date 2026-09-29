@@ -1,4 +1,74 @@
-"""Fail-closed framing for current ``AnimationConfig`` payloads."""
+"""Fail-closed framing for current ``AnimationConfig`` payloads.
+
+The generated wrapper has 15 members (``ANIMATION_CONFIG_FIELDS``) and one
+cursor runs from byte zero to physical EOF:
+
+1. Prefix: ``_fallbackMontages`` (null in the supported shape),
+   ``avatarBlendProfilePath``, ``bakedBindingPath``, ``boneWeightMasks``
+   (two-member ``layerName``, ``maskPath`` rows: bounded UTF-8 and a signed
+   64-bit path hash) and ``controllerPath``.
+2. ``extraData`` is a polymorphic ``AnimationConfigExtraData`` root: ``0xff``
+   is null, tag 0 is the 30-member ``CharacterAnimExtraData``, tag 1 the
+   20-member ``EnemyAnimExtraData`` and tag 2 the 32-member
+   ``UpperBodyFightExtraDataForMemoryPack`` (the 30 character members plus
+   ``upperBodyFightTimeout`` and ``upperBodyLayerName``; the extra-data
+   formatter's native static initializer registers exactly these three
+   union entries). The byte at the old character offset 62 is this concrete
+   object header, not the start of ``montages``.
+
+   Character data names the six inherited shader/event members, strict
+   enable flags, movement/cloth scalars, hurt-animation curve dictionaries
+   with ``Vector2`` and five-member ``SkMorphPlaySetting`` values, empty and
+   populated move-additive dictionaries (each value a five-member wrapper of
+   four fixed ``AnimationClipAsyncInfo`` records and one
+   ``SkMorphPlaySetting``), override performs, loop counts, the three-member
+   special-dash and two-member special-idle wrappers, the current
+   idle-condition union tags, and three-member state-perform rows. The true
+   ``montages`` boundary follows ``walkSpLoopCount``.
+
+   Enemy data closes all 20 generated members: a three-member blow-off
+   config (total time, two root-motion curves), a two-member turn-start
+   config (duration, total yaw) and a ten-member hurt-data wrapper (both
+   enum lists, valid/supported masks, strict behavior flags, shake duration
+   and two typed dictionaries). Hurt entries use the generated seven-member
+   scalar/curve/``Vector2`` order. Shake-intensity keys keep their byte enum
+   width and their two-member values keep the object header before
+   animation speed and weight; dropping either misaligns every later cursor.
+3. ``montages``: tag 0 is the 26-member ``ClipMontageData``, tag 1 the
+   20-member ``SequenceMontageData``; both share the 17 generated
+   ``AnimMontageData`` members. Clip adds one fixed async-clip record, its
+   root-rotation flag and seven named root-motion curves; sequence adds its
+   end, loop and start async-clip records. ``AlphaBlend`` is the current
+   three-member option/time/custom-curve wrapper. Any other tag fails at its
+   exact tag and member-count cursor.
+4. Tail: ``npcMontages``, the optional/retarget controller hashes, empty
+   ``syncGroupAnimationCurves`` (a positive count fails closed), the
+   ``syncGroupCurves`` and ``timeRefCurves`` ``FAnimationCurve``
+   dictionaries, and the two trailing strict booleans.
+
+Negatives kept on purpose:
+
+- ``FAnimationCurve.keys`` is a counted bulk unmanaged array of 32-byte
+  elements in native struct order (``time``, ``value``, ``inTangent``,
+  ``outTangent``, ``tangentMode``, ``weightedMode``, ``inWeight``,
+  ``outWeight``). The standalone generated ``FKeyframe`` wrapper reads
+  alphabetical setter order; treating bulk slots as wrapper fields turns
+  one-third weight bit patterns into an enum and erases increasing key
+  times. The curve wrapper reads ``keys``, ``postWrapMode``, then
+  ``preWrapMode``. Identities, windows, offsets and helper joins live in
+  ``animation_curve_native.json``; the loader here refuses a changed shape.
+- Each ``npcMontages`` ``GameplayTag`` is a one-member value wrapper
+  carrying a 32-bit tag (five bytes per row). Reading it as an unwrapped
+  64-bit value displaced every later cursor and looked like an alternate
+  tail variant.
+
+The fixed 72-byte variant (no masks, montages, tags, curves or extra data)
+is decoded separately. Evidence tier: exact stored schema for every current
+file. Path hashes and GameplayTags stay numeric; a consumer may resolve
+paths only through an authenticated ``StringPathHash.bin`` catalog, and the
+reader never guesses one. Framing does not prove curve evaluation or which
+montage the runtime plays.
+"""
 
 from __future__ import annotations
 
@@ -355,7 +425,14 @@ def _read_count(data: bytes, offset: int, field: str, *, maximum: int) -> tuple[
     return raw, cursor
 
 
-def _read_fanimation_curve(data: bytes, offset: int, field: str) -> tuple[dict[str, Any] | None, int]:
+def read_fanimation_curve(data: bytes, offset: int, field: str) -> tuple[dict[str, Any] | None, int]:
+    """One ``Beyond.FAnimationCurve`` in the layout ``animation_curve_native.json`` proves.
+
+    This is the type's single generated formatter, so every owner that
+    declares an ``FAnimationCurve`` member (``char_interact_perform_binary``
+    through ``AlphaBlend._customCurve``) reads it here rather than keeping a
+    second key layout.
+    """
     end = _require(data, offset, 1, f"{field}.memberCount")
     member_count = data[offset]
     if member_count == 0xFF:
@@ -422,7 +499,7 @@ def _read_curve_dictionary(
                 raise AnimationConfigFramingError(f"{field}[{index}].key:null")
         else:
             key, cursor = _read_u32(data, cursor, f"{field}[{index}].key")
-        curve, cursor = _read_fanimation_curve(
+        curve, cursor = read_fanimation_curve(
             data, cursor, f"{field}[{index}].value"
         )
         rows.append({"key": key, "value": curve, "startOffset": start, "endOffset": cursor})
@@ -659,7 +736,7 @@ def _read_char_hurt_configs(
             raise AnimationConfigFramingError(
                 f"{field}[{index}].value.memberCount:expected=3 actual={data[cursor]}"
             )
-        curve, cursor = _read_fanimation_curve(
+        curve, cursor = read_fanimation_curve(
             data, marker_end, f"{field}[{index}].value.rootMotionCurve"
         )
         scaled_x, cursor = _read_f32(
@@ -875,8 +952,8 @@ def _read_enemy_blow_off_config(
             f"{field}.memberCount:expected=null-or-3 actual={marker}"
         )
     total, cursor = _read_f32(data, end, field + ".animTotalTime")
-    curve_y, cursor = _read_fanimation_curve(data, cursor, field + ".rootMotionCurvePosY")
-    curve_z, cursor = _read_fanimation_curve(data, cursor, field + ".rootMotionCurvePosZ")
+    curve_y, cursor = read_fanimation_curve(data, cursor, field + ".rootMotionCurvePosY")
+    curve_z, cursor = read_fanimation_curve(data, cursor, field + ".rootMotionCurvePosZ")
     return {
         "memberCount": marker,
         "animTotalTime": total,
@@ -897,7 +974,7 @@ def _read_enemy_hurt_entry(
     for name in ("customDeadAnimOffset", "customDeadDelay", "immobilizedTime"):
         values[name], end = _read_f32(data, end, f"{field}.{name}")
     values["overrideDeadDelay"], end = _read_strict_bool(data, end, field + ".overrideDeadDelay")
-    values["rootMotionCurve"], end = _read_fanimation_curve(data, end, field + ".rootMotionCurve")
+    values["rootMotionCurve"], end = read_fanimation_curve(data, end, field + ".rootMotionCurve")
     end2 = _require(data, end, 8, field + ".rootMotionScaledTime")
     values["rootMotionScaledTime"] = list(struct.unpack_from("<ff", data, end))
     values["unmovableTime"], end = _read_f32(data, end2, field + ".unmovableTime")
@@ -997,7 +1074,7 @@ def _read_alpha_blend(data: bytes, offset: int, field: str) -> tuple[dict[str, A
         raise AnimationConfigFramingError(f"{field}.memberCount:expected=3 actual={data[offset]}")
     blend_option, cursor = _read_i32(data, end, f"{field}.blendOption")
     blend_time, cursor = _read_f32(data, cursor, f"{field}.blendTime")
-    custom_curve, cursor = _read_fanimation_curve(data, cursor, f"{field}.customCurve")
+    custom_curve, cursor = read_fanimation_curve(data, cursor, f"{field}.customCurve")
     return {
         "memberCount": 3,
         "blendOption": blend_option,
@@ -1080,7 +1157,7 @@ def _read_anim_montage(
             "rootMotionCurveRotW", "rootMotionCurveRotX", "rootMotionCurveRotY",
             "rootMotionCurveRotZ",
         ):
-            fields[name], cursor = _read_fanimation_curve(data, cursor, f"{field}.{name}")
+            fields[name], cursor = read_fanimation_curve(data, cursor, f"{field}.{name}")
         type_name = "ClipMontageData"
     else:
         for name in ("endClipInfo", "loopClipInfo", "startClipInfo"):
@@ -1289,13 +1366,15 @@ def _decode_montages_tail(data: bytes, offset: int) -> dict[str, Any]:
 
 
 def frame_animation_config(data: bytes) -> dict[str, Any]:
-    """Frame the proven prefix and one exact named 72-byte variant.
+    """Frame one AnimationConfig through EOF, or return a bounded prefix.
 
     The generated wrapper setter metadata fixes the first five members and the
     two-member ``BoneWeightMaskJsonEntry`` order. The reader advances those
-    values at a real cursor, then preserves ``extraData`` and all later members
-    as one opaque remainder. The current 72-byte variant is separately decoded:
-    it contains no bone masks, montage rows, NPC montage tags, curves, or extra
+    values at a real cursor, then the polymorphic ``extraData`` body and the
+    montage/curve tail (see the module docstring). Only when that sequential
+    path fails does the result keep ``extraData`` and later members as an
+    opaque remainder. The current 72-byte variant is separately decoded: it
+    contains no bone masks, montage rows, NPC montage tags, curves, or extra
     data, and consumes exactly to EOF.
     """
     if not data:

@@ -4,8 +4,11 @@
 The primary package contains static code and generated text. The media package
 contains referenced images and videos, while the audio package contains FLAC
 files referenced by normal content pages. The resources package contains every
-file listed by the Assets page, including JSON, OBJ, and FBX files, plus the
-remaining audio inventory and raw Audio/Assets browser indexes.
+file listed by the Assets page -- images (a Sprite as its texture plus its crop
+document), videos, and OBJ/FBX/glTF models; the Assets page lists no exported
+JSON -- plus the remaining audio inventory, the raw Audio/Assets browser
+indexes, and the WebUI data kept out of the main package
+(``RESOURCE_DATA_PREFIXES``).
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ import re
 import sys
 import tempfile
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
@@ -35,6 +38,8 @@ from scripts.common import (
     normalize_posix,
 )
 from scripts.source_paths import ExportLayout
+from scripts.game_data import sprite_crops
+from scripts.game_data.unity_store import open_store_if_present
 
 WEBUI_ROOT = PROJECT_ROOT / "webui"
 ZIP_NAME_PREFIX = "endfield-story-exported"
@@ -78,8 +83,10 @@ COMPANION_LANGUAGE_FEATURE_RE = re.compile(r"^data/lang/[^/]+/(?:characters|game
 
 PAGE_REFERENCE_PREFIXES = ("data/gameplay/", "data/map_recovery/")
 PAGE_REFERENCE_FILES = {"data/assets/gameplay_refs.json", "data/assets/story_media.json"}
+# audio/conv holds Audio's Story voice-line sidecars (the voice files a Story
+# line plays), which Story's own conv files do not carry.
 PAGE_REFERENCE_LANGUAGE_RE = re.compile(
-    r"^data/lang/[^/]+/(?:conv|mission|characters|gameplay)(?:/|$)"
+    r"^data/lang/[^/]+/(?:conv|mission|characters|gameplay|audio/conv)(?:/|$)"
 )
 RESOURCE_DATA_PREFIXES = ("data/audio/", "data/game_data/", "data/decoded/")
 # Builder output that is not a page file (evidence indexes, caches, comparison
@@ -211,8 +218,8 @@ are in the standalone audio zip.
 Extract those zips into the same directory after this one when you want
 inline/wiki media or playable audio too.
 
-The complete Assets browser, including JSON, OBJ, FBX, and model downloads, is
-provided by the optional resources package.
+The complete Assets browser, including image, video, and OBJ/FBX model
+downloads, is provided by the optional resources package.
 """
 
 CHINESE_QUICKSTART_README = """Endfield WebUI 使用说明
@@ -270,8 +277,8 @@ Run from this extracted directory with `python serve.py`, then open the printed
 localhost URL. Extract the matching media and audio zips into the same directory
 for Story, Text, Map, Characters, and Gameplay media. Extract the optional
 resources zip last when you need the complete Audio and Assets resource browsers.
-The resources zip includes every file listed by the Assets page, including
-JSON, OBJ, and FBX payloads.
+The resources zip includes every file listed by the Assets page: images,
+videos, and OBJ/FBX models.
 """
 
 MEDIA_PACKAGE_README = """Endfield WebUI page media package
@@ -294,7 +301,7 @@ RESOURCES_PACKAGE_README = """Endfield WebUI optional resources package
 
 Extract this zip last, into the same directory as the matching main and media
 packages. It contains every file listed by the Assets page, including all
-indexed images, videos, JSON, OBJ, and FBX files, plus the remaining FLAC files
+indexed images, videos, and OBJ and FBX models, plus the remaining FLAC files
 and complete raw Audio/Assets indexes. Assets also used by normal pages are
 intentionally duplicated so this package is self-contained for the Assets page.
 """
@@ -315,7 +322,7 @@ CHINESE_USAGE_README = """Endfield WebUI 中文使用说明
    需要播放常用页面语音时安装，并解压到同一个文件夹。
 
 4. *-endfield-story-exported-resources.zip
-   可选完整资源包，包含“资源”页面列出的全部文件（包括图片、视频、JSON、OBJ 和 FBX）、其余 FLAC 音频，以及“音频”和“资源”页面使用的完整索引。
+   可选完整资源包，包含“资源”页面列出的全部文件（包括图片、视频以及 OBJ 和 FBX 模型）、其余 FLAC 音频，以及“音频”和“资源”页面使用的完整索引。
    只浏览常用页面时不需要此包。需要检索完整资源时，请最后解压到同一个文件夹，并允许覆盖索引文件。
 
 推荐解压顺序：主程序包 → 常用图片和视频包 → 常用语音包 → 可选完整资源包。
@@ -342,6 +349,8 @@ class ExportedImage:
     rel: str
     source_path: Path
     archive_path: str
+    #: Bytes to write instead of copying ``source_path`` (a Sprite crop document from the store).
+    data: bytes | None = None
 
 
 @dataclass
@@ -727,6 +736,14 @@ def zip_writestr(zipf: zipfile.ZipFile, written: set[str], arcname: str, data: s
     written.add(normalized)
 
 
+def zip_write_item(zipf: zipfile.ZipFile, written: set[str], item: ExportedImage) -> None:
+    """Copy one exported file into the archive, or write its bytes when it has no file."""
+    if item.data is not None:
+        zip_writestr(zipf, written, item.archive_path, item.data)
+    else:
+        zip_write_file(zipf, written, item.source_path, item.archive_path)
+
+
 def zip_write_file(zipf: zipfile.ZipFile, written: set[str], source: Path, arcname: str) -> bool:
     normalized = archive_name(arcname)
     if normalized in written:
@@ -782,11 +799,30 @@ def plan_package(
     curated_entries = [entries_by_rel[rel] for rel in sorted(page_asset_rels) if rel in entries_by_rel]
     curated_payload = filtered_media_index(media_payload, curated_entries)
 
+    unity_store = open_store_if_present(export_root)
+
+    def exported_items(payload: dict, entry: dict, rel: str) -> list[ExportedImage]:
+        """The files one index entry needs: the file itself, or for a Sprite its texture and crop document."""
+        texture_rel = entry.get("crop")
+        if not texture_rel:
+            return [resolve_exported_image(project_root, export_root, payload, rel)]
+        # A Sprite image has no file. Ship its texture and its crop document
+        # loose beside the image path, where serve.py answers the image from it.
+        document_rel = posixpath.join(posixpath.dirname(rel), sprite_crops.document_name(posixpath.basename(rel)))
+        document = resolve_exported_image(project_root, export_root, payload, document_rel)
+        if unity_store is not None and unity_store.exists(sprite_crops.SPRITE_TYPE, posixpath.basename(document_rel)):
+            document = replace(
+                document,
+                data=unity_store.read_bytes(sprite_crops.SPRITE_TYPE, posixpath.basename(document_rel)),
+            )
+        return [resolve_exported_image(project_root, export_root, payload, str(texture_rel)), document]
+
     def resolved_assets(kind: str, rels: Iterable[str]) -> list[ExportedImage]:
         return [
-            resolve_exported_image(project_root, export_root, media_payload, rel)
+            item
             for rel in sorted(rels)
             if entries_by_rel[rel].get("k") == kind
+            for item in exported_items(media_payload, entries_by_rel[rel], rel)
         ]
 
     curated_rels = set(page_asset_rels) & set(entries_by_rel)
@@ -796,8 +832,9 @@ def plan_package(
         if isinstance(entry, dict) and entry.get("r")
     }
     resource_assets = [
-        resolve_exported_image(project_root, export_root, full_asset_payload, rel)
+        item
         for rel in sorted(resource_entries_by_rel)
+        for item in exported_items(full_asset_payload, resource_entries_by_rel[rel], rel)
     ]
     curated_audio_files = [item for item in all_audio_files if item.rel in page_audio_rels]
     resource_audio_files = [item for item in all_audio_files if item.rel not in page_audio_rels]
@@ -852,6 +889,9 @@ def create_package(args: argparse.Namespace) -> int:
         present: list[ExportedImage] = []
         absent: list[ExportedImage] = []
         for item in items:
+            if item.data is not None:
+                present.append(item)
+                continue
             if item.source_path in source_sizes:
                 present.append(item)
                 continue
@@ -1049,7 +1089,7 @@ def _write_media_package(
         for path in page_local_media_files:
             zip_write_file(zipf, written, path, webui_arcname(webui_root, path))
         for item in curated_images + curated_videos:
-            zip_write_file(zipf, written, item.source_path, item.archive_path)
+            zip_write_item(zipf, written, item)
 
 
 def _write_page_audio_package(
@@ -1085,7 +1125,7 @@ def _write_resources_package(
         for path in resource_data_files:
             zip_write_file(zipf, written, path, webui_arcname(webui_root, path))
         for item in resource_assets + resource_audio:
-            zip_write_file(zipf, written, item.source_path, item.archive_path)
+            zip_write_item(zipf, written, item)
         for audio_index in plan.audio_indexes:
             zip_write_file(zipf, written, audio_index.source_path, audio_index.archive_path)
 

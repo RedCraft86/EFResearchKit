@@ -1,4 +1,21 @@
-"""Exact current ``Dictionary<uint, LevelEnemyData>`` codec."""
+"""Exact current ``Dictionary<uint, LevelEnemyData>`` codec.
+
+Each value is the 30-member generated ``LevelEnemyData`` wrapper: the 14
+inherited ``LevelEntityData`` members, then 16 enemy members in formatter read
+order.  The nested lane closes the nullable 18-member born behavior, spawned
+buffs and their four-member blackboard pairs, the eight-byte native
+``Nullable<float>`` representation, idle-animation strings, nullable
+three-float AI override attributes, and the generated action/patrol enums.
+The dynamic AI blackboard is null in the current corpus; a positive
+``Dictionary<string, object>`` stops there because its runtime object union
+is not named.  In LevelScript this gives the real cursor into ``exitBuffer``
+without searching for a later entity key.
+
+``decode_enemy_list`` is the same value codec over LevelData's ``enemies``
+list (values stored directly, null elements explicit), so the field order is
+never duplicated.  Stored authored placement and settings only; runtime
+spawning is not proved.
+"""
 
 from __future__ import annotations
 
@@ -151,17 +168,17 @@ def _buff_list(data: bytes, cursor: int, field: str) -> tuple[dict[str, Any], in
 
 
 def _nullable_float(data: bytes, cursor: int, field: str) -> tuple[float | None, int]:
-    # The selected current formatter reads the eight-byte native Nullable<float>
-    # representation in one cursor operation: float, hasValue, then three padding bytes.
+    # The selected reader copies the eight-byte native Nullable<float> value:
+    # hasValue, three padding bytes, then the float at offset four.
     if cursor + 8 > len(data):
         raise LevelEnemyCodecError(f"truncated {field}: offset={cursor} size=8")
-    value = struct.unpack_from("<f", data, cursor)[0]
-    has_value = data[cursor + 4]
-    padding = data[cursor + 5 : cursor + 8]
+    has_value = data[cursor]
+    padding = data[cursor + 1 : cursor + 4]
     if has_value not in (0, 1) or padding != b"\0\0\0":
         raise LevelEnemyCodecError(
             f"invalid {field} nullable layout: offset={cursor} hasValue={has_value} padding={padding.hex()}"
         )
+    value = struct.unpack_from("<f", data, cursor + 4)[0]
     if has_value and not math.isfinite(value):
         raise LevelEnemyCodecError(f"non-finite {field}: offset={cursor} value={value!r}")
     return value if has_value else None, cursor + 8
@@ -213,11 +230,12 @@ def _enemy(data: bytes, cursor: int, field: str) -> tuple[dict[str, Any], int]:
     value["bornTemplateId"], cursor = _string(data, cursor, f"{field}.bornTemplateId")
     value["buffs"], cursor = _buff_list(data, cursor, f"{field}.buffs")
     action_type, cursor = _i32(data, cursor, f"{field}.enemyDefaultActionType")
-    if action_type != 0:
-        raise LevelEnemyCodecError(
-            f"invalid {field}.enemyDefaultActionType: value={action_type}"
-        )
-    value["enemyDefaultActionType"] = {"raw": 0, "name": "Patrol"}
+    # The current enum metadata names only Patrol=0, but an authored source
+    # stores 1. Preserve the exact signed value without inventing a label.
+    value["enemyDefaultActionType"] = {
+        "raw": action_type,
+        "name": "Patrol" if action_type == 0 else None,
+    }
     value["enemyGroupId"], cursor = _i32(data, cursor, f"{field}.enemyGroupId")
     value["enemyPatrolId"], cursor = _u64(data, cursor, f"{field}.enemyPatrolId")
     value["extraDelayToRecycleTime"], cursor = _nullable_float(

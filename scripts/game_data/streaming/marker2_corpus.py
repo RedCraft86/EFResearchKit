@@ -3,6 +3,14 @@
 This module reuses only the provenance/I/O helpers already
 exercised by the marker13 corpus gate.  Marker2 directory, parser and native
 evidence remain separate maintained dependencies.
+
+Run after ``streaming.corpus`` with the same ``--input-set-sha256`` (the VFS
+audit value); ``--root-report`` defaults to that gate's
+``reports/animestudio/streaming_root_subgraphs_latest.json``. It publishes
+``reports/animestudio/streaming_marker2_latest.{json,md}`` plus the per-file
+inventory ``streaming_marker2_inventory_latest.jsonl.gz``. A ``--max-files``
+run is a diagnostic probe, not complete-corpus evidence, and its output
+belongs in ``tmp/`` or ``scratch/``.
 """
 from __future__ import annotations
 
@@ -32,7 +40,7 @@ from scripts.game_data.streaming.pairs import bind_current_pair, index_ordered_p
 
 
 SCHEMA = "endfield.streaming-marker2-corpus.v1"
-ROOT_SCHEMA = "endfield.streaming-root-subgraphs-corpus.v15"
+ROOT_SCHEMA = "endfield.streaming-root-subgraphs-corpus.v16"
 # Candidate location is tmp/animestudio/<task>. The promoted maintained file
 from scripts.repo_paths import REPO_ROOT
 from scripts.game_data.corpus_common import is_bounded_diagnostic_output as _is_bounded_diagnostic_output
@@ -849,7 +857,7 @@ def sweep(*, repo_root: Path, root_report_path: Path, outer_summary_path: Path,
     if not partial and not failures:
         identity_sha = shared.sha256_bytes("\n".join(sorted(identity_rows)).encode("utf-8"))
         shared.require(
-            failures, "root-v15", "terminal-reconciliation", "logicalIdentitySetSha256",
+            failures, "root-v16", "terminal-reconciliation", "logicalIdentitySetSha256",
             identity_sha, ((report.get("layer1") or {}).get("logicalIdentitySetSha256")),
         )
         expected_references = (
@@ -857,7 +865,7 @@ def sweep(*, repo_root: Path, root_report_path: Path, outer_summary_path: Path,
             .get("nestedElementMarkerCounts", {}).get("2", 0)
         )
         shared.require(
-            failures, "root-v15", "terminal-reconciliation", "marker2ReferenceCount",
+            failures, "root-v16", "terminal-reconciliation", "marker2ReferenceCount",
             counters["marker2References"], expected_references,
         )
     shared.require(

@@ -23,6 +23,26 @@ The result is still an inferred diagnostic backdrop, not an exact scene
 transform, and every manifest publishes the fit that produced it - coverage,
 sample size and how many origins tied - so a weak background is visible as weak.
 A level whose fit is under-determined publishes no background at all.
+
+Where exact evidence exists it supersedes the inferred grid. Map01/Map02 HLOD
+clusters join their `InitChunkData` 4x4 matrix by exact level, HLOD level,
+grid i/j and signed cluster hash; unmatched or non-unique rows are omitted
+with no name-prefix or spatial fallback. Seamless members vote on a shared
+HLOD origin but use it only when their own multi-LOD marker coverage stays
+within `COVERAGE_TOLERANCE`; rejected regional origins stay in the manifest.
+Cluster color follows the generated material's exact `_BaseColorMap` PPtr to
+the exported atlas; a missing or duplicate link falls back to the elevation
+palette (unlit base color only, no environment lighting or post-processing).
+
+Layer rules: surface and elevation keep every joined triangle; the point
+layer samples those exact surfaces on a deterministic world-space X/Z lattice
+(`--surface-point-density`, samples per square metre) and excludes explicitly
+named floor/roof/ceiling/ground/terrain meshes plus broad near-horizontal
+non-prop slabs. Explicitly named roof/ceiling instances are omitted from every
+geometry layer. Point overlays keep a sparse sample set per projected pixel so
+the browser can composite height slabs low to high and a height filter reveals
+geometry below an excluded slab. Rendered scenes checkpoint and are reused on
+later runs; `--no-render-cache` forces a rerender.
 """
 
 from __future__ import annotations
@@ -40,6 +60,7 @@ import subprocess
 import sys
 import zlib
 from array import array
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -63,6 +84,8 @@ if __package__ in {None, ""}:
 
 from scripts.repo_paths import REPO_ROOT
 from scripts.common import EXPORT_LAYOUT, unity_asset_rel
+from scripts.game_data.contracts import CONTRACTS_DIR
+from scripts.game_data.map_water_surface_join import validate_map_water_surface_join
 
 ROOT = REPO_ROOT
 
@@ -2119,6 +2142,15 @@ def render_point_cloud(
         row for row in streaming
         if _instance_meshes(row) and not _is_explicit_overhead_cover(row)
     ]
+    mesh_identity_counts = Counter(
+        str(mesh.get("identityEvidence") or "unclassified")
+        for row in resolved for mesh in _instance_meshes(row)
+    )
+    mesh_binding_status = (
+        "name_family_candidate"
+        if mesh_identity_counts.get("name_family_candidate") or mesh_identity_counts.get("unclassified")
+        else "exact_level_hlod_key" if mesh_identity_counts else "unavailable"
+    )
     render_bindings = streaming_texture_bindings(level_id, resolved) if resolved else {}
     cache_signature = _point_render_cache_signature(
         level_id,
@@ -2241,8 +2273,9 @@ def render_point_cloud(
             level_id, elevation_depth, width, height, output_root,
             image_suffix="streaming_elevation",
             source_label=(
-                "full exact streaming-mesh triangle depth"
-                if exact_hlod_matrices else "full recovered streaming-mesh triangle depth"
+                "full exact HLOD-key streaming-mesh triangle depth"
+                if mesh_binding_status == "exact_level_hlod_key" else
+                "streaming-mesh name-candidate triangle depth"
             ),
         )
         point_cloud_overlay = (
@@ -2250,7 +2283,7 @@ def render_point_cloud(
                 level_id, resolved, bounds, width, height, output_root,
                 surface_point_density, render_bindings,
             )
-            if exact_hlod_matrices else
+            if exact_hlod_matrices and mesh_binding_status == "exact_level_hlod_key" else
             render_depth_point_overlay(
                 level_id, detail_depth, width, height, output_root,
                 image_suffix="streaming_points",
@@ -2304,6 +2337,8 @@ def render_point_cloud(
             "pointRadius": 0 if rendered_instances else radius,
             "renderedInstanceCount": rendered_instances,
             "renderedTriangleCount": rendered_triangles,
+            "meshBindingStatus": mesh_binding_status,
+            "meshIdentityCounts": dict(sorted(mesh_identity_counts.items())),
             "renderedVertexSampleCount": rendered_vertex_samples,
             "texturedInstanceCount": textured_instances,
             "texturedTriangleCount": textured_triangles,
@@ -2327,12 +2362,13 @@ def render_point_cloud(
         "modelScene": {
             "status": "streaming_meshes_rasterized" if rendered_instances else "no_recovered_scene_meshes",
             "positionStatus": "exact_streaming_matrix" if mesh_rows else "unavailable",
+            "meshBindingStatus": mesh_binding_status,
             "meshes": list(mesh_rows.values()),
             "meshCount": len(mesh_rows),
             "instanceCount": len(resolved),
         },
         "boundary": (
-            f"Orthographic depth raster of {rendered_instances} static OBJ instances placed by their recovered "
+            f"Orthographic depth raster of {rendered_instances} static OBJ candidates placed by their recovered "
             f"InitChunkData 4x4 matrices ({rendered_triangles} triangles and {rendered_vertex_samples} "
             f"legacy vertex samples). The point layer retains {detail_triangles} detail triangles and "
             f"exclude {excluded_detail_triangles} broad structural/slab triangles. {textured_pixels} visible pixels sample {len(used_textures)} exact "
@@ -2340,7 +2376,9 @@ def render_point_cloud(
             "unresolved or multi-material surface pixels remain transparent and their geometry stays available only on "
             f"the separate grayscale elevation layer. {len(overhead_covers)} explicitly named roof/ceiling instances are "
             "omitted so capped interiors remain readable; no height-based structural culling is applied. The remaining "
-            f"{len(streaming) - rendered_instances} non-rasterized instances are not drawn as location dots."
+            f"{len(streaming) - rendered_instances} non-rasterized instances are not drawn as location dots. "
+            "Generic Mesh selection uses an entity/Mesh name family and does not prove prefab or renderer ownership; "
+            "only exact level/HLOD keys establish the HLOD asset relation."
             if rendered_instances else
             f"Evidence-only point cloud drawn from {len(positions)} exact published registry and quest X/Y/Z transforms. "
             "Points are not connected into terrain and do not claim recovered scene geometry."
@@ -2398,6 +2436,13 @@ def water_scene_id(level_id: str, source_scene: str | None = None) -> str:
     return matched.group(1) if matched else candidate
 
 
+WATER_COLOR_MASK_BOUNDARY = (
+    "Independent authored-minimap water-color layer. WaterData sector flowmaps corroborate that the "
+    "scene uses HGWater, but are not treated as coverage: their packed flow/height channels contain "
+    "long vector bands. Exact authored water-volume footprints are published separately."
+)
+
+
 def render_water_overlay(
     level_id: str,
     scene_id: str,
@@ -2410,9 +2455,8 @@ def render_water_overlay(
 
     WaterData's ``T_water_*flowmap*`` textures are vector/height fields, not
     binary coverage masks. Treating their blue channel as occupancy produced
-    long rays and bands that do not describe shore geometry. Until the actual
-    water-surface mesh consumer is recovered, maps without authored minimap art
-    deliberately publish no water layer.
+    long rays and bands that do not describe shore geometry. This heuristic
+    minimap-color layer is independent of exact authored water-volume polygons.
     """
     sectors = sectors_by_scene.get(scene_id) or []
     if not sectors:
@@ -2460,12 +2504,96 @@ def render_water_overlay(
         "sourceSectorCount": len(sectors),
         "renderedSectorCount": 0,
         "waterPixelRatio": round(water_pixels / (width * height), 4),
-        "boundary": (
-            "Independent authored-minimap water-color layer. WaterData sector flowmaps corroborate that the "
-            "scene uses HGWater, but are not treated as coverage: their packed flow/height channels contain "
-            "long vector bands. Maps without authored minimap art remain empty until water meshes are recovered."
-        ),
+        "boundary": WATER_COLOR_MASK_BOUNDARY,
     }
+
+
+@functools.lru_cache(maxsize=1)
+def _reviewed_water_source_level() -> str:
+    contract = json.loads((CONTRACTS_DIR / "map_water_surface_join.json").read_text(encoding="utf-8"))
+    if contract.get("schema") != "endfield.map-water-surface-join.v2":
+        raise ValueError("map water surface join: unsupported contract schema")
+    return str(contract["selectedSource"]["levelId"])
+
+
+@functools.lru_cache(maxsize=1)
+def _reviewed_water_surface_receipt() -> dict:
+    return validate_map_water_surface_join(EXPORT_LAYOUT.root)
+
+
+def attach_authored_water_surface(
+    manifest: dict, level_id: str, live_capture_session: Path | None = None,
+) -> dict | None:
+    """Publish only a source-gated authored footprint in a matching scene."""
+    if level_id != _reviewed_water_source_level():
+        return None
+    receipt = _reviewed_water_surface_receipt()
+    manifest["waterSurfaceGate"] = {
+        "status": receipt["status"],
+        "nativeStatus": receipt.get("nativeStatus"),
+        "diagnostic": receipt.get("diagnostic"),
+    }
+    manifest["authoredWaterSurfaces"] = (
+        [dict(receipt["waterSurface"])] if receipt["status"] == "validated" else []
+    )
+    manifest.pop("waterSurfaceRuntimeGate", None)
+    if live_capture_session is not None:
+        from scripts.game_data.map_water_live_capture import validate_map_water_live_capture
+
+        live = validate_map_water_live_capture(live_capture_session, authored=receipt)
+        if live["status"] not in ("validated", "validated_mesh_only"):
+            raise RuntimeError(f"Map water live capture: {live.get('diagnostic') or live['status']}")
+        if receipt["status"] != "validated" or len(manifest["authoredWaterSurfaces"]) != 1:
+            raise RuntimeError("Map water live capture requires the current authored source gate")
+        surface = manifest["authoredWaterSurfaces"][0]
+        if (live["sceneId"] != surface["sceneId"] or
+                live["waterVolumeId"] != str(surface["waterVolumeId"]) or
+                live["meshPathHash"] != str(surface["meshPathHash"])):
+            raise RuntimeError("Map water live capture selected a different authored surface")
+        manifest["waterSurfaceRuntimeGate"] = {
+            "status": live["status"], "evidenceBoundary": live["evidenceBoundary"],
+            "receiptSha256": live["receiptSha256"],
+        }
+        surface["runtimeObservation"] = {
+            "status": "observed_mesh_delivered_to_updata_mesh",
+            "requestedPosition": live["requestedPosition"],
+            "postSetupWaterVolumeIdMatched": live["postSetupWaterVolumeIdMatched"],
+            "postSetupIdComparison": live["postSetupIdComparison"],
+            "meshAssetDeliveredToUpdataMesh": live["meshAssetDeliveredToUpdataMesh"],
+            "transformObservationStatus": live.get("transformObservationStatus", "not_requested"),
+            "nearStopObservedPosition": live.get("nearStopObservedPosition"),
+            "setupReturnObservedPosition": live.get("setupReturnObservedPosition"),
+            "selectedSetPositionCalls": live.get("selectedSetPositionCalls"),
+            "lastSetterReturnPosition": live.get("lastSetterReturnPosition"),
+            "finalHeightObserved": False,
+            "rendererVisibilityObserved": False,
+        }
+        return live
+    return None
+
+
+def refresh_authored_water_surface_manifest(
+    level_id: str, output_root: Path, live_capture_session: Path | None = None,
+    live_report_output: Path | None = None,
+) -> dict:
+    """Update only the selected existing Map manifest, without asset scans."""
+    manifest_path = output_root / f"{level_id}_hlod_grid_inferred.json"
+    if not manifest_path.is_file():
+        raise RuntimeError(f"authored-water-only requires existing manifest: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest.get("worldBounds"), dict):
+        raise RuntimeError(f"authored-water-only requires worldBounds: {manifest_path}")
+    live = attach_authored_water_surface(manifest, level_id, live_capture_session)
+    if live_report_output is not None:
+        if live is None:
+            raise RuntimeError("Map water live report requires a validated capture")
+        live_report_output.parent.mkdir(parents=True, exist_ok=True)
+        live_report_output.write_text(json.dumps(live, indent=2) + "\n", encoding="utf-8")
+    overlay = manifest.get("waterOverlay")
+    if isinstance(overlay, dict) and overlay.get("status") == "recovered_authored_minimap_water_color_mask":
+        overlay["boundary"] = WATER_COLOR_MASK_BOUNDARY
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return manifest.get("waterSurfaceGate") or {"status": "not-selected"}
 
 
 def _scene_meshes(
@@ -2956,7 +3084,7 @@ def render_hlod_point_samples(
 
 
 def rasterise_streaming_depth(streaming, bounds, width, height, bindings=None, detail_props_only=False):
-    """Rasterize exact static instances, sampling proven material base textures."""
+    """Rasterize candidate Meshes at exact matrices, sampling proved base textures."""
     if _raster_mesh_numba is not None:
         return _rasterise_streaming_depth_batched(
             streaming, bounds, width, height, bindings, detail_props_only,
@@ -3654,6 +3782,7 @@ def refresh_water_overlay_manifests(
             if stale_image.is_file():
                 stale_image.unlink()
         manifest["waterOverlay"] = overlay
+        attach_authored_water_surface(manifest, level_id)
         manifest_path.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
         )
@@ -4620,6 +4749,18 @@ def main(argv: list[str] | None = None) -> int:
         help="refresh derived water overlays in existing manifests without rerendering model geometry",
     )
     parser.add_argument(
+        "--authored-water-only", action="store_true",
+        help="validate and refresh the reviewed authored water footprint in one existing manifest",
+    )
+    parser.add_argument(
+        "--map-water-capture-session", type=Path,
+        help="validate one saved Map water capture and attach its selected runtime observation",
+    )
+    parser.add_argument(
+        "--map-water-live-report-output", type=Path,
+        help="write the selected live validation report without repeating its source gate",
+    )
+    parser.add_argument(
         "--exact-point-fallback-only", action="store_true",
         help="skip inferred HLOD rendering and publish only exact registry/quest transform point layers",
     )
@@ -4639,6 +4780,17 @@ def main(argv: list[str] | None = None) -> int:
     _RENDER_CACHE_STATS.update(hits=0, writes=0)
     if not math.isfinite(args.surface_point_density) or args.surface_point_density <= 0:
         raise SystemExit("--surface-point-density must be a finite number greater than zero")
+    if args.authored_water_only:
+        if len(args.level) != 1 or args.level[0] != _reviewed_water_source_level():
+            raise SystemExit("--authored-water-only requires only the reviewed --level")
+        gate = refresh_authored_water_surface_manifest(
+            args.level[0], args.output_root, args.map_water_capture_session,
+            args.map_water_live_report_output,
+        )
+        print(f"map previews: authored water {args.level[0]}: {gate['status']}")
+        return 0 if gate["status"] == "validated" else 1
+    if args.map_water_capture_session is not None or args.map_water_live_report_output is not None:
+        parser.error("Map water live options require --authored-water-only")
     if (
         args.jobs > 1
         and not args.water_only
@@ -4780,6 +4932,7 @@ def main(argv: list[str] | None = None) -> int:
             f"{level_id}_hlod_diagnostic.json" if exact_projection else
             f"{level_id}_hlod_grid_inferred.json"
         )
+        attach_authored_water_surface(manifest, level_id)
         (args.output_root / manifest_name).write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
@@ -4853,6 +5006,7 @@ def main(argv: list[str] | None = None) -> int:
             level_id, level_positions(map_path), args.output_root, payload,
             surface_point_density=args.surface_point_density,
         )
+        attach_authored_water_surface(manifest, level_id)
         (args.output_root / f"{level_id}_hlod_grid_inferred.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
@@ -4963,7 +5117,8 @@ def main(argv: list[str] | None = None) -> int:
                 if scene_id != level_id:
                     manifest["boundary"] = (
                         f"This gameplay map declares the shared art scene {scene_id}; the orthographic image is that "
-                        "scene's exact static projection. Level-specific registry and mission markers remain separate. "
+                        "scene's projection at recovered instance matrices. Mesh ownership has the grade recorded "
+                        "in render.meshBindingStatus. Level-specific registry and mission markers remain separate. "
                         + str(base_manifest.get("boundary") or "")
                     )
         if manifest is None:
@@ -4980,6 +5135,7 @@ def main(argv: list[str] | None = None) -> int:
                 level_id, water_scene_id(level_id), manifest["worldBounds"],
                 index.get("waterSectors") or {}, texture_files, args.output_root,
             )
+        attach_authored_water_surface(manifest, level_id)
         (args.output_root / f"{level_id}_hlod_grid_inferred.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )

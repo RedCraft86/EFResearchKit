@@ -1,7 +1,17 @@
 """Build the exported asset index for the unified asset browser.
 
+It writes only Assets-owned indexes and media lookup. ``--mode`` defaults to
+``focused``, the Story/Wiki media projection; the served Assets page is built
+with ``--mode default``, which the wrapper passes, so a direct run without it
+replaces the full index with the focused projection. It also writes
+``webui/data/assets/table_owners.json`` from ``table_asset_owners``: exact
+table-row ownership for indexed assets, always derived from the complete scan
+even when the published index is the focused projection. The legacy economy,
+world, presentation and broad data index helpers are diagnostic only and feed
+no active page.
+
 Run from the repo root:
-    python scripts/webui/assets/build_assets.py
+    python -m scripts.webui.assets.build_assets --mode default
 """
 from __future__ import annotations
 
@@ -95,15 +105,23 @@ def build_output_payloads(
     mode: str,
     root: Path,
     export_root: Path,
+    story_media: bool = True,
 ) -> tuple[dict, dict, dict, dict]:
     """Derive every published/in-memory payload from one completed scan.
 
     The fourth payload is always the complete asset index, even when the
     published index is the focused Story/Wiki projection, so consumers that
     need the full exported set (the table-owner sidecar) do not rescan.
+    Story media reads Story's published pages; it is built only when it is
+    published (``story_media``) or projects the focused index, so the full
+    index never depends on Story.
     """
     full_asset_payload, full_video_payload = scan.payloads(root=root, export_root=export_root)
-    story_payload = build_story_media_payload(full_asset_payload, full_video_payload)
+    story_payload = (
+        build_story_media_payload(full_asset_payload, full_video_payload)
+        if story_media or mode == "focused"
+        else {}
+    )
 
     if mode != "focused":
         return full_asset_payload, full_video_payload, story_payload, full_asset_payload
@@ -174,6 +192,7 @@ def main(argv: list[str] | None = None) -> None:
         mode=args.mode,
         root=ROOT,
         export_root=EXPORT_ROOT,
+        story_media=args.publish != "index",
     )
     if args.publish in ("all", "story-media"):
         report_story_media(write_story_media_payload(story_payload))

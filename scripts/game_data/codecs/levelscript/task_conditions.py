@@ -1,6 +1,42 @@
 """Exact codec for the LevelScript task map and its condition unions.
 
 Moved verbatim out of ``scripts/game_data/levelscript_binary.py``.
+
+``taskMap`` is a counted map of ``LevelScriptTaskData`` entries: an
+eight-hex-digit task key, a four-member envelope, and a root ``GameCondition``
+union.  The sequential owner (``codecs.levelscript.sequential_owner``)
+promotes a file only when every declared entry closes and the following
+``triggerVolumes`` map ends at physical EOF.  An unsupported condition body
+stops immediately after the named task count; later bytes are never scanned
+or assigned to a guessed entry.  The first failing entry is kept as a bounded
+diagnostic (task key and checked union tag when readable) so the next reader
+frontier is identifiable without promoting any later bytes.
+
+Condition identity.  A ``GameCondition`` tag is the type's rank in the union
+and renumbers whenever a condition is added, so tags are never written down:
+``_task_condition_tag`` resolves each reviewed type name through
+``levelscript_union_tags`` for the selected build, and an unvalidated build
+yields a placeholder that no byte equals.  ``LEVELSCRIPT_TASK_CONDITION_TAGS``
+pairs each name with the member count its codec reads; a different current
+member count fails closed.  Generated wrapper setter order gives the concrete
+fields, e.g. ``CheckQuestState`` (comparer, quest id, quest state),
+``CheckTalkOptionFinish`` (dialog id, finish id), ``InteractiveCheckInt``
+(comparer, value, entity, key, level), ``CheckScanInteractive`` (entity then
+level), ``CheckTerminalReadingDone`` (terminal unique id) and
+``Conditions.CheckCurrentDungeonBoth`` (dungeon id).  Quest state accepts the
+generated sparse enum ``0,2,3,4,5``; value 1 is not a quest state and fails.
+Nullable ``Param<T>`` values, scalar/list payloads, sparse enums, nested
+pointers and raw trailing booleans advance only their declared member order.
+
+Supplemental routes are tried in order when the reviewed table has no row:
+``levelscript_task_condition_native`` rows, then the separately gated codecs
+``taskmap_selected_conditions``, ``taskmap_followon_conditions``,
+``taskmap_submit_condition``, ``taskmap_archery_condition``,
+``taskmap_game_inst_duration_condition`` and ``taskmap_fac_linking_condition``, each admitted only while its own
+native contract validates the selected build.
+
+Evidence tier: ``exact`` stored layout.  Stored conditions do not establish
+runtime evaluation, mission ownership or task completion.
 """
 
 from __future__ import annotations
@@ -420,6 +456,52 @@ def _decode_levelscript_task_condition(
                 "endfield.levelscript-task-condition-native.v1:"
                 + supplemental_audit["contractSha256"]
             )
+    if identity is None:
+        # These positive taskMap conditions carry their own selected native
+        # reader proof. Import here to keep the primitive readers reusable by
+        # that isolated codec without a module import cycle.
+        from scripts.game_data.codecs.levelscript.taskmap_selected_conditions import (
+            decode_selected_taskmap_condition,
+        )
+
+        selected = decode_selected_taskmap_condition(data, start, limit)
+        if selected is not None:
+            return selected
+        from scripts.game_data.codecs.levelscript.taskmap_followon_conditions import (
+            decode_followon_taskmap_condition,
+        )
+
+        followon = decode_followon_taskmap_condition(data, start, limit)
+        if followon is not None:
+            return followon
+        from scripts.game_data.codecs.levelscript.taskmap_submit_condition import (
+            decode_taskmap_submit_condition,
+        )
+
+        submit = decode_taskmap_submit_condition(data, start, limit)
+        if submit is not None:
+            return submit
+        from scripts.game_data.codecs.levelscript.taskmap_archery_condition import (
+            decode_taskmap_archery_condition,
+        )
+
+        archery = decode_taskmap_archery_condition(data, start, limit)
+        if archery is not None:
+            return archery
+        from scripts.game_data.codecs.levelscript.taskmap_game_inst_duration_condition import (
+            decode_selected_game_inst_duration_condition,
+        )
+
+        game_inst_duration = decode_selected_game_inst_duration_condition(data, start, limit)
+        if game_inst_duration is not None:
+            return game_inst_duration
+        from scripts.game_data.codecs.levelscript.taskmap_fac_linking_condition import (
+            decode_selected_fac_linking_mode_condition,
+        )
+
+        fac_linking = decode_selected_fac_linking_mode_condition(data, start, limit)
+        if fac_linking is not None:
+            return fac_linking
     if identity is None or identity[1] != member_count:
         return None
     condition_type = identity[0]
@@ -938,9 +1020,14 @@ def _decode_levelscript_check_mission_state_condition(
     offset: int,
     limit: int,
 ) -> tuple[dict[str, Any], int] | None:
-    """Decode one exact GameCondition tag 0x67 / seven-member payload."""
+    """Decode one exact seven-member ``CheckMissionState`` GameCondition.
+
+    Its tag is resolved by type name per build; an unvalidated build, a
+    changed member count or a wide tag decodes nothing.
+    """
     start = offset
-    if offset + 2 > limit or data[offset : offset + 2] != b"\x67\x07":
+    route = union_tags.plain_route("GameCondition", "CheckMissionState", 7)
+    if route is None or offset + 2 > limit or data[offset : offset + 2] != bytes(route):
         return None
     cursor = offset + 2
     if cursor + 4 > limit:
@@ -988,7 +1075,7 @@ def _decode_levelscript_check_mission_state_condition(
         return None
     return {
         "type": "CheckMissionState",
-        "conditionUnionTag": "0x0067",
+        "conditionUnionTag": f"0x{route[0]:04x}",
         "serializedMemberCount": 7,
         "conditionOffset": start,
         "conditionOffsetHex": _offset_hex(start),

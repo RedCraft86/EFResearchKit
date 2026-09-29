@@ -1,3 +1,106 @@
+// Audio page behavior contract (webui/README.md links here; the UI-facing
+// evidence boundary is memory/webui/audio.md, the Wwise chain is
+// memory/game_data/audio_overview.md).
+//
+// Four layers stay separate and the page claims only the one available:
+// authored Event/media identity; Wwise graph relation and possible media
+// leaves; authored consumer/trigger context; observed runtime execution.
+//
+// Layout and playback
+//   * In a selected record the playable-media block renders first, directly
+//     below the detail heading and before Details, manual notes and the
+//     longer facts/evidence sections.
+//   * Expanded files load with their waveform. A group of more than
+//     PLAYER_COLLAPSE_THRESHOLD files keeps lazy collapsed players and loads a
+//     waveform only when that file is expanded.
+//   * The default purpose-priority sort and recovery filters put
+//     unknown-purpose records ahead of partial and known ones; a direct
+//     Story-line binding is terminal known-purpose, not investigation queue.
+//   * Notes: each Event/media record takes a note that is written only on an
+//     explicit Save note (typing never writes). Notes are keyed by language
+//     and record identity, persist through overrides/audio_notes.json, join
+//     the text search and show their first line beside the list filename.
+//     They are user annotations, not game-data evidence.
+//   * Identity-only collapsed groups exist for chr_*, au_chr_*,
+//     au_actor_<token>_*, au_monster_<token>_* and au_ namespaces and are
+//     never merged with skill or animation SFX.
+//   * The overview loads audio/scene_backgrounds.json as a compact scene
+//     catalog (validated and missing object-index sources, partial coverage
+//     visible, filters by scene id, mission id or Event); Event chips
+//     navigate to the Event detail, and no Wwise branch or media is copied.
+//
+// Detail sections (all authored serialized joins)
+//   * Event details list exact SkillData/BuffData PlaySound contexts when the
+//     raw literal matches a selected HIRC Event, with an authored frame window
+//     only when the action has one; Buff and Ability slots appear by checked
+//     native enum names. Empty, outer-whitespace and HIRC-unmatched literals
+//     stay without Event links. No branch execution, target or playback claim.
+//   * Music Switch Events show a searchable list of authored type 0x0C
+//     decision-tree leaves from musicNodeEvidence, 40 rows per page: stored
+//     argument group/type and path key, leaf object ID, weight, probability
+//     and same-bank ownership (a missing declaration is a local join gap). It
+//     needs one pathKeys entry per argument level; older shards with a root
+//     sentinel need the focused Audio HIRC build first.
+//   * Direct node effects (postProcessSummary.effectNodes); the serialized
+//     effect chain (direct slots before each leaf-to-root Bus path, at most 64
+//     stages per row, truncation marked); serialized RTPC controls and State
+//     overrides (at most eight curve points each); Bus-control, ducking and
+//     User-Defined Aux sends resolved by Bus ID against the unique Bus
+//     catalog; media-edge types and selection paths (directSound, layerChild,
+//     randomAlternative, switchCandidate, sequence/music) with root Action
+//     IDs; trigger_contexts.json mediaRefs; non-playback Action payloads
+//     (SetState/SetSwitch, GameParameter ranges and fade, Stop/Pause/Resume,
+//     Seek, value/filter actions, exception buses, FX bypass); the lazy
+//     debug-only AudioCue AST. An unsupported tail stays fail-closed with its
+//     offset and reason.
+//   * Effect parameter names/values appear only for classes passing the
+//     selected native gate; others keep raw class IDs, parameter lengths and
+//     hashes and exact plug-in media dependencies. The HIRC overview shows the
+//     gate status and reviewed-class count beside exact/partial/opaque counts;
+//     an absent gate is marked unverified. No live effect or DSP claim.
+//
+// Status vocabulary, rendered verbatim in details, search and filters
+//   * identity: eventIdentityStatus=grammarHashPreimageNameRecovered with
+//     eventNameSourceKind=grammarHashPreimage and the head/tail sibling counts
+//     that admitted the name; ownerKind=npc; the physical wwise/unknown path.
+//   * category: physical audioCategory beside a separately recovered semantic
+//     category (SFX, voice, UI, ambience, control, music, cue) and a coarse
+//     ownership (scene environment, scene object, animation, gameplay
+//     component, interaction, UI, voice system, mission narration). A mixed
+//     known-category join stays unclassified; a generic scene emitter keeps
+//     scene ownership without a forced category.
+//   * authored fields and scenes: monoBehaviourAudioIdField roles
+//     (componentSoundSpawn, componentHitCallback, finish/state,
+//     water/particle, or the generic serialized-field boundary) plus
+//     componentLayout; sceneOwnershipStatus, sceneContainmentStatus, sceneId,
+//     sourceName, sourcePath, conflictingPrefabInstanceIdentityJoins.
+//   * routing: noExplicitOutputBusSerialized,
+//     controlCatalog.staticRtpcAlignment with the six AU_RTPC_* names
+//     (CINE_CTRL_VOL_AMB, ..._VOL_MU, ..._VOL_SFX, IS_MUTE_BY_SDK_WEBVIEW,
+//     IS_SURROUND_CHANNELS, GLOBAL_VOL_MASTER_IOS_WORKAROUND),
+//     postProcessSummary.gameParameterNameEvidence, and the custom numeric
+//     targets 0x1802/0x1804.
+//   * AudioCue AST: exprType (3, 8), runtimeCueVariable, compositeOpaque,
+//     childrenLimit.
+//   * Wwise actions: `operation` (the masked high byte that decides the body
+//     layout and stays the grouping key) beside actionTypeName, the SDK name
+//     of the whole 16-bit type shown without its AkActionType_ prefix (so
+//     Stop_E, Stop_E_O and Stop_ALL are told apart). A word the SDK enum does
+//     not name shows no name rather than one fitted from the suffix.
+//
+// Storage and degraded state
+//   * Shared SFX/music and language voice stay in separate roots; repeated
+//     media IDs keep every physical occurrence and package provenance.
+//   * Direct Story-line binding, authored context, Event-only relation and
+//     unknown placement are mutually exclusive media states. Coverage counts
+//     come from generated summaries, never hard-coded here.
+//   * Missing or mismatched native inputs keep authored rows and remove only
+//     build-locked callsites, mappings and addresses, with the unavailable
+//     state shown: interactive and Snapshot state Events, enemy/character
+//     voice callsites, Story dialogId lifecycle hooks, and the
+//     EnemyTriggerVoiceAction voice-type-to-trigger-key mapping.
+//   * An unverified, missing or mismatched offline capture bundle stays a
+//     degraded diagnostic and adds no runtime binding.
 (() => {
   const ROW_HEIGHT = 66;
   const OVERSCAN_PX = 260;
@@ -97,6 +200,7 @@
       hircInventory: "Wwise HIRC inventory",
       effectParameterGate: "Effect parameter evidence",
       effectParameterGateValidated: "Selected native gate validated {count} reviewed plug-in classes. Named settings are authored bank values; live effect activation and DSP output remain unobserved.",
+      effectParameterGateStructural: "It also verified the native read spans of {count} plug-in classes whose setting meanings remain unresolved.",
       effectParameterGateUnavailable: "Selected native gate: {status}. Native-backed setting names are unavailable or unverified; raw parameter evidence remains.",
       effectParameterGateAbsent: "This Audio index has no selected native effect-parameter gate. Refresh its generated data before relying on named settings.",
       controlCatalog: "Audio controls / cue catalog",
@@ -435,6 +539,7 @@
       hircInventory: "Wwise HIRC \u5e93\u5b58",
       effectParameterGate: "\u6548\u679c\u53c2\u6570\u8bc1\u636e",
       effectParameterGateValidated: "\u5f53\u524d\u7248\u672c\u539f\u751f\u6821\u9a8c\u901a\u8fc7\uff0c\u8986\u76d6 {count} \u4e2a\u5df2\u5ba1\u67e5\u7684\u63d2\u4ef6\u7c7b\u522b\u3002\u5177\u540d\u8bbe\u7f6e\u662f\u97f3\u9891\u5e93\u4e2d\u7684\u521b\u4f5c\u503c\uff1b\u6548\u679c\u7684\u8fd0\u884c\u65f6\u6fc0\u6d3b\u4e0e DSP \u8f93\u51fa\u672a\u89c2\u6d4b\u3002",
+      effectParameterGateStructural: "\u53e6\u6709 {count} \u4e2a\u63d2\u4ef6\u7c7b\u522b\u7684\u539f\u751f\u8bfb\u53d6\u8303\u56f4\u5df2\u9a8c\u8bc1\uff0c\u4f46\u8bbe\u7f6e\u542b\u4e49\u4ecd\u672a\u89e3\u660e\u3002",
       effectParameterGateUnavailable: "\u5f53\u524d\u7248\u672c\u539f\u751f\u6821\u9a8c\uff1a{status}\u3002\u539f\u751f\u652f\u6301\u7684\u8bbe\u7f6e\u540d\u79f0\u4e0d\u53ef\u7528\u6216\u672a\u9a8c\u8bc1\uff1b\u4ecd\u4fdd\u7559\u539f\u59cb\u53c2\u6570\u8bc1\u636e\u3002",
       effectParameterGateAbsent: "\u6b64\u97f3\u9891\u7d22\u5f15\u6ca1\u6709\u5f53\u524d\u7248\u672c\u7684\u6548\u679c\u53c2\u6570\u6821\u9a8c\u4fe1\u606f\u3002\u8bf7\u5237\u65b0\u751f\u6210\u6570\u636e\u540e\u518d\u4f9d\u636e\u5177\u540d\u8bbe\u7f6e\u3002",
       controlCatalog: "\u97f3\u9891\u63a7\u5236 / Cue \u76ee\u5f55",
@@ -2607,9 +2712,11 @@
       const effectGate = processing.effectParameterNativeGate;
       if (effectGate && typeof effectGate === "object") {
         const validatedClasses = Array.isArray(effectGate.validatedClassIds) ? effectGate.validatedClassIds : null;
+        const structuralClasses = Array.isArray(effectGate.validatedStructuralClassIds) ? effectGate.validatedStructuralClassIds : [];
         const status = normalize(effectGate.status) || "unavailable";
         const gateNote = status === "validated" && validatedClasses
           ? t("effectParameterGateValidated").replace("{count}", formatNumber(validatedClasses.length))
+            + (structuralClasses.length ? ` ${t("effectParameterGateStructural").replace("{count}", formatNumber(structuralClasses.length))}` : "")
           : t("effectParameterGateUnavailable").replace("{status}", status);
         section.appendChild(noteSection(t("effectParameterGate"), gateNote));
       } else {

@@ -1,6 +1,65 @@
 """Exact codec for the current sequential action/getter members.
 
 Moved verbatim out of ``scripts/game_data/levelscript_binary.py``.
+
+``frame_levelscript_current_action_sequence_leader_enter`` is the positive
+``ActionSerializedMap`` lane of the LevelScript owner.  It reads the three
+declared lists in order -- ``actionList``, ``getterList``, ``headerList``,
+each a counted sequence that may hold zero or many records -- then the
+one-member ``ParamListForGraph`` blackboard, and hands the map end to
+``sequential_owner._frame_levelscript_sequential_owner``.  A decoded map
+alone never promotes a file; the owner cursor must still reach physical EOF.
+
+Per node: a specialized reader in this module is tried first
+(``_CURRENT_SEQUENTIAL_ACTION_MEMBERS``, ``_CURRENT_SEQUENTIAL_GETTER_MEMBERS``
+and the ``ScriptEvent_OnLeaderEnterTriggerVolume`` header).  On refusal the
+node goes to ``action_map.decode_reviewed_node`` for its family (ActionBase,
+GetterBase, ActionHeader), which validates both selected native inputs and
+reads the reviewed ``action_map_layouts.json`` layout; an unknown union, a
+changed member count or an unsupported nested value fails at that node.
+The specialized readers name their types, never their tags: each table pairs
+a type name with the member count its reader consumes, and the build's
+``(tag, member count)`` is resolved by type name per build through
+``levelscript_union_tags.routes`` within that family's own dispatcher, so
+same-numbered rows in another family (getter ``GetLevelScriptStage`` versus
+an action of the same rank) never select a layout. An unvalidated build
+admits no specialized route, and every node falls to the reviewed map.
+
+Stored-shape facts this module owns:
+
+- the node envelope keeps every ``NodeBase`` field, including nullable UTF-8
+  UIDs at their actual length; ``ActionBase`` adds ``nextID``;
+- ``StartDialogAction.afterMask``/``beforeMask`` are consecutive
+  ``Param<CommonMaskBlendData>`` values (param tail ``constValue``, ``idRef``,
+  ``paramSource``, ``path``); a non-null constant has six members
+  (``audioBlackScreenBehaviour``, ``curve``, ``fadeInDuration``,
+  ``fadeOutDuration``, ``maskType``, ``useCurve``), current curves are null or
+  the empty three-member ``AnimationCurve``, and a curve with keys fails; the
+  following ``override*MaskConfig`` members are nullable ``Param<bool>``;
+- ``StartDialogAndTeleportAction`` inherits the ``ClientCutsceneTeleport``
+  sequence (two mask params, level id, position, Euler rotation, teleport id,
+  nullable teleport UI type) before its dialog id; older catalogs that named
+  this tag ``StopLevelSeqLoopSegment`` are stale;
+- ``StartLevelCustomPerformance`` carries a nullable ``Param<bool>`` (both
+  null and present occur) and a ``ParamOutput<uint>``; treating the bool as an
+  always-present scalar loses the cursor;
+- ``AirWallPtr`` is not the compact ``EntityPtr`` wire shape: its constant is
+  an aligned 24-byte struct (use-slot flag, logic id, slot id) before the
+  ordinary ``Param`` tail;
+- ``RaiseCustomLevelEvent`` stores a one-member ``EventArgsPtr`` constant
+  inside its parameter before the event key; ``PlayRadioAndWait`` inherits the
+  five ``PlayRadio`` parameters and adds none;
+- the two camera-transform actions follow their generated parameter orders
+  (the ``WithoutBack`` variant lacks the need-interrupt/reset/use-angle
+  prefix); alternative-pose lists are null or empty and the curve key is
+  nullable, so positive poses or a new curve-key shape fail;
+- a positive ``ParamListForGraph`` count is read only while
+  ``levelscript_param_list_native`` validates the selected owner contract; it
+  then reuses the exact ``List<ParamKeyValue>`` codec.
+
+Evidence tier: ``exact`` stored layout for the selected build.  It does not
+prove runtime graph execution, event dispatch or handler ownership, and
+scanning UID-shaped bytes is never a substitute for these record extents.
 """
 
 from __future__ import annotations
@@ -13,6 +72,11 @@ from scripts.game_data.codecs.levelscript import call_server as levelscript_call
 from scripts.game_data.codecs.levelscript import camera_look_at as levelscript_camera_look_at
 from scripts.game_data.codecs.levelscript import params as levelscript_params
 from scripts.game_data.codecs.levelscript import set_enable_player as levelscript_set_enable_player
+from scripts.game_data.codecs.levelscript.interactives import (
+    LevelInteractiveCodecError,
+    decode_param_key_value_list,
+)
+from scripts.game_data.codecs.levelscript.anonymous_bodies import _leader_enter_header_route
 from scripts.game_data.codecs.levelscript.anonymous_bodies import _read_levelscript_node_envelope
 from scripts.game_data.codecs.levelscript.anonymous_bodies import _read_nullable_levelscript_param
 from scripts.game_data.codecs.levelscript.condition_params import _decode_entity_ptr_list_param
@@ -31,38 +95,42 @@ from scripts.game_data.codecs.levelscript.primitives import i32 as _i32
 from scripts.game_data.codecs.levelscript.primitives import u32 as _u32
 from scripts.game_data.codecs.levelscript.sequential_owner import _frame_levelscript_sequential_owner
 from scripts.game_data.codecs.levelscript.uid_records import _decode_levelscript_uid_record
+from scripts.game_data import levelscript_union_tags as union_tags
+from scripts.game_data.levelscript_param_list_native import load_param_list_for_graph_contract
 from typing import Any
 
+# ActionBase types this module reads, with the member count each reader
+# consumes. Tags are resolved by type name per build; never write one here.
 _CURRENT_SEQUENTIAL_ACTION_MEMBERS = {
-    0x001F: (0x11, "BlackScreenFadeIn"),
-    0x0015: (0x0A, "AirWallEnable"),
-    0x0021: (0x0B, "BlackScreenFadeOut"),
-    0x0027: (0x18, "BlendToCameraTransformWithoutBack"),
-    0x0026: (0x17, "BlendToCameraTransform"),
-    0x0035: (0x0E, "CallServer"),
-    0x0053: (0x09, "CheckBoolIfTrue"),
-    0x0052: (0x09, "CheckBoolIfFalse"),
-    0x0109: (0x0B, "IfElseAction"),
-    0x011F: (0x27, "LevelCameraLookAt"),
-    0x0312: (0x0A, "ManualStartLevelScript"),
-    0x0331: (0x0D, "NpcProxyPatrolStart"),
-    0x0358: (0x0B, "PlayAudio"),
-    0x036E: (0x0D, "PlayRadio"),
-    0x036F: (0x0D, "PlayRadioAndWait"),
-    0x0370: (0x11, "PlayRemoteComm"),
-    0x0381: (0x0C, "PreloadCutsceneAction"),
-    0x038A: (0x0A, "RaiseCustomLevelEvent"),
-    0x0392: (0x0E, "RemoveCameraControlState"),
-    0x03FF: (0x0B, "SetEnablePlayerAction"),
-    0x0496: (0x0A, "ShowSceneDecorationNew"),
-    0x049F: (0x0A, "ShowUIToast_DevOnly"),
-    0x04A7: (0x09, "Split"),
-    0x04B0: (0x0F, "StartDialogAction"),
-    0x04B1: (0x10, "StartDialogAndTeleportAction"),
-    0x04B5: (0x0A, "StartLevelCustomPerformance"),
-    0x04CF: (0x0C, "SwitchInt"),
-    0x050F: (0x09, "WaitForNpcProxyReady"),
-    0x0511: (0x09, "WaitForSeconds"),
+    "BlackScreenFadeIn": 0x11,
+    "AirWallEnable": 0x0A,
+    "BlackScreenFadeOut": 0x0B,
+    "BlendToCameraTransformWithoutBack": 0x18,
+    "BlendToCameraTransform": 0x17,
+    "CallServer": 0x0E,
+    "CheckBoolIfTrue": 0x09,
+    "CheckBoolIfFalse": 0x09,
+    "IfElseAction": 0x0B,
+    "LevelCameraLookAt": 0x27,
+    "ManualStartLevelScript": 0x0A,
+    "NpcProxyPatrolStart": 0x0D,
+    "PlayAudio": 0x0B,
+    "PlayRadio": 0x0D,
+    "PlayRadioAndWait": 0x0D,
+    "PlayRemoteComm": 0x11,
+    "PreloadCutsceneAction": 0x0C,
+    "RaiseCustomLevelEvent": 0x0A,
+    "RemoveCameraControlState": 0x0E,
+    "SetEnablePlayerAction": 0x0B,
+    "ShowSceneDecorationNew": 0x0A,
+    "ShowUIToast_DevOnly": 0x0A,
+    "Split": 0x09,
+    "StartDialogAction": 0x0F,
+    "StartDialogAndTeleportAction": 0x10,
+    "StartLevelCustomPerformance": 0x0A,
+    "SwitchInt": 0x0C,
+    "WaitForNpcProxyReady": 0x09,
+    "WaitForSeconds": 0x09,
 }
 
 
@@ -87,11 +155,13 @@ def _read_current_action_envelope(
         tag = data[cursor]
         member_count = data[cursor + 1]
         uid_offset = cursor + 12
-    expected = _CURRENT_SEQUENTIAL_ACTION_MEMBERS.get(tag)
-    if expected is None or member_count != expected[0]:
+    action = union_tags.routes("ActionBase", _CURRENT_SEQUENTIAL_ACTION_MEMBERS).get(
+        (tag, member_count)
+    )
+    if action is None:
         raise LevelScriptTopLevelFramingError(
             "unsupported current ActionBase tag/member count: "
-            f"tag=0x{tag:04x} memberCount={member_count}"
+            f"tag=0x{tag:04x} memberCount={member_count}{union_tags.unavailable_note()}"
         )
     if uid_offset + 8 > len(data):
         raise LevelScriptTopLevelFramingError(
@@ -111,7 +181,7 @@ def _read_current_action_envelope(
         )
     return {
         **record,
-        "action": expected[1],
+        "action": action,
     }, int(record["payloadStart"])
 
 
@@ -878,9 +948,10 @@ def _read_current_action_fields(
     raise LevelScriptTopLevelFramingError(f"unsupported sequential action={action}")
 
 
+# PureGetter types read here, by name and member count.
 _CURRENT_SEQUENTIAL_GETTER_MEMBERS = {
-    0x0101: (0x09, "GetLevelScriptPropertyGenericBool"),
-    0x0130: (0x08, "GetLevelScriptStage"),
+    "GetLevelScriptPropertyGenericBool": 0x09,
+    "GetLevelScriptStage": 0x08,
 }
 
 
@@ -900,11 +971,13 @@ def _read_current_getter(
         tag = data[cursor]
         member_count = data[cursor + 1]
         prefix = 2
-    expected = _CURRENT_SEQUENTIAL_GETTER_MEMBERS.get(tag)
-    if expected is None or member_count != expected[0]:
+    getter = union_tags.routes("PureGetter", _CURRENT_SEQUENTIAL_GETTER_MEMBERS).get(
+        (tag, member_count)
+    )
+    if getter is None:
         raise LevelScriptTopLevelFramingError(
             "unsupported current PureGetter tag/member count: "
-            f"tag=0x{tag:04x} memberCount={member_count}"
+            f"tag=0x{tag:04x} memberCount={member_count}{union_tags.unavailable_note()}"
         )
     base = cursor + prefix
     if base + 24 > len(data):
@@ -921,7 +994,6 @@ def _read_current_getter(
     ):
         raise LevelScriptTopLevelFramingError("invalid PureGetter uid")
     cursor = base + 24
-    getter = expected[1]
     if getter == "GetLevelScriptStage":
         decoded = _decode_levelscript_ptr_param(data, cursor)
         if decoded is None:
@@ -961,8 +1033,11 @@ def _read_current_leader_enter_header(
     data: bytes,
     cursor: int,
 ) -> tuple[dict[str, Any], int]:
+    # An extended tag or an unvalidated build leaves no route, and the node
+    # falls to the reviewed map.
+    header_tag, header_members = _leader_enter_header_route()
     envelope, cursor = _read_levelscript_node_envelope(
-        data, cursor, union_tag=0xBF, member_count=0x12
+        data, cursor, union_tag=header_tag, member_count=header_members
     )
     fields_start = cursor
     if cursor + 21 > len(data):
@@ -1094,11 +1169,26 @@ def frame_levelscript_current_action_sequence_leader_enter(
     if cursor + 5 > len(data) or data[cursor] != 1:
         raise LevelScriptTopLevelFramingError("ParamListForGraph member count mismatch")
     param_count = _i32(data, cursor + 1)
-    if param_count != 0:
+    if param_count is None or param_count < 0:
         raise LevelScriptTopLevelFramingError(
-            f"selected action sequence requires empty ParamListForGraph: actual={param_count}"
+            f"unsupported ParamListForGraph value count: actual={param_count}"
         )
-    action_map_end = cursor + 5
+    if param_count:
+        layout, audit = load_param_list_for_graph_contract()
+        if layout is None:
+            raise LevelScriptTopLevelFramingError(
+                "actionMap.paramBlackboard.nativeContract: "
+                f"status={audit['status']}, count={param_count}, "
+                f"detail={audit.get('detail', '')}"
+            )
+    try:
+        values, action_map_end = decode_param_key_value_list(
+            data, cursor + 1, "actionMap.paramBlackboard.value"
+        )
+    except LevelInteractiveCodecError as error:
+        raise LevelScriptTopLevelFramingError(str(error)) from error
+    if values["count"] != param_count:
+        raise LevelScriptTopLevelFramingError("ParamListForGraph count drift")
     action_map = {
         "startOffset": 1,
         "endOffset": action_map_end,
@@ -1119,7 +1209,8 @@ def frame_levelscript_current_action_sequence_leader_enter(
             "startOffset": cursor,
             "endOffset": action_map_end,
             "serializedMemberCount": 1,
-            "valueCount": 0,
+            "valueCount": param_count,
+            "value": values["values"],
         },
     }
     return _frame_levelscript_sequential_owner(

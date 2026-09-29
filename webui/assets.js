@@ -1,3 +1,23 @@
+// Assets page behavior contract (webui/README.md links here; evidence limits
+// are in memory/webui/assets.md).
+//   * Search plus filter sections basic, category, type, source and sort. The
+//     detail pane owns image/video/text preview with a selectable preview
+//     background, an OBJ/FBX model canvas with mesh stats, material,
+//     reference and related-asset lists, copy-path and download actions, and
+//     ?asset= deep links. Exported JSON is not listed: every such document is
+//     a Data-page store row, and a material links to its Data-page document.
+//   * The Table owner fact comes from the optional data/assets/table_owners.json
+//     and names the exported table row whose asset-bearing field holds this
+//     asset's exact normalized stem. No such row means no owner; a shared name
+//     prefix never produces one, and an absent sidecar only removes the fact.
+//   * A Sprite index entry with `crop` (its texture's path) has no file and no
+//     `s`; the page shows its pixel size and a Cropped from fact. Every page
+//     still links to .../game/Unity/Sprite/<name>.png: serve.py answers with
+//     the crop document (application/vnd.endfield.sprite-crop+json), or with
+//     AnimeStudio's PNG from game/Sprite.sqlite after a debug export, and
+//     sprite_worker.js renders the crop from the texture PNG so the pixels,
+//     transparent ones included, equal AnimeStudio's. Without the worker (no
+//     secure context) Sprite images do not display.
 (() => {
   const ASSET_GROUP_ROW_H = 28;
   const ASSET_ITEM_ROW_H = 70;
@@ -125,6 +145,7 @@
       factSource: "\u6765\u6e90",
       factFolder: "\u5206\u7ec4",
       factSize: "\u5927\u5c0f",
+      factCropOf: "\u88c1\u5207\u81ea",
       factCopies: "\u526f\u672c",
       factHash: "\u54c8\u5e0c",
       factSameHashFiles: "\u76f8\u540c\u54c8\u5e0c\u6587\u4ef6",
@@ -229,6 +250,7 @@
       factSource: "Source",
       factFolder: "Group",
       factSize: "Size",
+      factCropOf: "Cropped from",
       factCopies: "Copies",
       factHash: "Hash",
       factSameHashFiles: "Same-hash files",
@@ -1039,6 +1061,9 @@
         kind,
         rel,
         size: Number(raw.s || 0),
+        // A Sprite image has no file: it is a crop of this texture.
+        cropOf: String(raw.crop || ""),
+        pixelSize: raw.iw && raw.ih ? `${raw.iw}\u00d7${raw.ih}` : "",
         name,
         dir,
         variantScope,
@@ -1682,7 +1707,7 @@
 
     const size = document.createElement("div");
     size.className = "asset-row-size";
-    size.textContent = formatBytes(entry.size);
+    size.textContent = formatAssetSize(entry);
     line1.appendChild(size);
 
     const line2 = document.createElement("div");
@@ -1920,8 +1945,9 @@
       [assetUiText("factKind"), formatAssetKindValue(entry, activeVariant)],
       [assetUiText("factSource"), entry.source || assetUiText("none")],
       [assetUiText("factFolder"), entry.groupLabel || entry.groupRaw || (entry.groupKey === "(root)" ? assetUiText("rootFolder") : entry.groupKey)],
-      [assetUiText("factSize"), formatBytes(entry.size)],
+      [assetUiText("factSize"), formatAssetSize(entry)],
     ];
+    if (entry.cropOf) facts.push([assetUiText("factCropOf"), entry.cropOf]);
     const activeFile = activeVariant || entry;
     if (entry.kind === "image") {
       facts.push([assetUiText("factImageCategory"), formatAssetCategoryMeta(activeFile || entry)]);
@@ -2045,7 +2071,7 @@
       meta.className = "asset-related-meta";
       meta.textContent = assetUiText("relatedMeta", {
         kind: assetTypeLabel(item.ext || item.kind),
-        size: formatBytes(item.size),
+        size: formatAssetSize(item),
       });
       block.appendChild(meta);
 
@@ -3086,6 +3112,11 @@
       out[key] = (out[key] || 0) + 1;
     }
     return out;
+  }
+
+  // A Sprite crop has pixels but no file of its own.
+  function formatAssetSize(entry) {
+    return entry && entry.cropOf ? entry.pixelSize : formatBytes(entry ? entry.size : 0);
   }
 
   function formatBytes(bytes) {

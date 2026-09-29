@@ -1,5 +1,39 @@
 #!/usr/bin/env python3
-"""Decode story audio into export_full and link playable files into WebUI data."""
+"""Decode story audio into export_full and link playable files into WebUI data.
+
+This is the single Audio command. It owns decode, Wwise bank/HIRC indexing,
+relinking, the Gameplay sound sidecars and Audio's Story conversation
+sidecars, then publishes the semantic page data in the same process
+(``--semantics-only`` republishes only that from the existing decoded index,
+for example after importing a verified runtime trace).
+
+Shared SFX/music is written once under ``<export root>/game/Audio/shared/``
+and language voice under ``game/Audio/<LANG>/``. Known HIRC Event categories
+are resolved before extraction and the final ``voice/`` or
+``wwise/<category>/`` path is passed to AnimeStudio, which returns a source
+manifest, so the builder never rescans the tree to learn what changed. The
+manifest keeps PCK bank provenance after the physical bank folders are
+skipped. Old ``unmapped/`` and voice layouts are migrated only when present;
+otherwise only media whose category cannot be established before decode need
+a later path correction.
+
+AnimeStudio streams decoded PCM into lossless FLAC with no intermediate WAV
+and no ``ffmpeg``; decode and WebUI output are FLAC-only, and existing
+WAV/WEM files stay readable on an index-only run but are never produced.
+WEM decoding uses the pinned 64-bit vgmstream CLI under ``tools/vgmstream/``
+(installed by ``setup.bat`` or ``setup_vgmstream.bat``). ``--skip-decode``
+reuses the event-media/HIRC cache; ``--skip-decode --refresh-hirc`` gives a
+fresh HIRC bank pass over already-current decoded audio.
+
+Typed Wwise effect parameters are published only when the selected
+``GameAssembly.dll``, metadata and ``AkSoundEngine.dll`` pass the reviewed
+``wwise_effect_parameters_native.json`` gate, including its stock
+``SetParamsBlock`` windows. A mismatched build keeps raw class IDs, parameter
+lengths and hashes visible and withholds native-derived values; the
+proprietary Convolution Reverb and Mastering Suite rows remain opaque.
+Native claims take the selected pair from ``--game-root`` and never fall
+back to a module-global game path.
+"""
 
 from __future__ import annotations
 
@@ -42,6 +76,7 @@ from scripts.webui.audio.semantics.identifiers import (
 )
 from scripts.webui.audio.semantics import name_recovery
 from scripts.webui.audio.semantics import native_evidence
+from scripts.webui.audio.semantics import conversation_sidecar
 from scripts.webui.audio.semantics.authored_payload_event_names import (
     collect_authored_payload_event_names,
     summarize_authored_payload_event_name_recovery,
@@ -151,6 +186,13 @@ EVENT_BANK_VFS_BLOCK_TYPES = (
     "audio-japanese",
     "audio-korean",
 )
+# The Event pass streams only bank and hotfix packages. The structural HIRC
+# gate (``hirc_action_corpus``) audits every AKPK package, so the two count
+# different corpora: they differ by the type-0x03 object(s) inside media
+# stream packages such as ``audit_stream.pck``, which this regex excludes by
+# design. Quote which corpus a count came from; do not widen the regex to
+# reconcile them. Stream packages are also too large to base64 through the
+# CLI's JSONL stream (``default_chinese_stream.pck`` runs out of memory).
 EVENT_BANK_FILE_REGEX = r"(^|[\\/])(?:[^\\/]*banks|hotfix[^\\/]*)\.pck$"
 # 44 adds the authored serialized-payload Event-name source. Bumping it retires
 # every cached Event index built before those names existed, so a stale cache
@@ -181,8 +223,9 @@ HIRC_GAME_PARAMETER_NAME_EVIDENCE = {
     "evidenceBoundary": (
         "The six field names and 32-bit values are exact for the pinned metadata "
         "file and each value is present in the exported HIRC RTPC inventory. "
-        "This catalog does not name Wwise property IDs 6146/6148, and it does "
-        "not infer runtime setter order, live values, or audibility."
+        "This catalog names game-side RTPC parameters only; it names no Wwise "
+        "AkPropID key, and it does not infer runtime setter order, live values, "
+        "or audibility."
     ),
 }
 # v150 InitialParams uses AkPropID, whose numbering is distinct from the
@@ -3296,10 +3339,9 @@ def run_audio_dumper(
         temporary_root = Path(temporary)
         category_map = temporary_root / "categories.json"
         category_map.write_text(json.dumps(categories, sort_keys=True), encoding="utf-8")
-        block_names = {
-            "audio": "audio", "initialaudio": "initial-audio",
-            "auditaudio": "audit-audio", "hotfixaudio": "hotfix-audio",
-        }
+        # The CLI names each record's block by its VFS label (``InitAudio``,
+        # not the ``InitialAudio`` enum name), the same labels used to select it.
+        block_names = {label.lower(): block for block, label in SHARED_AUDIO_BLOCK_LABELS.items()}
         for index, (pass_block, source_label, streaming_assets, fallback_assets) in enumerate(decode_passes):
             output_root = (
                 args.audio_root / language
@@ -3329,7 +3371,7 @@ def run_audio_dumper(
                 if storage_root not in {language, SHARED_AUDIO_STORAGE} or not parts or not path.is_file():
                     raise RuntimeError(f"audio source manifest has invalid output: {path}")
                 rel = normalize_posix(Path(*parts))
-                raw_block = str(record.get("block") or "").lower().replace("-", "")
+                raw_block = str(record.get("block") or "").lower()
                 metadata_block = "voice" if storage_root == language else block_names.get(raw_block)
                 if metadata_block is None:
                     raise RuntimeError(f"audio source manifest has unknown block: {record.get('block')}")
@@ -3366,25 +3408,21 @@ def line_audio_ids(line: dict[str, Any]) -> list[str]:
         append_audio_id_candidate(ids, seen, source.get(field))
     return ids
 
-def attach_audio_to_line(line: dict[str, Any], audio_entry: dict[str, Any]) -> bool:
-    changed = False
-    src = audio_entry.get("src") or ""
-    if src and line.get("audioSrc") != src:
-        line["audioSrc"] = src
-        changed = True
+def line_audio_row(audio_entry: dict[str, Any]) -> dict[str, Any]:
+    row: dict[str, Any] = {}
+    if audio_entry.get("src"):
+        row["audioSrc"] = audio_entry["src"]
     meta = {
         key: audio_entry.get(key)
         for key in AUDIO_META_KEYS
         if audio_entry.get(key) not in (None, "")
     }
-    if meta and line.get("audioMeta") != meta:
-        line["audioMeta"] = meta
-        changed = True
-    return changed
+    if meta:
+        row["audioMeta"] = meta
+    return row
 
 
-def attach_audio_variants_to_line(line: dict[str, Any], variants: dict[str, dict[str, Any]]) -> bool:
-    changed = False
+def line_audio_variants_row(variants: dict[str, dict[str, Any]]) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     for gender in ("f", "m"):
         entry = variants.get(gender)
@@ -3400,10 +3438,7 @@ def attach_audio_variants_to_line(line: dict[str, Any], variants: dict[str, dict
             "src": entry.get("src"),
             "meta": meta,
         }
-    if payload and line.get("audioVariants") != payload:
-        line["audioVariants"] = payload
-        changed = True
-    return changed
+    return {"audioVariants": payload} if payload else {}
 
 
 def cutscene_line_signature(payload: dict[str, Any]) -> tuple[str, ...]:
@@ -3416,29 +3451,17 @@ def cutscene_line_signature(payload: dict[str, Any]) -> tuple[str, ...]:
     return tuple(sorted(ids))
 
 
-def collect_cutscene_audio_events_by_line_signature(conv_dir: Path) -> dict[tuple[str, ...], list[str]]:
-    by_signature: dict[tuple[str, ...], list[str]] = {}
-    seen_by_signature: dict[tuple[str, ...], set[str]] = {}
-    for conv_path in sorted(conv_dir.glob("*.json")):
-        payload = load_json_strict(conv_path, {})
-        if not isinstance(payload, dict) or not isinstance(payload.get("cutscene"), dict):
-            continue
-        signature = cutscene_line_signature(payload)
-        if not signature:
-            continue
-        events = payload["cutscene"].get("audioEvents") or []
-        if not events:
-            continue
-        out = by_signature.setdefault(signature, [])
-        seen = seen_by_signature.setdefault(signature, set())
-        for event in events:
+def merge_event_names(*event_lists: Any) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for events in event_lists:
+        for event in events or ():
             event_text = str(event or "").strip()
             event_key = event_text.lower()
-            if not event_text or event_key in seen:
-                continue
-            seen.add(event_key)
-            out.append(event_text)
-    return by_signature
+            if event_text and event_key not in seen:
+                seen.add(event_key)
+                merged.append(event_text)
+    return merged
 
 
 def linked_audio_files_for_events(
@@ -3488,15 +3511,21 @@ def linked_audio_files_for_events(
 
 def link_conversation_audio(
     conv_dir: Path,
+    sidecar_directory: Path,
     audio_by_id: dict[str, dict[str, Any]],
     event_audio_by_id: dict[str, list[dict[str, Any]]] | None = None,
     cutscene_audio_events: dict[str, list[str]] | None = None,
 ) -> dict[str, int]:
+    """Publish what Audio links to Story's conversations as Audio's sidecars.
+
+    Story's conversation files are only read; see ``conversation_sidecar``.
+    """
     event_audio_by_id = event_audio_by_id or {}
     cutscene_audio_events = cutscene_audio_events or {}
     stats = {
         "conversationFiles": 0,
-        "conversationFilesChanged": 0,
+        "conversationSidecars": 0,
+        "conversationSidecarsChanged": 0,
         "lineAudioRefs": 0,
         "lineAudioLinked": 0,
         "conversationAudioEvents": 0,
@@ -3505,28 +3534,51 @@ def link_conversation_audio(
         "cutsceneAudioEventsLinked": 0,
         "cutsceneAudioEventsInherited": 0,
     }
-    cutscene_events_by_line_signature = collect_cutscene_audio_events_by_line_signature(conv_dir)
+    conv_paths = sorted(conv_dir.glob("*.json"))
 
-    for conv_path in sorted(conv_dir.glob("*.json")):
+    # A cutscene's events are Story's authored list plus the ones recovered
+    # from binary placement. One with neither takes those of the cutscenes
+    # with the same lines.
+    cutscene_events: dict[str, list[str]] = {}
+    events_by_line_signature: dict[tuple[str, ...], list[str]] = {}
+    for conv_path in conv_paths:
+        payload = load_json_strict(conv_path, {})
+        if not isinstance(payload, dict) or not isinstance(payload.get("cutscene"), dict):
+            continue
+        cutscene_key = str(payload.get("key") or conv_path.stem)
+        events = merge_event_names(
+            payload["cutscene"].get("audioEvents"),
+            cutscene_audio_events.get(cutscene_key),
+        )
+        cutscene_events[conv_path.stem] = events
+        signature = cutscene_line_signature(payload)
+        if signature and events:
+            events_by_line_signature[signature] = merge_event_names(
+                events_by_line_signature.get(signature), events,
+            )
+
+    sidecars: dict[str, dict[str, Any]] = {}
+    for conv_path in conv_paths:
         payload = load_json_strict(conv_path, {})
         if not isinstance(payload, dict):
             continue
         stats["conversationFiles"] += 1
-        changed = False
-        for line in payload.get("lines") or []:
+        sidecar: dict[str, Any] = {}
+        line_rows: list[dict[str, Any]] = []
+        for line_index, line in enumerate(payload.get("lines") or []):
             if not isinstance(line, dict):
                 continue
             audio_ids = line_audio_ids(line)
             if not audio_ids:
                 continue
             stats["lineAudioRefs"] += 1
+            row: dict[str, Any] = {}
             for audio_id in audio_ids:
                 entry = audio_by_id.get(audio_id)
                 if entry:
                     entry["storyLineBindingCount"] = int(entry.get("storyLineBindingCount") or 0) + 1
                     entry["purposeKnowledgeStatus"] = "exactStoryLineBinding"
-                    if attach_audio_to_line(line, entry):
-                        changed = True
+                    row = line_audio_row(entry)
                     stats["lineAudioLinked"] += 1
                     break
                 variants = {
@@ -3538,10 +3590,13 @@ def link_conversation_audio(
                     for variant in variants.values():
                         variant["storyLineBindingCount"] = int(variant.get("storyLineBindingCount") or 0) + 1
                         variant["purposeKnowledgeStatus"] = "exactStoryLineBinding"
-                    if attach_audio_variants_to_line(line, variants):
-                        changed = True
+                    row = line_audio_variants_row(variants)
                     stats["lineAudioLinked"] += 1
                     break
+            if row:
+                line_rows.append({"index": line_index, "id": str(line.get("id") or ""), **row})
+        if line_rows:
+            sidecar["lines"] = line_rows
 
         root_audio_events = payload.get("audioEvents") if isinstance(payload.get("audioEvents"), list) else []
         if root_audio_events:
@@ -3553,55 +3608,37 @@ def link_conversation_audio(
                 "conversationAudioEvents",
                 "conversationAudioEventsLinked",
             )
-            if linked_root_events and payload.get("audioFiles") != linked_root_events:
-                payload["audioFiles"] = linked_root_events
-                changed = True
-            elif not linked_root_events and payload.get("audioFiles"):
-                payload.pop("audioFiles", None)
-                changed = True
+            if linked_root_events:
+                sidecar["audioFiles"] = linked_root_events
 
-        cutscene = payload.get("cutscene")
-        if isinstance(cutscene, dict):
-            cutscene_key = str(payload.get("key") or conv_path.stem)
-            recovered_events = cutscene_audio_events.get(cutscene_key) or []
-            existing_events = list(cutscene.get("audioEvents") or [])
-            if not existing_events and not recovered_events:
-                inherited_events = cutscene_events_by_line_signature.get(cutscene_line_signature(payload)) or []
-                if inherited_events:
-                    recovered_events = inherited_events
-                    stats["cutsceneAudioEventsInherited"] += len(inherited_events)
-            if recovered_events:
-                merged_events: list[str] = []
-                seen_events: set[str] = set()
-                for event_id in existing_events + recovered_events:
-                    event_text = str(event_id or "").strip()
-                    event_key = event_text.lower()
-                    if not event_text or event_key in seen_events:
-                        continue
-                    seen_events.add(event_key)
-                    merged_events.append(event_text)
-                if cutscene.get("audioEvents") != merged_events:
-                    cutscene["audioEvents"] = merged_events
-                    changed = True
+        if conv_path.stem in cutscene_events:
+            events = cutscene_events[conv_path.stem]
+            if not events:
+                events = events_by_line_signature.get(cutscene_line_signature(payload)) or []
+                stats["cutsceneAudioEventsInherited"] += len(events)
+            cutscene_sidecar: dict[str, Any] = {}
+            if events != merge_event_names(payload["cutscene"].get("audioEvents")):
+                cutscene_sidecar["audioEvents"] = events
             linked_events = linked_audio_files_for_events(
-                cutscene.get("audioEvents") or [],
+                events,
                 audio_by_id,
                 event_audio_by_id,
                 stats,
                 "cutsceneAudioEvents",
                 "cutsceneAudioEventsLinked",
             )
-            if linked_events and cutscene.get("audioFiles") != linked_events:
-                cutscene["audioFiles"] = linked_events
-                changed = True
-            elif not linked_events and cutscene.get("audioFiles"):
-                cutscene.pop("audioFiles", None)
-                changed = True
+            if linked_events:
+                cutscene_sidecar["audioFiles"] = linked_events
+            if cutscene_sidecar:
+                sidecar["cutscene"] = cutscene_sidecar
 
-        if changed:
-            json_dump(conv_path, payload)
-            stats["conversationFilesChanged"] += 1
+        if sidecar:
+            sidecars[conv_path.stem] = sidecar
 
+    stats["conversationSidecars"] = len(sidecars)
+    stats["conversationSidecarsChanged"] = conversation_sidecar.update_sidecars(
+        sidecar_directory, conversation_sidecar.LINK_FIELDS, sidecars,
+    )
     return stats
 
 
@@ -3984,8 +4021,9 @@ def build_audio(args: argparse.Namespace) -> int:
     }
     stage.mark("luaAudioReferenceCache")
     conv_dir = args.webui_root / "data" / "lang" / language / "conv"
-    if not conv_dir.exists():
-        raise SystemExit(f"Conversation directory not found: {conv_dir}")
+    if not conv_dir.is_dir():
+        # Audio reads Story's published conversations but never builds them.
+        print(f"Story is not published ({conv_dir} is missing); no Story voice lines are linked")
     table_event_names, table_event_hashes = collect_table_audio_events(args.export_root)
     stage.mark("collectTableAudioEvents")
     # Level, interactive and spawner payloads ship the same length-prefixed
@@ -4387,7 +4425,13 @@ def build_audio(args: argparse.Namespace) -> int:
     })
     stage.mark("regroupUnmappedByCategory")
     source_summary = summarize_audio_sources(list(generic_audio.values()))
-    link_stats = link_conversation_audio(conv_dir, audio_by_id, event_audio_by_id, cutscene_audio_events)
+    link_stats = link_conversation_audio(
+        conv_dir,
+        conversation_sidecar.sidecar_dir(args.webui_root, language),
+        audio_by_id,
+        event_audio_by_id,
+        cutscene_audio_events,
+    )
     stage.mark("linkConversationAudio")
     projectile_link_stats = write_projectile_audio_sidecar(
         args.webui_root,
@@ -4572,7 +4616,8 @@ def build_audio(args: argparse.Namespace) -> int:
         f" {link_stats['lineAudioLinked']:,}/{link_stats['lineAudioRefs']:,} line refs linked,"
         f" {link_stats['conversationAudioEventsLinked']:,}/{link_stats['conversationAudioEvents']:,} conversation event refs linked,"
         f" {link_stats['cutsceneAudioEventsLinked']:,}/{link_stats['cutsceneAudioEvents']:,} cutscene event refs linked,"
-        f" {link_stats['conversationFilesChanged']:,} conv files updated,"
+        f" {link_stats['conversationSidecars']:,} Story conversation sidecars"
+        f" ({link_stats['conversationSidecarsChanged']:,} written or removed),"
         f" {semantic_payload['counts']['runtimeSystems']:,} binary-validated runtime systems"
         f" in {elapsed:.1f}s"
     )

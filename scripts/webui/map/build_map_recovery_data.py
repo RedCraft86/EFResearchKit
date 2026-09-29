@@ -21,6 +21,23 @@ Story files reach the map only through authored identity bindings:
 Mission-area pins, quest centroids, script conditions, and spatial proximity
 remain useful mission context, but they do not identify the point that plays a
 Story file and therefore never add Story files to a map marker.
+
+``export.bat map`` runs this data stage, then
+``recover_map_streaming_instances --all-published-map-scenes``, then preview
+publication; a sidecar failure stops the phase instead of degrading to
+registry points. The streaming recovery streams installed-game
+``InitChunkData`` through AnimeStudio.CLI and joins the exported AssetMap and
+Mesh; colored output also needs Material JSON and Texture2D. Directly,
+``--with-preview`` builds data plus previews and ``--preview-only`` reuses
+current data and sidecars. ``--jobs N`` bounds both the per-level data
+workers and preview processes; maps sharing one exact Streaming scene stay
+together so their shared bounds and outputs cannot race.
+``build_map_recovery_preview --refresh-exact-fallbacks-only`` cheaply
+refreshes registry/quest point fallbacks. Preview rendering checkpoints each exact streaming, point and
+inferred HLOD render under ``reports/assets/map_recovery/render_cache/``;
+matching inputs reuse the published PNG/sample set, changed or missing ones
+invalidate only that checkpoint, and ``build_map_recovery_preview
+--no-render-cache`` forces a rerender.
 """
 
 from __future__ import annotations
@@ -4730,7 +4747,7 @@ def _render_background(level_id: str) -> dict:
                     "exact recovered transform may participate in spatial alignment."
                 ),
             }
-        evidence = _danger_surface_evidence(level_id, preview)
+        evidence = _surface_evidence(level_id, preview)
         if evidence:
             preview["surfaceEvidence"] = evidence
         return preview
@@ -4775,9 +4792,11 @@ _DANGER_INFERRED_HLOD_CROPS = frozenset({
 })
 
 
-def _danger_surface_evidence(level_id: str, preview: dict) -> dict | None:
-    """Concise, fail-closed surface accuracy label for the active danger maps."""
+def _surface_evidence(level_id: str, preview: dict) -> dict | None:
+    """Concise, fail-closed surface accuracy label for a recovered map."""
     status = str((preview or {}).get("status") or "")
+    mesh_status = str(((preview or {}).get("render") or {}).get("meshBindingStatus") or "")
+    exact_mesh = mesh_status == "exact_level_hlod_key"
     if level_id in _DANGER_INFERRED_HLOD_CROPS and status.startswith("inferred_hlod_"):
         return {
             "accuracy": "inferred_hlod_crop",
@@ -4787,22 +4806,23 @@ def _danger_surface_evidence(level_id: str, preview: dict) -> dict | None:
                 "source-art HLOD grid."
             ),
         }
-    if level_id == "dung02_bdg002" and status == "recovered_streaming_mesh_topdown":
+    if status in {
+        "recovered_streaming_mesh_topdown", "recovered_streaming_textured_topdown",
+    }:
+        colored = status == "recovered_streaming_textured_topdown"
+        suffix = "partial_base_color" if colored else "color_unverified"
+        grade = "exact_hlod_key_mesh" if exact_mesh else "name_candidate_mesh"
+        prefix = "Exact HLOD mesh placement" if exact_mesh else "Name-matched mesh preview"
+        color_label = "partial base color" if colored else "color unverified"
+        color_evidence = "Recovered base color is partial." if colored else "No reliable texture color is visible."
         return {
-            "accuracy": "exact_mesh_color_unverified",
-            "label": "Exact mesh placement - color unverified",
+            "accuracy": f"{grade}_{suffix}",
+            "label": f"{prefix} - {color_label}",
             "evidence": (
-                "Streaming matrices and matched mesh geometry are exact; no reliable texture color is "
-                "visible in the recovered surface."
-            ),
-        }
-    if level_id == "dung02_bdg005" and status == "recovered_streaming_textured_topdown":
-        return {
-            "accuracy": "exact_mesh_partial_base_color",
-            "label": "Exact mesh placement - partial base color",
-            "evidence": (
-                "Streaming matrices and matched mesh geometry are exact; recovered base color is visible "
-                "only on surfaces with a supported material binding."
+                "Streaming matrices are exact; the Mesh asset is selected by its name family, "
+                f"without a proved prefab/renderer relation. {color_evidence}"
+                if not exact_mesh else
+                f"Streaming matrices and HLOD-key mesh geometry are exact; {color_evidence}"
             ),
         }
     return None

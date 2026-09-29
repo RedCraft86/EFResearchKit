@@ -66,6 +66,7 @@ space and memory than the initial Story/Text setup.
   overrides.
 - **Gameplay** covers characters, equipment, enemies, progression, skills,
   projectiles, related assets, and recovered sound effects.
+- **Text** provides searchable localized tables and source records.
 - **Audio** exposes decoded voices, music, sound effects, event relationships,
   and playback evidence.
 - **Assets** browses exported images, videos, and models with their linked
@@ -79,7 +80,6 @@ space and memory than the initial Story/Text setup.
   name, object name, PathID, or CAB; read JSON as a tree with base64 decoded
   inline; or query with read-only SQL. It also keeps the decoded datasets of
   the maintained binary readers.
-- **Text** provides searchable localized tables and source records.
 - **Updates** compares exported game data across two saved versions.
 
 ### Pages prepared by each command
@@ -92,27 +92,30 @@ not named keep their previously generated data.
 | --- | --- | --- |
 | `.\setup.bat` | **Story**, **Text** | Installed client; also builds AnimeStudio and starts the WebUI server by default |
 | `.\export.bat` | Every page except **Updates** | The current export, after checking that every input the pages read is present and current |
-| `.\export.bat map audio` | **Map**, **Audio** | The same, for the named pages only |
 | `.\export.bat --from-game` | Every page except **Updates** | Extracts only what the pages read, decodes CN audio, then builds them |
 | `.\export.bat story --from-game` | **Story**, **Text** | Text only: tables, JsonData and the Story Unity classes; no image, video or audio |
-| `.\export.bat story-media --from-game` | **Story**, **Text**, **Audio** | Story with its images, videos and voice lines; decodes CN audio, so it also rebuilds Audio |
-| `.\export.bat map --from-game` | **Map**, **Assets** | Extracts Map's inputs and the asset index that colours its render |
+| `.\export.bat story-media --from-game` | **Story**, **Text** | Story with its images and videos |
+| `.\export.bat story audio --from-game` | **Story**, **Text**, **Audio** | Text-only Story plus the Audio page, which also gives Story its voice lines |
+| `.\export.bat map --from-game` | **Map** | Extracts only Map's inputs |
 | `.\export.bat debug --from-game` | Every page except **Updates** | Extracts every supported structured block and Unity class, then builds every page |
 | `.\export.bat --changed-only` | Every page except **Updates** | Applies only changed structured files from the installed client and reuses exported media |
 | `.\build_updates.bat OLD NEW` | **Updates** | Compares two complete export folders |
 
-The pages are `story` (with Text; `story-media` adds its images, videos and
-voice), `map`, `characters`, `gameplay`, `audio`, `assets` and `data`;
+The pages are `story` (with Text; `story-media` adds its images and videos),
+`map`, `characters`, `gameplay`, `audio`, `assets` and `data`. A page builds
+only itself: Story's voice lines come from the Audio page and the asset links
+on Map, Characters and Gameplay from the Assets page, each appearing once that
+page has been built;
 `.\export.bat --help` lists what each one includes. A build without
 `--from-game` refuses inputs extracted from an older client build, and names
 the pages to re-extract.
 
 ### What each page extracts
 
-The chart below shows what each page reads from the export and how the pages
-depend on each other. A page run extracts only its column. Map, Characters and
-Gameplay also build the Assets index. Pages that read Story's output use the
-published copy unless Story is built in the same run. Data shows every
+The chart below shows what each page reads from the export and which other
+pages' published output it shows. A page run extracts only its column and
+builds only that page; what it reads from another page is that page's last
+publication, or the page goes without it. Data shows every
 decodable output the other pages do not, so extracting every page (no page
 named) extracts everything, the same as `debug`. The page registry,
 [`scripts/webui/pages.py`](scripts/webui/pages.py), is the source of truth;
@@ -120,7 +123,7 @@ named) extracts everything, the same as `debug`. The page registry,
 run.
 
 <p align="center">
-  <img src="res/export_pages.svg" alt="Matrix of the structured blocks, Unity classes and indexes each export.bat page extracts, and a diagram of the page build dependencies" width="100%">
+  <img src="res/export_pages.svg" alt="Matrix of the structured blocks, Unity classes and indexes each export.bat page extracts, and a diagram of which pages read another page's published output, each arrow pointing from the publishing page to the reading page" width="100%">
 </p>
 
 `python serve.py` serves whatever has already been generated; it does not build

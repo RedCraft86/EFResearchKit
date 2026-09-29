@@ -304,8 +304,8 @@ what a reader of that file would still get wrong.
   Name only the pages a change affects; with `--from-game` the run extracts
   exactly what those pages read or show. `story` is the text-only Story/Text
   export (tables, JsonData, the Story Unity classes; no image, video or
-  audio); `story-media` adds Story's images and videos (`story_media.json`)
-  and the voice lines the Audio build attaches, rebuilding Audio too; `data` serves every decodable output the other pages do not show, so
+  audio); `story-media` adds Story's images and videos (`story_media.json`);
+  `data` serves every decodable output the other pages do not show, so
   an all-page run extracts as much as `debug` (every structured block and
   Unity class). `--show-plan` prints the tasks, scope and freshness
   requirements without running anything.
@@ -313,6 +313,13 @@ what a reader of that file would still get wrong.
   `scripts/webui/pages.py`. A builder that starts reading a new export input
   must add it to its task there, or page runs will neither extract it nor check
   that it is current.
+- A page builds only itself. `needs` never crosses pages
+  (`check_pages_independent` refuses it); a page that shows another page's
+  data reads that page's last publication, so it appears once that page is
+  built. This holds only because no builder writes another page's output:
+  Audio publishes what it links to Story's conversations as its own
+  `lang/<code>/audio/conv/` sidecars, which the Story page merges. Give a new
+  cross-page link the same shape instead of editing the other page's files.
 - For a focused Mission Pipeline edit loop use the direct Python sequences in
   `.codex/skills/endfield-mission-pipeline-build/SKILL.md`. The wrapper no
   longer owns a Mission Pipeline scope.
@@ -555,7 +562,10 @@ Browser data inputs and outputs:
   never as loose files), the packed small-file folders (`PACKED_GAME_DIRS`,
   now `Json/LipSync`) in `game/GameFiles.sqlite` (read through
   `scripts/game_data/game_file_store.py`), and converted Unity media under
-  `game/Unity/<Type>/`,
+  `game/Unity/<Type>/` -- except Sprite, which is a crop document over its
+  exported Texture2D (`scripts/game_data/sprite_crops.py`) that keeps the
+  `game/Unity/Sprite/<name>.png` path and is rendered by
+  `webui/sprite_worker.js`,
   plus generated data under `webui/data/`. Builder
   evidence and comparison inputs go to `webui/data/_build/`, which is neither
   served nor packaged.
@@ -630,6 +640,13 @@ Treat these documents as living sources of truth:
   native-address catalogs, hash inventories, per-session proof logs, long
   object lists, or case-by-case current-corpus narration. A correction replaces
   the claim it corrects; do not leave both and let a reader guess which holds;
+- let the code carry the detail. Each reader, codec, validator, gate or
+  builder states in its module docstring what it proves, its evidence tier,
+  and what it does not prove; per-build layouts stay in its contract. When a
+  new route or contract lands, expand that docstring and give memory at most a
+  one-line status or recovery-queue entry, never another per-route paragraph.
+  Memory keeps shared rules, cross-family conclusions, one-line eliminations
+  and the queue, each pointing at the owning module;
 - keep changing counts, exhaustive inventories, and generated audits in
   `reports/`, with the durable interpretation and any figure a later session
   must not re-derive kept in memory, since the report itself is local-only;

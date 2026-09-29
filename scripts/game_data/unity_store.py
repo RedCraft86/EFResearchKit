@@ -10,9 +10,24 @@ Each row is one former file, keyed by its Unity type folder and its exported
 file name, so ``game/Unity/<Type>/<name>`` stays the logical reference every
 report and published record already uses. The stored bytes are the exported
 bytes exactly (zlib-compressed), with their SHA256; nothing is re-serialized.
+Indexed header columns (object name, PathID, source file, script PathID) answer the
+common lookups without inflating a document, and ``serve.py`` answers a
+``game/Unity/<Type>/<name>`` request from the store.
 
-Readers use :class:`UnityObjectStore`; the exporter and the packer (``pack_export_stores``) use
-:class:`UnityObjectStoreWriter`. For ad-hoc study, the CLI registers SQL
+The store exists because loose files made every consumer pay for directory
+enumeration and cold small-file reads: about 2.8 ms per MonoBehaviour cold,
+against about 20 us per row scanned from SQLite. There is no loose fallback:
+an older root fails ``ExportLayout.require()`` with the pack command
+(``pack_export_stores``) in the error, and a writer refuses to publish into
+one (``ExportLayout.require_schema``).
+
+Readers use :class:`UnityObjectStore` (builders call
+``UnityObjectStore.for_export(root)`` and query by type plus a file-name glob,
+by object name, or by PathID); the exporter and the packer
+(``pack_export_stores``) use :class:`UnityObjectStoreWriter`. The ``objects``
+table (``type, name, object_name, path_id, source_file, script_path_id``, all
+indexed) is readable by any SQLite client; only the document body needs
+``zlib`` to inflate. For ad-hoc study, the CLI registers SQL
 functions ``inflate(data)`` (the document text) and ``doc(data, '$.path')``
 (``json_extract`` over it):
 
@@ -319,6 +334,30 @@ class UnityObjectStore:
         if type_name is not None:
             sql += " WHERE type=?"
             params = (type_name,)
+        for found in self._connection().execute(sql + " ORDER BY type, name", params):
+            yield UnityObjectRow(*found)
+
+    def iter_rows_by_script_path_id(
+        self, script_path_id: int, type_name: str | None = None
+    ) -> Iterator[UnityObjectRow]:
+        """Rows referring to one MonoScript path ID, using the store's script index."""
+        sql = f"SELECT {_ROW_COLUMNS} FROM objects WHERE script_path_id=?"
+        params: list[Any] = [script_path_id]
+        if type_name is not None:
+            sql += " AND type=?"
+            params.append(type_name)
+        for found in self._connection().execute(sql + " ORDER BY type, name", params):
+            yield UnityObjectRow(*found)
+
+    def iter_rows_by_source_file(
+        self, source_file: str, type_name: str | None = None
+    ) -> Iterator[UnityObjectRow]:
+        """Rows in one serialized source file, using the store's source index."""
+        sql = f"SELECT {_ROW_COLUMNS} FROM objects WHERE source_file=?"
+        params: list[Any] = [source_file]
+        if type_name is not None:
+            sql += " AND type=?"
+            params.append(type_name)
         for found in self._connection().execute(sql + " ORDER BY type, name", params):
             yield UnityObjectRow(*found)
 

@@ -1,10 +1,37 @@
-"""Exact current ``Dictionary<uint, LevelInteractiveData>`` codec."""
+"""Exact current ``Dictionary<uint, LevelInteractiveData>`` codec.
+
+Each value is the 25-member generated ``LevelInteractiveData`` wrapper: 14
+inherited ``LevelEntityData`` members, then 11 interactive members.  Nested
+component, global, map and property values use the generated
+``ParamKeyValue(key, value)``, ``ParamValue(type, valueArray)`` and
+``ParamValueAtom(valueBit64, valueString)`` orders.  ``componentProperties``
+is ``Dictionary<InteractiveComponentType, List<ParamKeyValue>>``: its Int32
+enum key does not dispatch a polymorphic payload, so the raw key is kept,
+duplicates are rejected, and the typed list always advances; a
+corpus-derived enum subset must not block the layout.
+
+``progressLockCondition`` is a ``ConditionRuntimeBase`` union.  It accepts the
+null marker, the three-member ``SimpleConditionCheckMissionState`` and
+``SimpleConditionCheckQuestState`` routes, and the recursive three-member
+``CombinedConditionRuntime`` (``decode_progress_lock_condition``); any other
+non-null condition fails closed.  Tags are resolved by type name per build
+through ``levelscript_union_tags``, so an unvalidated build admits no route.
+A retired literal also read tag ``0x10`` as a quest state; on the recorded
+build that tag is the one-member ``SimpleConditionCheckPortableDeviceEquipped``.
+
+``decode_interactive_list`` reuses the same value codec for LevelData's
+member-20 list.  In LevelScript, positive dictionaries reach the next
+top-level member with one sequential cursor.  Stored authored configuration
+only; runtime component validity and ownership are not proved.
+"""
 
 from __future__ import annotations
 
 import math
 import struct
 from typing import Any, Callable
+
+from scripts.game_data import levelscript_union_tags as union_tags
 
 
 class LevelInteractiveCodecError(ValueError):
@@ -210,13 +237,32 @@ def _decode_component_properties(
     return {"status": "present", "count": count, "entries": entries}, cursor
 
 
-def _decode_progress_lock_condition(
+# ``ConditionRuntimeBase`` layouts read here, with the member count each reads.
+_PROGRESS_LOCK_STATE_CONDITIONS = {
+    "SimpleConditionCheckMissionState": 3,
+    "SimpleConditionCheckQuestState": 3,
+}
+_PROGRESS_LOCK_LAYOUTS = {"CombinedConditionRuntime": 3, **_PROGRESS_LOCK_STATE_CONDITIONS}
+
+
+def _progress_lock_routes() -> dict[tuple[int, int], str]:
+    """The build's ``(tag, member count)`` of each progress-lock layout."""
+    return union_tags.routes("ConditionRuntimeBase", _PROGRESS_LOCK_LAYOUTS)
+
+
+def decode_progress_lock_condition(
     data: bytes,
     cursor: int,
     field: str,
     *,
     depth: int = 0,
 ) -> tuple[dict[str, Any], int]:
+    """Decode one non-null ``ConditionRuntimeBase`` progress lock at ``cursor``.
+
+    The one codec for this union in interactive records: LevelScript and
+    LevelData values and the Story page's progress-lock readers all call it.
+    Raises ``LevelInteractiveCodecError`` on any other condition type.
+    """
     if depth > 8:
         raise LevelInteractiveCodecError(f"{field}: condition nesting exceeds 8")
     start = cursor
@@ -224,7 +270,8 @@ def _decode_progress_lock_condition(
     union_tag = data[cursor]
     member_count = data[cursor + 1]
     cursor += 2
-    if union_tag in (0x0C, 0x10, 0x11) and member_count == 3:
+    condition_type = _progress_lock_routes().get((union_tag, member_count))
+    if condition_type in _PROGRESS_LOCK_STATE_CONDITIONS:
         compare_operator, cursor = _i32(data, cursor, f"{field}.compareOperator")
         compare_target, cursor = _i32(data, cursor, f"{field}.compareTarget")
         owner_id, cursor = _string(data, cursor, f"{field}.ownerId")
@@ -236,18 +283,14 @@ def _decode_progress_lock_condition(
         return {
             "unionTag": union_tag,
             "serializedMemberCount": member_count,
-            "conditionType": (
-                "SimpleConditionCheckMissionState"
-                if union_tag == 0x0C
-                else "SimpleConditionCheckQuestState"
-            ),
+            "conditionType": condition_type,
             "compareOperator": compare_operator,
             "compareTarget": compare_target,
             "ownerId": owner_id,
             "startOffset": start,
             "endOffset": cursor,
         }, cursor
-    if union_tag == 0 and member_count == 3:
+    if condition_type == "CombinedConditionRuntime":
         condition_operator, cursor = _i32(
             data, cursor, f"{field}.conditionOperator"
         )
@@ -259,7 +302,7 @@ def _decode_progress_lock_condition(
             )
         conditions = []
         for index in range(count):
-            condition, cursor = _decode_progress_lock_condition(
+            condition, cursor = decode_progress_lock_condition(
                 data,
                 cursor,
                 f"{field}.conditions[{index}]",
@@ -278,7 +321,7 @@ def _decode_progress_lock_condition(
         }, cursor
     raise LevelInteractiveCodecError(
         f"unsupported non-null progressLockCondition: offset={start} "
-        f"tag={union_tag} memberCount={member_count}"
+        f"tag={union_tag} memberCount={member_count}{union_tags.unavailable_note()}"
     )
 
 
@@ -340,7 +383,7 @@ def _decode_interactive(
         progress_lock_condition = None
         cursor += 1
     else:
-        progress_lock_condition, cursor = _decode_progress_lock_condition(
+        progress_lock_condition, cursor = decode_progress_lock_condition(
             data,
             cursor,
             f"{field}.progressLockCondition",

@@ -4,6 +4,44 @@ The receipt's source bytes are treated as private input: output rows retain the
 SHA-256 and observed cursor ranges, never the supplied hex payload. A promoted
 row proves the executed direct-field cursor vector and terminal candidate under
 the maintained framer; field meaning remains separately native-authenticated.
+
+Observer.  The EndfieldCapture ``skilldata-cursor`` profile observes the
+complete direct-call surface of the selected SkillData reader: 47
+field-indexed post-read cursors for the 48-member object (field 17 is read
+inline) plus the two ActionGroup child-list post-call cursors inside field 0.
+Seven typed helper hooks preserve the original ABI.  The runtime admits only
+bounded source lengths (the verifier and capture-target contracts record
+them), copies each source once into bounded storage, and publishes only after
+a quiescent teardown proves every detour and trampoline vacant.  The loaded
+reader body, the seven helper entries and the ActionGroup window are
+hash-pinned on top of the native file gate
+(``contracts/skill_cursor_observer_native.json``).
+
+Pinned values.  Nothing build-locked lives in this module: the 47 field and
+two ActionGroup callsite RVAs, the inline field, the terminal fields' names
+and reader targets, and the accepted receipt source lengths are read from that
+observer contract through ``CONTRACTS_DIR``.  Only the framer's terminal member
+kinds (fields 43..47) stay here, because they describe the encoding.  Every
+report gate first checks the contract's ``nativeInputs`` against the installed
+client and fails closed on ``missing`` or ``mismatched``.
+
+Accepted evidence.  The accepted v2 publication receipt has zero genuine loss
+and overflow and records complete field/child vectors for two byte-distinct
+samples whose field 0 is the identical empty two-list ``ActionGroupData``.  In
+both, the ``one-member-wrapper`` terminal begins at field 43
+``switchToCenterBeforeCast`` and field 47 ``useAIExclusiveFrame`` closes at
+EOF; these two samples anchor the family-wide field-43..47 selection.  A later
+accepted receipt with two different current sources confirms the ActionGroup
+child checkpoints at cursors 6 and 10, supporting the passive-versus-timeline
+split; ``PlayAnimation`` body ownership still comes from the native wrapper
+and corpus joins.  Overflow in the separate off-target callsite sampler does
+not weaken an accepted target stream.  A direct top-level cursor never names
+the interior of a populated ActionGroup child.
+
+Preflight.  :func:`preflight_skilldata_corpus` is the non-launching check.
+After a VFS content addition a fresh capture first needs an immutable
+unselected basis and an IL2CPP context under the new input set; a prior
+context cannot serve even when the native binaries match.
 """
 
 from __future__ import annotations
@@ -17,6 +55,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from scripts.common import NATIVE_EVIDENCE_VALIDATED, check_installed_native_inputs
+from scripts.game_data.contracts import CONTRACTS_DIR
+from scripts.game_data.il2cpp.native_image import read_reviewed_contract
 from scripts.game_data.memorypack.skill import (
     frame_skill_common_prefix,
     frame_skill_memorypack,
@@ -27,19 +68,18 @@ from scripts.game_data.memorypack.schemas import MEMORYPACK_FIELD_SCHEMAS
 SCHEMA = "endfieldCapture.skillDataCursorCapture.v2"
 OUTPUT_SCHEMA = "endfield.skillDataCursorVerification.v2"
 SKILL_REPORT_FORMAT = "animestudio-skilldata-current-vfs-corpus"
-START_CALLSITE_RVA = 0x37DE8C5
-FINAL_CALLSITE_RVA = 0x37DE99D
-FIELD_CALLS = (
-    (0,0x37DE0E6),(1,0x37DE11A),(2,0x37DE145),(3,0x37DE170),(4,0x37DE1AB),(5,0x37DE1E6),(6,0x37DE21A),(7,0x37DE241),(8,0x37DE268),(9,0x37DE28F),(10,0x37DE2BD),(11,0x37DE2F8),(12,0x37DE32D),(13,0x37DE351),(14,0x37DE378),(15,0x37DE3AC),(16,0x37DE3E0),(18,0x37DE461),(19,0x37DE485),(20,0x37DE4A9),(21,0x37DE4D9),(22,0x37DE4FD),(23,0x37DE52B),(24,0x37DE54F),(25,0x37DE576),(26,0x37DE59D),(27,0x37DE5C1),(28,0x37DE5E8),(29,0x37DE616),(30,0x37DE63A),(31,0x37DE668),(32,0x37DE68C),(33,0x37DE6BA),(34,0x37DE6EE),(35,0x37DE71C),(36,0x37DE751),(37,0x37DE77C),(38,0x37DE7B7),(39,0x37DE7F2),(40,0x37DE827),(41,0x37DE857),(42,0x37DE891),(43,0x37DE8C5),(44,0x37DE8F3),(45,0x37DE92E),(46,0x37DE969),(47,0x37DE99D),
-)
-ACTION_GROUP_CALLS = ((0,0x3E4005C),(1,0x3E40091))
-REQUIRED_SOURCE_LENGTHS = (424, 533)
-TERMINAL_FIELD_CONTRACT = (
-    (43, "switchToCenterBeforeCast", 46827712, "bool"),
-    (44, "tagDuringAttach", 47864976, "counted-member-record-list"),
-    (45, "toggleBuffs", 58849520, "counted-nested-object-list"),
-    (46, "uiRangeHints", 58849520, "counted-nested-object-list"),
-    (47, "useAIExclusiveFrame", 46827712, "bool"),
+OBSERVER_CONTRACT_PATH = CONTRACTS_DIR / "skill_cursor_observer_native.json"
+OBSERVER_CONTRACT_SCHEMA = "endfield.skill-cursor-observer-native.v2"
+OBSERVER_CONTRACT_STATUS = "selected-build-native-only"
+# The maintained framer's member kinds for the one-member-wrapper terminal
+# (fields 43..47).  They describe the MemoryPack encoding, not one build; the
+# terminal field names and native reader targets come from the contract.
+TERMINAL_MEMBER_KINDS = (
+    (43, "bool"),
+    (44, "counted-member-record-list"),
+    (45, "counted-nested-object-list"),
+    (46, "counted-nested-object-list"),
+    (47, "bool"),
 )
 HEX64_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 HEX_RE = re.compile(r"^(?:[0-9a-fA-F]{2})+$")
@@ -53,6 +93,122 @@ DEFAULT_NATIVE_CONTEXT = REPO_ROOT / "reports/animestudio/il2cpp_context_current
 
 class ReceiptVerificationError(ValueError):
     """A global receipt/report gate failed; the capture cannot be verified."""
+
+
+def _contract_int(value: Any) -> bool:
+    return type(value) is int and value >= 0
+
+
+def load_observer_contract(path: Path = OBSERVER_CONTRACT_PATH) -> dict[str, Any]:
+    """Read the observer contract and check the shape this verifier consumes."""
+    label = "skill-cursor-observer"
+    contract, _digest = read_reviewed_contract(
+        path, schema=OBSERVER_CONTRACT_SCHEMA, label=label, status=OBSERVER_CONTRACT_STATUS,
+    )
+
+    def invalid(problem: str) -> ValueError:
+        return ValueError(f"{label}.contract:{problem} ({path})")
+
+    native = contract.get("nativeInputs")
+    if not isinstance(native, Mapping) or not all(
+        isinstance(native.get(name), str) and HEX64_RE.fullmatch(native[name]) is not None
+        for name in ("GameAssembly.dll", "global-metadata.dat")
+    ):
+        raise invalid("nativeInputs-invalid")
+    fields = contract.get("fieldCallsites")
+    if not isinstance(fields, list) or not fields or not all(
+        isinstance(row, Mapping)
+        and _contract_int(row.get("fieldIndex"))
+        and _contract_int(row.get("callInstructionRva"))
+        and _contract_int(row.get("targetRva"))
+        and isinstance(row.get("fieldName"), str)
+        for row in fields
+    ):
+        raise invalid("fieldCallsites-invalid")
+    indices = [row["fieldIndex"] for row in fields]
+    inline = contract.get("inlineField")
+    inline_index = inline.get("fieldIndex") if isinstance(inline, Mapping) else None
+    # Every field is either one direct callsite, in reader order, or the one
+    # inline read between two observed neighbours.
+    if (
+        not _contract_int(inline_index)
+        or indices != sorted(indices)
+        or sorted(indices + [inline_index]) != list(range(len(indices) + 1))
+        or inline_index - 1 not in indices
+        or inline_index + 1 not in indices
+    ):
+        raise invalid("field-index-vector-invalid")
+    children = contract.get("actionGroupChildCallsites")
+    if not isinstance(children, list) or not children or not all(
+        isinstance(row, Mapping)
+        and _contract_int(row.get("childIndex"))
+        and _contract_int(row.get("callInstructionRva"))
+        for row in children
+    ):
+        raise invalid("actionGroupChildCallsites-invalid")
+    lengths = contract.get("receiptVerifierSourceLengths")
+    if not isinstance(lengths, list) or not lengths or not all(
+        _contract_int(value) and value > 0 for value in lengths
+    ):
+        raise invalid("receiptVerifierSourceLengths-invalid")
+    recorder_lengths = contract.get("recorderSelectedSourceLengths")
+    if not isinstance(recorder_lengths, list) or not recorder_lengths or not all(
+        _contract_int(value) and value > 0 for value in recorder_lengths
+    ):
+        raise invalid("recorderSelectedSourceLengths-invalid")
+    # A receipt can only carry a length the recorder admits.
+    if not set(lengths) <= set(recorder_lengths):
+        raise invalid("receiptVerifierSourceLengths-not-recorder-selected")
+    terminal = [index for index, _kind in TERMINAL_MEMBER_KINDS]
+    if indices[-len(terminal):] != terminal:
+        raise invalid("terminal-fields-not-final-callsites")
+    return contract
+
+
+# Build-locked declarations: the observer contract records the selected
+# build's callsite RVAs, reader targets and accepted source lengths.
+_OBSERVER_CONTRACT = load_observer_contract()
+OBSERVER_NATIVE_INPUTS = (
+    _OBSERVER_CONTRACT["nativeInputs"]["GameAssembly.dll"].upper(),
+    _OBSERVER_CONTRACT["nativeInputs"]["global-metadata.dat"].upper(),
+)
+FIELD_CALLS = tuple(
+    (row["fieldIndex"], row["callInstructionRva"])
+    for row in _OBSERVER_CONTRACT["fieldCallsites"]
+)
+ACTION_GROUP_CALLS = tuple(
+    (row["childIndex"], row["callInstructionRva"])
+    for row in _OBSERVER_CONTRACT["actionGroupChildCallsites"]
+)
+INLINE_FIELD_INDEX = _OBSERVER_CONTRACT["inlineField"]["fieldIndex"]
+REQUIRED_SOURCE_LENGTHS = tuple(_OBSERVER_CONTRACT["receiptVerifierSourceLengths"])
+_TERMINAL_SITES = {
+    row["fieldIndex"]: row for row in _OBSERVER_CONTRACT["fieldCallsites"][-len(TERMINAL_MEMBER_KINDS):]
+}
+TERMINAL_FIELD_CONTRACT = tuple(
+    (index, _TERMINAL_SITES[index]["fieldName"], _TERMINAL_SITES[index]["targetRva"], kind)
+    for index, kind in TERMINAL_MEMBER_KINDS
+)
+
+
+def require_observer_native_build():
+    """Fail closed unless the installed client is the observer contract's build.
+
+    The callsite and reader-target RVAs describe only the pinned build, so a
+    missing or different client verifies nothing.
+    """
+    expected_gameassembly, expected_metadata = OBSERVER_NATIVE_INPUTS
+    gate = check_installed_native_inputs(expected_gameassembly, expected_metadata)
+    if gate.status != NATIVE_EVIDENCE_VALIDATED:
+        raise ReceiptVerificationError(
+            f"native inputs {gate.status}: {OBSERVER_CONTRACT_PATH.name} pins "
+            f"GameAssembly.dll {expected_gameassembly[:12]} and global-metadata.dat "
+            f"{expected_metadata[:12]}; {gate.detail}. Its callsite RVAs describe only "
+            "that build: select the pinned client (ENDFIELD_GAME_ROOT or "
+            "endfield_paths.bat) or regenerate the observer contract against the "
+            "installed build before verifying a receipt"
+        )
+    return gate
 
 
 def _sha256_text(value: Any, *, source: str) -> str:
@@ -164,11 +320,31 @@ def _validate_report_gates(
     corpus: Mapping[str, Any],
     native_context: Mapping[str, Any],
     corpus_report_sha256: str | None,
+    scoped_target_path: str | None = None,
 ) -> list[Mapping[str, Any]]:
+    require_observer_native_build()
     if corpus.get("format") != SKILL_REPORT_FORMAT:
         raise ReceiptVerificationError("corpus report has an unexpected format")
-    if corpus.get("status") != "complete" or corpus.get("publicationEligible") is not True:
-        raise ReceiptVerificationError("corpus report is not a complete current census")
+    if scoped_target_path is None:
+        if corpus.get("status") != "complete" or corpus.get("publicationEligible") is not True:
+            raise ReceiptVerificationError("corpus report is not a complete current census")
+    else:
+        rows = corpus.get("files")
+        scoped = native_context.get("scopedTargetProvenance")
+        capture_target = native_context.get("captureTarget")
+        if (corpus.get("status") != "partial"
+                or corpus.get("publicationEligible") is not False
+                or corpus.get("targetedVirtualPaths") != [scoped_target_path]
+                or not isinstance(rows, list) or len(rows) != 1
+                or not isinstance(rows[0], Mapping)
+                or rows[0].get("virtualPath") != scoped_target_path
+                or not isinstance(capture_target, Mapping)
+                or capture_target.get("virtualPath") != scoped_target_path
+                or not isinstance(scoped, Mapping)
+                or scoped.get("status") != "scoped-wulfa-unselected"
+                or scoped.get("virtualPath") != scoped_target_path
+                or scoped.get("terminalSelected") is not False):
+            raise ReceiptVerificationError("corpus report or native context differs from exact scoped target")
     if _sha256_text(corpus.get("inputSetSha256"), source="corpus.inputSetSha256") != input_set:
         raise ReceiptVerificationError("receipt input set differs from the current SkillData corpus")
     rows = corpus.get("files")
@@ -258,6 +434,7 @@ def preflight_skilldata_corpus(
     *,
     corpus_report_path: Path = DEFAULT_CORPUS_REPORT,
     native_context_path: Path = DEFAULT_NATIVE_CONTEXT,
+    scoped_target_path: str | None = None,
 ) -> str:
     """Authenticate current corpus/native cross-references and return its input set."""
     corpus, corpus_digest = _load_json_with_sha256(
@@ -281,6 +458,7 @@ def preflight_skilldata_corpus(
         corpus,
         native_context,
         corpus_digest,
+        scoped_target_path,
     )
     return input_set
 
@@ -493,7 +671,7 @@ def _verify_observation(
             if position == 0:
                 if before != 1 or data[0] != 48:
                     raise ReceiptVerificationError("skilldata-header-cursor-mismatch")
-            elif field_index != 18 and before != previous_after:
+            elif field_index != INLINE_FIELD_INDEX + 1 and before != previous_after:
                 raise ReceiptVerificationError("field-cursor-gap")
             verified_fields.append({"fieldIndex": field_index, "callsiteRva": callsite,
                                     "cursorBefore": before, "cursorAfter": after})
@@ -515,7 +693,8 @@ def _verify_observation(
             verified_children.append({"childIndex": child_index, "callsiteRva": callsite,
                                       "cursorAfter": child_after})
             previous_child = child_after
-        start = next(row for row in verified_fields if row["fieldIndex"] == 43)
+        start = next(row for row in verified_fields
+                     if row["fieldIndex"] == TERMINAL_FIELD_CONTRACT[0][0])
         final = verified_fields[-1]
         start_before, start_after = start["cursorBefore"], start["cursorAfter"]
         final_before, final_after = final["cursorBefore"], final["cursorAfter"]
@@ -536,11 +715,15 @@ def _verify_observation(
              "kind": "observed-direct-field"}
             for row in verified_fields
         ]
-        field16 = next(row for row in verified_fields if row["fieldIndex"] == 16)
-        field18 = next(row for row in verified_fields if row["fieldIndex"] == 18)
-        runtime_ranges.insert(17, {
-            "fieldIndex": 17, "fieldName": field_names[17],
-            "start": field16["cursorAfter"], "end": field18["cursorBefore"],
+        before_inline = next(row for row in verified_fields
+                             if row["fieldIndex"] == INLINE_FIELD_INDEX - 1)
+        after_inline = next(row for row in verified_fields
+                            if row["fieldIndex"] == INLINE_FIELD_INDEX + 1)
+        # Fields 0..inline-1 are all direct, so the inline field's position in
+        # reader order equals its index.
+        runtime_ranges.insert(INLINE_FIELD_INDEX, {
+            "fieldIndex": INLINE_FIELD_INDEX, "fieldName": field_names[INLINE_FIELD_INDEX],
+            "start": before_inline["cursorAfter"], "end": after_inline["cursorBefore"],
             "kind": "inline-field-between-observed-neighbors",
         })
         result["runtimeFieldRanges"] = runtime_ranges
@@ -623,6 +806,7 @@ def verify_skilldata_cursor_capture(
     required_logical_paths: Sequence[str] = (),
     receipt_path: Path | None = None,
     receipt_sha256: str | None = None,
+    scoped_target_path: str | None = None,
 ) -> dict[str, Any]:
     """Verify receipt gates, source-hash joins, native pins and observed cursors."""
     input_set, game_hash, metadata_hash, receipt_unsupported = _require_capture_gates(receipt)
@@ -634,7 +818,7 @@ def verify_skilldata_cursor_capture(
     )
     corpus_rows = _validate_report_gates(
         input_set, game_hash, metadata_hash, corpus_report, native_context,
-        corpus_report_sha256,
+        corpus_report_sha256, scoped_target_path,
     )
     observations = receipt["observations"]
     rows = [
@@ -718,8 +902,8 @@ def verify_skilldata_cursor_capture(
         "terminalSelectionContract": {
             "candidateEncoding": "one-member-wrapper",
             "rejectedAlternativeEncoding": "counted",
-            "fieldStartIndex": 43,
-            "fieldEndIndex": 47,
+            "fieldStartIndex": TERMINAL_FIELD_CONTRACT[0][0],
+            "fieldEndIndex": TERMINAL_FIELD_CONTRACT[-1][0],
             "memberKinds": [row[3] for row in TERMINAL_FIELD_CONTRACT],
             "nativeReaderTargets": [
                 {"fieldIndex": index, "fieldName": name, "targetRva": target}

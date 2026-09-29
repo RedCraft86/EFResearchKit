@@ -1,246 +1,136 @@
-# `extend-data`: the path table and the bone matrices
+# ExtendData source paths and facial-bone values
 
 Part of [`../game_data_recovery.md`](../game_data_recovery.md). See
 [`README.md`](README.md) for the level and lane map.
 
-**Level 2, catalog lane.** The `ExtendData` block contains the source-path
-table, facial-bone transforms, and a still-opaque compressed payload.
-`StringPathHash.bin` is a global catalog rather than world data;
-`FacBoneTRS.bin` carries facial-bone animation. Neither is spatial. The
-separate `BundleManifest` block has since gained exact partial framing; see
+**Levels 2–4, catalog lane.** `StringPathHash.bin` and
+`InitStringPathHash.bin` are source-path catalogs; `FacBoneTRS.bin` carries
+facial-bone values; `CompressData.bin` carries authored behavior graphs. These
+are catalog, animation, and AI graph data, not world placement.
+The separate BundleManifest format is documented in
 [`extraction_payload_boundaries.md`](extraction_payload_boundaries.md).
 
-## Entropy was a useful triage signal, not a framing limit
+Every corpus gate below binds a targeted, MD5-verified dump of the selected
+Persistent-overlay file to a full VFS audit ledger, and every native audit
+checks the explicit selected `GameAssembly.dll`/`global-metadata.dat` pair;
+each returns nothing on a mismatch. Each module's docstring holds the full
+reading; the generated receipts go to `reports/animestudio/`.
 
-A single entropy/adjacency profile separates them, calibrated against known-readable references
-(plain JSON reads 5.111 bits/byte at +0.678; the decoded `regionIv` reads 6.301):
+## StringPathHash: a framed, stored path catalog
 
-| file | bytes | entropy | adjacency | verdict |
-| --- | --- | --- | --- | --- |
-| `manifest.hgmmap` | 50,002,822 | **7.997** | +0.002 | high entropy; later framed in part |
-| `CompressData.bin` | 873,686 | **7.994** | +0.016 | ***indistinguishable from random*** |
-| `FacBoneTRS.bin` | 17,909,576 | 3.956 | +0.411 | plain |
-| `StringPathHash.bin` | 157,726,628 | 4.022 | +0.379 | plain |
+- **Framing (exact).** `scripts/game_data/extend_data_binary.py` consumes the
+  current catalog through EOF: strict terminated UTF-16LE strings, distinct
+  bucket record positions, and path offsets that each name a string start. The
+  other bucket word and a four-byte gap before the string pool stay anonymous
+  in both catalogs. The full inner gate also revalidates the initial catalog and
+  FacBoneTRS against the same ledger, with exact EOF and source identity.
+- **Hash route (direct, static).** `string_path_hash_native.py` authenticates
+  the 64-bit `StringPathHash.hash` field and the construction/processor call
+  routes: a `data/` prefix (ordinal, case-insensitive) reaches the method named
+  `Beyond.Cryptor.Crc32Utils.XXHash64`, other paths an auto-lower UTF-16 wrapper
+  with an authenticated managed fallback. It does not prove live execution,
+  Burst dispatch for an unseen input, or the producer that wrote the file.
+- **Replay (exact).** `string_path_hash_corpus.py` shows that every distinct
+  `Data/` path/hash pair in either catalog equals the VFS ledger's
+  independently recomputed filename hash, that the main catalog's remaining
+  pairs equal the whole BundleManifest `AssetInfo` lowercased
+  path/`pathHashHead` multiset, and that the initial catalog's asset pairs are a
+  multiset subset of it. Repeated catalog pairs are kept rather than forced
+  one-to-one with VFS rows, and every stored hash locates its slot by modulo the
+  catalog's count. AnimeStudio's `EndfieldVfsHash.Hash64` takes its
+  longer-input path at exactly 128 UTF-8 bytes, which is where standard XXH3
+  disagrees; the gate keeps 127-, 128- and 129-byte controls.
+- **Boundary.** This is a stored catalog naming Bundle, Streaming, JsonData,
+  terrain and Unity asset paths. It is not an exhaustive runtime namespace, and
+  its joins establish neither asset ownership nor runtime use.
+- An older controlled `InitChunkData` scan found many aligned values that join
+  this catalog while bit-flipped hash controls almost never did: authored asset
+  references in those sampled chunks, without owner or runtime use, and without
+  ruling out references under another encoding elsewhere in Streaming.
 
-The original entropy pass could not distinguish the manifest's structure from
-random-looking bytes. A later exact framing sweep identified its fixed-width
-sections and part of its variable envelope. The terminal bytes, serialized
-field ownership, and value semantics remain open. `CompressData.bin` has no
-comparable framing result yet.
+**Eliminated readings.** FNV, DJB2, SDBM, classic xxHash64, Murmur64A and
+MurmurHash3 fail under their tested encodings and seeds; the method name
+`XXHash64` does not mean classic xxHash64; the 128-byte branch explains the
+earlier xxHash64 and XXH3 misses and is not evidence for a third stored hash.
 
-### `FacBoneTRS.bin` is an array of 4x4 matrices
+**Next witness:** the catalog writer, or the concrete comparer passed to its
+multi-hash-table initializer, to separate stored slot arithmetic from runtime
+lookup behavior.
 
-After a **14,216-byte head** of small integers, the rest is **279,615 records of 64 bytes**
-(`17,895,360 / 64` exactly), and each is a row-major 4x4 affine transform:
+## FacBoneTRS
 
-| test | result |
-| --- | --- |
-| 4th column == `(0,0,0,1)` | **100.00%** |
-| rows mutually orthogonal | 99.69% |
-| uniform scale | 99.69% |
-| **full TRS** | **99.69%** |
-| *control at random offsets* | **2.495%** |
+The `FacBoneTRS.bin` reader validates its file-provided counts, lookup and value
+bounds, contiguous bone records, and 64-byte values through EOF. The values are
+shape-consistent with row-vector homogeneous rigid-affine 4x4 float matrices;
+the exact managed type, coordinate convention, and animation consumer are open.
+No unit or bone hash equals a stored hash in either current path catalog; that
+is a stored-hash equality check, not proof that no other naming route exists.
+The cross-family framing boundary is in
+[`extraction_payload_boundaries.md`](extraction_payload_boundaries.md).
 
-**A 40x separation from its control**, on the same acceptance test built for the chunk-data
-transforms -- *so the tooling from one format carried straight over to another.* The name's
-claim (facial bone TRS) is borne out by the contents rather than assumed from it.
+## CompressData: authored behavior graphs
 
-## `StringPathHash.bin` is the game's complete source-path table
+`CompressData.bin` has a strict reader in AnimeStudio (`EndfieldCompressData.cs`,
+opt-in `extend-data` CLI command). Its records are length-prefixed exact Brotli
+bodies of strict UTF-16LE JSON through EOF, and every current root is a
+NodeCanvas behavior tree. The bytes establish authored graph structure with
+typed nodes and connections, not a selected runtime branch or blackboard value.
+Each link below is a separate gate under `scripts/game_data/`, with its reviewed
+contract in `scripts/game_data/contracts/`:
 
-***157,726,628 bytes, decoded end to end with nothing left over.***
+| # | Link | Module | Tier |
+| --- | --- | --- | --- |
+| 1 | archive framing, decoder output closure pinned | `extend_data_compress_corpus.py` | exact |
+| 2 | node types, field sets, `BTConnection` edges to unique node IDs | `extend_data_graph.py` | exact over the current corpus |
+| 3 | every reached `_action`/`_condition` task's field set and value kinds | `extend_data_tasks.py` | exact shallow shape |
+| 4 | `EnemySwitchBehavior.OnExecute` reads its `behavior` field | `extend_data_tasks_native.py` | direct, static |
+| 5 | `DataCompressManager.Init` reads the archive; `Graph.DeserializeSelf` indexes it by `_serializedGraphStringIndex` | `extend_data_graph_native.py` | conditional, static |
+| 6 | exported BehaviourTree MonoBehaviours name archive ordinals | `extend_data_graph_owner_corpus.py` | exact for the exported set |
+| 7 | AssetBundle path to `EnemyAIConfigData.aiBB` to blackboard graph mode to `canvasGraph` to ordinal | `extend_data_graph_ai_corpus.py` | authored pointers |
+| 8 | `SCENE_MONSTER.commonInfo.templateid` to enemy root to `EnemyTable.aiTemplateId` to `AIConfig` load | `extend_data_graph_ai_native.py` | conditional, static |
+| 9 | each `SpawnMonsterFromTemplateV2.libraryKey` selects one `enemyLibrary[].key` in its file | `extend_data_spawner_library_corpus.py` | authored |
+| 10 | server object ID to action to keyed library item, feeding an AI override and a born-data fallback | `extend_data_spawner_library_native.py` | conditional, static |
 
-| offset | field |
-| --- | --- |
-| `+0` | u32 **19,234,928** -- offset of the string pool |
-| `+4` | u32 **801,455** -- the string count |
-| `+8 .. poolOffset` | index/hash table |
-| `poolOffset .. EOF` | `801,455` x `[u32 byteLength][UTF-16LE bytes][u16 0x0000]` |
+Conclusions that span the links:
 
-**Walking the pool fail-closed parses 801,455 of 801,455 strings and ends exactly on the last
-byte, with 0 leftover** -- and the header's count was confirmed independently by scanning for
-UTF-16 runs *before* the header was understood, which found the same 801,455.
+- `EnemySwitchBehavior.behavior` is stored as an exact `tag.tagId` integer
+  wrapper and read by the task's code; the integer's meaning, its writer, and
+  any comparison are open.
+- No decoded graph root carries an owner key. Ownership comes from the exported
+  assets, several distinct assets share an ordinal, and every assignment is
+  kept. Freshness rests on the export-summary fingerprint, not on per-object
+  authentication of each Unity object's installed bytes.
+- For a subset of `EnemyTable` rows, `aiTemplateId` equals a unique exported
+  `EnemyAIConfigData.m_Name` whose natively formatted path is in the container,
+  linking the Table key to a config and its graph mode. Configs under a
+  `Settlement` subdirectory are outside this synchronous path, other Table keys
+  have no exact path, and `AIConfig/EnemyTemplateDataSummary` maps template IDs
+  to EnemyData paths without selecting a graph. The source graph's
+  `enemy_uses_ai_config` edge is a query aid over the same field, not another
+  witness.
+- Every authored spawner `enemyId` is an `EnemyTable` key: an authored key join
+  only. The runtime lookup keys items by `libraryKey`, and its AI branches read
+  the item's `overrideAIConfig` (an override layer beside the default
+  `aiTemplateId` route), `bornTemplateId` and `bornBehaviorData`, never its
+  `enemyId`. In the current corpus, positive `bornTemplateId` values differ
+  from the item's `enemyId`, and every `bornBehaviorData` is null.
 
-***These are the real asset paths:*** 453,513 under `Data/`, 347,635 under `Assets/`/`assets/`;
-by extension 253,670 `.ab`, 103,592 `.bytes`, 102,852 `.json`, 64,164 `.fbx`, 62,109 `.asset`,
-30,856 `.png`, 29,959 `.mat`, 28,884 `.prefab`, 23,083 `.anim`.
+None of these witnesses a live graph instance, protocol message, resource load,
+or execution, and IFix can redirect every checked method. Asset names and graph
+task strings do not fill that gap.
 
-```
-Assets/Beyond/Arts/Entity/Actor/Loli/Wulfa/Materials/M_actor_wulfa_iris_01.mat
-Assets/Beyond/Arts/Environment/SceneAssets/Map01/Prop/.../S_prop_map01_object+1_005_07a_lod0.fbx
-Data/Streaming/PC/map01/Streaming/InitChunkData_4_14_0_0.bytes
-Data/Bundles/Windows/main/4df843b7674ea0b7d4d078a2.ab
-```
+## Open join: spawner entry to live enemy
 
-**This is the largest semantic anchor recovered here** -- *a name for essentially every asset the
-game ships*, including the `.ab` bundle hashes and the chunk files this section has spent so long
-on.
-
-***A correction worth keeping.*** An earlier pass over this file searched for **8-bit ASCII**
-runs, found only random-looking junk, and concluded it held no strings -- while 801,455 UTF-16
-paths sat in it. **The byte-position census is what exposed it**: even positions varied, odd
-positions ~90% zero, which is exactly how UTF-16LE ASCII looks. *The earlier finding that the
-first words are "not hashes of VFS paths" stands, but the reason to doubt it was visible in the
-zero pattern and was missed.*
-
-### The index region: a 64-bit hash to path map
-
-***Profiling the region in windows found the layout change the statistics had been hinting at.***
-Up to byte **6,422,536** the words are ~37% zero and ~68% small with no high values; after it
-they sit at **exactly 25.0% zero and 25.0% small** -- one word in four, which is the signature of
-a **16-byte record**.
-
-Read that way, the second part is **800,774 records** of:
-
-| slot | content |
-| --- | --- |
-| 0 | **offset into the string pool** (max 138,491,050 against a pool of 138,491,700) |
-| 1 | always zero -- padding, making slot 0 a u64 |
-| 2, 3 | a **64-bit hash**, essentially all distinct |
-
-***Every one of the 800,774 offsets lands exactly on a string record start -- 100.00%.***
-
-```
-0xcbb43c776a00a407 -> Data/Bundles/Windows/main/0054a391cac476902c17df24.ab
-0xe77047c45d2ad392 -> Data/Terrain/PC/dung02_dg002/Terrain_2_1_1_H.bytes
-0x08714e372c034651 -> Data/Json/LipSync/Chinese/au_dlg_c31m1_2_031.json
-```
-
-**So `StringPathHash.bin` is a complete 64-bit-hash to asset-path resolver for the whole game**,
-and the name is exact.
-
-#### The hash function itself is not identified, but it is constrained
-
-***The resolver works by lookup; it cannot yet be computed.*** With 787,063 ground-truth
-`(hash, path)` pairs available, the function was attacked directly and **32 combinations are now
-eliminated**, all scoring **0 matches**:
-
-| family | encodings | seeds |
-| --- | --- | --- |
-| `fnv1a-64`, `fnv1-64`, `djb2-64`, `sdbm-64` | utf-8, utf-8 lower, utf-16le, utf-16le lower | -- |
-| **`xxHash64`**, **`Murmur64A`** | the same four | 0 and 1 |
-
-`xxhash` and `mmh3` are not installed here, so **both were implemented from their published
-definitions and checked against xxHash64's published test vectors first**
-(in a since-deleted `scratch/hash64.py`; reimplement from the published definitions rather
-than looking for that file)
-(`""` seed 0 -> `0xef46db3751d8e999`, seed 1 -> `0xd5afba1336a3be4b`, both reproduced exactly).
-*That check is what makes the negative meaningful: the algorithm is ruled out, not the
-implementation.*
-
-What the values do say:
-
-* **bits 0-59 are uniform** -- each set in exactly 50% of hashes;
-* **bits 60-63 are not** -- each set in only 28%;
-* the **top nibble is `0x0` in 46.95%** of hashes while `0x1`-`0xF` take ~3.5% each, against
-  6.25% for a uniform nibble;
-* ***that skew tracks path length***, not asset type: the nibble-`0` share runs **28.76% for
-  50-60 character paths and ~67% for paths over 80**, correlation **+0.316**. It looked like a
-  type tag because `.fbx` paths (73%) are long and `.ab` paths (27%) are short -- **the
-  extension correlation is a proxy for length.**
-
-*A function whose top four bits stay clear more often as the input grows is a strong fingerprint*
-and should identify it quickly once a wider hash library is available.
-
-***The hash is non-linear, so differential recovery will not work.*** The pool contains many
-paths differing in a single character, which for any polynomial or accumulate-style hash
-(`h = h*M + c`) forces a *constant* difference for a fixed `(length, position, character delta)`.
-Measured over 881 such groups: **796 vary and only 85 are constant, and every one of those 85 had
-just a single observed pair** -- constant by having nothing to disagree with. **The same holds
-for XOR.** *So the function ends in an avalanche finalizer*, which rules out the entire
-linear-accumulate family structurally rather than one member at a time, and means the algorithm
-must be identified by name rather than solved for.
-
-**The remaining route is the engine binary** -- and a constant scan of it narrows nothing on its
-own. Searching for the published 64-bit constants of seven hash families:
-
-| binary | constants present |
-| --- | --- |
-| `UnityPlayer.dll` | **Murmur3 `fmix64` x58 each**, xxHash64 primes 1-5, CityHash k0-k2, FNV-1a64 |
-| `GameAssembly.dll` | FNV-1a64 prime x70 / offset x62, xxHash64 primes |
-| `HGP.dll` | xorshift64* x57, FNV-1a64 x10 |
-
-***Presence is not use.*** These binaries carry several hash families at once, so the scan cannot
-say which one writes this table -- *but the 58 `fmix64` pairs pointed at MurmurHash3_x64_128,
-which is a different algorithm from the already-eliminated Murmur64A (MurmurHash2) and whose
-`fmix64` finalizer matches the measured avalanche.* **It was implemented and tested: no match
-across 4 encodings x 3 seeds x both 64-bit halves** (self-test: `murmur3_x64_128(b"", 0)` returns
-`(0, 0)` as published).
-
-**Seven families and 44 combinations are now eliminated**, every one with a verified
-implementation. *Identifying the function needs the routine disassembled rather than more
-candidates guessed*, which is a larger task than this section has needed so far and is recorded
-as the next step rather than attempted here.
-
-#### The resolver works on the chunk data
-
-***`InitChunkData` carries these hashes, and they resolve.*** Over 25 large chunk files and
-6,101,502 aligned u64 words:
-
-| set | matches | rate |
-| --- | --- | --- |
-| **the real 787,063 hashes** | **179,537** | **2.9425%** |
-| decoy: same set with the low bit flipped | 4 | 0.0001% |
-| decoy: same set with bit 40 flipped | 0 | 0.0000% |
-
-***The decoy control is what makes this safe to claim.*** A random-u64 control scores 0% here
-too, but chunk data is not random -- it is adjacent float pairs -- so a decoy of **identical size
-and magnitude** is the honest test, and it lands at 1 in 10,000 of the real rate.
-
-Resolved, a chunk's hashes name its asset dependencies -- NavMesh chunks, HLOD meshes, character
-`.fbx`, effect textures, terrain `.bytes`, `.ab` bundles. **A single hash repeats thousands of
-times within one file** (4,487x for the top asset in one `_Global_` chunk), which is what
-per-instance storage of a shared mesh reference looks like.
-
-*This was nearly discarded.* The cross-level references and the heavy repetition looked like
-false positives, and the reasoning "a `blackbox02` chunk would not reference `map02` assets"
-was wrong on both counts -- **`_Global_` chunks reference shared assets, and repetition is
-per-instance.** The decoy control settled it where intuition would have thrown away a true
-result.
-
-##### Where these hashes appear, and where they do not
-
-| data | real hits | decoy |
-| --- | --- | --- |
-| **`InitChunkData`** | **2.94%** on large files, 1.02% on small | 0 |
-| `StreamingChunkData` | **0** | 0 |
-| `StreamingChunkInfo` | **0** | 0 |
-| `LAYER_*`, `iv` payloads, `iv` index | **0** | 0 |
-| `table` block | **0** | 0 |
-
-***The hashes are specific to `InitChunkData`.*** Not terrain, not irradiance volumes, not the
-config tables, and -- *the sharpest of these* -- **not `StreamingChunkData`**, which is the same
-format family from the same directories. **So `Init` chunks declare asset dependencies and
-`Streaming` chunks do not**, which is a semantic distinction between the two that the structural
-work never surfaced: the pair have matching layouts and differ in what they carry.
-
-### Region A: a second hash table, keyed by something else
-
-Bytes 8 to 6,422,536 are **802,816 slots of 8 bytes** -- and `802,816 = 784 x 1024`, a capacity
-rather than a count. **299,979 slots (37.37%) are entirely empty** and 502,837 are occupied,
-which is a load factor around 0.63: *this is an open-addressing hash table.* The first word is
-hash-like -- all distinct over a 100,000 sample, spanning the full u32 range -- and the second is
-usually small (`1, 2, 3, 4 ...` in a decaying tail).
-
-***What it is keyed by is not any of the obvious things.*** Each tested against a control:
-
-| reading | result | control |
-| --- | --- | --- |
-| region B's 64-bit hash, low or high half | 0.03% / 0.10% | 0.016% |
-| an offset landing on a string record | 1.37% | 0.57% |
-| a string index (`<= 802,816`) | 0.14% | -- |
-| `crc32` / `fnv1a-32` / `fnv1a-64` of the paths | 0.04-0.08% | 0.056% |
-| **the 24-hex bundle id** from the 253,670 `.ab` paths, any 4-byte slice | **0.01-0.02%** | 0.013% |
-
-***The slot layout is tighter than first recorded.*** At stride 8 from byte 8 the zero-fractions
-are `[0.38, 0.38, 0.38, 0.84, 0.38, 1.00, 1.00, 1.00]`, so **the second field is effectively a
-single byte**, not a u32 -- the 4.29-billion maximum quoted earlier came from a ~0.5% tail, not
-the common case. *An apparent set of sub-region "shifts" was an artefact of profiling with a
-window size that is not a multiple of 8*, which rotates the stride phase every window; region A
-is uniform throughout.
-
-**So the file holds *two* hash tables over the same string pool**: region B keys 800,774 paths by
-a 64-bit hash and resolves at 100%, while region A keys ~502,837 entries by a 32-bit value that
-is *not* derived from the path text by any function tried, *nor* related to region B's hash.
-**It is plausibly keyed by something other than the path** -- a GUID, a bundle id, an object id
--- which would explain every negative above at once. ***Recorded as open; the resolver in region
-B is the usable half.***
+The default enemy identity reaches the AI through the protocol-derived
+`EnemyServerData.enemyId`; the spawner lookup uses `libraryKey` and an entity
+server ID. Nothing checked proves that a library item's `enemyId` becomes
+`Proto.SCENE_MONSTER.commonInfo.templateid`. The message's separate
+`monsterLibraryKey` (copied into `subgameLibraryKey`) is a candidate for the
+selection join, but no selected client route compares it with an authored
+action's `libraryKey`. Open: the protocol-message producer, its binding to a
+particular spawner action and library item, selection into a particular
+`EnemyInfo`/`EntityNode`, alternate constructors, async and override paths, and
+a live override load. The next direct witness is a server producer or client
+consumer that carries one selected library item into the monster message or
+entity data with matching object and action identity; an ID intersection alone
+cannot close it.

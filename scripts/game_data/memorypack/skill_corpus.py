@@ -7,6 +7,77 @@ must join one-for-one to the current ledger before the MemoryPack framer runs.
 
 Family-agnostic provenance and drift gating lives in :mod:`corpus_gate`; this
 module owns only the SkillData selection, framing, and report contract.
+Run as ``python -m scripts.game_data.memorypack.skill_corpus``; the current
+report is ``reports/animestudio/skilldata_current_latest.json``.
+
+Terminal selection.  The static framer leaves the five terminal members as two
+anonymous EOF-valid candidates (:mod:`skill_terminal`).  A candidate is
+selected only by replaying a live cursor verification from its exact receipt,
+source-corpus, native-context and verifier hashes, then applying it to
+admitted rows whose bytes match: ``--cursor-verification`` (the family-wide
+publication receipt, anchored by its two empty-ActionGroup samples),
+``--capture-target-verification`` (one hash-pinned source) and
+``--capture-target-set-verification`` (the strict v3 target set, composed by
+:mod:`skill_cursor_target_set_overlay`, including a current-source offline
+rebind of its saved receipt).  Provenance is one-way: the IL2CPP
+context pins an immutable cursor-basis report, the verification pins that
+basis and context, and this corpus pins the verification, so atomically
+replacing ``current_latest`` does not break replay.
+
+Rebinding.  ``--allow-exporter-rebind`` accepts a verification from another
+input set only when the exporter fingerprint alone moved.  A real corpus
+change (the newer JsonData overlay added SkillData and BuffData records while
+keeping old logical lengths and MD5s) must instead use
+``--allow-verified-subset-rebind``: rows whose logical path, length, MD5 and
+SHA-256 reproduce the prior source under the unchanged native build keep the
+prior selection; a byte-identical row whose VFS chunk or offset moved is a
+sound content rebind, because the reader consumes decoded bytes; added or
+logically changed rows stay ``ambiguous``.  A rebind transfers an inference
+and never creates a live observation.  A new-input complete family gate is
+required after any reader or source-byte change.
+When a historical receipt and its source corpus are intact but the verifier
+module changed, ``--allow-historical-verifier-rebind`` additionally reruns
+every copied cursor on the fresh streamed rows and revalidates the native
+observer before either rebind mode can select a row.
+
+Profiles and refusals.  Admitted non-empty ActionGroup rows name only the
+exact field-0 prefix: member count, then the ``passiveEventActions`` and (when
+that list is empty) ``timelineActions`` counts, stopping at byte 6 or 10
+before a positive list's first record.  When a complete shared-sequence
+profile and a specialized PlayAnimation first-record prefix describe the same
+file, the complete profile wins and both stay in the row; the earlier
+priority hid whole-file closures.  Each nonexact positive-timeline or
+positive-passive file records its first refusal, from thrown and returned
+refusals alike (including a later stop behind an exact first-record prefix).
+A diagnostic ``actual`` integer is exposed as a physical action tag only when
+the reader reports a failed union-tag check; it can otherwise be a collection
+count or profile marker, so frontier ranking must keep the parser frame.
+Native route evidence and exact enclosing cursors, not diagnostic frequency,
+decide promotion, and a derived-plan oracle's EOF never promotes a row.
+First refusals appear per file, in bounded summaries and in the CLI result.
+
+Operator notes.  Choose a complete cursor verification whose receipt, source
+corpus, native context and verifier still match its recorded hashes; a
+replaced ``latest`` report is not provenance merely because it has the
+expected name.  ``--capture-target-verification`` promotes only its matching
+logical path and SHA-256, and only after the current static field ranges
+agree with the executed cursor; before verifying a new target, rebuild the
+all-unselected basis and native-only context
+(:mod:`scripts.game_data.il2cpp.skill_cursor_native_context`) and keep the
+verifier output under ``reports/``.  ``--capture-target-set-verification``
+replays the complete strict v3 receipt against its pinned inputs, or rechecks
+its copied bytes and cursors against a freshly streamed current basis through
+the dedicated offline rebind report. It promotes a source only when the
+native-gated static ActionGroup and fields through 42 match the direct runtime
+ranges and terminal at EOF; direct cursors do not name a populated ActionGroup
+child's interior. ``--allow-exporter-rebind``
+is for a VFS audit that changed only because AnimeStudio.CLI was rebuilt: it
+proves the selected logical bytes, physical identities, game build and asset
+roots are unchanged before accepting the older receipt.  The gate also
+fingerprints every JSON dependency declared by the shared timeline route
+contract before and after streaming, so a route update during the run fails
+the report rather than publishing mixed evidence.  A ``--max-files`` run is
+a diagnostic probe, never complete-corpus evidence.
 """
 
 from __future__ import annotations
@@ -76,10 +147,12 @@ from scripts.game_data.memorypack.skill_timeline_create_buff import (
 from scripts.game_data.memorypack.skill_timeline_find_target import (
     CONTRACT_PATH as TIMELINE_FIND_TARGET_CONTRACT_PATH,
     decode_first_timeline_find_target,
+    find_target_plain_tag,
     validate_current_native_contract as validate_timeline_find_target_native_contract,
 )
 from scripts.game_data.memorypack.skill_timeline_continuous_find_target import (
     CONTRACT_PATH as TIMELINE_CONTINUOUS_FIND_TARGET_CONTRACT_PATH,
+    continuous_find_target_plain_tag,
     decode_first_timeline_continuous_find_target,
     validate_current_native_contract as validate_timeline_continuous_find_target_native_contract,
 )
@@ -93,6 +166,14 @@ from scripts.game_data.memorypack.skill_cursor_receipt import (
     OUTPUT_SCHEMA as CURSOR_VERIFICATION_SCHEMA,
     TERMINAL_FIELD_CONTRACT,
     verify_skilldata_cursor_capture,
+)
+from scripts.game_data.memorypack.skill_cursor_target_overlay import (
+    VERIFIED_CAPTURE_TARGET_EXACT,
+    apply_verified_capture_target,
+)
+from scripts.game_data.memorypack.skill_cursor_target_set_overlay import (
+    VERIFIED_CAPTURE_TARGET_SET_EXACT,
+    apply_verified_capture_target_set,
 )
 from scripts.game_data.memorypack.schemas import MEMORYPACK_FIELD_SCHEMAS
 
@@ -192,6 +273,36 @@ def _skill_rows(file_rows, *, expected_input: str) -> list[dict[str, Any]]:
         pattern=SKILL_PATTERN,
         label="skill",
     )
+
+
+def _targeted_skill_paths(target_contract_path: Path | None,
+                          extra_paths: list[str] | None) -> tuple[list[str], dict[str, Any] | None]:
+    """Build an exact bounded stream selection from a reviewed contract."""
+    paths = list(extra_paths or [])
+    contract_reference = None
+    if target_contract_path is not None:
+        try:
+            contract = json.loads(target_contract_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            _fail("skill-target-contract-unreadable", source=str(target_contract_path),
+                  expected="reviewed target-set contract JSON", actual=str(exc))
+        if (not isinstance(contract, Mapping)
+                or contract.get("schema") != "endfield.skill-cursor-capture-target-set.v1"
+                or contract.get("status") != "selected-current-logical-source-set"
+                or not isinstance(contract.get("targets"), list)
+                or not contract["targets"]):
+            _fail("skill-target-contract-invalid", source=str(target_contract_path),
+                  expected="reviewed nonempty target set", actual=contract)
+        paths.extend(row.get("virtualPath") if isinstance(row, Mapping) else None
+                     for row in contract["targets"])
+        contract_reference = _fingerprint(target_contract_path)
+    if not paths:
+        return [], contract_reference
+    if (any(not isinstance(path, str) or SKILL_PATTERN.fullmatch(path) is None
+            for path in paths) or len(paths) != len(set(paths))):
+        _fail("skill-target-path-invalid", source="targeted SkillData selection",
+              expected="unique SkillData virtual paths", actual=paths)
+    return sorted(paths), contract_reference
 
 
 def _stream_command(cli_path: Path, outer: Mapping[str, Any], selected_rows: list[Mapping[str, Any]], *, partial: bool) -> list[str]:
@@ -300,6 +411,9 @@ def _boundary_evidence_summary(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
         "selectedTerminalFiles": sum(
             row.get("terminalSelection", {}).get("status") == "verified-native-reader-alignment"
             for row in rows
+        ),
+        "directCaptureTargetFiles": sum(
+            row.get("coverageStatus") == VERIFIED_CAPTURE_TARGET_EXACT for row in rows
         ),
         "namedActionGroupPrefixFiles": sum(
             row.get("actionGroupPrefix", {}).get("status") == "verified-named-prefix"
@@ -557,6 +671,18 @@ def _load_exact_json_provenance(
 #: moves the hash with the game data untouched.
 EXPORTER_FINGERPRINT_NAME = "animestudio.cli.exe"
 
+# The current census computes logical SHA-256 from independently streamed,
+# ledger-MD5-checked bytes. A prior reader inference can therefore be reused
+# for an identical logical payload even when a VFS update relocated its chunk.
+# Physical identity still gets its own, stronger rebinding tier.
+LOGICAL_REBIND_KEYS = (
+    "virtualPath", "blockName", "blockTypeValue", "length", "logicalMd5", "logicalSha256",
+)
+PHYSICAL_REBIND_KEYS = (
+    "physicalChunkPath", "physicalChunkSource", "metadataProvenance",
+    "overlayState", "chunkOverlayState", "physicalOffset", "encrypted",
+)
+
 #: A timeline continuation the reader stopped short of field 42. It is a valid
 #: unverified state, not drift: the verified prefix stands and nothing more is
 #: promoted. Any other non-exact status still fails closed.
@@ -638,6 +764,206 @@ def _exporter_only_rebinding(
     }
 
 
+def _verified_subset_rebinding(
+    *,
+    verification: Mapping[str, Any],
+    source_corpus: Mapping[str, Any],
+    rows: list[Mapping[str, Any]],
+    expected_input_set_sha256: str,
+    build_fingerprints: list[Mapping[str, Any]],
+    blc_paths: list[str],
+    source: str,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Rebind only source rows whose current decoded bytes are authenticated.
+
+    The accepted receipt is replayed before this call. The fresh census has
+    already streamed every current row, checked its ledger MD5, and computed
+    its SHA-256. No newly added or logically changed row receives a cursor
+    selection. A physical relocation is separately reported as content reuse.
+    """
+    source_provenance = source_corpus.get("provenance")
+    if not isinstance(source_provenance, Mapping):
+        _fail("cursor-subset-source-provenance-missing", source=source, expected="provenance object", actual=source_provenance)
+    if source_corpus.get("inputSetSha256") != verification.get("inputSetSha256"):
+        _fail("cursor-subset-source-input-set-mismatch", source=source, expected=verification.get("inputSetSha256"), actual=source_corpus.get("inputSetSha256"))
+    if source_corpus.get("status") != "complete" or source_corpus.get("publicationEligible") is not True:
+        _fail("cursor-subset-source-incomplete", source=source, expected="complete published source corpus", actual=source_corpus.get("status"))
+
+    def fingerprints_by_name(value: Any) -> dict[str, tuple[Any, str]]:
+        if not isinstance(value, list) or not all(isinstance(item, Mapping) for item in value):
+            _fail("cursor-subset-fingerprints-missing", source=source, expected="fingerprint list", actual=value)
+        result = {
+            Path(str(item.get("path"))).name.casefold(): (item.get("length"), str(item.get("sha256", "")).upper())
+            for item in value
+        }
+        if len(result) != len(value):
+            _fail("cursor-subset-fingerprint-duplicate", source=source, expected=len(value), actual=len(result))
+        return result
+
+    old_build = fingerprints_by_name(source_provenance.get("buildFingerprints"))
+    current_build = fingerprints_by_name(build_fingerprints)
+    if set(old_build) != set(current_build) or EXPORTER_FINGERPRINT_NAME not in old_build:
+        _fail("cursor-subset-fingerprint-set-drift", source=source, expected=sorted(old_build), actual=sorted(current_build))
+    moved_build = sorted(name for name in old_build if old_build[name] != current_build[name])
+    if any(name != EXPORTER_FINGERPRINT_NAME for name in moved_build):
+        _fail("cursor-subset-native-or-build-drift", source=source, expected="only AnimeStudio.CLI may differ", actual=moved_build)
+    if sorted(source_provenance.get("blcPaths") or []) != sorted(blc_paths):
+        _fail("cursor-subset-asset-root-drift", source=source, expected="identical BLC path set", actual="BLC path set differs")
+
+    old_rows = source_corpus.get("files")
+    if not isinstance(old_rows, list) or not all(isinstance(row, Mapping) for row in old_rows):
+        _fail("cursor-subset-source-files-missing", source=source, expected="source file rows", actual=type(old_rows).__name__)
+    old_by_path = {row.get("virtualPath"): row for row in old_rows}
+    if len(old_by_path) != len(old_rows):
+        _fail("cursor-subset-source-duplicate", source=source, expected=len(old_rows), actual=len(old_by_path))
+    tier_by_path: dict[str, str] = {}
+    logical_changed: list[str] = []
+    physical_changed: list[str] = []
+    added = 0
+    for row in rows:
+        path = row["virtualPath"]
+        old = old_by_path.get(path)
+        if old is None:
+            added += 1
+            continue
+        if any(row.get(key) != old.get(key) for key in LOGICAL_REBIND_KEYS):
+            logical_changed.append(path)
+            continue
+        if any(row.get(key) != old.get(key) for key in PHYSICAL_REBIND_KEYS):
+            tier_by_path[path] = "content-rebound"
+            physical_changed.append(path)
+        else:
+            tier_by_path[path] = "identity-rebound"
+    missing = sorted(set(old_by_path) - {row["virtualPath"] for row in rows})
+    if not tier_by_path:
+        _fail("cursor-subset-no-reusable-rows", source=source, expected="at least one identical logical payload", actual=0)
+    return {
+        "status": "verified-source-subset-rebinding",
+        "fromInputSetSha256": verification.get("inputSetSha256"),
+        "toInputSetSha256": expected_input_set_sha256.upper(),
+        "identityRebound": sum(tier == "identity-rebound" for tier in tier_by_path.values()),
+        "contentRebound": len(physical_changed),
+        "leftAmbiguousAdded": added,
+        "leftAmbiguousLogicalChange": len(logical_changed),
+        "missingOld": len(missing),
+        "firstPhysicalRelocations": physical_changed[:8],
+        "firstLogicalChanges": logical_changed[:8],
+        "firstMissingOld": missing[:8],
+        "movedBuildFingerprints": moved_build,
+        "sourceIdentitySetSha256": source_corpus.get("identitySetSha256"),
+        "evidenceBoundary": (
+            "The prior receipt closes only its captured samples. Current census rows "
+            "are selected only when path, length, MD5 and SHA-256 match a row in "
+            "its pinned source corpus and the selected native build is unchanged. "
+            "Content-rebound rows moved physically but have independently "
+            "authenticated identical decoded bytes. Added or changed rows stay "
+            "ambiguous; rebinding does not create a new runtime observation."
+        ),
+    }, tier_by_path
+
+def _reverify_historical_cursor_on_current_sources(
+    *, receipt: Mapping[str, Any], verification: Mapping[str, Any],
+    native_context: Mapping[str, Any], current_rows: list[Mapping[str, Any]],
+    current_input_set_sha256: str, source_corpus_sha256: str,
+    current_build_fingerprints: list[Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Recheck old copied sources and native cursors without changing the receipt."""
+    from scripts.game_data.il2cpp import skill_cursor_native_context as native
+    from scripts.game_data.memorypack import skill_cursor_receipt as cursor
+
+    from_input, game_hash, metadata_hash, _unsupported = cursor._require_capture_gates(
+        receipt
+    )
+    if from_input != verification.get("inputSetSha256"):
+        _fail("cursor-historical-input-set-drift", source="cursor receipt",
+              expected=verification.get("inputSetSha256"), actual=from_input)
+    if verification.get("nativeInputs") != {
+        "gameAssemblySha256": game_hash, "metadataSha256": metadata_hash,
+    }:
+        _fail("cursor-historical-native-drift", source="cursor receipt",
+              expected=verification.get("nativeInputs"),
+              actual={"gameAssemblySha256": game_hash,
+                      "metadataSha256": metadata_hash})
+    corpus_reference = native_context.get("corpusReference")
+    context_native = native_context.get("nativeInputs")
+    if (native_context.get("inputSetSha256") != from_input
+            or not isinstance(corpus_reference, Mapping)
+            or corpus_reference.get("sha256") != source_corpus_sha256
+            or not isinstance(context_native, Mapping)
+            or (context_native.get("gameassemblySha256"),
+                context_native.get("metadataSha256")) !=
+            (game_hash, metadata_hash)):
+        _fail("cursor-historical-context-drift", source="native cursor context",
+              expected="saved corpus and captured native hashes",
+              actual={"inputSetSha256": native_context.get("inputSetSha256"),
+                      "corpusSha256": corpus_reference.get("sha256")
+                      if isinstance(corpus_reference, Mapping) else None})
+    native_contract = cursor.load_observer_contract(cursor.OBSERVER_CONTRACT_PATH)
+    if native_contract.get("nativeInputs") != {
+        "GameAssembly.dll": game_hash, "global-metadata.dat": metadata_hash,
+    }:
+        _fail("cursor-current-observer-native-drift", source=str(cursor.OBSERVER_CONTRACT_PATH),
+              expected={"GameAssembly.dll": game_hash,
+                        "global-metadata.dat": metadata_hash},
+              actual=native_contract.get("nativeInputs"))
+    selected_build = {
+        Path(str(row.get("path"))).name.casefold(): row
+        for row in current_build_fingerprints if isinstance(row, Mapping)
+    }
+    game_row = selected_build.get("gameassembly.dll")
+    metadata_row = selected_build.get("global-metadata.dat")
+    if (not isinstance(game_row, Mapping) or not isinstance(metadata_row, Mapping)
+            or game_row.get("sha256") != game_hash
+            or metadata_row.get("sha256") != metadata_hash):
+        _fail("cursor-current-build-fingerprint-drift", source="current VFS audit",
+              expected={"gameAssemblySha256": game_hash,
+                        "metadataSha256": metadata_hash},
+              actual={"gameAssemblySha256": game_row.get("sha256")
+                      if isinstance(game_row, Mapping) else None,
+                      "metadataSha256": metadata_row.get("sha256")
+                      if isinstance(metadata_row, Mapping) else None})
+    gate = native.check_installed_native_inputs(
+        game_hash, metadata_hash,
+        gameassembly=Path(game_row["path"]), metadata=Path(metadata_row["path"]),
+    )
+    if gate.status != "validated":
+        _fail("cursor-current-native-gate-failed", source="selected VFS native inputs",
+              expected="validated", actual={"status": gate.status,
+                                            "detail": gate.detail})
+    image = native.NativeImage(gate.gameassembly, gate.metadata,
+                               label="skill-cursor-family-offline-rebind")
+    native_counts = native.validate_native_observer(
+        native_contract, image, source=str(cursor.OBSERVER_CONTRACT_PATH)
+    )
+    saved_rows = verification.get("rows")
+    observations = receipt.get("observations")
+    if (not isinstance(saved_rows, list) or not isinstance(observations, list)
+            or len(saved_rows) != len(observations) or not saved_rows):
+        _fail("cursor-historical-observations-invalid", source="cursor receipt",
+              expected="same nonempty observation count as verification",
+              actual={"saved": len(saved_rows) if isinstance(saved_rows, list) else None,
+                      "receipt": len(observations) if isinstance(observations, list) else None})
+    fresh_rows = [
+        cursor._verify_observation(observation, index, current_rows,
+                                   current_input_set_sha256.upper())
+        for index, observation in enumerate(observations)
+    ]
+    direct_keys = (
+        "logicalPath", "logicalSha256", "hardLimit", "boundaryClass",
+        "parserCursor", "candidate", "runtimeFieldRanges",
+        "actionGroupCheckpoints",
+    )
+    for index, (old, fresh) in enumerate(zip(saved_rows, fresh_rows)):
+        if (not isinstance(old, Mapping)
+                or old.get("boundaryClass") != "exact-closed"
+                or any(old.get(key) != fresh.get(key) for key in direct_keys)):
+            _fail("cursor-current-observation-drift", source=f"cursor observation {index}",
+                  expected={key: old.get(key) for key in direct_keys}
+                  if isinstance(old, Mapping) else "exact historical cursor",
+                  actual={key: fresh.get(key) for key in direct_keys})
+    return fresh_rows, native_counts
+
+
 def _apply_verified_terminal_selection(
     rows: list[dict[str, Any]],
     *,
@@ -647,6 +973,8 @@ def _apply_verified_terminal_selection(
     build_fingerprints: list[Mapping[str, Any]],
     blc_paths: list[str] | None = None,
     allow_exporter_rebind: bool = False,
+    allow_verified_subset_rebind: bool = False,
+    allow_historical_verifier_rebind: bool = False,
 ) -> dict[str, Any]:
     """Replay and apply a hash-pinned runtime terminal selection to this corpus."""
     try:
@@ -663,7 +991,16 @@ def _apply_verified_terminal_selection(
     ):
         _fail("cursor-verification-gate-failed", source=str(verification_path), expected="complete bounded verification", actual={"schema": verification.get("schema"), "status": verification.get("status")})
     rebinding_required = verification.get("inputSetSha256") != expected_input_set_sha256.upper()
-    if rebinding_required and not allow_exporter_rebind:
+    if allow_exporter_rebind and allow_verified_subset_rebind:
+        _fail("cursor-rebind-mode-conflict", source=str(verification_path), expected="one rebinding mode", actual="both modes")
+    if allow_historical_verifier_rebind and not rebinding_required:
+        _fail("cursor-historical-rebind-not-needed", source=str(verification_path),
+              expected="historical and current input sets differ",
+              actual=verification.get("inputSetSha256"))
+    if allow_historical_verifier_rebind and not (allow_exporter_rebind or allow_verified_subset_rebind):
+        _fail("cursor-historical-rebind-mode-missing", source=str(verification_path),
+              expected="explicit exporter or verified-subset rebind", actual="none")
+    if rebinding_required and not (allow_exporter_rebind or allow_verified_subset_rebind):
         _fail("cursor-verification-input-set-mismatch", source=str(verification_path), expected=expected_input_set_sha256.upper(), actual=verification.get("inputSetSha256"))
     provenance = verification.get("provenance")
     if not isinstance(provenance, Mapping):
@@ -675,31 +1012,68 @@ def _apply_verified_terminal_selection(
     native_context, native_context_path = _load_exact_json_provenance(
         provenance.get("nativeContext"), label="cursor native context"
     )
-    _verifier_source, verifier_source_path = _load_exact_json_provenance(
-        provenance.get("verifier"), label="cursor verifier", decode_json=False
-    )
+    verifier_recorded = provenance.get("verifier")
+    if allow_historical_verifier_rebind:
+        if (not isinstance(verifier_recorded, Mapping)
+                or not isinstance(verifier_recorded.get("path"), str)
+                or type(verifier_recorded.get("length")) is not int
+                or verifier_recorded["length"] <= 0
+                or not isinstance(verifier_recorded.get("sha256"), str)
+                or re.fullmatch(r"[0-9A-Fa-f]{64}", verifier_recorded["sha256"]) is None):
+            _fail("cursor-historical-verifier-reference-invalid",
+                  source=str(verification_path), expected="path, length and SHA-256",
+                  actual=verifier_recorded)
+        verifier_source_path = Path(verifier_recorded["path"]).resolve()
+    else:
+        _verifier_source, verifier_source_path = _load_exact_json_provenance(
+            verifier_recorded, label="cursor verifier", decode_json=False
+        )
     if verifier_source_path != Path(__file__).with_name("skill_cursor_receipt.py").resolve():
         _fail("cursor-verifier-path-mismatch", source=str(verification_path), expected=str(Path(__file__).with_name("skill_cursor_receipt.py").resolve()), actual=str(verifier_source_path))
     required_paths = verification.get("summary", {}).get("requiredLogicalPaths")
     if not isinstance(required_paths, list) or not all(isinstance(value, str) for value in required_paths):
         _fail("cursor-required-paths-invalid", source=str(verification_path), expected="string array", actual=required_paths)
-    replayed = verify_skilldata_cursor_capture(
-        receipt,
-        corpus_report_path=source_corpus_path,
-        native_context_path=native_context_path,
-        required_logical_paths=required_paths,
-        receipt_path=receipt_path,
-        receipt_sha256=str(provenance["receipt"]["sha256"]),
-    )
-    if replayed != verification:
-        _fail("cursor-verification-replay-mismatch", source=str(verification_path), expected="exact verifier replay", actual="report bytes decode to a different result")
-    if source_corpus.get("identitySetSha256") != identity_set_sha256:
-        _fail("cursor-corpus-identity-drift", source=str(source_corpus_path), expected=identity_set_sha256, actual=source_corpus.get("identitySetSha256"))
+    if allow_historical_verifier_rebind:
+        fresh_observation_rows, current_native_counts = (
+            _reverify_historical_cursor_on_current_sources(
+                receipt=receipt, verification=verification,
+                native_context=native_context, current_rows=rows,
+                current_input_set_sha256=expected_input_set_sha256,
+                source_corpus_sha256=str(provenance["corpusReport"]["sha256"]),
+                current_build_fingerprints=build_fingerprints,
+            )
+        )
+    else:
+        replayed = verify_skilldata_cursor_capture(
+            receipt,
+            corpus_report_path=source_corpus_path,
+            native_context_path=native_context_path,
+            required_logical_paths=required_paths,
+            receipt_path=receipt_path,
+            receipt_sha256=str(provenance["receipt"]["sha256"]),
+        )
+        if replayed != verification:
+            _fail("cursor-verification-replay-mismatch", source=str(verification_path), expected="exact verifier replay", actual="report bytes decode to a different result")
+        fresh_observation_rows = None
+        current_native_counts = None
     recorded_identity = provenance.get("corpusReport", {}).get("identitySetSha256")
-    if recorded_identity != identity_set_sha256:
-        _fail("cursor-provenance-identity-drift", source=str(verification_path), expected=identity_set_sha256, actual=recorded_identity)
+    if recorded_identity != source_corpus.get("identitySetSha256"):
+        _fail("cursor-provenance-identity-drift", source=str(verification_path), expected=source_corpus.get("identitySetSha256"), actual=recorded_identity)
     rebinding = None
-    if rebinding_required:
+    rebinding_tiers = None
+    if allow_verified_subset_rebind:
+        rebinding, rebinding_tiers = _verified_subset_rebinding(
+            verification=verification,
+            source_corpus=source_corpus,
+            rows=rows,
+            expected_input_set_sha256=expected_input_set_sha256,
+            build_fingerprints=build_fingerprints,
+            blc_paths=list(blc_paths or []),
+            source=str(verification_path),
+        )
+    elif rebinding_required:
+        if source_corpus.get("identitySetSha256") != identity_set_sha256:
+            _fail("cursor-corpus-identity-drift", source=str(source_corpus_path), expected=identity_set_sha256, actual=source_corpus.get("identitySetSha256"))
         rebinding = _exporter_only_rebinding(
             verification=verification,
             source_corpus=source_corpus,
@@ -710,6 +1084,8 @@ def _apply_verified_terminal_selection(
             blc_paths=list(blc_paths or []),
             source=str(verification_path),
         )
+    elif source_corpus.get("identitySetSha256") != identity_set_sha256:
+        _fail("cursor-corpus-identity-drift", source=str(source_corpus_path), expected=identity_set_sha256, actual=source_corpus.get("identitySetSha256"))
     native_hashes = verification.get("nativeInputs")
     installed_hashes = {
         Path(str(row.get("path"))).name.casefold(): str(row.get("sha256", "")).upper()
@@ -733,7 +1109,7 @@ def _apply_verified_terminal_selection(
         or contract.get("wholeSchemaExact") is not False
     ):
         _fail("cursor-terminal-contract-mismatch", source=str(verification_path), expected="field43..47 one-member-wrapper", actual=contract)
-    all_rows = verification.get("rows")
+    all_rows = fresh_observation_rows if fresh_observation_rows is not None else verification.get("rows")
     if not isinstance(all_rows, list):
         _fail("cursor-sample-set-invalid", source=str(verification_path), expected="row list", actual=type(all_rows).__name__)
     # Only the required samples are applied. A receipt may also carry
@@ -750,6 +1126,11 @@ def _apply_verified_terminal_selection(
         sample_rows = all_rows
         if len(sample_rows) != 2:
             _fail("cursor-sample-set-invalid", source=str(verification_path), expected="two required samples", actual=len(sample_rows))
+    if rebinding_tiers is not None:
+        missing_samples = sorted(str(sample.get("logicalPath")) for sample in sample_rows
+                                 if sample.get("logicalPath") not in rebinding_tiers)
+        if missing_samples:
+            _fail("cursor-subset-sample-not-rebound", source=str(verification_path), expected="all required samples byte-identical", actual=missing_samples)
     for sample in sample_rows:
         alternatives = sample.get("candidateAlternatives", [])
         fields = sample.get("runtimeFieldRanges", [])
@@ -838,7 +1219,10 @@ def _apply_verified_terminal_selection(
             )
 
     terminal_names = [row[1] for row in TERMINAL_FIELD_CONTRACT]
-    for row in rows:
+    rows_to_apply = rows if rebinding_tiers is None else [
+        row for row in rows if row["virtualPath"] in rebinding_tiers
+    ]
+    for row in rows_to_apply:
         candidates = row.get("framing", {}).get("candidates", [])
         if len(candidates) != 2:
             _fail("skill-terminal-candidate-count-drift", source=row["virtualPath"], expected=2, actual=len(candidates))
@@ -891,6 +1275,8 @@ def _apply_verified_terminal_selection(
             "namedFields": terminal_names,
             "wholeSchemaExact": False,
         }
+        if rebinding_tiers is not None:
+            row["terminalSelection"]["rebindingTier"] = rebinding_tiers[row["virtualPath"]]
         shared_complete = row.get("timelineSharedSequenceProfile")
         shared_continuation = (
             shared_complete.get("topLevelContinuation")
@@ -1227,7 +1613,12 @@ def _apply_verified_terminal_selection(
         "sourceCorpus": dict(provenance["corpusReport"]),
         "receipt": dict(provenance["receipt"]),
         "nativeContext": dict(provenance["nativeContext"]),
-        "verifier": dict(provenance["verifier"]),
+        "verifier": (_fingerprint(verifier_source_path)
+                     if allow_historical_verifier_rebind else dict(provenance["verifier"])),
+        **({"historicalVerifier": dict(provenance["verifier"]),
+            "currentObserverValidation": {"status": "validated", **current_native_counts},
+            "reverifiedObservations": len(fresh_observation_rows)}
+           if allow_historical_verifier_rebind else {}),
         **({"rebinding": rebinding} if rebinding is not None else {}),
     }
 
@@ -1472,7 +1863,7 @@ def _join_and_frame(
         timeline_find_target_profile = None
         if (
             len(data) >= 22
-            and data[20] == 0xB2
+            and data[20] == find_target_plain_tag()
             and int.from_bytes(data[16:20], "little", signed=True) == 1
         ):
             try:
@@ -1481,13 +1872,13 @@ def _join_and_frame(
                 )
             except ValueError:
                 # The current contract intentionally covers only authenticated
-                # selector subtype routes. Other tag-B2 bodies retain the
+                # selector subtype routes. Other FindTarget bodies retain the
                 # already verified ActionGroupData prefix and stay opaque.
                 timeline_find_target_profile = None
         timeline_continuous_find_target_profile = None
         if (
             len(data) >= 22
-            and data[20] == 0x8A
+            and data[20] == continuous_find_target_plain_tag()
             and int.from_bytes(data[16:20], "little", signed=True) == 1
         ):
             try:
@@ -1679,18 +2070,36 @@ def build_current_census(
     output_path: Path | None = None,
     output_md_path: Path | None = None,
     cursor_verification_path: Path | None = None,
+    capture_target_verification_path: Path | None = None,
+    capture_target_set_verification_path: Path | None = None,
     allow_exporter_rebind: bool = False,
+    allow_verified_subset_rebind: bool = False,
+    allow_historical_verifier_rebind: bool = False,
+    target_contract_path: Path | None = None,
+    target_virtual_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     if max_files is not None:
         _require_int(max_files, source="maxFiles", minimum=1)
+    requested_paths, target_contract_start = _targeted_skill_paths(
+        target_contract_path, target_virtual_paths
+    )
+    if max_files is not None and requested_paths:
+        _fail("skill-target-selection-mode-conflict", source="SkillData census",
+              expected="target selection or --max-files", actual="both")
     if output_path is not None and output_md_path is not None:
         _guard_output_path(output_path, [output_md_path])
     outer, _header, file_rows, provenance_start = _read_outer_and_ledger(
         outer_path, ledger_path, expected_input_set_sha256=expected_input_set_sha256
     )
-    all_skill_rows = _skill_rows(file_rows, expected_input=expected_input_set_sha256.upper())
+    scope = (file_rows if not requested_paths else
+             [row for row in file_rows if row.get("virtualPath") in set(requested_paths)])
+    all_skill_rows = _skill_rows(scope, expected_input=expected_input_set_sha256.upper())
+    if requested_paths and [row["virtualPath"] for row in all_skill_rows] != requested_paths:
+        _fail("skill-target-set-missing", source="current VFS ledger",
+              expected=requested_paths,
+              actual=[row["virtualPath"] for row in all_skill_rows])
     selected = all_skill_rows if max_files is None else all_skill_rows[:max_files]
-    partial = max_files is not None
+    partial = max_files is not None or bool(requested_paths)
     chunk_selection_start = _chunk_selection_snapshot(selected, outer)
     selected_chunks_start = _chunk_fingerprints(selected)
     stream_tool_start = _stream_tool_snapshot(cli_path)
@@ -1724,6 +2133,12 @@ def build_current_census(
                      Path(outer["primaryAssets"]), Path(outer["fallbackAssets"])]
         if cursor_verification_path is not None:
             protected.append(cursor_verification_path)
+        if capture_target_verification_path is not None:
+            protected.append(capture_target_verification_path)
+        if capture_target_set_verification_path is not None:
+            protected.append(capture_target_set_verification_path)
+        if target_contract_path is not None:
+            protected.append(target_contract_path)
         # Outputs must not damage unselected format families either. Retain
         # all ledger chunk paths for collision checks without hashing them.
         chunk_paths = sorted({str(row.get("physicalChunkPath")) for row in file_rows
@@ -1758,7 +2173,10 @@ def build_current_census(
     _outer_end, _header_end, end_file_rows, provenance_end = _read_outer_and_ledger(
         outer_path, ledger_path, expected_input_set_sha256=expected_input_set_sha256
     )
-    end_skill_rows = _skill_rows(end_file_rows, expected_input=expected_input_set_sha256.upper())
+    end_scope = (end_file_rows if not requested_paths else
+                 [row for row in end_file_rows
+                  if row.get("virtualPath") in set(requested_paths)])
+    end_skill_rows = _skill_rows(end_scope, expected_input=expected_input_set_sha256.upper())
     if [row["virtualPath"] for row in end_skill_rows] != [row["virtualPath"] for row in all_skill_rows]:
         _fail("skill-ledger-set-drift", source=str(ledger_path), expected=len(all_skill_rows), actual=len(end_skill_rows))
     stream_tool_end = _stream_tool_snapshot(cli_path)
@@ -1784,6 +2202,10 @@ def build_current_census(
             expected=timeline_contract_start,
             actual=timeline_contract_end,
         )
+    if (target_contract_start is not None
+            and _fingerprint(target_contract_path) != target_contract_start):
+        _fail("skill-target-contract-drift", source=str(target_contract_path),
+              expected=target_contract_start, actual=_fingerprint(target_contract_path))
     for output in outputs:
         _guard_output_path(output, protected + [path for path in outputs if path != output])
 
@@ -1806,6 +2228,8 @@ def build_current_census(
             build_fingerprints=provenance_start["buildFingerprints"],
             blc_paths=provenance_start["blcPaths"],
             allow_exporter_rebind=allow_exporter_rebind,
+            allow_verified_subset_rebind=allow_verified_subset_rebind,
+            allow_historical_verifier_rebind=allow_historical_verifier_rebind,
         )
         parser_after_verification = _parser_source_snapshots(Path(__file__))
         gate_after_verification = _fingerprint(Path(__file__))
@@ -1822,6 +2246,51 @@ def build_current_census(
             or actual_verification["sha256"] != cursor_verification_provenance["sha256"]
         ):
             _fail("cursor-verification-drift", source=str(cursor_verification_path), expected=cursor_verification_provenance, actual=actual_verification)
+    capture_target_verification_provenance = None
+    if capture_target_verification_path is not None:
+        capture_target_verification_provenance = apply_verified_capture_target(
+            rows,
+            verification_path=capture_target_verification_path,
+            expected_input_set_sha256=expected_input_set_sha256,
+            identity_set_sha256=identity_set_sha256,
+            build_fingerprints=provenance_start["buildFingerprints"],
+        )
+        parser_after_target = _parser_source_snapshots(Path(__file__))
+        gate_after_target = _fingerprint(Path(__file__))
+        if parser_start != parser_after_target or gate_start != gate_after_target:
+            _fail("code-drift", source="SkillData capture-target integration",
+                  expected={"parser": parser_start, "corpusGate": gate_start},
+                  actual={"parser": parser_after_target, "corpusGate": gate_after_target})
+        for recorded in [capture_target_verification_provenance,
+                         *capture_target_verification_provenance["inputs"]]:
+            actual = _fingerprint(Path(recorded["path"]))
+            if (actual["length"], actual["sha256"]) != (recorded["length"], recorded["sha256"]):
+                _fail("capture-target-input-drift", source=recorded["path"],
+                      expected=recorded, actual=actual)
+    capture_target_set_verification_provenance = None
+    if capture_target_set_verification_path is not None:
+        capture_target_set_verification_provenance = apply_verified_capture_target_set(
+            rows,
+            verification_path=capture_target_set_verification_path,
+            expected_input_set_sha256=expected_input_set_sha256,
+            identity_set_sha256=identity_set_sha256,
+            build_fingerprints=provenance_start["buildFingerprints"],
+        )
+        parser_after_target_set = _parser_source_snapshots(Path(__file__))
+        gate_after_target_set = _fingerprint(Path(__file__))
+        if parser_start != parser_after_target_set or gate_start != gate_after_target_set:
+            _fail("code-drift", source="SkillData capture-target-set integration",
+                  expected={"parser": parser_start, "corpusGate": gate_start},
+                  actual={"parser": parser_after_target_set, "corpusGate": gate_after_target_set})
+        for recorded in [capture_target_set_verification_provenance,
+                         *capture_target_set_verification_provenance["inputs"]]:
+            actual = _fingerprint(Path(recorded["path"]))
+            if (actual["length"], actual["sha256"]) != (recorded["length"], recorded["sha256"]):
+                _fail("capture-target-set-input-drift", source=recorded["path"],
+                      expected=recorded, actual=actual)
+        for output in outputs:
+            _guard_output_path(output, [Path(item["path"]) for item in
+                                        capture_target_set_verification_provenance["inputs"]])
     coverage_counts = dict(sorted(Counter(row.get("coverageStatus", "failed-framing") for row in rows).items()))
     unique_count = (
         coverage_counts.get("unique-disjoint-independent-ranges", 0)
@@ -1844,6 +2313,8 @@ def build_current_census(
         + coverage_counts.get(VERIFIED_TIMELINE_SHARED_SEQUENCE_EXACT, 0)
         + coverage_counts.get(VERIFIED_PASSIVE_SHARED_SEQUENCE_PREFIX, 0)
         + coverage_counts.get(VERIFIED_PASSIVE_SHARED_SEQUENCE_EXACT, 0)
+        + coverage_counts.get(VERIFIED_CAPTURE_TARGET_EXACT, 0)
+        + coverage_counts.get(VERIFIED_CAPTURE_TARGET_SET_EXACT, 0)
     )
     ambiguous_count = coverage_counts.get("ambiguous-disjoint-independent-ranges", 0)
     failed_count = coverage_counts.get("failed-framing", 0)
@@ -1864,6 +2335,8 @@ def build_current_census(
             )[:20]
         ],
     }
+
+
     passive_stop_counts = Counter(
         row["passiveSharedSequenceStopReason"]
         for row in rows
@@ -1894,6 +2367,9 @@ def build_current_census(
             "parser": parser_start,
             "corpusGate": gate_start,
             "cursorVerification": cursor_verification_provenance,
+            "captureTargetVerification": capture_target_verification_provenance,
+            "captureTargetSetVerification": capture_target_set_verification_provenance,
+            "targetSelectionContract": target_contract_start,
             "timelinePlayAnimationContracts": timeline_contract_start,
             "timelinePlayAnimationNativeValidation": timeline_native_validation,
             "timelinePlayAnimationStepNativeValidation": (
@@ -1925,14 +2401,24 @@ def build_current_census(
             "passiveSharedSequenceStops": passive_stops,
         },
         "identitySetSha256": identity_set_sha256,
+        **({"targetedVirtualPaths": requested_paths} if requested_paths else {}),
         "wholeSchemaExact": False,
         "evidenceBoundary": (
             "current outer-ledger identities plus AnimeStudio stream --verify-md5 decrypted bytes; "
             "the maintained framer proves the 48-member envelope and EOF terminal shapes. When cursorVerification "
             "is present, its exact receipt/corpus/native/verifier replay selects the one-member-wrapper terminal "
-            "as fields 43 through 47 for every row with the same authenticated candidate pair. It also names "
+            "as fields 43 through 47 only for admitted rows with the same authenticated candidate pair. A subset "
+            "rebind admits only byte-identical prior logical files; added or changed rows remain ambiguous. It also names "
             "the field-0 ActionGroupData member and child-list count prefix through the first positive list. "
             "The remaining intervening action bodies stay opaque unless an executed cursor authenticates them"
+            "; captureTargetVerification, when present, composes one exact-source live cursor with its matching "
+            "static empty-ActionGroup profile and promotes only that logical file"
+            "; captureTargetSetVerification, when present, composes each strict v3 target cursor "
+            "with a native-gated complete static ActionGroup and top-level profile for that exact "
+            "source. An offline rebind retains the capture's original input set and rechecks "
+            "every copied source on the current complete corpus. Its positive control must "
+            "retain the prior singleton claim; nested payload "
+            "meaning and gameplay branch execution remain separate evidence questions"
         ),
         "files": rows,
     }
@@ -1992,8 +2478,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-input-set-sha256", required=True)
     parser.add_argument("--max-files", type=int)
     parser.add_argument(
+        "--target-set-contract", type=Path,
+        help="stream only the exact reviewed SkillData target-set paths (partial report under tmp/scratch)",
+    )
+    parser.add_argument(
+        "--target-virtual-path", action="append", default=[],
+        help="stream only this exact SkillData virtual path; repeat for a bounded target scope",
+    )
+    parser.add_argument(
         "--cursor-verification", type=Path,
         help="complete SkillData cursor verification report to replay and apply fail-closed",
+    )
+    parser.add_argument(
+        "--capture-target-verification", type=Path,
+        help="separate exact-source SkillData target verification to replay and apply to one file only",
+    )
+    parser.add_argument(
+        "--capture-target-set-verification", type=Path,
+        help="strict v3 target-set verification or offline current-source rebind to replay against static profiles",
     )
     parser.add_argument(
         "--allow-exporter-rebind", action="store_true",
@@ -2001,6 +2503,21 @@ def main(argv: list[str] | None = None) -> int:
             "accept a verification recorded under another input set when only the "
             "AnimeStudio.CLI fingerprint moved and every selected logical file, "
             "game-build fingerprint and asset root is identical"
+        ),
+    )
+    parser.add_argument(
+        "--allow-verified-subset-rebind", action="store_true",
+        help=(
+            "reuse a pinned cursor verification only for current rows matching its "
+            "source corpus's logical path, bytes and native build; report physical "
+            "relocations separately and leave added or changed rows ambiguous"
+        ),
+    )
+    parser.add_argument(
+        "--allow-historical-verifier-rebind", action="store_true",
+        help=(
+            "with one rebind mode, recheck an intact historical receipt's copied "
+            "sources and native cursor vector using the current parser and stream"
         ),
     )
     parser.add_argument("--output", type=Path, required=True)
@@ -2016,7 +2533,13 @@ def main(argv: list[str] | None = None) -> int:
             output_path=args.output,
             output_md_path=args.output_md,
             cursor_verification_path=args.cursor_verification,
+            capture_target_verification_path=args.capture_target_verification,
+            capture_target_set_verification_path=args.capture_target_set_verification,
             allow_exporter_rebind=args.allow_exporter_rebind,
+            allow_verified_subset_rebind=args.allow_verified_subset_rebind,
+            allow_historical_verifier_rebind=args.allow_historical_verifier_rebind,
+            target_contract_path=args.target_set_contract,
+            target_virtual_paths=args.target_virtual_path,
         )
         if args.output_md is not None:
             if args.max_files is not None:

@@ -1,4 +1,17 @@
-"""Fail-closed validation for the selected-build Terrain TRET consumer."""
+"""Fail-closed validation for the selected-build Terrain TRET consumer.
+
+``terrain_tret_native.json`` pins the installed GameAssembly, metadata and
+UnityPlayer. This checks the UnityPlayer reader body ranges, the
+GraphicsFormat descriptor footprint table and the GraphicsFormat enum names
+read from metadata defaults; ``terrain.tret`` states what they establish.
+
+Terrain constants in IL2CPP metadata come from the ``fieldDefaultValues``
+index and the compressed default-value data (``il2cpp.protocol``); reading
+those bytes as plain four-byte integers gives wrong values. Selected
+examples, ``HGTerrainGroundLayer.TEXTURE_SIZE = 2048`` and
+``VirtualTextureRenderer.VT_CACHE_PAGE_RESOLUTION = 512``, describe renderer
+configuration and establish no ``LAYER_*`` destination.
+"""
 
 from __future__ import annotations
 
@@ -9,28 +22,24 @@ from pathlib import Path
 from typing import Any
 
 from scripts.common import NATIVE_EVIDENCE_VALIDATED, check_installed_native_inputs
+from scripts.common import sha256_file_upper as _sha256_file
 from scripts.game_data.contracts import CONTRACTS_DIR
 from scripts.game_data.il2cpp.protocol import (
     enum_members,
     field_defaults,
     load_metadata_helper,
 )
+from scripts.repo_paths import REPO_ROOT
 
 
 SCHEMA = "endfield.terrain-tret-native-contract.v1"
 DEFAULT_CONTRACT = CONTRACTS_DIR / "terrain_tret_native.json"
-from scripts.repo_paths import REPO_ROOT
-from scripts.common import sha256_file_upper as _sha256_file
-from scripts.game_data.contracts import CONTRACTS_DIR
-
 METADATA_HELPER = (
     REPO_ROOT
     / "tools"
     / "endfield-il2cpp"
     / "catalog_option_flow_metadata.py"
 )
-# Filled after the reviewed JSON contract is finalized. Keeping this pin in
-# code makes edits to the evidence catalog explicit rather than silent.
 
 
 def _sha256_bytes(data: bytes) -> str:
