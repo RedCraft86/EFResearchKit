@@ -9,6 +9,9 @@ rem   export.bat                        rebuild every page from the current expo
 rem   export.bat --from-game            extract what every page reads, then build
 rem   export.bat story --from-game      the lean Story/Text extraction and build
 rem   export.bat map audio --from-game  only what Map and Audio read
+rem   export.bat assets --from-game     Assets media; Animator FBX load their
+rem                                     dependency bundles (meshes) and skip
+rem                                     per-model textures, packed into Unity.sqlite
 rem   export.bat debug --from-game      every structured block and Unity class
 rem   export.bat --changed-only         sync installed data, build all + Updates
 rem   export.bat --help                 every option

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>&#21095;&#24773;&#23545;&#35805; &middot; &#32456;&#26411;&#22320;&#30740;&#31350;&#24037;&#20855;</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260701-gp5">
-<link rel="stylesheet" href="style.css?v=20261009-review1">
+<link rel="stylesheet" href="style.css?v=20261010-axes">
   <link rel="stylesheet" href="src/features/characters/style.css?v=20261002-appearances2">
-  <link rel="stylesheet" href="src/features/production/style.css?v=20261009-review1">
+  <link rel="stylesheet" href="src/features/production/style.css?v=20261010-axes">
   <link rel="stylesheet" href="src/features/story/branches.css?v=20261002-expansion1">
   <link rel="stylesheet" href="src/features/map_recovery/style.css?v=20261002-devices2">
   <link rel="stylesheet" href="src/features/audio/style.css?v=20261002-update-details3">
@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="src/features/recovery/style.css?v=20261002-update-details3">
   <link rel="stylesheet" href="src/features/gameplay/skill_refs.css?v=20261002-expansion1">
   <link rel="stylesheet" href="src/features/gameplay/style.css?v=20261002-catalogs1">
-  <link rel="stylesheet" href="src/features/activities/style.css?v=20261009-review1">
+  <link rel="stylesheet" href="src/features/activities/style.css?v=20261010-axes">
 </head>
 <body data-active-view="story">
 <a class="skip-link" href="#views">Skip to current view</a>
@@ -733,12 +733,15 @@
                     <button class="asset-preview-bg-swatch" type="button" data-color="#808080" style="--swatch-color: #808080;"></button>
                     <button class="asset-preview-bg-swatch" type="button" data-color="#2a2f36" style="--swatch-color: #2a2f36;"></button>
                   </div>
+                  <label id="asset-model-color-label" for="asset-model-color" hidden>Model color</label>
+                  <input id="asset-model-color" type="color" value="#5c99db" aria-label="Model color" hidden>
                 </div>
                 <div id="asset-preview-stage">
                   <div id="asset-preview-placeholder">&#39044;&#35272;&#20250;&#26174;&#31034;&#22312;&#36825;&#37324;&#12290;</div>
                   <img id="asset-preview-image" alt="" hidden>
                   <video id="asset-preview-video" controls preload="metadata" hidden></video>
                   <canvas id="asset-model-canvas" hidden></canvas>
+                  <canvas id="asset-model-axes" aria-hidden="true"></canvas>
                 </div>
                 <div id="asset-preview-note" class="asset-preview-note" hidden></div>
               </section>
@@ -806,7 +809,7 @@
 <script src="src/features/story_triggers.js?v=20260725-mplayout2"></script>
 <script src="src/features/story/branches.js?v=20261009-review1"></script>
 <script src="app.js?v=20261009-review1"></script>
-<script src="assets.js?v=20261009-review1"></script>
+<script src="assets.js?v=20261010-axes"></script>
 <script src="src/features/characters/appearances.js?v=20261009-activities"></script>
   <script src="src/features/characters/index.js?v=20261009-activities"></script>
 <script src="src/features/production/index.js?v=20261009-review1"></script>

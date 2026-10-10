@@ -8,10 +8,27 @@ useful data from the retired Progression and Combat & Projectiles pages. Audio
 is deliberately not attached while its ownership model is under review.
 
 The page also hosts the independently published [production catalogs](production.md)
-through one shared dataset bar: Characters, Weapons, Equipment, Items, Enemies,
-Recipes and Machines. Items uses the complete Production catalog and retains
+through one shared dataset bar: Characters, Weapons, Essences, Equipment,
+Machines & buildings, Recipes, Items and Enemies. Items uses the complete Production catalog and retains
 Gameplay AP recovery, use effects, action blackboards and chest rewards.
 Existing Story wiki links and optional asset galleries remain in item details.
+Item details link back to an existing Story wiki entry in the displayed language
+independently of item-effect availability; Story item links select Gameplay's
+Items catalog through the shared navigation URL.
+Machine details also show the linked building items' `decoDesc` flavor text
+after the machine description, reusing Production's published item records.
+Exact item/building links share distinct descriptions, item crafting and use
+connections, building recipes, and Story navigation across both catalog views.
+For exact one-to-one item/building pairs, both catalog selections render the
+same combined detail: item identity and flavor, crafting/use connections, item
+properties, then building recipes and placement/power properties. The header
+lists both IDs and sources are merged. Linked detail shards reuse the catalog's
+language and cache; ambiguous or multi-record links retain separate views.
+Combined details use one tag row, one item/building switch row, and paired
+item/building configuration disclosures to avoid repeated section headings.
+Crafting-source and ingredient-use cards reuse Production's recipe summaries
+to display the full ingredient/output formula, including hub-crafted building
+items; no processing time is inferred for untimed manual/hub recipes.
 Item-effect loading uses the catalog's displayed language without changing the
 entity pane's selected language or pending requests. Missing item-effect data
 leaves catalog details usable and shows a retry action.

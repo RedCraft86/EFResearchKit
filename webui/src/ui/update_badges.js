@@ -301,13 +301,31 @@
     if (entry.domain === "asset") return ui("This media file changed. Open the previous and current files to compare their content.", "此媒体资源发生变化，可打开旧版和新版文件对比具体内容。");
     return ui("The file changed; a text comparison is unavailable. Open the files to inspect their content.", "文件发生变化，暂无文本对比，可打开文件查看具体内容。");
   }
-  function decorateFiles(root) {
-    root?.querySelectorAll("img[src], video[src], audio[src], source[src], a[href], [data-map-file-path]").forEach((node) => {
+  // Detail views reuse their nodes across selections, so earlier marks are
+  // cleared first. `exclude` names the owner's own file, whose status the
+  // owner title already shows; its preview and action links stay unmarked.
+  function decorateFiles(root, { exclude = null } = {}) {
+    if (!root) return;
+    root.querySelectorAll(".version-update-file-marker").forEach((node) => {
+      if (!node.closest(".version-update-details")) node.remove();
+    });
+    root.querySelectorAll(".version-update-content[data-version-update-file]").forEach((node) => {
+      node.classList.remove("version-update-content");
+      delete node.dataset.versionUpdate;
+      delete node.dataset.versionUpdateFile;
+    });
+    const own = new Set(fileEntries(exclude ?? []));
+    const seen = new Set();
+    root.querySelectorAll("img[src], video[src], audio[src], source[src], a[href], [data-map-file-path]").forEach((node) => {
       if (node.closest(".version-update-details")) return;
       const value = node.getAttribute("src") || node.getAttribute("href") || node.dataset.mapFilePath;
       const entry = files.get(fileKey(value));
-      if (!entry || node.dataset.versionUpdate) return;
+      if (!entry || own.has(entry) || node.dataset.versionUpdate) return;
       mark(node, entry.status);
+      node.dataset.versionUpdateFile = "1";
+      // One badge per file: a preview and its open/download links share it.
+      if (seen.has(entry)) return;
+      seen.add(entry);
       const marker = document.createElement("span");
       marker.className = "version-update-file-marker";
       marker.innerHTML = badge(entry.status);

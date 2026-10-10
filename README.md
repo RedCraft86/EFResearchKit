@@ -222,6 +222,18 @@ Technical documentation:
 - [`memory/README.md`](memory/README.md): recovery-topic index.
 - `AGENTS.md`: contributor and automation rules.
 
+## License
+
+Original project code and documentation are licensed under the
+[MIT License](LICENSE). Third-party code and dependencies, including the
+AnimeStudio and Cpp2IL-Endfield submodules, retain their own licenses and
+copyright notices.
+
+Game assets, extracted game data, and game content shown in screenshots are
+excluded from this license and remain subject to their respective owners'
+rights. The project license grants no permission to redistribute proprietary
+game content.
+
 ## Acknowledgements
 
 The local `tools/AnimeStudio` fork contains custom Endfield VFS, asset,

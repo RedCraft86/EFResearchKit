@@ -3941,6 +3941,10 @@ def build_language_payload(
     return {
         "generated": int(time.time()),
         "language": language,
+        "uiLabels": {key: i18n_text(i18n, (tables.get("TextTable.json") or {}).get(key), fallback_i18n)
+                     for key in ("ui_wiki_equip_attribute", "ui_wiki_equip_suit_effect",
+                                 "ui_wiki_enemy_power", "ui_wiki_enemy_drop",
+                                 "ui_wiki_weapon_skill_effect")},
         "sourceRoot": ", ".join(rel_path(root) for _label, root in table_roots),
         "sourceRoots": [{"source": label, "root": rel_path(root)} for label, root in table_roots],
         "tables": table_names,

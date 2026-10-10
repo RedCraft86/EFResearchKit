@@ -6688,6 +6688,9 @@ function gameplayIdForWikiKey(key) {
 function gameplayHrefForWikiEntry(entry, conv) {
   const gameplayId = gameplayIdForWikiKey((entry && entry.k) || (conv && conv.key) || "");
   if (!gameplayId) return "";
+  if (gameplayId.startsWith("item_") && !gameplayId.startsWith("item_equip_")) {
+    return window.WebUI.gameplayTabs.pageUrl("item", gameplayId);
+  }
   const params = new URLSearchParams();
   params.set("lang", STATE.language || "CN");
   params.set("ui", STATE.uiLocale || "zh");
@@ -10669,4 +10672,3 @@ function highlight(text, q) {
 
 installInlineTagDisplayModeGlobal();
 init();
-

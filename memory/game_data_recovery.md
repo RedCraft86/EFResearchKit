@@ -275,10 +275,45 @@ Current position of the families with active recovery:
   The [preparation/fallback contract](../scripts/game_data/contracts/buff_formatter_dispatch_fallback_native.json)
   separately proves the actual load/tail transfer, stored-byte gates, original
   receiver/context/UInt16 forwarding and conditional nonnull result returns.
-  The four resolver-child control contracts (scan, carrier conversion,
-  relation, relation imports) and their open joins are summarized in
+  The resolver-child control contracts (scan, carrier conversion,
+  relation, relation imports), selected Baselib export/import and complete
+  semaphore/thread programs, and their open joins are summarized in
   [serialization_memorypack](game_data/serialization_memorypack.md); owned
-  bytes alone do not establish executable code.
+  bytes alone do not establish executable code. Baselib's retry carries an
+  adjusted DWORD request; a live binding, finite retry or original requested
+  release total is not inferred. Its separately selected file participates in
+  the native gate alongside GameAssembly, metadata and UnityPlayer.
+  The context owner separately proves the first complete byte-count/array/flag
+  program, both complete owned CFGs and conditional incoming-address handoffs.
+  Count increment can wrap; saved-address equality does not prove pointed-slot
+  contents unchanged. The direct copy target joins the existing bulk-copy
+  entry, while caller-specific capacity/effect composition and the second
+  body's complete typed fields remain open.
+  The allocation owner joins that byte-count/eight-stride call to complete
+  reservation, unsigned space/refill, metadata/node writes and restored
+  clear-tail arguments. Its size product/reservation is bounded in this
+  caller domain. The [clear-tail contract](../scripts/game_data/contracts/buff_formatter_clear_tail_native.json)
+  separately proves complete fill/REP control, guarded tables, value lanes,
+  byte ranges for every loop count and normal return of the incoming cursor.
+  Rechecked parent flows join that cursor to the receiver's stored array
+  field and the caller's zero-fill range. Writable storage, CPU/DF/stack and
+  noninterference conditions still apply; valid capacity, live allocator
+  protocol/callee, actual execution and visibility remain open.
+  The [named class-ancestry contract](../scripts/game_data/contracts/buff_formatter_class_ancestry_native.json)
+  now joins the complete `il2cpp_class_has_parent` program to that first
+  context entry and the same parent/depth/array/ready fields. Its unsigned
+  depth-indexed pointer equality supplies a direct ancestry-array consumer;
+  closed named getter entries also anchor name, namespace, parent, element
+  and embedded type fields. Coherent valid storage, prepared positive depth
+  and normal ABI returns remain conditions; live receiver identity,
+  initialization, slot mutation and capacity are not established.
+  The [incoming-address contract](../scripts/game_data/contracts/buff_formatter_incoming_address_native.json)
+  additionally authenticates the complete helper CFG and explicit writes,
+  including vector/byte/locked forms, its RSP/RBP saved homes and conditional
+  original-address register values at all proved call sites. Explicit and
+  implicit stack writes avoid the saved homes; unknown aliases and child
+  writes still prevent pointed-slot or fresh post-child pointer equality.
+  Normal AL zero/one does not prove initialization success or runtime identity.
   Actual virtual callback/class/provider selection, positive union/child cursor
   composition and global effects remain open; static registration does not
   select a runtime object.

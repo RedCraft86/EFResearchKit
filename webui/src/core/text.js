@@ -70,25 +70,54 @@
     return [...new Set(String(query || "").trim().split(/\s+/).filter(Boolean))];
   }
 
-  function queryRegex(token) {
+  // Compiled token regexes, reused across rows and keystrokes. Search loops call
+  // queryScore once per row, so compiling per call dominated filter time on
+  // large pages; the cache is cleared wholesale once it grows past a bound.
+  const QUERY_REGEX_CACHE = new Map();
+  const QUERY_REGEX_CACHE_LIMIT = 512;
+
+  function compileQueryRegex(token) {
     try {
-      return new RegExp(String(token || ""), "i");
+      return new RegExp(token, "i");
     } catch (_error) {
       // A malformed expression remains usable as a literal search instead of
       // making the entire filter unusable while the user is still typing.
-      return new RegExp(String(token || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      return new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     }
+  }
+
+  // The returned regex has no global flag, so `test` keeps no lastIndex state
+  // and the shared instance is safe to reuse.
+  function queryRegex(token) {
+    const key = String(token || "");
+    let regex = QUERY_REGEX_CACHE.get(key);
+    if (!regex) {
+      if (QUERY_REGEX_CACHE.size >= QUERY_REGEX_CACHE_LIMIT) QUERY_REGEX_CACHE.clear();
+      regex = compileQueryRegex(key);
+      QUERY_REGEX_CACHE.set(key, regex);
+    }
+    return regex;
   }
 
   // Count how many distinct query tokens appear in `haystack` (a string, or an
   // array of strings that are joined first). This doubles as the OR filter test
   // (score > 0) and the ranking key (more tokens matched sorts higher).
+  // Filter loops pass the same tokens array for every row, so the regexes
+  // compiled for the last array are reused without any per-row lookup.
+  let scoredTokens = null;
+  let scoredRegexes = [];
+
   function queryScore(haystack, tokens) {
     if (!tokens || !tokens.length) return 0;
-    const text = Array.isArray(haystack) ? haystack.join("\n") : String(haystack || "");
+    if (tokens !== scoredTokens) {
+      scoredTokens = tokens;
+      scoredRegexes = tokens.map((token) => queryRegex(token));
+    }
+    const text = typeof haystack === "string" ? haystack
+      : Array.isArray(haystack) ? haystack.join("\n") : String(haystack || "");
     let matched = 0;
-    for (const token of tokens) {
-      if (queryRegex(token).test(text)) matched += 1;
+    for (let index = 0; index < scoredRegexes.length; index += 1) {
+      if (scoredRegexes[index].test(text)) matched += 1;
     }
     return matched;
   }

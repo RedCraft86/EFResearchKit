@@ -238,6 +238,15 @@
 
   function text(key, replacements = {}) {
     const locale = TEXTS[STATE.uiLocale] || TEXTS.en;
+    const gameKey = {
+      equipmentStats: "ui_wiki_equip_attribute",
+      equipmentAttributeFilter: "ui_wiki_equip_attribute",
+      loadoutSetEffect: "ui_wiki_equip_suit_effect",
+      enemyAbilities: "ui_wiki_enemy_power",
+      dropItems: "ui_wiki_enemy_drop",
+      weaponSkills: "ui_wiki_weapon_skill_effect",
+    }[key];
+    if (gameKey && STATE.index?.uiLabels?.[gameKey]) return applyTemplate(STATE.index.uiLabels[gameKey], replacements);
     return applyTemplate(locale[key] || TEXTS.en[key] || key, replacements);
   }
 
@@ -3867,7 +3876,6 @@
     const { entry, entries } = await catalogItem(id, language);
     if (!entry) return "";
     return [
-      renderStoryWikiLink(entry, language),
       entry.apSupplyData ? section(text("apRecoverValue"), renderChipPairs([
         { label: text("apRecoverValue"), value: entry.apSupplyData.apRecoverValue },
       ])) : "",

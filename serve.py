@@ -60,6 +60,7 @@ UNITY_STORE_FILE = "Unity.sqlite"
 UNITY_STORE_CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
     ".anim": "text/plain; charset=utf-8",
+    ".fbx": "application/octet-stream",
 }
 GAME_FILE_STORE_FILE = "GameFiles.sqlite"
 BINARY_CONTENT_TYPE = "application/octet-stream"

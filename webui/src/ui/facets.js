@@ -147,8 +147,24 @@
       return groups.every((group) => groupMatches(group, item));
     }
 
+    // Only groups with active values can reject an item; the rendered items
+    // reuse their cached values instead of calling values() again.
     function filter(items = lastItems) {
-      return (items || []).filter(matches);
+      const list = items || [];
+      const active = [];
+      groups.forEach((group, g) => {
+        if (group.active.size && group.spec.values) active.push([group, g]);
+      });
+      const hasPredicate = typeof options.predicate === "function";
+      if (!active.length && !hasPredicate) return list.slice();
+      const rows = cache && cache.items === list ? cache.values : null;
+      return list.filter((item, index) => {
+        if (hasPredicate && !options.predicate(item)) return false;
+        for (const [group, g] of active) {
+          if (!groupMatches(group, item, rows ? rows[index][g] : itemValues(group, item))) return false;
+        }
+        return true;
+      });
     }
 
     function valueCache(items) {
@@ -160,15 +176,35 @@
       return cache;
     }
 
+    // Total counts with no predicate do not depend on the active values, so
+    // they are counted once per item set and reused on every toggle.
+    function stateFreeCounts() {
+      return typeof options.predicate !== "function"
+        && groups.every((group) => (group.spec.countMode || options.countMode || "faceted") === "total");
+    }
+
+    function computeCounts(items) {
+      const cached = valueCache(items);
+      if (cached.totals) {
+        groups.forEach((group, g) => { group.counts = cached.totals[g]; });
+        return cached.universe;
+      }
+      const universe = countItems(items, cached.values);
+      if (stateFreeCounts()) {
+        cached.totals = groups.map((group) => group.counts);
+        cached.universe = universe;
+      }
+      return universe;
+    }
+
     // One pass over the items: an item that fails no group counts for every
     // group; one that fails exactly one group counts only for that group
     // (selecting a value there would add it); others count nowhere.
-    function computeCounts(items) {
-      const { values } = valueCache(items);
+    function countItems(items, values) {
       const universe = groups.map(() => new Set());
       for (const group of groups) group.counts = new Map();
       const bump = (group, list) => {
-        for (const value of new Set(list)) group.counts.set(value, (group.counts.get(value) || 0) + 1);
+        for (const value of list.length > 1 ? new Set(list) : list) group.counts.set(value, (group.counts.get(value) || 0) + 1);
       };
       items.forEach((item, index) => {
         const row = values[index];
@@ -279,16 +315,37 @@
       });
     }
 
-    function render(items) {
-      if (items) lastItems = items;
+    // After a state change with reused counts the chip list is unchanged, so
+    // only the "on" classes move; labels, counts and order need a full render.
+    function syncChipState(group, universe) {
+      const spec = group.spec;
+      if (!group.chipsFor || group.chipsFor !== cache || spec.single || spec.items || spec.hideEmpty) return false;
+      for (const value of group.active) if (!universe.has(value)) return false;
+      const container = resolveEl(spec.container);
+      if (!container) return true;
+      const on = new Set([...group.active].map(String));
+      for (const chip of container.children) chip.classList.toggle("on", on.has(chip.dataset.value));
+      return true;
+    }
+
+    function draw(full) {
       const universes = computeCounts(lastItems);
-      groups.forEach((group, g) => renderGroup(group, universes[g]));
+      groups.forEach((group, g) => {
+        if (!full && cache?.totals && syncChipState(group, universes[g])) return;
+        renderGroup(group, universes[g]);
+        group.chipsFor = cache?.totals ? cache : null;
+      });
       syncBadges();
       return api;
     }
 
+    function render(items) {
+      if (items) lastItems = items;
+      return draw(true);
+    }
+
     function changed(info) {
-      render();
+      draw(false);
       options.onChange?.(info);
     }
 
@@ -299,7 +356,7 @@
         group.active.add(value);
         if (group.spec.single) break;
       }
-      if (silent) render();
+      if (silent) draw(false);
       else changed({ reason: "set", group: group.id });
       return api;
     }
@@ -310,7 +367,7 @@
       if (group.spec.single) group.active.clear();
       if (next) group.active.add(value);
       else group.active.delete(value);
-      if (silent) render();
+      if (silent) draw(false);
       else changed({ reason: "toggle", group: group.id, value, on: next });
       return api;
     }
@@ -319,7 +376,7 @@
       for (const group of groups) {
         if (!only || only.includes(group.id)) group.active.clear();
       }
-      if (silent) render();
+      if (silent) draw(false);
       else changed({ reason: "reset" });
       return api;
     }
@@ -351,7 +408,7 @@
         }
       }
       if (touched) {
-        if (silent) render();
+        if (silent) draw(false);
         else changed({ reason: "params" });
       }
       return touched;
@@ -369,7 +426,7 @@
         group.active.clear();
         for (const value of asList(state?.[group.id])) group.active.add(value);
       }
-      if (silent) render();
+      if (silent) draw(false);
       else changed({ reason: "set" });
       return api;
     }

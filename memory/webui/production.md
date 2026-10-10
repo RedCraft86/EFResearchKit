@@ -39,6 +39,41 @@ build. Refreshing from the installed game remains an explicit separate choice.
 
 ## Recovered relationships
 
+Item detail shards also carry `wikiDescriptions` from exact
+`WikiEntryDataTable.refItemId` joins, with entry IDs and localized `desc` text.
+Gameplay displays this explanation after primary and decorative descriptions,
+including in the shared building/item detail. It uses the existing rich-text
+renderer and deduplicates identical wiki explanations. This reads Production's
+own exported tables, without a Story publication dependency.
+The publication's `labels` resolves `ui_wiki_building_usable_formula` and
+`ui_wiki_building_usable_func` through `TextTable` into the selected language's
+I18n table. Gameplay uses their translated text for building recipe and wiki
+explanation headings; keys are not displayed or translated via UI locale.
+The same label map supplies item participating-recipe and activity-limited
+recipe text from their corresponding wiki keys.
+Recipe index summaries retain activity and gas-environment metadata and compact
+original variants. Item recipe references select the variant by original ID,
+never render a grouped union as one craft, and preserve condition badges in both
+participating-recipe and production-source lists.
+Item and building identity tags share the header row with the Story Wiki link.
+Recipe rows keep formula, processing time and detail navigation in separate grid
+columns; the building link lives inside the formula column so it cannot push the
+detail link onto another row.
+
+Item and building descriptions are separate authored fields:
+`ItemTable.desc` and `FactoryBuildingTable.desc`. Their wording can differ even
+for an exact building-item join (the multi-port underground pipe uses cargo
+wording in the building record and liquids/gases in the item record). This does
+not prove which field a runtime screen selects or that either field is obsolete.
+`ItemTable.decoDesc` is item decorative text, not a second building description;
+decorative buildings can repeat it in `FactoryBuildingTable.desc`. Details label
+record/field sources only when linked descriptions differ (and decorative sources
+only when linked decorative texts differ), group identical text into one display,
+and retain distinct text separately. Descriptions have no headings; differing
+sources use inline labels. Decorative text appears last, one font size smaller. This also covers
+items whose own `desc` and `decoDesc` match. Per-publication inventories belong
+under `reports/production/`, not in the durable recovery state.
+
 - `ItemTable` supplies the complete catalog, localized item types, descriptions,
   rarity and stack fields; `FactoryItemTable` marks production-specific entries.
 - Machine, hub and manual craft tables supply ingredients and outcomes. The
@@ -104,6 +139,9 @@ last; filtering and pagination still count device records, not group headings.
 Items and recipes group by their first domain filter, with combined crafting
 methods kept together. Recipe source/use references retain each original method's
 gas environment rather than borrowing one requirement from a grouped recipe.
+Building detail recipe lists group rows by the exact gas-environment ID and
+display the requirement once per group. Recipes without a requirement remain
+in a separate group; activity restrictions and formulas stay on each recipe.
 Activity-only formula tags use exact craft-ID membership in
 `LimitedFormulaCraftIdReverseTable`; matching activity `timeLimitFormula` lists
 provide the forward join. The exported `FactoryUtils.isTimeLimitedFormula`
@@ -186,3 +224,18 @@ plating, old identifiers, and the scope and field details of Production updates.
 targets, relationship preservation, aliases and grouped update provenance.
 `scripts/tests/production_navigation.cjs` uses bounded browser fixtures for
 sorting, URL/history state, delayed detail responses and clipboard completion.
+
+Item recipe references resolve the original source ID within `recipeVariants`
+before rendering a grouped recipe. Each source retains its own machine, groups,
+time and environment; a grouped catalog entry is not a combined formula.
+Shop cards group identical published configuration fields, excluding goods ID
+and source links, and label the number of matching configurations. All goods
+IDs and source links remain available; this grouping does not prove runtime
+availability or merge the underlying goods. Raw goods can differ in sorting
+even when the published display fields match.
+
+Item and recipe pages share the compact method row: activity tag, machine,
+gas environment, formula and processing time. Item/machine rows link to the
+recipe page; recipe rows omit that self-link and retain supplemental formula
+items, conditions and stored configuration below the row. Empty metadata
+columns retain their width so formulas align across source methods.

@@ -39,7 +39,7 @@ from scripts.common import (
 )
 from scripts.source_paths import ExportLayout
 from scripts.game_data import sprite_crops
-from scripts.game_data.unity_store import open_store_if_present
+from scripts.game_data.unity_store import is_store_file, open_store_if_present
 
 WEBUI_ROOT = PROJECT_ROOT / "webui"
 ZIP_NAME_PREFIX = "endfield-story-exported"
@@ -349,7 +349,7 @@ class ExportedImage:
     rel: str
     source_path: Path
     archive_path: str
-    #: Bytes to write instead of copying ``source_path`` (a Sprite crop document from the store).
+    #: Bytes to write instead of copying ``source_path`` (a Sprite crop document or packed FBX from the store).
     data: bytes | None = None
 
 
@@ -805,7 +805,16 @@ def plan_package(
         """The files one index entry needs: the file itself, or for a Sprite its texture and crop document."""
         texture_rel = entry.get("crop")
         if not texture_rel:
-            return [resolve_exported_image(project_root, export_root, payload, rel)]
+            item = resolve_exported_image(project_root, export_root, payload, rel)
+            # A packed Animator FBX has no loose file: a static package has no
+            # serve.py to rebuild it, so ship the rejoined bytes.
+            type_name, _sep, name = rel.removeprefix("Unity/").partition("/")
+            if (
+                rel.startswith("Unity/") and is_store_file(name) and unity_store is not None
+                and not item.source_path.is_file() and unity_store.exists(type_name, name)
+            ):
+                item = replace(item, data=unity_store.read_bytes(type_name, name))
+            return [item]
         # A Sprite image has no file. Ship its texture and its crop document
         # loose beside the image path, where serve.py answers the image from it.
         document_rel = posixpath.join(posixpath.dirname(rel), sprite_crops.document_name(posixpath.basename(rel)))
@@ -890,6 +899,8 @@ def create_package(args: argparse.Namespace) -> int:
         absent: list[ExportedImage] = []
         for item in items:
             if item.data is not None:
+                # No file to stat: size_gib reads the bytes' length from here.
+                source_sizes.setdefault(item.source_path, len(item.data))
                 present.append(item)
                 continue
             if item.source_path in source_sizes:

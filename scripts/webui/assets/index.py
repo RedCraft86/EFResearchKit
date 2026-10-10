@@ -20,6 +20,7 @@ from scripts.source_paths import (
     resolve_material_source_roots,
 )
 from scripts.game_data import sprite_crops
+from scripts.webui.assets.fbx_root import read_fbx_root_names, read_fbx_root_names_from_bytes
 from scripts.game_data.unity_store import open_store_if_present
 from scripts.common import (
     path_id_export_base_stem,
@@ -27,6 +28,29 @@ from scripts.common import (
     rel_path,
     rel_requires_path_id_export_name,
 )
+
+ANIMATOR_FBX_PREFIX = "Unity/Animator/"
+#: The converted-media type whose models are Unity store rows, not loose files.
+STORED_MODEL_TYPE = "Animator"
+
+
+def _animator_fbx_scene_root(asset_rel: str, path: Path, stem: str, data: bytes | None = None) -> str:
+    """Name the scene an Animator FBX belongs to when its file name does not.
+
+    AnimeStudio names an Animator export after the GameObject carrying the
+    Animator, which in cutscenes is a generic ``Actor``/``offset`` object. The
+    first FBX root names the timeline or prefab that owns it. ``data`` is the
+    file's bytes when it is a Unity store row rather than a loose file.
+    """
+    if not asset_rel.startswith(ANIMATOR_FBX_PREFIX) or path.suffix.lower() != ".fbx":
+        return ""
+    try:
+        roots = read_fbx_root_names(path) if data is None else read_fbx_root_names_from_bytes(data)
+    except (OSError, ValueError, struct.error):
+        return ""
+    root = roots[0] if roots else ""
+    return root if root and root.lower() != stem.lower() else ""
+
 
 ASSET_KIND_BY_EXT = {
     ".obj": "model",
@@ -318,6 +342,17 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _files_equal(left: Path, right: Path) -> bool:
+    """Compare exported bytes with bounded memory, including large video/FBX files."""
+    with left.open("rb") as a, right.open("rb") as b:
+        while True:
+            chunk = a.read(ASSET_HASH_CHUNK_SIZE)
+            if chunk != b.read(ASSET_HASH_CHUNK_SIZE):
+                return False
+            if not chunk:
+                return True
+
+
 def _header_signature(path: Path) -> str:
     try:
         with path.open("rb") as fh:
@@ -409,6 +444,15 @@ def _image_dimensions(path: Path) -> tuple[int, int] | None:
     return None
 
 
+def _add_stored_duplicate_hashes(entries: list[dict], sha_by_rel: dict[str, str]) -> None:
+    """Mark store-held entries whose recorded SHA256 another stored entry shares (``h``)."""
+    counts = Counter(sha_by_rel.values())
+    for entry in entries:
+        sha = sha_by_rel.get(str(entry.get("r") or ""))
+        if sha and counts[sha] > 1:
+            entry["h"] = sha
+
+
 def _add_duplicate_candidate_hashes(entries: list[dict], paths_by_rel: dict[str, Path]) -> None:
     """Mark same-size, same-header candidates with their SHA256 (``h``)."""
     coarse_counts: Counter[tuple[str, str, int]] = Counter()
@@ -439,6 +483,22 @@ def _add_duplicate_candidate_hashes(entries: list[dict], paths_by_rel: dict[str,
         path = paths_by_rel.get(rel)
         if path:
             entry["h"] = _file_sha256(path)
+
+
+    # Converted-file equality does not establish original Unity object equality.
+    content_groups: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    for entry in entries:
+        rel = str(entry.get("r") or "")
+        if entry.get("h") and rel in paths_by_rel:
+            key = (str(entry.get("k") or ""), Path(rel).suffix.lower(), entry["h"])
+            content_groups[key].append(entry)
+    for (_, _, digest), group in content_groups.items():
+        if len(group) < 2:
+            continue
+        reference = paths_by_rel[group[0]["r"]]
+        if all(_files_equal(reference, paths_by_rel[entry["r"]]) for entry in group[1:]):
+            for entry in group:
+                entry["d"] = digest
 
 
 def _add_sprite_crop_hashes(
@@ -577,6 +637,13 @@ def scan_exported_media_assets(
     pending_sprites = (
         list(sprite_crops.iter_sprite_crops(sprite_store)) if sprite_store is not None else []
     )
+    # Animator FBX exports are Unity store rows (their meshes are stored once
+    # across files); they are listed at the place their folder takes in the walk.
+    pending_stored_models = (
+        sprite_store.rows(STORED_MODEL_TYPE) if sprite_store is not None else []
+    )
+    stored_model_names = {row.name for row in pending_stored_models}
+    stored_sha_by_rel: dict[str, str] = {}
 
     def add_image_entry(entry: dict, asset_rel: str, stem: str, path_id: str, dimensions: tuple[int, int] | None) -> None:
         nonlocal material_like_image_count
@@ -619,6 +686,18 @@ def scan_exported_media_assets(
             sprite_crops_by_rel[asset_rel] = crop
         pending_sprites.clear()
 
+    def add_stored_models() -> None:
+        for row in pending_stored_models:
+            asset_rel = f"{ASSET_SOURCE_UNITY}/{STORED_MODEL_TYPE}/{row.name}"
+            stored_sha_by_rel[asset_rel] = row.sha256
+            add_asset_file(
+                source=ASSET_SOURCE_UNITY,
+                source_root=Path(ASSET_SOURCE_UNITY),
+                path=Path(ASSET_SOURCE_UNITY, STORED_MODEL_TYPE, row.name),
+                stored_row=row,
+            )
+        pending_stored_models.clear()
+
     def add_asset_file(
         *,
         source: str,
@@ -626,6 +705,7 @@ def scan_exported_media_assets(
         path: Path,
         include_regular_assets: bool = True,
         include_media: bool = True,
+        stored_row: Any = None,
     ) -> None:
         suffix = path.suffix.lower()
         kind = _browser_asset_kind_for_suffix(
@@ -642,13 +722,14 @@ def scan_exported_media_assets(
         if logical is None:
             return
         stem, path_id = logical
-        size = path.stat().st_size
+        size = stored_row.size if stored_row is not None else path.stat().st_size
         entry = {
             "k": kind,
             "r": asset_rel,
             "s": size,
         }
-        asset_paths_by_rel[asset_rel] = path
+        if stored_row is None:
+            asset_paths_by_rel[asset_rel] = path
         if kind == "image":
             add_image_entry(entry, asset_rel, stem, path_id, _image_dimensions(path))
             return
@@ -657,6 +738,14 @@ def scan_exported_media_assets(
         asset_entries.append(entry)
 
         if kind == "model":
+            scene_root = _animator_fbx_scene_root(
+                asset_rel,
+                path,
+                stem,
+                sprite_store.read_bytes(STORED_MODEL_TYPE, stored_row.name) if stored_row is not None else None,
+            )
+            if scene_root:
+                entry["fr"] = scene_root
             model_base = _normalize_model_base(stem)
             source_family = _asset_source_family(source).lower()
             entry["_mb"] = model_base
@@ -681,6 +770,7 @@ def scan_exported_media_assets(
     print(f"\nScanning exported media assets from {_label_text(media_root_labels, export_root)}...")
     for source, source_root in asset_roots:
         sprites_here = source == ASSET_SOURCE_UNITY and bool(pending_sprites)
+        models_here = source == ASSET_SOURCE_UNITY and bool(pending_stored_models)
         for dirpath, dirnames, filenames in os.walk(source_root):
             prune_nested_source_dirs(source, source_root, dirpath, dirnames)
             dirnames.sort()
@@ -691,12 +781,25 @@ def scan_exported_media_assets(
                 dirnames[:] = [name for name in dirnames if name != sprite_crops.SPRITE_TYPE]
             elif pending_sprites and sprites_here and base_dir.relative_to(source_root).parts[0] > sprite_crops.SPRITE_TYPE:
                 add_sprite_crops()
+            if (
+                pending_stored_models
+                and models_here
+                and base_dir != source_root
+                and base_dir.relative_to(source_root).parts[0] >= STORED_MODEL_TYPE
+            ):
+                add_stored_models()
+            stored_dir = models_here and base_dir == source_root / STORED_MODEL_TYPE
             for filename in filenames:
+                if stored_dir and filename in stored_model_names:
+                    # The store row is the published copy; a loose one is stale.
+                    continue
                 add_asset_file(
                     source=source,
                     source_root=source_root,
                     path=base_dir / filename,
                 )
+        if models_here:
+            add_stored_models()
         if sprites_here:
             add_sprite_crops()
     if unresolved_sprite_count:
@@ -814,6 +917,7 @@ def scan_exported_media_assets(
                         })
 
     _add_duplicate_candidate_hashes(asset_entries, asset_paths_by_rel)
+    _add_stored_duplicate_hashes(asset_entries, stored_sha_by_rel)
     _add_sprite_crop_hashes(asset_entries, sprite_crops_by_rel, asset_paths_by_rel)
     _add_duplicate_candidate_hashes(video_entries, asset_paths_by_rel)
 

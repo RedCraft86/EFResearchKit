@@ -3420,7 +3420,8 @@ def publish_unity_outputs(
     are merged into ``game/Unity.sqlite`` with SQL (``merge_staged``: only rows
     whose SHA256 changed are written). JSON call stores are removed after
     publication; Convert stores remain for cache reuse. Legacy loose object
-    documents (``is_store_file``: .json, .anim) are synced by (size, mtime);
+    documents (``is_store_file``: .json, .anim, and Animator .fbx, which the
+    Convert stage packs into its type store) are synced by (size, mtime);
     converted media is mirrored into
     ``game/Unity/<Type>`` as hardlinks. A type is synced only when every
     installed layer ran the stage that exports it (its staging stage folder
@@ -4594,6 +4595,14 @@ def run_animestudio_stage(
     is_asset_map_load = map_op is not None and "AssetMap" in str(map_op) and "Load" in str(map_op)
     use_map_op = map_op is not None and (not is_asset_map_load or animestudio_map_filter_is_safe(types))
     use_map_filter = use_map_op and is_asset_map_load
+    if map_op is not None and is_asset_map_load and not use_map_op:
+        # Classes that must resolve across bundles load each selected bundle
+        # with its CAB dependencies instead, so e.g. an Animator FBX gets the
+        # skinned meshes stored in other bundles.
+        cab_map_stem = f"endfield_{source.lower()}_assets"
+        if (ExportLayout(output_root).cab_map_dir / f"{cab_map_stem}.bin").is_file():
+            map_op, map_type, map_name = "CABMap,Load", None, cab_map_stem
+            use_map_op = True
     cmd = [
         str(animestudio_exe),
         str(input_root),
@@ -4695,6 +4704,15 @@ def run_animestudio_stage(
     if expanded_types:
         cmd.append("--types")
         cmd.extend(expanded_types)
+    # A model export decodes every material texture again for each Animator and
+    # writes it beside the FBX under its bare name, where the next Animator
+    # overwrites it; the Texture2D export already publishes those images.
+    # Skipping them keeps the FBX geometry, skins and materials unchanged.
+    exported_models = {
+        spec.split(":", 1)[0] for spec in expanded_types or () if not spec.endswith(":Parse")
+    }
+    if export_type == "Convert" and {"Animator", "GameObject"} & exported_models:
+        cmd.append("--no_model_textures")
     # Every document destined for Unity.sqlite goes into a staged store; media
     # remains loose so its file-based conversion cache and browser paths work.
     document_store: Path | None = None
@@ -5174,13 +5192,25 @@ def finalize_animestudio_asset_shard_work(
             if not call_store.is_file():
                 raise UnityStoreError(f"completed Convert shard has no document store: {call_store}")
             completed_calls.append(call_store)
-        if completed_calls:
+        # Converted media that is a store file (.fbx) is written loose by
+        # AnimeStudio; pack it into the type store and drop the loose copy, or
+        # the staged hardlink keeps every duplicated mesh on disk.
+        type_dir = animestudio_stage_dir(output_root, source, stage) / type_name
+        loose_documents = {
+            path.name: path for path in (type_dir.iterdir() if type_dir.is_dir() else ())
+            if path.is_file() and is_store_file(path.name)
+        }
+        if completed_calls or loose_documents:
             persistent = animestudio_convert_store_path(output_root, source, type_name)
             with UnityObjectStoreWriter(persistent) as writer:
                 for call_store in completed_calls:
                     writer.merge_staged(type_name, [call_store], remove_missing=False)
+                if loose_documents:
+                    writer.sync_type(type_name, loose_documents, remove_missing=False)
             for call_store in completed_calls:
                 call_store.unlink()
+            for path in loose_documents.values():
+                path.unlink()
     sprite_image_check = None
     if asset_work.get("sprite_images"):
         sprite_image_check = collect_sprite_image_checks(output_root, source, shards, result_by_shard)

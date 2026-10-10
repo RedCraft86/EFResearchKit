@@ -7259,7 +7259,8 @@ body.is-resizing-filter * {
   letter-spacing: 0.08em;
 }
 
-#asset-preview-bg-color {
+#asset-preview-bg-color,
+#asset-model-color {
   width: 34px;
   height: 28px;
   padding: 0;
@@ -7332,6 +7333,19 @@ body.is-resizing-filter * {
   width: 100%;
   height: min(72vh, 640px);
   background: transparent;
+}
+
+#asset-model-axes {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 88px;
+  height: 88px;
+  pointer-events: none;
+}
+
+#asset-model-canvas[hidden] + #asset-model-axes {
+  display: none;
 }
 
 .asset-preview-note {
@@ -8897,7 +8911,18 @@ table {
 .version-update-file-diff > span { display: block; min-width: max-content; }
 .version-update-file-diff .is-added { color: var(--status-added); background: rgba(var(--status-added-rgb), .07); }
 .version-update-file-diff .is-deleted { color: var(--status-deleted); background: rgba(var(--status-deleted-rgb), .07); }
-.version-update-content[data-version-update="added"] { box-shadow: inset 3px 0 var(--status-added); }
-.version-update-content[data-version-update="modified"] { box-shadow: inset 3px 0 var(--status-modified); }
+/* Change highlights never paint over or shift content: text gets a diff-style
+   tint, media an outline outside its box, and links rely on their badge. */
+.version-update-content { --version-update-rgb: var(--status-modified-rgb); }
+.version-update-content[data-version-update="added"] { --version-update-rgb: var(--status-added-rgb); }
+.version-update-content:not(a, img, video, audio, source, canvas, [data-map-file-path]) {
+  border-radius: 3px;
+  background-color: rgba(var(--version-update-rgb), .08);
+}
+:is(img, video, canvas, [data-map-file-path]).version-update-content {
+  outline: 2px solid rgba(var(--version-update-rgb), .7);
+  outline-offset: 2px;
+}
 .version-update-details.is-inline { margin: 7px 0; font-weight: 400; }
-.version-update-file-marker { display: inline-block; }
+.version-update-file-marker { display: inline-block; margin-inline: 4px; vertical-align: middle; }
+.asset-info-panel > .version-update-files { margin: 0 0 12px; }

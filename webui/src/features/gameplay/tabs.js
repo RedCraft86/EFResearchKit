@@ -2,7 +2,7 @@
 // owns their shared navigation; each renderer retains its filters and details.
 (() => {
   const W = window.WebUI;
-  const kinds = ["character", "weapon", "gem", "equipment", "item", "enemy", "recipe", "machine"];
+  const kinds = ["character", "weapon", "gem", "equipment", "machine", "recipe", "item", "enemy"];
   const catalogs = { item: "items", recipe: "recipes", machine: "machines" };
   const catalogKinds = Object.fromEntries(Object.entries(catalogs).map(([kind, catalog]) => [catalog, kind]));
   let selected = "character";

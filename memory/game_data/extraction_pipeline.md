@@ -133,7 +133,11 @@ render parity: consumers must verify the manifest and imported mip bytes.
   Terrain Lua` without the VFS `Data/` prefix, `Audio/<LANG|shared>`,
   `Unity.sqlite` (object documents), `GameFiles.sqlite` (`PACKED_GAME_DIRS`),
   and converted media under `Unity/<Type>`; Sprite is a crop-document row over
-  its Texture2D ([`unity_assets.md`](unity_assets.md)). Stores have no loose
+  its Texture2D ([`unity_assets.md`](unity_assets.md)). Animator `.fbx` is a
+  store row too: each cutscene bundle re-exports the characters it carries, so
+  the same meshes repeat across never-identical files; FBX property blocks of
+  `FBX_CHUNK_MIN` bytes or more are stored once in `chunks` (37 chen exports:
+  373 MB loose, 35 MB packed). Stores have no loose
   fallback; `pack_export_stores` upgrades a v2/v3 root and
   `migrate_export_layout` a v1 root, with rollback.
 - `meta/<Layer>/...`, `meta/cab_map` and `meta/extraction/` stay per layer,
@@ -180,6 +184,16 @@ since PathIDs are measured unique in this export, but uncheckable. The fix
 belongs in the exporter. The AnimeStudio fork emits the block for every typed
 asset class (validated on a bounded dump; see `scripts/game_data/cabmap.py`),
 but the export has not been rebuilt, so a builder must tolerate its absence.
+
+**An Animator FBX needs its dependency bundles loaded.** A character's
+SkinnedMeshRenderers usually point at Mesh objects in another bundle; exported
+alone, `ModelConverter.GetMesh` gets null and AnimeStudio silently drops the
+renderer (a cutscene actor came out as hair only). The wrapper therefore runs
+the AssetMap-unsafe types (Animator, GameObject, AnimatorController,
+AnimatorOverrideController) with `--map_op CABMap,Load` when the layer's CAB map
+exists; the CLI loads dependencies only to resolve PPtrs and exports just the
+primary file's objects (`SelectPrimaryFiles`). It costs several times the load
+time per bundle.
 
 **Rebuilding the CLI** can change the VFS audit's `inputSetSha256` (what it
 fingerprints is stated in `AGENTS.md`), so rerun the full audit and rebind

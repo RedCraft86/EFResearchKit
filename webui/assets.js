@@ -25,6 +25,7 @@
   const ASSET_ITEM_ROW_H = 70;
   const ASSET_OVERSCAN_PX = 240;
   const DEFAULT_PREVIEW_BACKGROUND = "#0b1015";
+  const DEFAULT_MODEL_COLOR = "#5c99db";
   const PREVIEW_BG_STORAGE_KEY = "asset_browser_preview_background";
   const FILTER_PANEL_STORAGE_KEY = "asset_browser_filters_collapsed";
   const UI_LOCALE_STORAGE_KEY = "webui_ui_locale";
@@ -126,6 +127,7 @@
       copyFailed: "\u590d\u5236\u5931\u8d25",
       preview: "\u9884\u89c8",
       previewBackground: "\u80cc\u666f",
+      modelColor: "模型颜色",
       previewBackgroundCustom: "\u81ea\u5b9a\u4e49\u80cc\u666f\u8272",
       previewBackgroundPreset: "\u80cc\u666f\u8272 {color}",
       previewPlaceholder: "\u9884\u89c8\u4f1a\u663e\u793a\u5728\u8fd9\u91cc\u3002",
@@ -185,14 +187,14 @@
       loadingObjPreview: "\u6b63\u5728\u52a0\u8f7d OBJ \u9884\u89c8...",
       loadingFbxSummary: "\u6b63\u5728\u8bfb\u53d6 FBX \u7ed3\u6784...",
       noModelFile: "\u6ca1\u6709\u53ef\u7528\u7684\u6a21\u578b\u6587\u4ef6\u3002",
-      previewingModel: "\u6b63\u5728\u9884\u89c8 {name}\u3002\u62d6\u52a8\u53ef\u65cb\u8f6c\uff0c\u6eda\u8f6e\u53ef\u7f29\u653e\u3002",
-      previewingModelViaObj: "\u6b63\u5728\u901a\u8fc7\u914d\u5957 OBJ \u5ba1\u9605 {name}\u3002\u62d6\u52a8\u53ef\u65cb\u8f6c\uff0c\u6eda\u8f6e\u53ef\u7f29\u653e\u3002",
+      previewingModel: "\u6b63\u5728\u9884\u89c8 {name}\u3002\u5de6\u952e\u62d6\u52a8\u65cb\u8f6c\uff0c\u53f3\u952e\u6216 Shift \u62d6\u52a8\u5e73\u79fb\uff0c\u6eda\u8f6e\u7f29\u653e\uff0c\u53cc\u51fb\u590d\u4f4d\u3002",
+      previewingModelViaObj: "\u6b63\u5728\u901a\u8fc7\u914d\u5957 OBJ \u5ba1\u9605 {name}\u3002\u5de6\u952e\u62d6\u52a8\u65cb\u8f6c\uff0c\u53f3\u952e\u6216 Shift \u62d6\u52a8\u5e73\u79fb\uff0c\u6eda\u8f6e\u7f29\u653e\uff0c\u53cc\u51fb\u590d\u4f4d\u3002",
       objPreviewUnavailable: "\u65e0\u6cd5\u9884\u89c8\u6b64 OBJ \u6587\u4ef6\u3002",
-      fbxSummaryLoaded: "FBX \u6682\u65f6\u6ca1\u6709\u9875\u5185\u7f51\u683c\u9884\u89c8\uff0c\u5df2\u5c55\u793a\u6587\u4ef6\u7ed3\u6784\u6458\u8981\u3002",
+      fbxSummaryLoaded: "\u8fd9\u4e2a FBX \u6ca1\u6709\u53ef\u9884\u89c8\u7684\u7f51\u683c\uff0c\u4e0b\u65b9\u5c55\u793a\u6587\u4ef6\u7ed3\u6784\u6458\u8981\u3002",
       fbxSummaryUnavailable: "\u65e0\u6cd5\u8bfb\u53d6\u8fd9\u4e2a FBX \u6587\u4ef6\u7684\u7ed3\u6784\u6458\u8981\u3002",
       fbxSummaryPlaceholder: "FBX \u7ed3\u6784\u6458\u8981\u4f1a\u663e\u793a\u5728\u4e0b\u65b9\u7684\u7edf\u8ba1\u9762\u677f\u91cc\u3002",
       selectedLod: "\u5f53\u524d LOD",
-      sampledPoints: "\u91c7\u6837\u70b9",
+      triangles: "\u4e09\u89d2\u5f62",
       vertices: "\u9876\u70b9",
       faces: "\u9762",
       objectsGroups: "\u5bf9\u8c61 / \u7ec4",
@@ -233,6 +235,7 @@
       copyFailed: "Copy failed",
       preview: "Preview",
       previewBackground: "Background",
+      modelColor: "Model color",
       previewBackgroundCustom: "Custom background color",
       previewBackgroundPreset: "Background {color}",
       previewPlaceholder: "Preview will appear here.",
@@ -292,14 +295,14 @@
       loadingObjPreview: "Loading OBJ preview...",
       loadingFbxSummary: "Reading FBX structure...",
       noModelFile: "No model file is available.",
-      previewingModel: "Previewing {name}. Drag to rotate. Use the mouse wheel to zoom.",
-      previewingModelViaObj: "Reviewing {name} through a paired OBJ preview. Drag to rotate. Use the mouse wheel to zoom.",
+      previewingModel: "Previewing {name}. Drag to rotate, right-drag or Shift-drag to pan, scroll to zoom, double-click to reset.",
+      previewingModelViaObj: "Reviewing {name} through a paired OBJ preview. Drag to rotate, right-drag or Shift-drag to pan, scroll to zoom, double-click to reset.",
       objPreviewUnavailable: "Unable to preview this OBJ file.",
-      fbxSummaryLoaded: "This FBX does not have an in-browser mesh preview yet, so the panel below shows its structure summary.",
+      fbxSummaryLoaded: "This FBX has no previewable mesh, so the panel below shows its structure summary.",
       fbxSummaryUnavailable: "Unable to read a structure summary for this FBX file.",
       fbxSummaryPlaceholder: "The FBX structure summary appears in the stats panel below.",
       selectedLod: "Selected LOD",
-      sampledPoints: "Sampled points",
+      triangles: "Triangles",
       vertices: "Vertices",
       faces: "Faces",
       objectsGroups: "Objects / groups",
@@ -340,6 +343,7 @@
     pager: null,
     initialAssetHandled: false,
     previewBackground: DEFAULT_PREVIEW_BACKGROUND,
+    modelColor: DEFAULT_MODEL_COLOR,
     qTimer: null,
     detailToken: 0,
     imageObjectUrl: "",
@@ -351,13 +355,17 @@
       rotationX: -0.35,
       rotationY: 0.75,
       zoom: 1,
+      panX: 0,
+      panY: 0,
       dragging: false,
+      dragMode: "",
       lastX: 0,
       lastY: 0,
       renderQueued: false,
       model: null,
       canvas: null,
       ctx: null,
+      gl: null,
       bound: false,
     },
   };
@@ -414,6 +422,10 @@
     const parentStem = String(match[1] || "").trim();
     const suffixLabel = String(match[2] || "").trim();
     if (!parentStem || !suffixLabel) return null;
+    // Weapon stems end in an item id (wpn_misc_0004 vs wpn_misc_0011 are
+    // different weapons), not a variant of one family. Other numbered
+    // chunks (HLOD clusters, water planes) still group.
+    if (/^\d{4,}$/.test(suffixLabel) && /(?:^|[_-])wpn(?:[_-]|$)/i.test(parentStem)) return null;
     return { parentStem, suffixLabel };
   }
 
@@ -506,7 +518,7 @@
     if (entry.kind !== "model") return false;
     const activeModel = getActiveModelFile(entry);
     const reviewModel = resolveReviewModelFile(activeModel);
-    return activeModel?.ext === "obj" || reviewModel?.ext === "obj";
+    return ["obj", "fbx"].includes(activeModel?.ext) || reviewModel?.ext === "obj";
   }
 
   function syncPreviewBackgroundControls(entry = ASSET_STATE.selectedEntry) {
@@ -518,6 +530,14 @@
     const color = normalizePreviewBackground(ASSET_STATE.previewBackground);
     const enabled = selectedAssetSupportsPreviewBackground(entry);
     controls.hidden = !enabled;
+    const modelInput = $("#asset-model-color");
+    const modelLabel = $("#asset-model-color-label");
+    const isModel = entry?.kind === "model";
+    modelInput.hidden = !isModel;
+    modelLabel.hidden = !isModel;
+    modelInput.value = ASSET_STATE.modelColor;
+    modelLabel.textContent = assetUiText("modelColor");
+    modelInput.setAttribute("aria-label", assetUiText("modelColor"));
     stage.classList.toggle("has-preview-bg", enabled);
     stage.style.setProperty("--asset-preview-bg-color", color);
     if (input.value.toLowerCase() !== color) input.value = color;
@@ -787,6 +807,10 @@
       ASSET_STATE.facets.reset();
     });
 
+    $("#asset-model-color").addEventListener("input", (ev) => {
+      ASSET_STATE.modelColor = normalizePreviewBackground(ev.target.value);
+      queueModelRender();
+    });
     $("#asset-preview-bg-color").addEventListener("input", (ev) => {
       setPreviewBackground(ev.target.value);
     });
@@ -1083,6 +1107,7 @@
         rawStem: stemInfo.rawStem,
         pathId: stemInfo.pathId || String(raw.pid || ""),
         contentHash: String(raw.h || raw.hash || raw.sha256 || ""),
+        exactFileDuplicate: String(raw.d || ""),
         family: stripAssetLodSuffix(stem),
         familyKey: `${source}::${groupInfo.key}`.toLowerCase(),
         groupKey: groupInfo.key,
@@ -1094,6 +1119,10 @@
         materialLike,
         modelCategories,
         previewRel: String(raw.p || ""),
+        // Animator FBX named after a generic object (Actor, offset): the scene root it belongs to.
+        sceneRoot: kind === "model" ? String(raw.fr || "") : "",
+        // Timelines keep their actors and effects under sibling `<name>_Actor` / `<name>_Effect` roots.
+        sceneGroup: kind === "model" ? String(raw.fr || "").replace(/_(?:Actor|Effect)$/i, "") : "",
         searchText: "",
         variantLabel: "",
         grouped: false,
@@ -1112,6 +1141,23 @@
         stemsByScope.set(scopeKey, scope);
       }
       scope.add(entry.stem.toLowerCase());
+    }
+
+    const sceneRootCounts = new Map();
+    for (const entry of hydrated) {
+      if (!entry.sceneGroup) continue;
+      const rootKey = `${entry.source}::${entry.sceneGroup}`.toLowerCase();
+      sceneRootCounts.set(rootKey, (sceneRootCounts.get(rootKey) || 0) + 1);
+    }
+    // An Animator on the scene root itself carries no `fr`: its own name is the root.
+    for (const entry of hydrated) {
+      if (entry.sceneGroup || entry.kind !== "model" || entry.ext !== "fbx" || entry.dir !== "Animator") continue;
+      const group = entry.stem.replace(/_(?:Actor|Effect)$/i, "");
+      const rootKey = `${entry.source}::${group}`.toLowerCase();
+      if (!sceneRootCounts.has(rootKey)) continue;
+      entry.sceneRoot = entry.stem;
+      entry.sceneGroup = group;
+      sceneRootCounts.set(rootKey, sceneRootCounts.get(rootKey) + 1);
     }
 
     const groupedFamilies = new Set();
@@ -1162,7 +1208,15 @@
       const lodFamilyKey = `${scopeKey}::${entry.family}`.toLowerCase();
       const suffixFamilyKey = suffixed ? `${scopeKey}::${suffixed.parentStem}`.toLowerCase() : "";
 
-      if (supportsAssetVariants(entry.kind) && entry.lod !== null && groupedFamilies.has(lodFamilyKey)) {
+      if (entry.sceneGroup && (sceneRootCounts.get(`${entry.source}::${entry.sceneGroup}`.toLowerCase()) || 0) > 1) {
+        entry.family = entry.sceneGroup;
+        entry.grouped = true;
+        entry.variantLabel = entry.sceneRoot === entry.sceneGroup ? entry.name : `${entry.sceneRoot} / ${entry.name}`;
+      } else if (entry.sceneGroup) {
+        entry.family = entry.sceneGroup;
+        entry.grouped = false;
+        entry.variantLabel = `${entry.sceneRoot} / ${entry.name}`;
+      } else if (supportsAssetVariants(entry.kind) && entry.lod !== null && groupedFamilies.has(lodFamilyKey)) {
         entry.family = entry.family;
         entry.grouped = true;
         entry.variantLabel = `LOD ${entry.lod}`;
@@ -1194,6 +1248,7 @@
         entry.groupKey,
         entry.groupLabel,
         entry.groupRaw,
+        entry.sceneRoot,
         entry.rawStem,
         entry.pathId,
         entry.contentHash,
@@ -1253,7 +1308,7 @@
       const hash = assetContentHash(entry);
       const identity = supportsAssetVariants(entry.kind) ? entry.stem : entry.rel;
       const key = supportsAssetVariants(entry.kind)
-        ? `${entry.kind}::${entry.ext}::${entry.source}::${entry.stem}`.toLowerCase()
+        ? `${entry.kind}::${entry.ext}::${entry.source}::${entry.stem}::${entry.sceneRoot || ""}`.toLowerCase()
         : (hash ? `hash::${hash}` : `${entry.kind}::${entry.ext}::${entry.source}::${identity}`.toLowerCase());
       let bucket = buckets.get(key);
       if (!bucket) {
@@ -1270,7 +1325,7 @@
       primary.duplicateCount = bucket.length;
       primary.rawRels = bucket.map((entry) => entry.rel);
       if (assetContentHash(primary)) {
-        primary.sameHashFiles = bucket.flatMap((entry) => (entry.rawRels || [entry.rel]).map((rel) => ({ rel, hash: assetContentHash(entry) })));
+        primary.sameHashFiles = bucket.filter((entry) => assetContentHash(entry) === assetContentHash(primary)).flatMap((entry) => (entry.rawRels || [entry.rel]).map((rel) => ({ rel, hash: assetContentHash(entry) })));
       }
       if (bucket.length > 1) {
         primary.variants = bucket.map(rawFileVariant);
@@ -1285,6 +1340,22 @@
           if (variants.length <= 1) continue;
           const sameHashFiles = variants.map((variant) => ({ rel: variant.rel, hash: variantHash }));
           for (const variant of variants) variant.sameHashFiles = sameHashFiles;
+        }
+        {
+          const exactCopies = new Map();
+          primary.variants = primary.variants.filter((variant) => {
+            const key = variant.exactFileDuplicate;
+            if (!key) return true;
+            const existing = exactCopies.get(key);
+            if (!existing) {
+              exactCopies.set(key, variant);
+              return true;
+            }
+            existing.rawRels.push(...variant.rawRels);
+            existing.duplicateCount = existing.rawRels.length;
+            existing.searchText = `${existing.searchText} ${variant.searchText}`;
+            return false;
+          });
         }
         primary.variantCount = primary.variants.length;
         primary.variantSummary = summarizeVariantLabels(primary.variants);
@@ -1464,8 +1535,9 @@
     const tokens = window.WebUI.parseQuery(filters.q);
     const scores = new Map();
 
-    ASSET_STATE.filtered = ASSET_STATE.facets.filter(ASSET_STATE.entries).filter((entry) => {
-      if (!tokens.length) return true;
+    // With no chip active the facet pass keeps every entry, so skip it.
+    const faceted = ASSET_STATE.facets.isFiltered() ? ASSET_STATE.facets.filter(ASSET_STATE.entries) : ASSET_STATE.entries;
+    ASSET_STATE.filtered = !tokens.length ? faceted.slice() : faceted.filter((entry) => {
       const score = window.WebUI.queryScore(entry.searchText, tokens);
       if (score > 0) scores.set(entry, score);
       return score > 0;
@@ -1473,7 +1545,12 @@
 
     ASSET_STATE.searchTokens = tokens;
     ASSET_STATE.searchScores = tokens.length ? scores : null;
-    ASSET_STATE.filtered.sort(window.WebUI.sorting.comparator("asset-sort", (a, b) => compareAssets(a, b, filters.sort)));
+    const byOrder = window.WebUI.sorting.comparator("asset-sort", (a, b) => compareAssets(a, b, filters.sort));
+    // A multi-word query ranks entries matching more words first across every
+    // page, not only within the visible page slice.
+    ASSET_STATE.filtered.sort(tokens.length > 1
+      ? (a, b) => ((scores.get(b) || 0) - (scores.get(a) || 0)) || byOrder(a, b)
+      : byOrder);
     ASSET_STATE.pager?.setTotal(ASSET_STATE.filtered.length);
     $("#asset-shown").textContent = ASSET_STATE.filtered.length.toLocaleString();
     $("#asset-total").textContent = ASSET_STATE.entries.length.toLocaleString();
@@ -1604,12 +1681,8 @@
   }
 
   function rebuildFlatAssetSearch({ resetScroll = true } = {}) {
-    const scores = ASSET_STATE.searchScores || new Map();
-    const filteredItems = ASSET_STATE.pager ? ASSET_STATE.pager.slice(ASSET_STATE.filtered) : ASSET_STATE.filtered;
-    const items = [...filteredItems].sort((a, b) => {
-      const delta = (scores.get(b) || 0) - (scores.get(a) || 0);
-      return delta || window.WebUI.sorting.comparator("asset-sort", (left, right) => compareAssets(left, right, ASSET_STATE.filters.sort))(a, b);
-    });
+    // applyAssetFilters already ordered the matches by score, then sort order.
+    const items = ASSET_STATE.pager ? ASSET_STATE.pager.slice(ASSET_STATE.filtered) : ASSET_STATE.filtered;
 
     const rows = [];
     let offset = 0;
@@ -1899,12 +1972,14 @@
     renderRelated(entry);
     renderVariants(entry);
     renderRelations(entry);
+    // The change record sits in the inspector beside the facts it describes;
+    // the title badge covers this file, so only other linked files are marked.
     const detail = $("#asset-detail");
-    detail.querySelectorAll(":scope > .version-update-details").forEach((node) => node.remove());
-    detail.insertAdjacentHTML("beforeend", window.WebUI.updateBadges.fileDetails(activeVariant || entry));
-    window.WebUI.updateBadges.decorateFiles(detail);
+    detail.querySelectorAll(".version-update-files").forEach((node) => node.remove());
+    $("#asset-inspector-label").insertAdjacentHTML("afterend", window.WebUI.updateBadges.fileDetails(activeVariant || entry));
     ASSET_STATE.detailToken += 1;
     resetAssetPreviewSurface();
+    window.WebUI.updateBadges.decorateFiles(detail, { exclude: activeVariant || entry });
     syncPreviewBackgroundControls(entry);
 
     if (entry.kind === "image") {
@@ -2439,16 +2514,26 @@
     note.textContent = entry?.rel ? assetUiText("rawLinkAvailable") : "";
   }
 
+  const MODEL_CACHE_LIMIT = 8;
+  const VIEWER_DEFAULTS = { rotationX: -0.35, rotationY: 0.75, zoom: 1, panX: 0, panY: 0 };
+  const VIEWER_FOV_TAN = Math.tan((35 * Math.PI) / 360);
+  const VIEWER_DISTANCE = 4.2;
+  const CANVAS_TRIANGLE_LIMIT = 60000;
+
+  function rememberCached(cache, key, value) {
+    cache.delete(key);
+    cache.set(key, value);
+    while (cache.size > MODEL_CACHE_LIMIT) cache.delete(cache.keys().next().value);
+    return value;
+  }
+
   async function loadObjModel(rel) {
-    let model = ASSET_STATE.modelCache.get(rel);
-    if (model) return model;
+    const cached = ASSET_STATE.modelCache.get(rel);
+    if (cached) return rememberCached(ASSET_STATE.modelCache, rel, cached);
 
     const res = await fetch(assetHref(rel));
     if (!res.ok) throw new Error(`OBJ HTTP ${res.status}`);
-    const text = await res.text();
-    model = parseObj(text);
-    ASSET_STATE.modelCache.set(rel, model);
-    return model;
+    return rememberCached(ASSET_STATE.modelCache, rel, parseObj(await res.text()));
   }
 
   function resolveReviewModelFile(activeVariant) {
@@ -2483,23 +2568,17 @@
     wrap.replaceChildren(fragment);
   }
 
-  function renderObjModelStats(model, activeVariant, reviewVariant) {
-    const stats = [
-      [assetUiText("selectedLod"), activeVariant && activeVariant.lod !== null ? `LOD ${activeVariant.lod}` : activeVariant?.name || assetUiText("none")],
-      [assetUiText("sampledPoints"), model.points.length.toLocaleString()],
+  function meshModelStats(model) {
+    return [
       [assetUiText("vertices"), model.vertexCount.toLocaleString()],
       [assetUiText("faces"), model.faceCount.toLocaleString()],
+      [assetUiText("triangles"), model.triangleCount.toLocaleString()],
       [assetUiText("objectsGroups"), model.objectCount.toLocaleString()],
     ];
-    if (reviewVariant && reviewVariant.rel !== activeVariant?.rel) {
-      stats.splice(1, 0, [assetUiText("factPreviewProxy"), reviewVariant.rel]);
-    }
-    renderModelStatGrid(stats);
   }
 
-  function renderFbxSummaryStats(summary, activeVariant) {
+  function fbxSummaryStats(summary) {
     const stats = [
-      [assetUiText("factSelectedRawFile"), activeVariant?.rel || assetUiText("none")],
       [assetUiText("fbxFormat"), summary.format || assetUiText("none")],
       [assetUiText("fbxVersion"), summary.version ? String(summary.version) : assetUiText("none")],
       [assetUiText("fbxNodes"), Number(summary.nodeCount || 0).toLocaleString()],
@@ -2509,13 +2588,34 @@
       [assetUiText("fbxTextures"), Number(summary.counts?.Texture || 0).toLocaleString()],
       [assetUiText("fbxAnimations"), Number(summary.counts?.AnimationStack || 0).toLocaleString()],
     ];
-    if (activeVariant?.lod !== null) {
-      stats.splice(1, 0, [assetUiText("factLod"), String(activeVariant.lod)]);
-    }
     if (summary.sampleNames && summary.sampleNames.length) {
       stats.push([assetUiText("fbxSampleNames"), summary.sampleNames.join(", ")]);
     }
+    return stats;
+  }
+
+  function renderModelStats(activeVariant, { model = null, reviewVariant = null, summary = null } = {}) {
+    const stats = [];
+    if (activeVariant?.ext === "fbx") {
+      stats.push([assetUiText("factSelectedRawFile"), activeVariant.rel]);
+      if (activeVariant.lod !== null) stats.push([assetUiText("factLod"), String(activeVariant.lod)]);
+    } else {
+      stats.push([
+        assetUiText("selectedLod"),
+        activeVariant && activeVariant.lod !== null ? `LOD ${activeVariant.lod}` : activeVariant?.name || assetUiText("none"),
+      ]);
+    }
+    if (reviewVariant && reviewVariant.rel !== activeVariant?.rel) {
+      stats.push([assetUiText("factPreviewProxy"), reviewVariant.rel]);
+    }
+    if (model) stats.push(...meshModelStats(model));
+    if (summary) stats.push(...fbxSummaryStats(summary));
     renderModelStatGrid(stats);
+  }
+
+  function showViewerModel(model) {
+    Object.assign(ASSET_STATE.viewer, VIEWER_DEFAULTS, { model });
+    queueModelRender();
   }
 
   async function renderModelPreview(entry) {
@@ -2538,56 +2638,69 @@
     initModelViewer(canvas);
 
     const token = ++ASSET_STATE.detailToken;
+    const current = () => token === ASSET_STATE.detailToken;
     try {
       if (!activeVariant) throw new Error(assetUiText("noModelFile"));
       const reviewVariant = resolveReviewModelFile(activeVariant);
 
+      // An FBX is drawn from its own geometry first; the paired OBJ proxy
+      // only stands in when the FBX carries no readable mesh.
+      let fbx = null;
+      let fbxError = null;
+      if (activeVariant.ext === "fbx") {
+        note.textContent = assetUiText("loadingFbxSummary");
+        try {
+          fbx = await loadFbxAsset(activeVariant.rel);
+        } catch (error) {
+          fbxError = error;
+        }
+        if (!current()) return;
+        if (fbx?.model && fbx.model.triangleCount) {
+          canvas.hidden = false;
+          renderModelStats(activeVariant, { model: fbx.model, summary: fbx.summary });
+          modelWrap.hidden = false;
+          note.textContent = assetUiText("previewingModel", { name: activeVariant.name });
+          showViewerModel(fbx.model);
+          return;
+        }
+      }
+
       if (reviewVariant && reviewVariant.ext === "obj") {
         try {
           canvas.hidden = false;
-          placeholder.hidden = true;
           note.textContent = assetUiText("loadingObjPreview");
-
           const model = await loadObjModel(reviewVariant.rel);
-          if (token !== ASSET_STATE.detailToken) return;
+          if (!current()) return;
 
-          ASSET_STATE.viewer.model = model;
-          ASSET_STATE.viewer.rotationX = -0.35;
-          ASSET_STATE.viewer.rotationY = 0.75;
-          ASSET_STATE.viewer.zoom = 1;
-          renderObjModelStats(model, activeVariant, reviewVariant);
+          renderModelStats(activeVariant, { model, reviewVariant, summary: fbx?.summary || null });
           modelWrap.hidden = false;
           note.textContent = reviewVariant.rel === activeVariant.rel
             ? assetUiText("previewingModel", { name: activeVariant.name })
             : assetUiText("previewingModelViaObj", { name: activeVariant.name });
-          queueModelRender();
+          showViewerModel(model);
           return;
         } catch (error) {
           if (activeVariant.ext !== "fbx") throw error;
+          if (!current()) return;
           ASSET_STATE.viewer.model = null;
           canvas.hidden = true;
-          placeholder.hidden = true;
         }
       }
 
-      if (activeVariant.ext === "fbx") {
+      if (fbx) {
         placeholder.hidden = false;
-        placeholder.textContent = assetUiText("previewPlaceholder");
-        note.textContent = assetUiText("loadingFbxSummary");
-
-        const summary = await loadFbxSummary(activeVariant.rel);
-        if (token !== ASSET_STATE.detailToken) return;
-
         placeholder.textContent = assetUiText("fbxSummaryPlaceholder");
-        renderFbxSummaryStats(summary, activeVariant);
+        renderModelStats(activeVariant, { summary: fbx.summary });
         modelWrap.hidden = false;
-        note.textContent = assetUiText("fbxSummaryLoaded");
+        note.textContent = fbx.geometryError
+          ? `${assetUiText("fbxSummaryLoaded")} (${fbx.geometryError})`
+          : assetUiText("fbxSummaryLoaded");
         return;
       }
 
-      throw new Error(assetUiText("objPreviewUnavailable"));
+      throw fbxError || new Error(assetUiText("objPreviewUnavailable"));
     } catch (error) {
-      if (token !== ASSET_STATE.detailToken) return;
+      if (!current()) return;
       canvas.hidden = true;
       placeholder.hidden = false;
       placeholder.textContent = activeVariant?.ext === "fbx"
@@ -2600,341 +2713,604 @@
   }
 
   function initModelViewer(canvas) {
-    if (ASSET_STATE.viewer.bound) return;
-    ASSET_STATE.viewer.canvas = canvas;
-    ASSET_STATE.viewer.ctx = canvas.getContext("2d");
-    ASSET_STATE.viewer.bound = true;
+    const viewer = ASSET_STATE.viewer;
+    if (viewer.bound) return;
+    viewer.canvas = canvas;
+    viewer.bound = true;
+    viewer.gl = createModelGl(canvas);
+    if (!viewer.gl) viewer.ctx = canvas.getContext("2d");
 
+    canvas.addEventListener("webglcontextlost", (ev) => {
+      ev.preventDefault();
+      if (viewer.gl) viewer.gl.lost = true;
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      viewer.gl = createModelGl(canvas);
+      queueModelRender();
+    });
+
+    canvas.addEventListener("contextmenu", (ev) => ev.preventDefault());
     canvas.addEventListener("pointerdown", (ev) => {
-      ASSET_STATE.viewer.dragging = true;
-      ASSET_STATE.viewer.lastX = ev.clientX;
-      ASSET_STATE.viewer.lastY = ev.clientY;
+      if (!viewer.model) return;
+      viewer.dragging = true;
+      viewer.dragMode = ev.button === 2 || ev.button === 1 || ev.shiftKey ? "pan" : "rotate";
+      viewer.lastX = ev.clientX;
+      viewer.lastY = ev.clientY;
       canvas.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
     });
 
     canvas.addEventListener("pointermove", (ev) => {
-      if (!ASSET_STATE.viewer.dragging || !ASSET_STATE.viewer.model) return;
-      const dx = ev.clientX - ASSET_STATE.viewer.lastX;
-      const dy = ev.clientY - ASSET_STATE.viewer.lastY;
-      ASSET_STATE.viewer.lastX = ev.clientX;
-      ASSET_STATE.viewer.lastY = ev.clientY;
-      ASSET_STATE.viewer.rotationY += dx * 0.01;
-      ASSET_STATE.viewer.rotationX += dy * 0.01;
+      if (!viewer.dragging || !viewer.model) return;
+      const dx = ev.clientX - viewer.lastX;
+      const dy = ev.clientY - viewer.lastY;
+      viewer.lastX = ev.clientX;
+      viewer.lastY = ev.clientY;
+      if (viewer.dragMode === "pan") {
+        // One CSS pixel moves the model by the same distance on screen.
+        const worldPerPixel = (2 * VIEWER_FOV_TAN * VIEWER_DISTANCE / viewer.zoom) / Math.max(1, canvas.clientHeight);
+        viewer.panX += dx * worldPerPixel;
+        viewer.panY -= dy * worldPerPixel;
+      } else {
+        viewer.rotationY += dx * 0.01;
+        viewer.rotationX = clamp(viewer.rotationX + dy * 0.01, -Math.PI / 2, Math.PI / 2);
+      }
       queueModelRender();
     });
 
     const endDrag = () => {
-      ASSET_STATE.viewer.dragging = false;
+      viewer.dragging = false;
+      viewer.dragMode = "";
     };
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
-    canvas.addEventListener("pointerleave", endDrag);
+
+    canvas.addEventListener("dblclick", () => {
+      if (!viewer.model) return;
+      Object.assign(viewer, VIEWER_DEFAULTS);
+      queueModelRender();
+    });
 
     canvas.addEventListener("wheel", (ev) => {
-      if (!ASSET_STATE.viewer.model) return;
+      if (!viewer.model) return;
       ev.preventDefault();
-      const nextZoom = ASSET_STATE.viewer.zoom * (ev.deltaY > 0 ? 0.92 : 1.08);
-      ASSET_STATE.viewer.zoom = clamp(nextZoom, 0.35, 4.5);
+      viewer.zoom = clamp(viewer.zoom * Math.exp(-ev.deltaY * 0.0015), 0.2, 12);
       queueModelRender();
     }, { passive: false });
+
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver(() => queueModelRender()).observe(canvas);
+    }
   }
 
   function queueModelRender() {
+    const viewer = ASSET_STATE.viewer;
     if (ASSET_STATE.activeView !== "assets") return;
-    if (!ASSET_STATE.viewer.model || !ASSET_STATE.viewer.canvas || ASSET_STATE.viewer.renderQueued) return;
-    ASSET_STATE.viewer.renderQueued = true;
+    if (!viewer.model || !viewer.canvas || viewer.renderQueued) return;
+    viewer.renderQueued = true;
     requestAnimationFrame(() => {
-      ASSET_STATE.viewer.renderQueued = false;
+      viewer.renderQueued = false;
       renderModelCanvas();
     });
   }
 
-  function renderModelCanvas() {
-    const { canvas, ctx, model } = ASSET_STATE.viewer;
-    if (!canvas || !ctx || !model || canvas.hidden) return;
-
+  function resizeModelCanvas(canvas) {
     const width = Math.max(1, canvas.clientWidth);
     const height = Math.max(1, canvas.clientHeight);
     const dpr = window.devicePixelRatio || 1;
     const pixelWidth = Math.max(1, Math.round(width * dpr));
     const pixelHeight = Math.max(1, Math.round(height * dpr));
-
     if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
       canvas.width = pixelWidth;
       canvas.height = pixelHeight;
     }
+    return { width, height, dpr };
+  }
 
+  // Orbit rotation R = Rx * Ry, column-major: columns are the model X, Y, Z axes in view space.
+  function viewerRotation() {
+    const viewer = ASSET_STATE.viewer;
+    const cx = Math.cos(viewer.rotationX);
+    const sx = Math.sin(viewer.rotationX);
+    const cy = Math.cos(viewer.rotationY);
+    const sy = Math.sin(viewer.rotationY);
+    return [
+      cy, sx * sy, -cx * sy,
+      0, cx, sx,
+      sy, -sx * cy, cx * cy,
+    ];
+  }
+
+  // Column-major model-view matrix: pan * orbit * fit-to-unit-cube.
+  function viewerModelViewMatrix(model) {
+    const viewer = ASSET_STATE.viewer;
+    const r = viewerRotation();
+    const s = model.scale;
+    const [mx, my, mz] = model.center;
+    const m = new Float32Array(16);
+    for (let col = 0; col < 3; col += 1) {
+      m[col * 4] = r[col * 3] * s;
+      m[col * 4 + 1] = r[col * 3 + 1] * s;
+      m[col * 4 + 2] = r[col * 3 + 2] * s;
+    }
+    for (let row = 0; row < 3; row += 1) {
+      m[12 + row] = -(m[row] * mx + m[4 + row] * my + m[8 + row] * mz);
+    }
+    m[12] += viewer.panX;
+    m[13] += viewer.panY;
+    m[14] -= VIEWER_DISTANCE / viewer.zoom;
+    m[15] = 1;
+    return m;
+  }
+
+  function viewerProjectionMatrix(aspect, distance) {
+    const near = Math.max(0.01, distance - 4);
+    const far = distance + 4;
+    const f = 1 / VIEWER_FOV_TAN;
+    const p = new Float32Array(16);
+    p[0] = f / aspect;
+    p[5] = f;
+    p[10] = (far + near) / (near - far);
+    p[11] = -1;
+    p[14] = (2 * far * near) / (near - far);
+    return p;
+  }
+
+  function renderModelCanvas() {
+    const { canvas, gl, model } = ASSET_STATE.viewer;
+    if (!canvas || !model || canvas.hidden) return;
+    const size = resizeModelCanvas(canvas);
+    renderModelAxes(size.dpr);
+    if (gl) {
+      if (!gl.lost) renderModelGl(gl, model, size);
+      return;
+    }
+    renderModelCanvas2d(model, size);
+  }
+
+  const MODEL_AXES = [
+    { label: "X", color: "#e5484d" },
+    { label: "Y", color: "#30a46c" },
+    { label: "Z", color: "#3e7bfa" },
+  ];
+
+  // Corner gizmo: the model's file axes (as stored in the OBJ/FBX) under the current orbit.
+  function renderModelAxes(dpr = window.devicePixelRatio || 1) {
+    const canvas = $("#asset-model-axes");
+    if (!canvas) return;
+    const cssSize = canvas.clientWidth || 88;
+    const pixels = Math.round(cssSize * dpr);
+    if (canvas.width !== pixels || canvas.height !== pixels) {
+      canvas.width = pixels;
+      canvas.height = pixels;
+    }
+    const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    drawModelBackdrop(ctx, width, height);
-
-    const projected = [];
-    const rx = ASSET_STATE.viewer.rotationX;
-    const ry = ASSET_STATE.viewer.rotationY;
-    const cosX = Math.cos(rx);
-    const sinX = Math.sin(rx);
-    const cosY = Math.cos(ry);
-    const sinY = Math.sin(ry);
-    const cameraZ = 3.4;
-    const scale = model.scale * ASSET_STATE.viewer.zoom;
-
-    const sourceVertices = model.vertices.length ? model.vertices : model.points;
-    for (const point of sourceVertices) {
-      let x = (point[0] - model.center[0]) * scale;
-      let y = (point[1] - model.center[1]) * scale;
-      let z = (point[2] - model.center[2]) * scale;
-
-      const xz = x * cosY - z * sinY;
-      const zz = x * sinY + z * cosY;
-      x = xz;
-      z = zz;
-
-      const yz = y * cosX - z * sinX;
-      z = y * sinX + z * cosX;
-      y = yz;
-
-      const perspective = cameraZ / Math.max(0.35, cameraZ - z);
-      projected.push({
-        x,
-        y,
-        z,
-        screenX: width * 0.5 + x * perspective * width * 0.28,
-        screenY: height * 0.5 - y * perspective * width * 0.28,
-        depth: cameraZ - z,
-        perspective,
-        radius: Math.max(0.7, perspective * 1.7),
-      });
+    ctx.clearRect(0, 0, cssSize, cssSize);
+    const r = viewerRotation();
+    const half = cssSize / 2;
+    const length = half - 14;
+    const ink = previewBackgroundLuminance() > 0.55 ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
+    const axes = [];
+    for (let i = 0; i < 3; i += 1) {
+      const [x, y, z] = [r[i * 3], r[i * 3 + 1], r[i * 3 + 2]];
+      axes.push({ ...MODEL_AXES[i], x, y, z, sign: 1 });
+      axes.push({ ...MODEL_AXES[i], x: -x, y: -y, z: -z, sign: -1 });
     }
-
-    if (model.triangles.length && projected.length === model.vertices.length) {
-      const lightDir = [0.35, 0.55, 1];
-      const lightLen = Math.hypot(lightDir[0], lightDir[1], lightDir[2]) || 1;
-      const faces = [];
-
-      for (const triangle of model.triangles) {
-        const a = projected[triangle[0]];
-        const b = projected[triangle[1]];
-        const c = projected[triangle[2]];
-        if (!a || !b || !c) continue;
-        if (a.depth <= 0.08 || b.depth <= 0.08 || c.depth <= 0.08) continue;
-
-        const ux = b.x - a.x;
-        const uy = b.y - a.y;
-        const uz = b.z - a.z;
-        const vx = c.x - a.x;
-        const vy = c.y - a.y;
-        const vz = c.z - a.z;
-        const nx = uy * vz - uz * vy;
-        const ny = uz * vx - ux * vz;
-        const nz = ux * vy - uy * vx;
-        const normalLen = Math.hypot(nx, ny, nz);
-        if (normalLen <= 1e-6) continue;
-
-        const screenArea = Math.abs(
-          (b.screenX - a.screenX) * (c.screenY - a.screenY) -
-          (b.screenY - a.screenY) * (c.screenX - a.screenX)
-        );
-        if (screenArea <= 0.08) continue;
-
-        const light =
-          Math.abs((nx * lightDir[0] + ny * lightDir[1] + nz * lightDir[2]) / (normalLen * lightLen));
-        const facing = clamp((nz / normalLen + 1) * 0.5, 0, 1);
-        const depth = clamp(((a.z + b.z + c.z) / 3 + 1.6) / 3.2, 0, 1);
-        const intensity = clamp(0.22 + light * 0.42 + facing * 0.24 + depth * 0.12, 0.18, 0.95);
-
-        faces.push({
-          points: [a, b, c],
-          z: (a.z + b.z + c.z) / 3,
-          fill: `rgba(${Math.round(22 + intensity * 52)}, ${Math.round(84 + intensity * 78)}, ${Math.round(148 + intensity * 92)}, 0.9)`,
-          stroke: `rgba(${Math.round(110 + intensity * 60)}, ${Math.round(170 + intensity * 50)}, 255, 0.3)`,
-        });
-      }
-
-      if (faces.length) {
-        const drawEdges = faces.length <= 12000;
-        faces.sort((a, b) => a.z - b.z);
-        for (const face of faces) {
-          ctx.beginPath();
-          ctx.moveTo(face.points[0].screenX, face.points[0].screenY);
-          ctx.lineTo(face.points[1].screenX, face.points[1].screenY);
-          ctx.lineTo(face.points[2].screenX, face.points[2].screenY);
-          ctx.closePath();
-          ctx.fillStyle = face.fill;
-          ctx.fill();
-          if (drawEdges) {
-            ctx.strokeStyle = face.stroke;
-            ctx.lineWidth = 1;
-            ctx.stroke();
-          }
-        }
-        return;
-      }
-    }
-
-    projected.sort((a, b) => a.z - b.z);
-    for (const point of projected) {
-      const depth = clamp((point.z + 1.5) / 3.0, 0, 1);
-      ctx.fillStyle = `rgba(108, 182, 255, ${0.16 + depth * 0.7})`;
+    // Painter's order: view-space +z points at the viewer.
+    axes.sort((a, b) => a.z - b.z);
+    ctx.lineCap = "round";
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.arc(half, half, 2, 0, Math.PI * 2);
+    ctx.fill();
+    for (const axis of axes) {
+      const ex = half + axis.x * length;
+      const ey = half - axis.y * length;
+      ctx.globalAlpha = axis.sign > 0 ? 0.65 + 0.35 * Math.max(0, axis.z) : 0.35;
+      ctx.strokeStyle = axis.color;
+      ctx.lineWidth = axis.sign > 0 ? 2.5 : 1.5;
+      if (axis.sign < 0) ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.arc(point.screenX, point.screenY, point.radius, 0, Math.PI * 2);
+      ctx.moveTo(half, half);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (axis.sign < 0) continue;
+      ctx.fillStyle = axis.color;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.fillText(axis.label, ex, ey + 0.5);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const MODEL_VERTEX_SHADER = `
+    attribute vec3 aPosition;
+    attribute vec3 aNormal;
+    uniform mat4 uModelView;
+    uniform mat4 uProjection;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    void main() {
+      vec4 viewPos = uModelView * vec4(aPosition, 1.0);
+      vNormal = mat3(uModelView) * aNormal;
+      vView = viewPos.xyz;
+      gl_Position = uProjection * viewPos;
+    }
+  `;
+
+  const MODEL_FRAGMENT_SHADER = `
+    precision mediump float;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    uniform vec3 uColor;
+    void main() {
+      vec3 n = normalize(vNormal);
+      if (!gl_FrontFacing) n = -n;
+      vec3 v = normalize(-vView);
+      float key = max(dot(n, normalize(vec3(0.45, 0.6, 0.65))), 0.0);
+      float fill = max(dot(n, normalize(vec3(-0.6, -0.15, 0.4))), 0.0);
+      float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+      float spec = pow(max(dot(n, normalize(normalize(vec3(0.45, 0.6, 0.65)) + v)), 0.0), 32.0);
+      vec3 color = uColor * (0.24 + key * 0.62 + fill * 0.22) + vec3(0.32) * rim + vec3(0.18) * spec;
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `;
+
+  function createModelGl(canvas) {
+    const options = { antialias: true, alpha: false, preserveDrawingBuffer: false };
+    let gl = canvas.getContext("webgl2", options);
+    const isWebGl2 = Boolean(gl);
+    if (!gl) gl = canvas.getContext("webgl", options) || canvas.getContext("experimental-webgl", options);
+    if (!gl) return null;
+
+    const compile = (type, source) => {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(shader) || "shader compile failed");
+      }
+      return shader;
+    };
+    try {
+      const program = gl.createProgram();
+      gl.attachShader(program, compile(gl.VERTEX_SHADER, MODEL_VERTEX_SHADER));
+      gl.attachShader(program, compile(gl.FRAGMENT_SHADER, MODEL_FRAGMENT_SHADER));
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program) || "program link failed");
+      }
+      return {
+        context: gl,
+        program,
+        uint32Indices: isWebGl2 || Boolean(gl.getExtension("OES_element_index_uint")),
+        aPosition: gl.getAttribLocation(program, "aPosition"),
+        aNormal: gl.getAttribLocation(program, "aNormal"),
+        uModelView: gl.getUniformLocation(program, "uModelView"),
+        uProjection: gl.getUniformLocation(program, "uProjection"),
+        uColor: gl.getUniformLocation(program, "uColor"),
+        uploaded: null,
+        buffers: null,
+        lost: false,
+      };
+    } catch (error) {
+      console.warn("[assets] WebGL model viewer unavailable:", error);
+      return null;
+    }
+  }
+
+  function uploadModelGl(state, model) {
+    const gl = state.context;
+    if (state.buffers) {
+      gl.deleteBuffer(state.buffers.position);
+      gl.deleteBuffer(state.buffers.normal);
+      if (state.buffers.index) gl.deleteBuffer(state.buffers.index);
+    }
+
+    let positions = model.positions;
+    let normals = model.normals;
+    let indices = model.indices;
+    // Without 32-bit index support, large meshes are drawn unindexed.
+    const needsUnindexed = !state.uint32Indices && model.vertexCount > 65535;
+    if (needsUnindexed) {
+      positions = new Float32Array(indices.length * 3);
+      normals = new Float32Array(indices.length * 3);
+      for (let i = 0; i < indices.length; i += 1) {
+        const src = indices[i] * 3;
+        positions.set(model.positions.subarray(src, src + 3), i * 3);
+        normals.set(model.normals.subarray(src, src + 3), i * 3);
+      }
+      indices = null;
+    } else if (!state.uint32Indices) {
+      indices = Uint16Array.from(indices);
+    }
+
+    const position = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, position);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+    const normal = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, normal);
+    gl.bufferData(gl.ARRAY_BUFFER, normals, gl.STATIC_DRAW);
+    let index = null;
+    if (indices) {
+      index = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+    }
+    state.buffers = {
+      position,
+      normal,
+      index,
+      indexType: indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT,
+      count: indices ? indices.length : positions.length / 3,
+    };
+    state.uploaded = model;
+  }
+
+  function renderModelGl(state, model, { width, height }) {
+    const gl = state.context;
+    if (state.uploaded !== model) uploadModelGl(state, model);
+    const buffers = state.buffers;
+    const background = previewBackgroundRgb();
+
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.clearColor(background.r / 255, background.g / 255, background.b / 255, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+
+    gl.useProgram(state.program);
+    gl.uniformMatrix4fv(state.uModelView, false, viewerModelViewMatrix(model));
+    gl.uniformMatrix4fv(state.uProjection, false, viewerProjectionMatrix(width / height, VIEWER_DISTANCE / ASSET_STATE.viewer.zoom));
+    const color = ASSET_STATE.modelColor;
+    gl.uniform3f(state.uColor, ...[1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255));
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+    gl.enableVertexAttribArray(state.aPosition);
+    gl.vertexAttribPointer(state.aPosition, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
+    gl.enableVertexAttribArray(state.aNormal);
+    gl.vertexAttribPointer(state.aNormal, 3, gl.FLOAT, false, 0, 0);
+
+    if (buffers.index) {
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
+      gl.drawElements(gl.TRIANGLES, buffers.count, buffers.indexType, 0);
+    } else {
+      gl.drawArrays(gl.TRIANGLES, 0, buffers.count);
+    }
+  }
+
+  // Software fallback for browsers without WebGL: painter-sorted triangles,
+  // sampled down to CANVAS_TRIANGLE_LIMIT.
+  function renderModelCanvas2d(model, { width, height, dpr }) {
+    const { ctx } = ASSET_STATE.viewer;
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = normalizePreviewBackground(ASSET_STATE.previewBackground);
+    ctx.fillRect(0, 0, width, height);
+
+    const mv = viewerModelViewMatrix(model);
+    const focal = (height * 0.5) / VIEWER_FOV_TAN;
+    const vertexCount = model.vertexCount;
+    const screen = new Float32Array(vertexCount * 3);
+    const pos = model.positions;
+    for (let i = 0; i < vertexCount; i += 1) {
+      const x = pos[i * 3];
+      const y = pos[i * 3 + 1];
+      const z = pos[i * 3 + 2];
+      const vx = mv[0] * x + mv[4] * y + mv[8] * z + mv[12];
+      const vy = mv[1] * x + mv[5] * y + mv[9] * z + mv[13];
+      const vz = mv[2] * x + mv[6] * y + mv[10] * z + mv[14];
+      const depth = Math.max(0.05, -vz);
+      screen[i * 3] = width * 0.5 + (vx / depth) * focal;
+      screen[i * 3 + 1] = height * 0.5 - (vy / depth) * focal;
+      screen[i * 3 + 2] = vz;
+    }
+
+    const indices = model.indices;
+    const triangleCount = indices.length / 3;
+    const stride = Math.max(1, Math.ceil(triangleCount / CANVAS_TRIANGLE_LIMIT));
+    const order = [];
+    for (let t = 0; t < triangleCount; t += stride) order.push(t);
+    const faceDepth = new Float32Array(triangleCount);
+    for (const t of order) {
+      faceDepth[t] = screen[indices[t * 3] * 3 + 2] + screen[indices[t * 3 + 1] * 3 + 2] + screen[indices[t * 3 + 2] * 3 + 2];
+    }
+    order.sort((a, b) => faceDepth[a] - faceDepth[b]);
+
+    const baseColor = [1, 3, 5].map((offset) => Number.parseInt(ASSET_STATE.modelColor.slice(offset, offset + 2), 16));
+    const nrm = model.normals;
+    for (const t of order) {
+      const a = indices[t * 3];
+      const b = indices[t * 3 + 1];
+      const c = indices[t * 3 + 2];
+      // View-space z of the averaged vertex normal approximates facing.
+      const nx = nrm[a * 3] + nrm[b * 3] + nrm[c * 3];
+      const ny = nrm[a * 3 + 1] + nrm[b * 3 + 1] + nrm[c * 3 + 1];
+      const nz = nrm[a * 3 + 2] + nrm[b * 3 + 2] + nrm[c * 3 + 2];
+      const vz = mv[2] * nx + mv[6] * ny + mv[10] * nz;
+      const vy = mv[1] * nx + mv[5] * ny + mv[9] * nz;
+      const len = Math.hypot(nx, ny, nz) * model.scale || 1;
+      const light = clamp(0.3 + Math.abs(vz / len) * 0.5 + (vy / len) * 0.15, 0.15, 0.95);
+      ctx.beginPath();
+      ctx.moveTo(screen[a * 3], screen[a * 3 + 1]);
+      ctx.lineTo(screen[b * 3], screen[b * 3 + 1]);
+      ctx.lineTo(screen[c * 3], screen[c * 3 + 1]);
+      ctx.closePath();
+      ctx.fillStyle = `rgb(${Math.round(baseColor[0] * light + 20)}, ${Math.round(baseColor[1] * light + 30)}, ${Math.round(baseColor[2] * light + 30)})`;
       ctx.fill();
     }
   }
 
-  function drawModelBackdrop(ctx, width, height) {
-    const background = normalizePreviewBackground(ASSET_STATE.previewBackground);
-    const luminance = previewBackgroundLuminance();
-    const gridRgb = luminance > 0.58 ? "20, 32, 42" : "108, 182, 255";
-    const axisRgb = luminance > 0.58 ? "188, 94, 52" : "240, 163, 107";
-
-    ctx.fillStyle = background;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.strokeStyle = `rgba(${gridRgb}, 0.12)`;
-    ctx.lineWidth = 1;
-    const step = Math.max(42, Math.round(width / 10));
-    for (let x = step; x < width; x += step) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-    for (let y = step; y < height; y += step) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
+  // Shared mesh shape for OBJ and FBX: flat typed arrays, area-weighted
+  // vertex normals, and a fit-to-unit-cube center/scale for the camera.
+  function finalizeMesh(positions, indices, faceCount, objectCount) {
+    const vertexCount = positions.length / 3;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i];
+      const y = positions[i + 1];
+      const z = positions[i + 2];
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
     }
 
-    ctx.strokeStyle = `rgba(${axisRgb}, 0.28)`;
-    ctx.beginPath();
-    ctx.moveTo(width * 0.5, 0);
-    ctx.lineTo(width * 0.5, height);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, height * 0.5);
-    ctx.lineTo(width, height * 0.5);
-    ctx.stroke();
-  }
-  function parseObj(text) {
-    const vertices = [];
-    const triangles = [];
-    let faceCount = 0;
-    let objectCount = 0;
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let minZ = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    let maxZ = Number.NEGATIVE_INFINITY;
-
-    const lines = text.split(/\r?\n/);
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line || line.startsWith("#")) continue;
-      if (line.startsWith("v ")) {
-        const parts = line.split(/\s+/);
-        if (parts.length < 4) continue;
-        const x = Number(parts[1]);
-        const y = Number(parts[2]);
-        const z = Number(parts[3]);
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-        vertices.push([x, y, z]);
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (z < minZ) minZ = z;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        if (z > maxZ) maxZ = z;
-      } else if (line.startsWith("f ")) {
-        faceCount += 1;
-        const parts = line.split(/\s+/).slice(1);
-        const face = [];
-        for (const token of parts) {
-          const indexText = token.split("/")[0];
-          if (!indexText) continue;
-          const rawIndex = Number(indexText);
-          if (!Number.isInteger(rawIndex) || rawIndex === 0) continue;
-          const resolved = rawIndex > 0 ? rawIndex - 1 : vertices.length + rawIndex;
-          if (resolved < 0 || resolved >= vertices.length) continue;
-          face.push(resolved);
-        }
-        if (face.length >= 3) {
-          const triangleLimit = 60000;
-          for (let i = 1; i + 1 < face.length && triangles.length < triangleLimit; i += 1) {
-            const a = face[0];
-            const b = face[i];
-            const c = face[i + 1];
-            if (a === b || b === c || a === c) continue;
-            triangles.push([a, b, c]);
-          }
-        }
-      } else if (line.startsWith("o ") || line.startsWith("g ")) {
-        objectCount += 1;
+    const normals = new Float32Array(positions.length);
+    for (let t = 0; t < indices.length; t += 3) {
+      const a = indices[t] * 3;
+      const b = indices[t + 1] * 3;
+      const c = indices[t + 2] * 3;
+      const ux = positions[b] - positions[a];
+      const uy = positions[b + 1] - positions[a + 1];
+      const uz = positions[b + 2] - positions[a + 2];
+      const vx = positions[c] - positions[a];
+      const vy = positions[c + 1] - positions[a + 1];
+      const vz = positions[c + 2] - positions[a + 2];
+      const nx = uy * vz - uz * vy;
+      const ny = uz * vx - ux * vz;
+      const nz = ux * vy - uy * vx;
+      for (const v of [a, b, c]) {
+        normals[v] += nx;
+        normals[v + 1] += ny;
+        normals[v + 2] += nz;
+      }
+    }
+    for (let i = 0; i < normals.length; i += 3) {
+      const len = Math.hypot(normals[i], normals[i + 1], normals[i + 2]);
+      if (len > 0) {
+        normals[i] /= len;
+        normals[i + 1] /= len;
+        normals[i + 2] /= len;
+      } else {
+        normals[i + 2] = 1;
       }
     }
 
-    if (!vertices.length) {
-      return {
-        points: [],
-        vertices: [],
-        triangles: [],
-        vertexCount: 0,
-        faceCount,
-        objectCount,
-        center: [0, 0, 0],
-        scale: 1,
-      };
-    }
-
-    const pointLimit = 16000;
-    const step = vertices.length > pointLimit ? Math.ceil(vertices.length / pointLimit) : 1;
-    const points = [];
-    for (let index = 0; index < vertices.length; index += step) {
-      points.push(vertices[index]);
-    }
-
-    const spanX = maxX - minX;
-    const spanY = maxY - minY;
-    const spanZ = maxZ - minZ;
-    const maxSpan = Math.max(spanX || 1, spanY || 1, spanZ || 1);
-
+    const hasBounds = vertexCount > 0;
+    const maxSpan = hasBounds ? Math.max(maxX - minX || 1, maxY - minY || 1, maxZ - minZ || 1) : 1;
     return {
-      points,
-      vertices,
-      triangles,
-      vertexCount: vertices.length,
+      positions,
+      normals,
+      indices,
+      vertexCount,
       faceCount,
+      triangleCount: indices.length / 3,
       objectCount,
-      center: [
-        (minX + maxX) * 0.5 || 0,
-        (minY + maxY) * 0.5 || 0,
-        (minZ + maxZ) * 0.5 || 0,
-      ],
+      center: hasBounds ? [(minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5] : [0, 0, 0],
       scale: 2 / maxSpan,
     };
   }
 
-  async function loadFbxSummary(rel) {
-    let summary = ASSET_STATE.fbxSummaryCache.get(rel);
-    if (summary) return summary;
+  function growFloat32(array, length) {
+    if (length <= array.length) return array;
+    const next = new Float32Array(Math.max(length, array.length * 2));
+    next.set(array);
+    return next;
+  }
+
+  function growUint32(array, length) {
+    if (length <= array.length) return array;
+    const next = new Uint32Array(Math.max(length, array.length * 2));
+    next.set(array);
+    return next;
+  }
+
+  function parseObj(text) {
+    let positions = new Float32Array(3 * 4096);
+    let vertexCount = 0;
+    let indices = new Uint32Array(3 * 8192);
+    let indexCount = 0;
+    let faceCount = 0;
+    let objectCount = 0;
+    const face = [];
+
+    let start = 0;
+    const length = text.length;
+    while (start < length) {
+      let end = text.indexOf("\n", start);
+      if (end < 0) end = length;
+      const c0 = text.charCodeAt(start);
+      const c1 = text.charCodeAt(start + 1);
+      // Only "v ", "f ", "o " and "g " lines matter; skip the rest unsplit.
+      if (c1 === 32 || c1 === 9) {
+        if (c0 === 118) {
+          const parts = text.slice(start + 2, end).trim().split(/\s+/);
+          const x = Number(parts[0]);
+          const y = Number(parts[1]);
+          const z = Number(parts[2]);
+          if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+            positions = growFloat32(positions, (vertexCount + 1) * 3);
+            positions[vertexCount * 3] = x;
+            positions[vertexCount * 3 + 1] = y;
+            positions[vertexCount * 3 + 2] = z;
+            vertexCount += 1;
+          }
+        } else if (c0 === 102) {
+          faceCount += 1;
+          face.length = 0;
+          for (const token of text.slice(start + 2, end).trim().split(/\s+/)) {
+            const slash = token.indexOf("/");
+            const rawIndex = parseInt(slash < 0 ? token : token.slice(0, slash), 10);
+            if (!rawIndex) continue;
+            const resolved = rawIndex > 0 ? rawIndex - 1 : vertexCount + rawIndex;
+            if (resolved >= 0 && resolved < vertexCount) face.push(resolved);
+          }
+          for (let i = 1; i + 1 < face.length; i += 1) {
+            const a = face[0];
+            const b = face[i];
+            const c = face[i + 1];
+            if (a === b || b === c || a === c) continue;
+            indices = growUint32(indices, indexCount + 3);
+            indices[indexCount] = a;
+            indices[indexCount + 1] = b;
+            indices[indexCount + 2] = c;
+            indexCount += 3;
+          }
+        } else if (c0 === 111 || c0 === 103) {
+          objectCount += 1;
+        }
+      }
+      start = end + 1;
+    }
+
+    return finalizeMesh(positions.slice(0, vertexCount * 3), indices.slice(0, indexCount), faceCount, objectCount);
+  }
+
+  async function loadFbxAsset(rel) {
+    const cached = ASSET_STATE.fbxSummaryCache.get(rel);
+    if (cached) return rememberCached(ASSET_STATE.fbxSummaryCache, rel, cached);
 
     const res = await fetch(assetHref(rel));
     if (!res.ok) throw new Error(`FBX HTTP ${res.status}`);
-    summary = parseFbxSummary(await res.arrayBuffer());
-    ASSET_STATE.fbxSummaryCache.set(rel, summary);
-    return summary;
-  }
-
-  function parseFbxSummary(buffer) {
+    const buffer = await res.arrayBuffer();
     const bytes = new Uint8Array(buffer);
-    const ascii = new TextDecoder("ascii");
-    const header = bytes.length >= 21 ? ascii.decode(bytes.slice(0, 21)) : "";
+    const header = new TextDecoder("ascii").decode(bytes.subarray(0, Math.min(bytes.length, 21)));
+    let asset;
     if (header.startsWith("Kaydara FBX Binary")) {
-      return parseBinaryFbxSummary(buffer);
+      const tree = parseBinaryFbxTree(buffer);
+      asset = { summary: summarizeFbxTree(tree), model: null, geometryError: "" };
+      try {
+        asset.model = await buildFbxMesh(tree, buffer);
+      } catch (error) {
+        asset.geometryError = String(error?.message || error);
+      }
+    } else {
+      const text = new TextDecoder("utf-8").decode(bytes.subarray(0, Math.min(bytes.length, 512000)));
+      asset = { summary: parseAsciiFbxSummary(text), model: null, geometryError: "" };
     }
-    return parseAsciiFbxSummary(new TextDecoder("utf-8").decode(bytes.slice(0, Math.min(bytes.length, 512000))));
+    return rememberCached(ASSET_STATE.fbxSummaryCache, rel, asset);
   }
 
   function parseAsciiFbxSummary(text) {
@@ -2969,35 +3345,20 @@
     return summary;
   }
 
-  function parseBinaryFbxSummary(buffer) {
+  // Binary FBX node tree. Scalar properties are decoded in place (64-bit
+  // integers as decimal strings, so object ids stay exact); array properties
+  // stay lazy descriptors that decodeFbxArray inflates on demand.
+  function parseBinaryFbxTree(buffer) {
     const bytes = new Uint8Array(buffer);
     const view = new DataView(buffer);
     const decoder = new TextDecoder("utf-8");
     const version = bytes.length >= 27 ? view.getUint32(23, true) : 0;
     const is64 = version >= 7500;
+    const wordSize = is64 ? 8 : 4;
     const nullRecordLen = is64 ? 25 : 13;
-    const summary = {
-      format: "Binary",
-      version,
-      nodeCount: 0,
-      counts: {},
-      sampleNames: [],
-    };
-    const sampleSet = new Set();
+    const tree = { format: "Binary", version, nodes: [], complete: true };
 
-    function addNode(name, propStrings) {
-      if (!name) return;
-      summary.nodeCount += 1;
-      summary.counts[name] = (summary.counts[name] || 0) + 1;
-      if (!["Model", "Geometry", "Material", "Texture", "AnimationStack"].includes(name)) return;
-      for (const value of propStrings) {
-        const cleaned = cleanFbxSampleName(value);
-        if (!cleaned || sampleSet.has(cleaned)) continue;
-        sampleSet.add(cleaned);
-        summary.sampleNames.push(cleaned);
-        if (summary.sampleNames.length >= 6) break;
-      }
-    }
+    const readWord = (offset) => (is64 ? Number(view.getBigUint64(offset, true)) : view.getUint32(offset, true));
 
     function isNullRecord(offset) {
       if (offset + nullRecordLen > bytes.length) return false;
@@ -3007,35 +3368,21 @@
       return true;
     }
 
-    function readLength(offset) {
-      return is64 ? Number(view.getBigUint64(offset, true)) : view.getUint32(offset, true);
-    }
-
     function readProperty(offset) {
-      if (offset >= bytes.length) return { nextOffset: bytes.length, value: "" };
-      const type = String.fromCharCode(view.getUint8(offset));
-      let cursor = offset + 1;
-      let value = "";
-
+      const type = String.fromCharCode(bytes[offset]);
+      const cursor = offset + 1;
       switch (type) {
-        case "Y": cursor += 2; break;
-        case "C": cursor += 1; break;
-        case "I":
-        case "F": cursor += 4; break;
-        case "D":
-        case "L": cursor += 8; break;
-        case "R": {
-          const length = view.getUint32(cursor, true);
-          cursor += 4 + length;
-          break;
-        }
+        case "Y": return [view.getInt16(cursor, true), cursor + 2];
+        case "C": return [bytes[cursor] !== 0, cursor + 1];
+        case "I": return [view.getInt32(cursor, true), cursor + 4];
+        case "F": return [view.getFloat32(cursor, true), cursor + 4];
+        case "D": return [view.getFloat64(cursor, true), cursor + 8];
+        case "L": return [view.getBigInt64(cursor, true).toString(), cursor + 8];
+        case "R": return [null, cursor + 4 + view.getUint32(cursor, true)];
         case "S": {
           const length = view.getUint32(cursor, true);
-          cursor += 4;
-          const end = Math.min(bytes.length, cursor + length);
-          value = decoder.decode(bytes.slice(cursor, end));
-          cursor += length;
-          break;
+          const end = Math.min(bytes.length, cursor + 4 + length);
+          return [decoder.decode(bytes.subarray(cursor + 4, end)), cursor + 4 + length];
         }
         case "b":
         case "c":
@@ -3043,80 +3390,301 @@
         case "f":
         case "i":
         case "l": {
-          const compressedLength = view.getUint32(cursor + 8, true);
-          cursor += 12 + compressedLength;
-          break;
+          const descriptor = {
+            arrayType: type,
+            length: view.getUint32(cursor, true),
+            encoding: view.getUint32(cursor + 4, true),
+            byteLength: view.getUint32(cursor + 8, true),
+            offset: cursor + 12,
+          };
+          return [descriptor, descriptor.offset + descriptor.byteLength];
         }
         default:
           throw new Error(`Unsupported FBX property type: ${type}`);
       }
-
-      return { nextOffset: cursor, value };
     }
 
     function parseNode(offset) {
-      if (isNullRecord(offset)) return { nextOffset: offset + nullRecordLen };
-
-      let cursor = offset;
-      const endOffset = readLength(cursor);
-      cursor += is64 ? 8 : 4;
-      const propertyCount = readLength(cursor);
-      cursor += is64 ? 8 : 4;
-      const propertyListLen = readLength(cursor);
-      cursor += is64 ? 8 : 4;
-      const nameLen = view.getUint8(cursor);
+      const endOffset = readWord(offset);
+      const propertyCount = readWord(offset + wordSize);
+      const propertyListLen = readWord(offset + wordSize * 2);
+      let cursor = offset + wordSize * 3;
+      const nameLen = bytes[cursor];
       cursor += 1;
-
-      if (!endOffset || endOffset <= offset) {
-        return { nextOffset: bytes.length };
+      if (!endOffset || endOffset <= offset || endOffset > bytes.length) {
+        throw new Error(`FBX node at ${offset} has invalid end offset ${endOffset}`);
       }
-
-      const name = decoder.decode(bytes.slice(cursor, Math.min(bytes.length, cursor + nameLen)));
+      const node = {
+        name: decoder.decode(bytes.subarray(cursor, cursor + nameLen)),
+        props: [],
+        children: [],
+      };
       cursor += nameLen;
 
-      const propEnd = Math.min(bytes.length, cursor + propertyListLen);
-      const propStrings = [];
+      const propEnd = cursor + propertyListLen;
       for (let index = 0; index < propertyCount && cursor < propEnd; index += 1) {
-        const prop = readProperty(cursor);
-        cursor = Math.min(prop.nextOffset, propEnd);
-        if (prop.value) propStrings.push(prop.value);
+        const [value, next] = readProperty(cursor);
+        node.props.push(value);
+        cursor = next;
       }
       cursor = propEnd;
 
-      addNode(name, propStrings);
-
-      const finalOffset = Math.min(bytes.length, endOffset);
-      while (cursor + nullRecordLen <= finalOffset) {
+      while (cursor + nullRecordLen <= endOffset) {
         if (isNullRecord(cursor)) {
           cursor += nullRecordLen;
           break;
         }
         const child = parseNode(cursor);
-        if (!child || child.nextOffset <= cursor) break;
+        node.children.push(child.node);
         cursor = child.nextOffset;
       }
-
-      return { nextOffset: Math.max(cursor, finalOffset) };
+      return { node, nextOffset: endOffset };
     }
 
     try {
       let cursor = 27;
-      while (cursor + nullRecordLen <= bytes.length) {
-        if (isNullRecord(cursor)) break;
-        const node = parseNode(cursor);
-        if (!node || node.nextOffset <= cursor) break;
-        cursor = node.nextOffset;
+      while (cursor + nullRecordLen <= bytes.length && !isNullRecord(cursor)) {
+        const { node, nextOffset } = parseNode(cursor);
+        tree.nodes.push(node);
+        cursor = nextOffset;
       }
     } catch (error) {
-      if (!summary.nodeCount) throw error;
+      if (!tree.nodes.length) throw error;
+      tree.complete = false;
+    }
+    return tree;
+  }
+
+  function summarizeFbxTree(tree) {
+    const summary = {
+      format: tree.format,
+      version: tree.version,
+      nodeCount: 0,
+      counts: {},
+      sampleNames: [],
+    };
+    const sampleSet = new Set();
+    const sampleKinds = new Set(["Model", "Geometry", "Material", "Texture", "AnimationStack"]);
+    const stack = [...tree.nodes];
+    while (stack.length) {
+      const node = stack.pop();
+      summary.nodeCount += 1;
+      summary.counts[node.name] = (summary.counts[node.name] || 0) + 1;
+      if (sampleKinds.has(node.name) && summary.sampleNames.length < 6) {
+        for (const value of node.props) {
+          if (typeof value !== "string") continue;
+          const cleaned = cleanFbxSampleName(value);
+          if (!cleaned || /^-?\d+$/.test(cleaned) || sampleSet.has(cleaned)) continue;
+          sampleSet.add(cleaned);
+          summary.sampleNames.push(cleaned);
+          break;
+        }
+      }
+      stack.push(...node.children);
+    }
+    return summary;
+  }
+
+  async function inflateZlib(data) {
+    if (typeof DecompressionStream !== "function") {
+      throw new Error("compressed FBX arrays need DecompressionStream");
+    }
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function decodeFbxArray(buffer, descriptor) {
+    if (!descriptor || typeof descriptor !== "object" || !descriptor.arrayType) return null;
+    const raw = new Uint8Array(buffer, descriptor.offset, descriptor.byteLength);
+    let data;
+    if (descriptor.encoding === 0) data = raw.slice();
+    else if (descriptor.encoding === 1) data = await inflateZlib(raw);
+    else throw new Error(`Unsupported FBX array encoding ${descriptor.encoding}`);
+
+    const out = data.buffer;
+    switch (descriptor.arrayType) {
+      case "d": return new Float64Array(out, 0, descriptor.length);
+      case "f": return new Float32Array(out, 0, descriptor.length);
+      case "i": return new Int32Array(out, 0, descriptor.length);
+      case "l": return Float64Array.from(new BigInt64Array(out, 0, descriptor.length), Number);
+      default: return new Uint8Array(out, 0, descriptor.length);
+    }
+  }
+
+  function fbxChild(node, name) {
+    return node?.children.find((child) => child.name === name) || null;
+  }
+
+  // Properties70 P records: [name, type, label, flags, ...values].
+  function fbxProperties70(node) {
+    const props = new Map();
+    for (const record of fbxChild(node, "Properties70")?.children || []) {
+      if (record.name === "P" && typeof record.props[0] === "string") {
+        props.set(record.props[0], record.props.slice(4));
+      }
+    }
+    return props;
+  }
+
+  function mat4Multiply(a, b) {
+    const out = new Float64Array(16);
+    for (let col = 0; col < 4; col += 1) {
+      for (let row = 0; row < 4; row += 1) {
+        out[col * 4 + row] =
+          a[row] * b[col * 4] + a[4 + row] * b[col * 4 + 1] + a[8 + row] * b[col * 4 + 2] + a[12 + row] * b[col * 4 + 3];
+      }
+    }
+    return out;
+  }
+
+  // T * R * S with FBX's default XYZ Euler order (R = Rz * Ry * Rx).
+  function mat4FromFbxTransform(translation, rotationDeg, scaling) {
+    const [rx, ry, rz] = rotationDeg.map((deg) => (deg * Math.PI) / 180);
+    const cx = Math.cos(rx), sx = Math.sin(rx);
+    const cy = Math.cos(ry), sy = Math.sin(ry);
+    const cz = Math.cos(rz), sz = Math.sin(rz);
+    const r = [
+      cy * cz, cy * sz, -sy,
+      sx * sy * cz - cx * sz, sx * sy * sz + cx * cz, sx * cy,
+      cx * sy * cz + sx * sz, cx * sy * sz - sx * cz, cx * cy,
+    ];
+    const m = new Float64Array(16);
+    for (let col = 0; col < 3; col += 1) {
+      m[col * 4] = r[col * 3] * scaling[col];
+      m[col * 4 + 1] = r[col * 3 + 1] * scaling[col];
+      m[col * 4 + 2] = r[col * 3 + 2] * scaling[col];
+    }
+    m[12] = translation[0];
+    m[13] = translation[1];
+    m[14] = translation[2];
+    m[15] = 1;
+    return m;
+  }
+
+  function fbxVector(props, name, fallback) {
+    const value = props.get(name);
+    if (!value || value.length < 3) return fallback;
+    const vector = value.slice(0, 3).map(Number);
+    return vector.every(Number.isFinite) ? vector : fallback;
+  }
+
+  function fbxModelLocalMatrix(model) {
+    const props = fbxProperties70(model);
+    const preRotation = fbxVector(props, "PreRotation", [0, 0, 0]);
+    const local = mat4Multiply(
+      mat4FromFbxTransform(fbxVector(props, "Lcl Translation", [0, 0, 0]), preRotation, [1, 1, 1]),
+      mat4FromFbxTransform([0, 0, 0], fbxVector(props, "Lcl Rotation", [0, 0, 0]), fbxVector(props, "Lcl Scaling", [1, 1, 1])),
+    );
+    const geometric = mat4FromFbxTransform(
+      fbxVector(props, "GeometricTranslation", [0, 0, 0]),
+      fbxVector(props, "GeometricRotation", [0, 0, 0]),
+      fbxVector(props, "GeometricScaling", [1, 1, 1]),
+    );
+    return { local, geometric };
+  }
+
+  // Bakes every Geometry "Mesh" into one indexed mesh in scene space, placing
+  // it through its Model chain (Connections "OO" child -> parent).
+  async function buildFbxMesh(tree, buffer) {
+    const objects = tree.nodes.find((node) => node.name === "Objects");
+    if (!objects) return null;
+    const connections = tree.nodes.find((node) => node.name === "Connections");
+
+    const models = new Map();
+    const geometries = [];
+    for (const node of objects.children) {
+      if (node.name === "Model") models.set(node.props[0], node);
+      else if (node.name === "Geometry" && node.props[2] === "Mesh") geometries.push(node);
     }
 
-    return summary;
+    const parentsOf = new Map();
+    for (const record of connections?.children || []) {
+      if (record.name !== "C" || record.props[0] !== "OO") continue;
+      const [, child, parent] = record.props;
+      if (!parentsOf.has(child)) parentsOf.set(child, []);
+      parentsOf.get(child).push(parent);
+    }
+
+    const worldCache = new Map();
+    const worldMatrix = (id, depth = 0) => {
+      if (worldCache.has(id)) return worldCache.get(id);
+      const model = models.get(id);
+      const { local } = fbxModelLocalMatrix(model);
+      const parent = (parentsOf.get(id) || []).find((candidate) => models.has(candidate));
+      const world = parent && depth < 256 ? mat4Multiply(worldMatrix(parent, depth + 1), local) : local;
+      worldCache.set(id, world);
+      return world;
+    };
+
+    const parts = [];
+    let totalVertices = 0;
+    let totalIndices = 0;
+    let faceCount = 0;
+    for (const geometry of geometries) {
+      const vertices = await decodeFbxArray(buffer, fbxChild(geometry, "Vertices")?.props[0]);
+      const polygonIndex = await decodeFbxArray(buffer, fbxChild(geometry, "PolygonVertexIndex")?.props[0]);
+      if (!vertices || !polygonIndex || vertices.length < 9) continue;
+      const vertexCount = Math.floor(vertices.length / 3);
+
+      const triangles = [];
+      let polygonStart = 0;
+      for (let i = 0; i < polygonIndex.length; i += 1) {
+        if (polygonIndex[i] >= 0) continue;
+        faceCount += 1;
+        const first = polygonIndex[polygonStart];
+        for (let k = polygonStart + 1; k + 1 <= i; k += 1) {
+          const b = polygonIndex[k];
+          const c = k + 1 === i ? ~polygonIndex[i] : polygonIndex[k + 1];
+          if (first === b || b === c || first === c) continue;
+          if (first >= vertexCount || b >= vertexCount || c >= vertexCount) continue;
+          triangles.push(first, b, c);
+        }
+        polygonStart = i + 1;
+      }
+      if (!triangles.length) continue;
+
+      const owners = (parentsOf.get(geometry.props[0]) || []).filter((id) => models.has(id));
+      const transforms = owners.length
+        ? owners.map((id) => mat4Multiply(worldMatrix(id), fbxModelLocalMatrix(models.get(id)).geometric))
+        : [null];
+      for (const transform of transforms) {
+        parts.push({ vertices, vertexCount, triangles, transform });
+        totalVertices += vertexCount;
+        totalIndices += triangles.length;
+      }
+    }
+    if (!parts.length) return null;
+
+    const positions = new Float32Array(totalVertices * 3);
+    const indices = new Uint32Array(totalIndices);
+    let vertexBase = 0;
+    let indexCursor = 0;
+    for (const { vertices, vertexCount, triangles, transform: m } of parts) {
+      for (let v = 0; v < vertexCount; v += 1) {
+        const x = vertices[v * 3];
+        const y = vertices[v * 3 + 1];
+        const z = vertices[v * 3 + 2];
+        const out = (vertexBase + v) * 3;
+        if (m) {
+          positions[out] = m[0] * x + m[4] * y + m[8] * z + m[12];
+          positions[out + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+          positions[out + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+        } else {
+          positions[out] = x;
+          positions[out + 1] = y;
+          positions[out + 2] = z;
+        }
+      }
+      for (const index of triangles) indices[indexCursor++] = vertexBase + index;
+      vertexBase += vertexCount;
+    }
+    return finalizeMesh(positions, indices, faceCount, parts.length);
   }
 
   function cleanFbxSampleName(value) {
     return String(value || "")
       .replace(/\u0000/g, " ")
+      .replace(/\s+\u0001\S*$/, "")
       .replace(/^[A-Za-z]+::/, "")
       .replace(/\s+/g, " ")
       .trim();

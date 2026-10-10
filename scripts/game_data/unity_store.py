@@ -3,8 +3,19 @@
 AnimeStudio exports one file per Unity object. Layout v3 publishes the text
 documents among them -- the ``.json`` object dumps and the ``.anim`` YAML clips,
 well over a million files -- into ``game/Unity.sqlite`` instead of
-``game/Unity/<Type>/``. Converted media (PNG, OBJ, FBX, ...) stays loose under
+``game/Unity/<Type>/``. Converted media (PNG, OBJ, ...) stays loose under
 ``game/Unity/<Type>/`` because the browser and external viewers open it by path.
+
+Converted ``.fbx`` models are the exception. An Animator export embeds every
+mesh it references, and the same character is exported once per cutscene
+bundle that carries it, so the same mesh bytes repeat dozens of times across
+files that are never byte-identical. An FBX row therefore stores its binary
+node tree with every large property block (``FBX_CHUNK_MIN`` bytes or more:
+vertex, index, normal, UV and skin arrays) cut out into the shared ``chunks``
+table, keyed by SHA256 and stored once; the row keeps the zlib-compressed
+remainder and where each chunk goes back. :meth:`UnityObjectStore.read_bytes`
+rejoins them, so a reader still gets the exported file byte for byte, and
+``serve.py`` answers the path as before.
 
 Each row is one former file, keyed by its Unity type folder and its exported
 file name, so ``game/Unity/<Type>/<name>`` stays the logical reference every
@@ -46,6 +57,7 @@ import json
 import os
 import re
 import sqlite3
+import struct
 import sys
 import threading
 import time
@@ -65,8 +77,16 @@ PACK_COMMAND = "python -m scripts.game_data.extraction.pack_export_stores"
 STORE_FILE_NAME = "Unity.sqlite"
 #: Exported suffixes that are object documents and live in the store. Every
 #: other suffix is converted media and stays a loose file.
-STORE_SUFFIXES: tuple[str, ...] = (".json", ".anim")
+STORE_SUFFIXES: tuple[str, ...] = (".json", ".anim", ".fbx")
 ZLIB_LEVEL = 6
+#: An FBX property block at least this long is stored once in ``chunks``.
+#: Smaller blocks (names, transforms, scalar properties) stay in the row:
+#: sharing them saves little and costs a reference each.
+FBX_CHUNK_MIN = 256
+#: Prefix of a chunked FBX row. A plain row is a zlib stream, which starts with 0x78.
+_FBX_PACKED_MAGIC = b"\x00EFXP1"
+_FBX_MAGIC = b"Kaydara FBX Binary  \x00"
+_FBX_INSERT = struct.Struct("<Q32s")
 #: meta key listing source documents the v2 packer could not read and the
 #: caller accepted as lost (``pack_export_stores --accept-unreadable``).
 UNREADABLE_META_KEY = "unreadableAtPack"
@@ -93,6 +113,7 @@ CREATE INDEX IF NOT EXISTS objects_type_object_name ON objects (type, object_nam
 CREATE INDEX IF NOT EXISTS objects_path_id ON objects (path_id, source_file);
 CREATE INDEX IF NOT EXISTS objects_source_file ON objects (source_file, type);
 CREATE INDEX IF NOT EXISTS objects_script ON objects (script_path_id) WHERE script_path_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS chunks (sha256 BLOB PRIMARY KEY, data BLOB NOT NULL) WITHOUT ROWID;
 """
 
 _ROW_COLUMNS = "type, name, object_name, path_id, source_file, script_path_id, size, sha256, mtime_ns"
@@ -114,6 +135,101 @@ def store_path(export_root: Path) -> Path:
 def logical_ref(type_name: str, name: str) -> str:
     """The ``game/Unity/<Type>/<name>`` reference a row stands for."""
     return f"game/Unity/{type_name}/{name}"
+
+
+def _fbx_property_spans(data: bytes, minimum: int) -> list[tuple[int, int]] | None:
+    """``(start, end)`` of every node property block of at least ``minimum`` bytes, in file order.
+
+    Property blocks hold no file offsets (only node headers do), so cutting
+    them out and putting them back leaves every header valid. None when the
+    bytes are not a binary FBX whose node tree walks cleanly.
+    """
+    if not data.startswith(_FBX_MAGIC) or len(data) < 27:
+        return None
+    version = struct.unpack_from("<I", data, 23)[0]
+    header = struct.Struct("<QQQ" if version >= 7500 else "<III")
+    spans: list[tuple[int, int]] = []
+
+    def walk(position: int, end: int) -> bool:
+        while position + header.size <= end:
+            node_end, _count, props_length = header.unpack_from(data, position)
+            if node_end == 0:
+                return True
+            name_length = data[position + header.size]
+            props_start = position + header.size + 1 + name_length
+            props_end = props_start + props_length
+            if not position < props_start <= props_end <= node_end <= end:
+                return False
+            if props_length >= minimum:
+                spans.append((props_start, props_end))
+            if node_end > props_end and not walk(props_end, node_end):
+                return False
+            position = node_end
+        return True
+
+    return spans if walk(27, len(data)) else None
+
+
+def _encode_document(name: str, data: bytes) -> tuple[bytes, tuple[tuple[bytes, bytes], ...]]:
+    """A row's ``data`` blob and the ``(sha256, bytes)`` chunks it references.
+
+    A document is zlib-compressed. A binary FBX with large property blocks is
+    stored as ``_FBX_PACKED_MAGIC``, the insert count, ``(position in the
+    remainder, chunk SHA256)`` per block, then the zlib-compressed remainder.
+    The blocks are already deflated arrays, so chunks are stored raw.
+    """
+    spans = _fbx_property_spans(data, FBX_CHUNK_MIN) if name.lower().endswith(".fbx") else None
+    if not spans:
+        return zlib.compress(data, ZLIB_LEVEL), ()
+    remainder = bytearray()
+    inserts = bytearray(struct.pack("<I", len(spans)))
+    chunks: dict[bytes, bytes] = {}
+    cursor = 0
+    for start, end in spans:
+        remainder += data[cursor:start]
+        body = data[start:end]
+        digest = hashlib.sha256(body).digest()
+        chunks.setdefault(digest, body)
+        inserts += _FBX_INSERT.pack(len(remainder), digest)
+        cursor = end
+    remainder += data[cursor:]
+    blob = _FBX_PACKED_MAGIC + bytes(inserts) + zlib.compress(bytes(remainder), ZLIB_LEVEL)
+    return blob, tuple(chunks.items())
+
+
+def _packed_inserts(blob: bytes) -> tuple[list[tuple[int, bytes]], int]:
+    """The ``(position, sha256)`` inserts of a chunked row and where its zlib remainder starts."""
+    offset = len(_FBX_PACKED_MAGIC)
+    count = struct.unpack_from("<I", blob, offset)[0]
+    offset += 4
+    inserts = [_FBX_INSERT.unpack_from(blob, offset + index * _FBX_INSERT.size) for index in range(count)]
+    return inserts, offset + count * _FBX_INSERT.size
+
+
+def _decode_document(connection: sqlite3.Connection, blob: bytes) -> bytes:
+    """The exact document bytes of one row's ``data`` blob."""
+    if not blob.startswith(_FBX_PACKED_MAGIC):
+        return zlib.decompress(blob)
+    inserts, remainder_start = _packed_inserts(blob)
+    remainder = zlib.decompress(blob[remainder_start:])
+    wanted = list({digest for _position, digest in inserts})
+    bodies: dict[bytes, bytes] = {}
+    for start in range(0, len(wanted), 500):
+        batch = wanted[start:start + 500]
+        bodies.update(connection.execute(
+            f"SELECT sha256, data FROM chunks WHERE sha256 IN ({','.join('?' * len(batch))})", batch
+        ).fetchall())
+    missing = len(wanted) - len(bodies)
+    if missing:
+        raise UnityStoreError(f"{missing} FBX chunk(s) referenced by a row are missing from the store")
+    parts: list[bytes] = []
+    cursor = 0
+    for position, digest in inserts:
+        parts.append(remainder[cursor:position])
+        parts.append(bodies[digest])
+        cursor = position
+    parts.append(remainder[cursor:])
+    return b"".join(parts)
 
 
 def split_logical_ref(value: str | os.PathLike[str]) -> tuple[str, str] | None:
@@ -404,7 +520,7 @@ class UnityObjectStore:
         ).fetchone()
         if found is None:
             raise KeyError(logical_ref(type_name, name))
-        return zlib.decompress(found[0])
+        return _decode_document(self._connection(), found[0])
 
     def read_text(self, type_name: str, name: str) -> str:
         return self.read_bytes(type_name, name).decode("utf-8-sig")
@@ -421,8 +537,9 @@ class UnityObjectStore:
         self, type_name: str, pattern: str | None = None
     ) -> Iterator[tuple[UnityObjectRow, bytes]]:
         """Every matching row with its exact bytes, in name order, streamed."""
+        connection = self._connection()
         for row in self._select(_ROW_COLUMNS + ", data", type_name, pattern):
-            yield UnityObjectRow(*row[:-1]), zlib.decompress(row[-1])
+            yield UnityObjectRow(*row[:-1]), _decode_document(connection, row[-1])
 
     def iter_json(self, type_name: str, pattern: str | None = None) -> Iterator[tuple[UnityObjectRow, Any]]:
         """Every matching row with its parsed JSON; an unparsable document raises."""
@@ -504,6 +621,7 @@ class _Prepared:
     sha256: str
     info: dict[str, Any]
     blob: bytes
+    chunks: tuple[tuple[bytes, bytes], ...] = ()
 
 
 def _read_shared(path: Path, attempts: int = 6) -> tuple[os.stat_result, bytes]:
@@ -539,13 +657,19 @@ def _prepare_or_error(name: str, path: Path) -> "_Prepared | UnreadableDocument"
 
 def _prepare(name: str, path: Path) -> _Prepared:
     stat, data = _read_shared(path)
+    return _prepare_bytes(name, data, stat.st_mtime_ns)
+
+
+def _prepare_bytes(name: str, data: bytes, mtime_ns: int) -> _Prepared:
+    blob, chunks = _encode_document(name, data)
     return _Prepared(
         name=name,
         size=len(data),
-        mtime_ns=stat.st_mtime_ns,
+        mtime_ns=mtime_ns,
         sha256=hashlib.sha256(data).hexdigest(),
         info=describe_document(name, data),
-        blob=zlib.compress(data, ZLIB_LEVEL),
+        blob=blob,
+        chunks=chunks,
     )
 
 
@@ -568,6 +692,8 @@ class UnityObjectStoreWriter:
             raise UnityStoreError(f"{self.path} declares schema {existing[0]!r}; expected {schema!r}")
         self.connection.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', ?)", (schema,))
         self.connection.commit()
+        # Set by any write that may orphan FBX chunks; close() then collects them.
+        self._collect_chunks = False
 
     def __enter__(self) -> "UnityObjectStoreWriter":
         return self
@@ -586,12 +712,17 @@ class UnityObjectStoreWriter:
 
     def put(self, type_name: str, name: str, data: bytes, *, mtime_ns: int = 0) -> None:
         """Insert or replace one document from bytes (fixtures and small writers)."""
-        self._insert(type_name, [
-            _Prepared(name, len(data), mtime_ns, hashlib.sha256(data).hexdigest(),
-                      describe_document(name, data), zlib.compress(data, ZLIB_LEVEL))
-        ])
+        self._insert(type_name, [_prepare_bytes(name, data, mtime_ns)])
 
     def _insert(self, type_name: str, prepared: Iterable[_Prepared]) -> None:
+        prepared = list(prepared)
+        # Chunks first, so no committed row references a chunk that is not stored.
+        self.connection.executemany(
+            "INSERT OR IGNORE INTO chunks (sha256, data) VALUES (?, ?)",
+            (chunk for item in prepared for chunk in item.chunks),
+        )
+        # A replaced chunked row can leave chunks nothing references.
+        self._collect_chunks = True
         self.connection.executemany(
             "INSERT INTO objects (type, name, object_name, path_id, source_file, script_path_id, size, mtime_ns, sha256, data) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
@@ -616,6 +747,7 @@ class UnityObjectStoreWriter:
     def delete(self, type_name: str, names: Iterable[str]) -> int:
         names = list(names)
         self.connection.executemany("DELETE FROM objects WHERE type=? AND name=?", ((type_name, name) for name in names))
+        self._collect_chunks = True
         return len(names)
 
     def sync_type(
@@ -726,6 +858,16 @@ class UnityObjectStoreWriter:
                 (type_name,),
             )
             connection.commit()
+            # Chunks before rows, as in _insert. Copying every staged chunk is
+            # safe: one no row references is collected on close().
+            self._collect_chunks = True
+            for alias in aliases:
+                has_chunks = connection.execute(
+                    f"SELECT 1 FROM {alias}.sqlite_master WHERE type='table' AND name='chunks'"
+                ).fetchone()
+                if has_chunks:
+                    connection.execute(f"INSERT OR IGNORE INTO main.chunks (sha256, data) SELECT sha256, data FROM {alias}.chunks")
+            connection.commit()
             picked = connection.execute("SELECT COUNT(*) FROM temp.merge_pick").fetchone()[0]
             removed = 0
             if remove_missing:
@@ -771,12 +913,41 @@ class UnityObjectStoreWriter:
     def drop_type(self, type_name: str) -> int:
         cursor = self.connection.execute("DELETE FROM objects WHERE type=?", (type_name,))
         self.connection.commit()
+        self._collect_chunks = True
         return cursor.rowcount
+
+    def collect_chunks(self) -> int:
+        """Delete FBX chunks no row references; returns how many were removed.
+
+        Only ``.fbx`` rows are read, and of those only the insert header.
+        """
+        connection = self.connection
+        if connection.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is None:
+            return 0
+        connection.execute("CREATE TEMP TABLE IF NOT EXISTS chunk_refs (sha256 BLOB PRIMARY KEY) WITHOUT ROWID")
+        connection.execute("DELETE FROM temp.chunk_refs")
+        head = len(_FBX_PACKED_MAGIC)
+        rows = connection.execute(
+            "SELECT data FROM objects WHERE name LIKE '%.fbx' AND substr(data, 1, ?) = ?", (head, _FBX_PACKED_MAGIC)
+        )
+        for (blob,) in rows:
+            inserts, _start = _packed_inserts(blob)
+            connection.executemany(
+                "INSERT OR IGNORE INTO temp.chunk_refs (sha256) VALUES (?)", ((digest,) for _position, digest in inserts)
+            )
+        removed = connection.execute(
+            "DELETE FROM chunks WHERE sha256 NOT IN (SELECT sha256 FROM temp.chunk_refs)"
+        ).rowcount
+        connection.execute("DELETE FROM temp.chunk_refs")
+        connection.commit()
+        return removed
 
     def close(self) -> None:
         if self.connection is None:
             return
         self.connection.commit()
+        if self._collect_chunks:
+            self.collect_chunks()
         # Refresh planner statistics so lookups by PathID or CAB use their
         # indexes instead of scanning a whole type.
         self.connection.execute("PRAGMA optimize=0x10002")
@@ -830,7 +1001,7 @@ def _study_connection(store: UnityObjectStore) -> sqlite3.Connection:
     connection = store._connection()
 
     def inflate(blob: bytes | None) -> str | None:
-        return None if blob is None else zlib.decompress(blob).decode("utf-8-sig", errors="replace")
+        return None if blob is None else _decode_document(connection, blob).decode("utf-8-sig", errors="replace")
 
     def doc(blob: bytes | None, path: str) -> Any:
         text = inflate(blob)

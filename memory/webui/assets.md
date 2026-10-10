@@ -47,6 +47,10 @@ facet selections. Image categories (such as Boss) and OBJ model categories
 The expanded category catalog scrolls inside a bounded filter panel; the asset
 list keeps its own space so matching rows remain visible below the filters.
 
+OBJ and FBX previews share background presets and custom background/model
+color controls in both WebGL and the software fallback. Model color is a
+preview tint, not recovered material appearance.
+
 ## Evidence boundary
 
 - Source/CAB plus PathID is the stable Unity identity. Normalized names are
@@ -96,3 +100,13 @@ scan. It follows exact activity asset fields, instructionId into InstructionBook
 and fixed reward itemBundles into ItemTable; it prefers Sprite crops over
 duplicate Texture2D representations and preserves distinct Sprite identities.
 Activities reads the last publication without adding a cross-page dependency.
+
+Assets collapses byte-confirmed identical exported media into one preview
+variant within existing asset groups, including images, OBJ, FBX, and video.
+The index retains every file row; `h` is the full content SHA-256 and `d` marks
+same-kind, same-extension groups also checked for byte equality with bounded
+memory. All original filenames and PathIDs remain searchable and appear in
+same-content file details. Converted-file equality does not establish original
+Unity object equality or ownership; OBJ omits skin weights and blend shapes.
+Sprite crops retain their separate texture/crop content evidence. Export files
+remain in place.

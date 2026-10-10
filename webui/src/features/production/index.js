@@ -6,6 +6,18 @@
   const $ = (selector) => document.querySelector(selector);
   const ui = (en, cn) => String(window.WEBUI_UI_LOCALE || document.documentElement.lang || "zh").startsWith("zh") ? cn : en;
   const kinds = ["recipes", "items", "machines"];
+  const storyIndexes = new Map();
+  async function itemStoryLink(id, language) {
+    if (!storyIndexes.has(language)) storyIndexes.set(language,
+      getJson(`data/lang/${encodeURIComponent(language)}/index.json`).then((index) =>
+        new Set((index.entries || []).filter((entry) => entry.d === "wiki").map((entry) => entry.k)))
+        .catch((error) => { storyIndexes.delete(language); throw error; }));
+    const key = `wiki_${id}`;
+    if (!(await storyIndexes.get(language)).has(key)) return "";
+    const params = new URLSearchParams({ lang: language,
+      ui: window.WEBUI_UI_LOCALE || document.documentElement.lang || "zh", story: key });
+    return `<a class="gameplay-detail-tag gameplay-detail-wiki-link gameplay-wiki-link" href="?${esc(params.toString())}#story">${esc(ui("Story Wiki", "剧情图鉴"))}</a>`;
+  }
   const state = {
     root: null, data: null, requestedLanguage: "", language: "", kind: "recipes", selectedId: "",
     query: "", sort: "title", facets: null, pager: null, rows: [], filtered: [], shards: new Map(),
@@ -14,6 +26,7 @@
   const currentLanguage = () => String($("#language")?.value || "CN").toUpperCase();
   const active = () => document.body.dataset.activeView === "gameplay" && ["item", "recipe", "machine"].includes(W.gameplayTabs?.kind);
   const kindLabel = (kind) => ({ items: ui("Items & materials", "物品与材料"), recipes: ui("Recipes", "配方"), machines: ui("Machines & buildings", "设备与建筑") })[kind] || kind;
+  const wikiLabel = (key) => state.data?.labels?.[key] || "";
   const tagLabel = (tag) => ({
     factory_item: ui("Production material", "生产物料"), craftable: ui("Recipe output", "配方产物"),
     ingredient: ui("Recipe ingredient", "配方原料"), shop_reward: ui("Shop listing", "商店配置"),
@@ -132,7 +145,7 @@
   }
 
   function activityTag(row) {
-    return row.activityId ? `<div class="production-activity-tag">${badge(tagLabel("activity_only"))} <code>${esc(row.activityId)}</code></div>` : "";
+    return row.activityId ? `<div class="production-activity-tag">${badge(wikiLabel("ui_wiki_fac_tree_activity_foluma"))}</div>` : "";
   }
 
   function rateText(ref, seconds) {
@@ -145,11 +158,24 @@
     return groups.map((group) => `<span class="production-machine-group">${groups.length > 1 ? "(" : ""}${group.map((ref) => `${itemBundle(ref)} ${rateText(ref, seconds)}`).join(" <span class=production-plus>+</span> ")}${groups.length > 1 ? ")" : ""}</span>`).join(" · ");
   }
 
-  function renderMachineRecipe(recipe) {
+  function renderMachineRecipe(recipe, showEnvironment = true, showRecipeLink = true) {
     const formula = recipe.ingredients && recipe.outcomes
       ? `${inlineRecipeGroups(recipe.ingredients, recipe.durationSeconds)}<span class="production-machine-arrow" aria-hidden="true">→</span>${inlineRecipeGroups(recipe.outcomes, recipe.durationSeconds)}`
       : recordLink("recipes", recipe.id, recipe.title);
-    return `<article class="production-reference production-machine-recipe" data-production-recipe="${esc(recipe.id)}"><div class="production-machine-formula">${gasRequirement(recipe)}${activityTag(recipe)}${formula}</div><span class="production-machine-time">${esc(ui("Processing time", "处理时间"))}: ${durationText(recipe)}</span><a class="production-machine-recipe-link" href="${esc(pageUrl("recipes", recipe.id))}" data-production-kind="recipes" data-production-id="${esc(recipe.id)}" title="${esc(recipe.title)}">${esc(ui("Details", "详情"))}</a></article>`;
+    return `<article class="production-reference production-machine-recipe" data-production-recipe="${esc(recipe.id)}"><div class="production-machine-content${showEnvironment ? "" : " production-machine-content-compact"}"><div class="production-machine-activity">${activityTag(recipe)}</div><div class="production-machine-device">${showEnvironment && recipe.machineId ? recordLink("machines", recipe.machineId, recipe.machineName) : ""}</div><div class="production-machine-environment">${showEnvironment ? gasRequirement(recipe) : ""}</div><div class="production-machine-formula">${formula}</div></div>${Number.isFinite(recipe.durationSeconds) ? `<span class="production-machine-time">${esc(ui("Processing time", "处理时间"))}: ${durationText(recipe)}</span>` : ""}${showRecipeLink ? `<a class="production-machine-recipe-link" href="${esc(pageUrl("recipes", recipe.id))}" data-production-kind="recipes" data-production-id="${esc(recipe.id)}" title="${esc(recipe.title)}">${esc(ui("View recipe", "查看配方"))}</a>` : ""}</article>`;
+  }
+
+  function renderMachineRecipes(recipes) {
+    if (!recipes.some((recipe) => recipe.gasEnvironment)) return `<div class="production-references">${recipes.map((recipe) => renderMachineRecipe(recipe)).join("")}</div>`;
+    const groups = new Map();
+    for (const recipe of recipes) {
+      const key = recipe.gasEnvironment?.id ?? null;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(recipe);
+    }
+    return [...groups].map(([environment, rows]) => `<section class="production-environment-group" data-production-environment="${esc(environment ?? "none")}">
+      ${environment == null ? `<h4>${esc(ui("No gas environment requirement", "无气体环境要求"))}</h4>` : gasRequirement(rows[0])}
+      <div class="production-references">${rows.map((recipe) => renderMachineRecipe(recipe, false)).join("")}</div></section>`).join("");
   }
 
   function renderGroups(groups, seconds) {
@@ -159,16 +185,36 @@
 
   function recipeRefs(rows, produced) {
     if (!rows.length) return empty(ui("No recipe links recovered in these tables.", "这些表中未恢复到配方关联。"));
-    return `<div class="production-references">${rows.map((row) => `<article class="production-reference">${gasRequirement(row)}${activityTag(row)}${recordLink("recipes", row.id, row.title)} ${badge(tagLabel(row.type))}<div>${esc(produced ? ui("Output", "产出") : ui("Ingredient", "投入"))}: ${number(row.count)}${row.machineId ? ` · ${recordLink("machines", row.machineId, row.machineName, state.data.machines.some((machine) => machine.id === row.machineId))}` : ""}</div></article>`).join("")}</div>`;
+    return `<div class="production-references">${rows.map((row) => {
+      const entry = state.records.recipes?.get(canonicalId("recipes", row.id));
+      const recipe = entry?.recipeVariants?.find((variant) => variant.id === row.id)
+        || (entry?.id === row.id ? entry : null);
+      if (recipe?.ingredients && recipe?.outcomes) return renderMachineRecipe({ ...row, ...recipe });
+      return `<article class="production-reference">${gasRequirement(row)}${activityTag(row)}${recordLink("recipes", row.id, row.title)} ${badge(tagLabel(row.type))}<div>${esc(produced ? ui("Output", "产出") : ui("Ingredient", "投入"))}: ${number(row.count)}${row.machineId ? ` · ${recordLink("machines", row.machineId, row.machineName, state.data.machines.some((machine) => machine.id === row.machineId))}` : ""}</div></article>`;
+    }).join("")}</div>`;
+  }
+
+  function groupShopListings(rows) {
+    const groups = new Map();
+    for (const row of rows) {
+      const { id, sources, ...configuration } = row;
+      const key = JSON.stringify(configuration);
+      if (!groups.has(key)) groups.set(key, { ...row, goodsIds: [], sources: [] });
+      const group = groups.get(key);
+      group.goodsIds.push(id);
+      group.sources.push(...(sources || []));
+    }
+    return [...groups.values()];
   }
 
   function renderShop(row) {
     const conditions = Object.values(row.conditions || {}).some((value) => Array.isArray(value) ? value.length : !!value);
     return `<article class="production-reference"><strong>${esc(row.shopGroupName)}${row.shopName !== row.shopGroupName ? ` · ${esc(row.shopName)}` : ""}</strong>
       <div>${esc(ui("Configured quantity", "配置数量"))}: ${number(row.count)} · ${esc(ui("Price", "价格"))}: ${number(row.price)} ${itemLink(row.currency)}</div>
+      ${row.goodsIds?.length > 1 ? `<div>${esc(ui("Matching configurations", "相同展示配置"))}: ${number(row.goodsIds.length)}</div>` : ""}
       ${conditions ? badge(ui("Has unlock conditions", "有解锁条件")) : ""}${row.hasRandomRewards ? badge(ui("Also contains random rewards", "还含随机奖励")) : ""}
       ${row.lockDescription ? `<p>${richText(row.lockDescription)}</p>` : ""}
-      ${properties({ goodsId: row.id, limitCount: row.limitCount, limitCountRefreshType: row.limitCountRefreshType,
+      ${properties({ goodsId: row.goodsIds?.length > 1 ? row.goodsIds : row.id, limitCount: row.limitCount, limitCountRefreshType: row.limitCountRefreshType,
         cnDiscount: row.cnDiscount, shopRefreshType: row.shopRefreshType, shopRefreshCycleType: row.shopRefreshCycleType,
         unlockConditions: row.conditions }, ui("Limits and conditions", "限购与条件"))}${sourceLinks(row.sources)}</article>`;
   }
@@ -191,8 +237,16 @@
     }).join("")}</div></details>`).join("") || empty(ui("No other uses linked in the supported tables.", "支持的数据表中未关联其他用途。"));
   }
 
-  function renderItem(row) {
-    let html = `<div class="production-meta">${badge(row.typeName)}${row.showingTypeName && row.showingTypeName !== row.typeName ? badge(row.showingTypeName) : ""}${badge(`${ui("Rarity", "稀有度")} ${row.rarity}`)}</div>`;
+  function itemTags(row) {
+    return `${badge(row.typeName)}${row.showingTypeName && row.showingTypeName !== row.typeName ? badge(row.showingTypeName) : ""}${badge(`${ui("Rarity", "稀有度")} ${row.rarity}`)}`;
+  }
+
+  function itemProperties(row, label) {
+    return properties({ maxStackCount: row.stackLimit, maxBackpackStackCount: row.backpackStackLimit, obtainWayIds: row.obtainWayIds, ...row.factory }, label);
+  }
+
+  function renderItem(row, includeLore = true, includeMeta = true) {
+    let html = row.sharedBuilding || !includeMeta ? "" : `<div class="production-meta">${itemTags(row)}</div>`;
     if (row.medalLevels?.length) {
       html += `<div class="production-meta">${(row.categories || []).map((category) => badge(category.title)).join("")}</div>`;
       return html + section(ui("Medal tiers", "蚀刻章等级"), `<div class="production-references">${row.medalLevels.map((tier) => `<article class="production-reference production-medal-tier">
@@ -201,54 +255,138 @@
         ${tier.conditions.length ? `<ul>${tier.conditions.map((condition) => `<li>${richText(condition.description || condition.conditionId)}${condition.progressToCompare != null ? ` · ${esc(ui("Target", "目标"))} ${number(condition.progressToCompare)}` : ""}</li>`).join("")}</ul>` : ""}
         ${renderItem(tier.item)}${sourceLinks(tier.item.sources)}</article>`).join("")}</div>`, row.medalLevels.length);
     }
-    if (row.lore && row.lore !== row.description) html += section(ui("Item description", "物品说明"), `<div class="production-description production-lore">${richText(row.lore)}</div>`);
-    for (const building of row.buildingDimensions || []) {
+    if (includeLore && row.lore && row.lore !== row.description) html += sourceDescription(row, true);
+    for (const building of row.sharedBuilding ? [] : row.buildingDimensions || []) {
       html += `${row.buildingDimensions.length > 1 ? `<p>${esc(building.title)}</p>` : ""}${dimensions(building)}`;
     }
-    html += section(ui("Produced by", "制作来源"), recipeRefs(row.producedBy, true), row.producedBy.length);
-    html += section(ui("Used in recipes", "配方用途"), recipeRefs(row.usedBy, false), row.usedBy.length);
-    html += section(ui("Configured shop listings", "商店配置"), row.shops.length ? row.shops.map(renderShop).join("") : empty(ui("No shop reward links recovered.", "未恢复到商店奖励关联。")), row.shops.length);
-    html += section(ui("Upgrades and other uses", "升级与其他用途"), renderUses(row.upgrades), row.upgrades.length);
-    if (row.buildingIds.length) html += section(ui("Places buildings", "对应建筑"), row.buildingIds.map((id) => recordLink("machines", id, state.data.machines.find((machine) => machine.id === id)?.title || id, state.data.machines.some((machine) => machine.id === id))).join(" · "));
+    html += renderItemConnections(row);
+    if (!row.sharedBuilding && row.buildingIds.length) html += section(ui("Places buildings", "对应建筑"), row.buildingIds.map((id) => recordLink("machines", id, state.data.machines.find((machine) => machine.id === id)?.title || id, state.data.machines.some((machine) => machine.id === id))).join(" · "));
     if (row.outputReferences.length) html += section(ui("Configured output references", "配置产物引用"), row.outputReferences.map(itemLink).join(" · "));
-    html += properties({ maxStackCount: row.stackLimit, maxBackpackStackCount: row.backpackStackLimit, obtainWayIds: row.obtainWayIds, ...row.factory });
+    if (!row.sharedBuilding) html += itemProperties(row);
+    return html;
+  }
+
+  function renderItemConnections(row) {
+    const shops = groupShopListings(row.shops);
+    let html = section(ui("Produced by", "制作来源"), recipeRefs(row.producedBy, true), row.producedBy.length);
+    html += section(wikiLabel("ui_wiki_item_part_formula"), recipeRefs(row.usedBy, false), row.usedBy.length);
+    html += section(ui("Configured shop listings", "商店配置"), shops.length ? shops.map(renderShop).join("") : empty(ui("No shop reward links recovered.", "未恢复到商店奖励关联。")), shops.length);
+    html += section(ui("Upgrades and other uses", "升级与其他用途"), renderUses(row.upgrades), row.upgrades.length);
     return html;
   }
 
   function renderRecipe(row) {
     if (row.recipeVariants?.length) {
-      return section(ui("Production methods", "制作方式"), `<div class="production-recipe-variants">${row.recipeVariants.map((variant) => `<article class="production-recipe-variant"><h4>${esc(variant.title)}</h4>${renderRecipe(variant)}${sourceLinks(variant.sources)}</article>`).join("")}</div>`, row.recipeVariants.length);
+      return section(ui("Production methods", "制作方式"), `<div class="production-recipe-variants">${row.recipeVariants.map((variant) => `<article class="production-recipe-variant">${renderRecipe(variant)}${sourceLinks(variant.sources)}</article>`).join("")}</div>`, row.recipeVariants.length);
     }
-    let html = `${gasRequirement(row)}${activityTag(row)}<div class="production-meta">${badge(tagLabel(row.type))}${(row.categories || []).map((category) => badge(category.title)).join("")}${row.machineId ? recordLink("machines", row.machineId, row.machineName, row.machineResolved) : ""}</div>`;
-    html += `<p class="production-duration"><strong>${esc(ui("Production time", "生产时间"))}</strong>: ${durationText(row)}</p>`;
-    html += `<div class="production-flow">${section(ui("Ingredients", "原料"), renderGroups(row.ingredients, row.durationSeconds))}<div class="production-arrow" aria-hidden="true">→</div>${section(ui("Outputs", "产物"), renderGroups(row.outcomes, row.durationSeconds))}</div>`;
+    let html = renderMachineRecipe(row, true, false);
     if (Number.isFinite(row.durationSeconds) && row.durationSeconds > 0) html += `<p class="production-note">${esc(ui("Nominal rates at continuous operation, calculated from the configured cycle time.", "每分钟用量与产量按配置周期、连续运行计算。"))}</p>`;
     if (row.formulaItem) html += section(ui("Formula item", "配方物品"), itemLink(row.formulaItem));
-    html += `<div class="production-recipe-config">${properties(row.conditions, ui("Unlock and operating conditions", "解锁与运行条件"), true)}${properties({ ...(row.configuration || {}), ...(row.timing || {}) }, ui("Stored configuration", "存储配置"), true)}</div>`;
+    html += `<div class="production-recipe-config">${properties(row.conditions, ui("Unlock and operating conditions", "解锁与运行条件"))}${properties({ ...(row.configuration || {}), ...(row.timing || {}) }, ui("Stored configuration", "存储配置"))}</div>`;
     return html;
   }
 
-  function renderMachine(row) {
-    let html = `<div class="production-meta">${(row.categories || []).map((category) => `<span class="production-badge production-category">${iconHtml(category.iconId)}${esc(category.title)}</span>`).join("")}${row.needPower ? badge(ui("Requires power", "需要供电")) : ""}${badge(`${ui("Electricity consumption", "电力消耗")}: ${row.powerConsume ?? "—"}`)}</div>`;
+  function machineTags(row) {
+    return `${(row.categories || []).map((category) => `<span class="production-badge production-category">${iconHtml(category.iconId)}${esc(category.title)}</span>`).join("")}${row.needPower ? badge(ui("Requires power", "需要供电")) : ""}${badge(`${ui("Electricity consumption", "电力消耗")}: ${row.powerConsume ?? "—"}`)}`;
+  }
+
+  function machineProperties(row, label) {
+    return properties({ type: row.type, inputPorts: row.inputPorts, outputPorts: row.outputPorts, range: row.range,
+      placeDomains: row.placeDomains, recommendDomains: row.recommendDomains, rendererTemplateMap: row.rendererTemplateMap }, label);
+  }
+
+  function renderMachine(row, includeItemConnections = true, compact = false, includeMeta = true) {
+    let html = compact || !includeMeta ? "" : `<div class="production-meta">${machineTags(row)}</div>`;
     html += dimensions(row.range);
-    if (row.items.length) html += section(ui("Building items", "建筑物品"), row.items.map(itemLink).join(" · "));
-    html += section(ui("Recipes", "配方"), row.recipes.length ? `<div class="production-references">${row.recipes.map(renderMachineRecipe).join("")}</div>` : empty(ui("No recipe names this building ID.", "没有配方直接引用此建筑标识符。")), row.recipes.length);
-    html += properties({ type: row.type, inputPorts: row.inputPorts, outputPorts: row.outputPorts, range: row.range,
-      placeDomains: row.placeDomains, recommendDomains: row.recommendDomains, rendererTemplateMap: row.rendererTemplateMap });
+    if (!compact && row.items.length) html += section(ui("Building items", "建筑物品"), row.items.map(itemLink).join(" · "));
+    if (includeItemConnections) for (const item of row.linkedItems || []) html += renderItemConnections(item);
+    html += section(wikiLabel("ui_wiki_building_usable_formula"), row.recipes.length ? renderMachineRecipes(row.recipes) : empty(ui("No recipe names this building ID.", "没有配方直接引用此建筑标识符。")), row.recipes.length);
+    if (!compact) html += machineProperties(row);
     return html;
+  }
+
+  function sharedBuildingDetail(row) {
+    const item = row.kind === "items" ? row : row.linkedItems?.length === 1 ? row.linkedItems[0] : null;
+    const building = row.kind === "machines" ? row : row.linkedMachines?.length === 1 ? row.linkedMachines[0] : null;
+    if (!item || !building || item.buildingIds?.length !== 1 || building.items?.length !== 1
+      || item.buildingIds[0] !== building.id || building.items[0].id !== item.id) return row;
+    const sources = [...new Map([...item.sources, ...building.sources].map((source) => [JSON.stringify(source), source])).values()];
+    const { linkedItems: _items, linkedMachines: _machines, itemLore: _lore, ...buildingRecord } = building;
+    return { ...item, linkedItems: [], linkedMachines: [buildingRecord], sharedBuilding: buildingRecord, sources };
+  }
+
+  // These fields belong to different table records; neither proves which
+  // description a particular runtime screen selects.
+  function sourceDescription(row, deco = false, showSource = false) {
+    const value = deco ? row.lore : row.description;
+    if (!value) return "";
+    const machine = row.kind === "machines";
+    const label = deco ? ui("Item decorative description", "物品装饰描述")
+      : machine ? ui("Building description", "设备描述") : ui("Item description", "物品描述");
+    const source = `${machine ? "FactoryBuildingTable" : "ItemTable"}[${row.id}].${deco ? "decoDesc" : "desc"}`;
+    return `<div class="production-description${deco ? " production-deco" : ""}">${showSource ? `<small>${esc(label)} · <code>${esc(source)}</code></small>` : ""}<div>${richText(value)}</div></div>`;
+  }
+
+  function detailDescriptions(row) {
+    if (!["items", "machines"].includes(row.kind)) return row.description ? `<div class="production-description">${richText(row.description)}</div>` : "";
+    const groups = new Map();
+    const related = [row, ...(row.linkedItems || []), ...(row.linkedMachines || [])];
+    const descriptionsDiffer = new Set(related.map((record) => record.description).filter(Boolean)).size > 1;
+    const decoDiffer = new Set(related.map((record) => record.lore).filter(Boolean)).size > 1;
+    for (const deco of [false, true]) {
+      for (const record of related) {
+        const value = deco ? record.lore : record.description;
+        if (!value) continue;
+        const group = groups.get(value) || [];
+        group.push({ record, deco });
+        groups.set(value, group);
+      }
+    }
+    const rendered = [...groups.values()].map((records) => {
+      const showSource = records.some(({deco}) => deco ? decoDiffer : descriptionsDiffer);
+      if (records.length === 1 || !showSource) {
+        return sourceDescription(records[0].record, records[0].deco, showSource);
+      }
+      if (records.every(({deco}) => deco)) {
+        const sources = records.map(({record}) => `<div><small><code>${esc(`ItemTable[${record.id}].decoDesc`)}</code></small></div>`).join("");
+        return `<div class="production-description production-deco">${sources}<div>${richText(records[0].record.lore)}</div></div>`;
+      }
+      const labels = [...new Set(records.map(({record, deco}) => deco ? ui("Item decorative description", "物品装饰描述") : record.kind === "machines" ? ui("Building description", "设备描述") : ui("Item description", "物品描述")))];
+      return `<div class="production-description">${showSource ? `<small>${esc(labels.join(" / "))}</small>` + records.map(({record, deco}) => `<div><small><code>${esc(`${record.kind === "machines" ? "FactoryBuildingTable" : "ItemTable"}[${record.id}].${deco ? "decoDesc" : "desc"}`)}</code></small></div>`).join("") : ""}<div>${richText(records[0].deco ? records[0].record.lore : records[0].record.description)}</div></div>`;
+    });
+    // Decorative text follows all primary descriptions without a heading.
+    const decorative = [];
+    const primary = [];
+    [...groups.values()].forEach((records, index) => {
+      (records.every(({deco}) => deco) ? decorative : primary).push(rendered[index]);
+    });
+    return [...primary, ...decorative].join("");
   }
 
   function renderDetail(row) {
     const panel = $("#production-detail");
     if (!panel) return;
     if (!row) { panel.innerHTML = empty(ui("Select an item, recipe or machine to explore its connections.", "选择物品、配方或设备以查看关联。")); return; }
+    row = sharedBuildingDetail(row);
     const updateId = `${row.kind}:${row.id}`;
-    panel.innerHTML = `<header class="production-detail-header"><div class="production-identity">${rowIcon(row, "production-icon-large")}<div><small>${esc(kindLabel(row.kind))}</small><h2>${esc(row.title)} ${W.updateBadges.html("production", updateId)}</h2><code>${esc(row.id)}</code></div></div><div class="production-detail-actions"><button id="production-reveal-current" class="panel-toggle" type="button">${esc(ui("Locate current file", "定位当前文件"))}</button></div></header>
+    panel.innerHTML = `<header class="production-detail-header"><div class="production-identity">${rowIcon(row, "production-icon-large")}<div><small>${esc(row.sharedBuilding ? ui("Building & item", "建筑与物品") : kindLabel(row.kind))}</small><h2>${esc(row.title)} ${W.updateBadges.html("production", updateId)}</h2><code>${esc(row.id)}${row.sharedBuilding ? ` · ${esc(row.sharedBuilding.id)}` : ""}</code></div></div><div class="production-detail-actions"><button id="production-reveal-current" class="panel-toggle" type="button">${esc(ui("Locate current file", "定位当前文件"))}</button></div></header>
       ${W.updateBadges.panel("production", updateId)}
+      ${row.sharedBuilding ? `<div class="production-meta production-shared-tags">${itemTags(row)}${machineTags(row.sharedBuilding)}<span data-production-story-link></span></div>
+        <div class="production-entity-switch">${recordLink("items", row.id, ui("Building item", "建筑物品"), true)}<span aria-hidden="true">↔</span>${recordLink("machines", row.sharedBuilding.id, ui("Corresponding building", "对应建筑"), true)}</div>` : ["items", "machines"].includes(row.kind) ? `<div class="production-meta production-shared-tags">${row.kind === "items" ? itemTags(row) : machineTags(row)}<span data-production-story-link></span></div>` : ""}
       ${row.kind === "items" && /^item_pic_/i.test(row.id) ? '<div data-gameplay-item-picture></div>' : ""}
-      ${row.description ? `<div class="production-description">${richText(row.description)}</div>` : ""}
-      ${row.kind === "items" ? renderItem(row) : row.kind === "recipes" ? renderRecipe(row) : renderMachine(row)}
+      ${detailDescriptions(row)}
+      ${renderWikiDescriptions(row)}
+      ${row.kind === "items" ? renderItem(row, false, false) : row.kind === "recipes" ? renderRecipe(row) : renderMachine(row, true, false, false)}
+      ${row.sharedBuilding ? `${renderMachine(row.sharedBuilding, false, true)}<div class="production-shared-config">${itemProperties(row, ui("Item configuration", "物品存储配置"))}${machineProperties(row.sharedBuilding, ui("Building configuration", "建筑存储配置"))}</div>` : (row.linkedMachines || []).filter((machine) => machine.recipes.length).map((machine) => section(wikiLabel("ui_wiki_building_usable_formula"), renderMachineRecipes(machine.recipes), machine.recipes.length)).join("")}
       ${row.kind === "items" ? '<div class="production-gameplay-item" data-gameplay-item-content></div><div data-gameplay-item-assets></div>' : ""}${sourceLinks(row.sources)}`;
+    if (["items", "machines"].includes(row.kind)) {
+      const token = state.detailToken;
+      const storyLink = panel.querySelector("[data-production-story-link]");
+      const ids = row.kind === "items" ? [row.id] : (row.items || []).map((item) => item.id);
+      Promise.all(ids.map((id) => itemStoryLink(id, state.language))).then((links) => {
+        if (token === state.detailToken && storyLink.isConnected) storyLink.innerHTML = [...new Set(links)].join("");
+      }).catch(() => {});
+    }
     if (row.kind === "items") {
       const contents = panel.querySelector("[data-gameplay-item-content]");
       const token = state.detailToken;
@@ -270,6 +408,17 @@
 
   }
 
+  function renderWikiDescriptions(row) {
+    const items = row.kind === "items" ? [row] : row.linkedItems || [];
+    const seen = new Set();
+    const contents = items.flatMap((item) => item.wikiDescriptions || []).filter((entry) => {
+      if (!entry.text || seen.has(entry.text)) return false;
+      seen.add(entry.text);
+      return true;
+    }).map((entry) => `<div class="production-description production-wiki">${richText(entry.text)}</div>`).join("");
+    return section(wikiLabel("ui_wiki_building_usable_func"), contents);
+  }
+
   async function select(id, { write = true } = {}) {
     id = canonicalId(state.kind, id);
     state.selectedId = id;
@@ -287,6 +436,24 @@
       if (token !== state.detailToken) return;
       const detail = shard.records?.[id];
       if (!detail) throw new Error(ui("The detail shard does not contain this record.", "详情分片不含此记录。"));
+      if (["items", "machines"].includes(detail.kind)) {
+        const relatedKind = detail.kind === "machines" ? "items" : "machines";
+        const relatedIds = detail.kind === "machines" ? (detail.items || []).map((item) => item.id) : detail.buildingIds || [];
+        const related = (await Promise.all(relatedIds.map(async (id) => {
+          const relatedId = canonicalId(relatedKind, id);
+          const summary = state.records[relatedKind]?.get(relatedId);
+          if (!summary?.detail) return null;
+          const relatedFile = path(summary.detail);
+          if (!state.shards.has(relatedFile)) state.shards.set(relatedFile, getJson(relatedFile).catch((error) => { state.shards.delete(relatedFile); throw error; }));
+          const relatedShard = await state.shards.get(relatedFile);
+          return relatedShard.records?.[relatedId] || null;
+        }))).filter(Boolean);
+        if (detail.kind === "machines") {
+          detail.linkedItems = related;
+          detail.itemLore = related.map((item) => item.lore);
+        } else detail.linkedMachines = related;
+        if (token !== state.detailToken) return;
+      }
       state.detail = detail;
       renderDetail(detail);
     } catch (error) {

@@ -222,6 +222,9 @@ def iter_asset_entries(asset_index_path: Path, export_root: Path) -> tuple[Itera
                         yield {"k": "image", "r": f"{type_name}/{sprite_crops.image_name(name)}"}
                     else:
                         yield {"k": "json", "r": f"{type_name}/{name}"}
+                # Animator FBX the Convert stage packed into the store.
+                for name in store.names(type_name, "*.fbx"):
+                    yield {"k": "model", "r": f"{type_name}/{name}"}
 
     return scan(), rel_path(recovered_root)
 

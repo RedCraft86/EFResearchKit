@@ -40,6 +40,23 @@ precedence; `WEBUI_PREVIOUS_EXPORT_ROOT` remains the server-specific override.
 
 ## Pages and routing
 
+Gameplay production details label item/building description sources only when
+their text differs, and decorative text sources only when linked decorative
+texts differ. Identical text is displayed once without a source label. Decorative
+text and primary descriptions have no headings; decorative text appears last,
+one font size smaller. Distinct text remains separate. Source presence
+does not establish which description a game screen displays.
+Production item shards include `wikiDescriptions` (entry ID and localized text)
+from exact wiki-to-item joins; item/building details render this explanation after
+the decorative text using the shared rich-text renderer.
+Production `labels` supplies localized building recipe/wiki headings from
+`TextTable` keys and the catalog language's I18n table.
+Recipe summaries include activity/gas requirements and original variants so item
+recipe lists display each referenced craft's own conditions.
+Gameplay's base index carries `uiLabels` for matching equipment attributes,
+set effects, enemy abilities/drops and weapon skill headings; these follow the
+data language rather than the UI locale.
+
 Ten tabs, in navigation order. `data-view` is the tab token in `index.html`
 and the value of `document.body.dataset.activeView`.
 
@@ -131,8 +148,8 @@ Stage changes paint before blocking work, and overlays close after the content
 has had a chance to paint. Superseded requests cannot update the current load,
 and an earlier fade cannot hide a restarted loader.
 
-Gameplay separates characters, weapons, equipment, items, enemies, recipes and
-machines into dataset tabs; only the selected dataset's filters are shown.
+Gameplay orders its dataset tabs as characters, weapons, essences, equipment,
+machines and buildings, recipes, items, and enemies; only the selected dataset's filters are shown.
 Equipment sidebar groups use authored suit IDs and localized names, retaining
 collapsible individual rows and filtered piece counts. Entries without a suit
 keep type grouping; filters and pagination still operate on individual pieces.
@@ -418,6 +435,28 @@ inputs change. Searching preserves the selected detail and expanded evidence
 when that identity still matches, without re-rendering its detail on each input.
 
 ### Gameplay
+
+Story item wiki entries and Gameplay's Items catalog have reciprocal links.
+The item header's Story link requires a published wiki entry in the displayed
+language and does not depend on Gameplay item effects.
+
+Machine details display linked building items' decorative descriptions after
+the machine description, using the catalog's displayed language and rich text.
+Linked items and buildings share distinct descriptions, crafting/use connections,
+building recipes, and Story links through their published identifier joins.
+Exact one-to-one item/building pairs use the same combined detail layout from
+either catalog, including both IDs, both sets of properties, and merged sources.
+Combined details keep tags in one horizontally scrollable row, item/building
+navigation in one reciprocal switch row, and both configuration disclosures
+side by side.
+Item crafting sources and recipe uses show the published ingredient/output
+quantities inline, with recipe-detail links; configured processing time appears
+only when the recipe provides it.
+All recipe details keep unlock/operating conditions and stored configuration
+side by side as initially collapsed disclosures, including recipe variants.
+Building recipe lists group recipes by their stored gas-environment ID, showing
+the environment once per group while preserving each recipe's activity tags,
+ingredient/output quantities, and processing time.
 
 Weapon list rows show the three localized skill effects in authored order.
 Compact labels omit the middle-dot suffix and the first attribute's Chinese
@@ -742,6 +781,9 @@ Marker eligibility and render-layer grades:
 
 ### Assets and Text
 
+- OBJ and FBX previews share background presets, a custom background picker,
+  and a model color picker. Colors apply to both WebGL and software previews.
+
 - Assets lists images, video, OBJ, and FBX, not exported JSON: every such
   document is a Data-page store row, and a material links to its Data-page
   document. The optional `Table owner` fact requires an exact whole-stem match
@@ -751,10 +793,18 @@ Marker eligibility and render-layer grades:
   empty-list message explain this and point to clearing search or resetting.
   The filter panel scrolls within half the viewport height so expanding the
   category catalog keeps the results visible.
+- An Animator FBX is grouped by the scene it belongs to, not its file name:
+  the index records its FBX root as `fr` when that differs from the file
+  stem, so generic cutscene objects (`Actor`, `offset`, `GameObject`) sit
+  under their timeline, with `<name>_Actor`/`<name>_Effect` roots merged.
 - Sprite images are crop documents over their textures, still linked as
   `.../game/Unity/Sprite/<name>.png`; `serve.py` answers with the crop
   document and `sprite_worker.js` renders it pixel-identical to AnimeStudio.
   Without the worker (no secure context) Sprites do not display.
+- Animator FBX are rows in `Unity.sqlite`, still linked as
+  `.../game/Unity/Animator/<name>.fbx`; `serve.py` answers with the rejoined
+  file and static packages ship it loose, so the viewer and downloads are
+  unchanged.
 
 ### Text
 
@@ -853,3 +903,22 @@ The page smoke-test checklist is in
 [`memory/webui_recovery.md`](../memory/webui_recovery.md). Its Story media step
 uses the fixtures `test_sns_emojicomment`, `test_sns_sticker`, and
 `sns_topic_map02_lv005_12002`.
+
+Assets collapses byte-confirmed identical exported media into one preview
+variant within existing asset groups, including images, OBJ, FBX, and video.
+The index retains every file row; `h` is the full content SHA-256 and `d` marks
+same-kind, same-extension groups also checked for byte equality with bounded
+memory. All original filenames and PathIDs remain searchable and appear in
+same-content file details. Converted-file equality does not establish original
+Unity object equality or ownership; OBJ omits skin weights and blend shapes.
+Sprite crops retain their separate texture/crop content evidence. Export files
+remain in place.
+
+The project-authored Story entry `black_webui_secret_notice` uses the selected
+data language for its title and three notice lines, independently of interface
+locale. It remains explicitly marked as project content, not game evidence.
+
+Item recipe cards select the exact source method from grouped `recipeVariants`,
+including its machine, ingredients, outputs, time and environment. Shop cards
+combine identical published display configurations with a matching-record count
+and retain all goods IDs and source links. This is display grouping only.

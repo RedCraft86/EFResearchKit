@@ -3089,7 +3089,7 @@ not a substring in a hex operand. Instruction facts follow Intel's
 and [TEST reference](https://cdrdv2-public.intel.com/874240/325462-090-sdm-vol-1-2abcd-3abcd-4.pdf).
 An owned resolver range can mix executable code, indexed dispatch tables and
 padding; linear decoding of the whole range cannot certify that boundary. The
-four resolver-child control owners below each partition their complete
+resolver-child control owners below partition their complete
 primary/chained unwind-owned bytes into code, table data and padding, and check
 every original branch, terminal transfer, indirect dispatch site and stored
 table target against instruction boundaries. Their facts are `conditional`
@@ -3140,18 +3140,258 @@ reader, and each fails closed through the selected native/source gates.
   this is declaration coverage, not a live IAT binding, initialized lock state
   or an executed acquire. The context pointer reloaded after the child call is
   treated as a fresh value.
+- **Selected Baselib implementation** --
+  [`buff_formatter_baselib`](../../scripts/game_data/memorypack/buff_formatter_baselib.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_baselib_native.json),
+  lanes [`il2cpp/pe_exports`](../../scripts/game_data/il2cpp/pe_exports.py) and
+  [`il2cpp/baselib_semaphore_control`](../../scripts/game_data/il2cpp/baselib_semaphore_control.py)).
+  The caller's actual imported names join the selected file's name/ordinal/EAT
+  entries, its complete primary/chained programs and actual named kernel import
+  slots. All declared export-name ordering and ordinal indices are checked;
+  selected forwarders cannot stand for a local body. The selected Baselib file
+  joins GameAssembly, metadata and UnityPlayer in the before/after native gate.
+  An explicit Baselib path reaches the proof; no sibling or game-root fallback
+  replaces it. Missing/mismatched inputs yield no summary.
+- **Context body and incoming-address control** --
+  [`buff_formatter_context_setup`](../../scripts/game_data/memorypack/buff_formatter_context_setup.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_context_setup_native.json),
+  lanes [`il2cpp/context_setup_control`](../../scripts/game_data/il2cpp/context_setup_control.py)
+  and [`il2cpp/integer_byte_operations`](../../scripts/game_data/il2cpp/integer_byte_operations.py)).
+  Rechecks the actual relation caller joins, complete primary/chained owned
+  bytes, every possible local transfer, direct call and explicit store.
+  The first complete physical field program and selected incoming-address
+  handoffs are conditional on compatible stable/disjoint storage and normal
+  Win64 calls. The second full CFG/store inventory remains `structuralOnly`
+  for its complete typed field meaning. These optional proofs do not change
+  the frozen recursive reader or grant child/list/root admission.
+- **Context reservation/refill and tail arguments** --
+  [`buff_formatter_context_allocation`](../../scripts/game_data/memorypack/buff_formatter_context_allocation.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_context_allocation_native.json),
+  lanes [`il2cpp/context_allocation_control`](../../scripts/game_data/il2cpp/context_allocation_control.py)
+  and [`il2cpp/integer_context_memory`](../../scripts/game_data/il2cpp/integer_context_memory.py)).
+  Joins the actual first context call and its byte-count/eight-stride domain
+  to the complete primary/chained reservation/refill/node program. Every
+  local branch, direct/register call, external tail, trap and explicit store
+  is checked. Indirect allocator identity remains open; the separate
+  clear-tail owner below composes the child's normal result and conditional
+  stores. Selected native/source drift yields no summary.
+- **Clear-tail values, ranges and stored result** --
+  [`buff_formatter_clear_tail`](../../scripts/game_data/memorypack/buff_formatter_clear_tail.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_clear_tail_native.json),
+  lanes [`il2cpp/byte_fill_control`](../../scripts/game_data/il2cpp/byte_fill_control.py),
+  [`il2cpp/fill_instructions`](../../scripts/game_data/il2cpp/fill_instructions.py)
+  and [`il2cpp/fill_geometry`](../../scripts/game_data/il2cpp/fill_geometry.py)).
+  Checks the complete owned fill and REP bodies, every image-relative table,
+  register-value construction, store range and normal return. It rechecks
+  the allocation/context parents and joins the returned old cursor to the
+  receiver's stored array field. Native/source drift yields no summary;
+  writable storage, CPU state and normal execution remain conditions.
+- **Named class fields and ancestry-array consumer** --
+  [`buff_formatter_class_ancestry`](../../scripts/game_data/memorypack/buff_formatter_class_ancestry.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_class_ancestry_native.json),
+  lane [`il2cpp/class_ancestry_control`](../../scripts/game_data/il2cpp/class_ancestry_control.py)).
+  Authenticates selected GameAssembly export names/ordinals/EAT entries,
+  closed field getter programs and the complete owned `has_parent` program.
+  It rechecks the first context proof and its actual child call, parent link,
+  byte depth, stored array and ready-mask joins. This supplies a direct named
+  ancestry consumer without selecting a live receiver or formatter.
+- **Complete incoming-address helper control and saved homes** --
+  [`buff_formatter_incoming_address`](../../scripts/game_data/memorypack/buff_formatter_incoming_address.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_incoming_address_native.json),
+  lanes [`il2cpp/initializer_control`](../../scripts/game_data/il2cpp/initializer_control.py)
+  and [`il2cpp/initializer_instructions`](../../scripts/game_data/il2cpp/initializer_instructions.py)).
+  Rechecks the actual second-context call and named ancestry parent, then
+  proves the helper's complete owned control, all explicit physical writes,
+  frame/home geometry and finite register origins. Native/source drift
+  yields no summary; unknown aliases, child effects and runtime identity
+  remain open.
+
+Under normal Win64 calls, the thread-ID body zero-extends the DWORD result
+before returning it to the caller's QWORD owner comparison. Acquire preserves
+the incoming handle, passes an infinite nonalertable wait, and restores its
+frame before tail-calling the error query only on the failed-wait value.
+Release returns immediately for an original zero request. After its first
+release fails, it queries the error without branching on that error code,
+tries a single release with a DWORD previous-count output, and computes the
+next request as `uint32(min_unsigned(previous request,
+uint32(recorded limit - previous count)) - 1)`. A failed adjusted release
+carries that adjusted DWORD into the next retry. There is no additional zero
+guard before the adjusted call; unsigned subtraction can wrap. Applicable
+saved registers and frames are restored on every normal return path. This
+does not prove termination or equality between the original request and the
+total count successfully released.
+
+Those are conditional physical argument/control facts. Interpreting them as
+Windows semaphore/thread effects additionally requires live API bindings and
+compatible initialized handles. Microsoft's
+[wait contract](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobjectex),
+[release contract](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-releasesemaphore)
+and [thread-ID contract](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid)
+describe those APIs; the selected on-disk declarations establish neither a
+loaded target nor an observed synchronization result.
+
+The first context body returns through the shared restored frame when its
+ready bit or stored array pointer is already nonzero. Otherwise it may call
+itself on the linked receiver with the incoming second-argument address.
+Its stored count is an unsigned byte: the fresh linked count plus one wraps
+modulo 256, while a receiver with no link gets one. The allocation-like call
+receives that zero-extended byte count and an eight-byte stride; its result
+is stored without an inline failure guard. A linked path writes the receiver
+QWORD at `array + (fresh count - 1) * 8` and forwards the two stored arrays
+and `fresh linked count * 8` bytes to the copy-like child. The other path
+writes the receiver at the array start. Normal continuation reloads the flag
+byte, ORs its ready mask, stores it and restores the frame/register. That first
+body has no inline guard excluding count wrap or establishing nonzero
+allocation or valid capacity.
+
+The named `il2cpp_class_has_parent` export directly calls that first context
+entry with its original first argument and a context-slot address. Its
+complete program checks the same ready flag and stored array, prepares the
+original second argument through another child, reloads the second depth as
+an unsigned byte, and returns AL one exactly when the first depth is at least
+that fresh depth and the first array's `depth - 1` QWORD equals the original
+second argument. Otherwise AL is zero. Under coherent class state, positive
+prepared depth and valid array storage, this directly connects the stored
+array to a class ancestry test. The parent/depth/array joins are physical
+reads and an authenticated call, rather than a name or layout similarity.
+
+Selected named getter entry programs return the QWORD name, namespace,
+parent or element-class field, or form the embedded type-field address.
+Each checked entry is a closed load/address-and-return program. That proves
+its entry execution without claiming a physical function extent from absent
+unwind data or extending into neighboring padding. These named reads anchor
+the corresponding field roles; they do not identify the live object passed
+to an anonymous initializer. The ancestry consumer still reloads its
+post-child context pointer as fresh, lacks an additional zero-depth guard,
+and depends on compatible storage and normal Win64 callees. Initialization,
+synchronization success, capacity and actual runtime ancestry remain open.
+
+The actual allocation-like child rounds the unsigned low product of count
+and stride to an eight-byte reservation. In the selected caller's unsigned
+byte/eight-stride domain, multiplication and this rounding cannot overflow
+and the reservation equals the unrounded byte product. This does not prove
+that pointer endpoints do not wrap or that the surrounding storage is valid.
+Its unsigned remaining-space guard chooses refill when space is smaller;
+otherwise the body takes the fresh cursor, writes cursor plus reservation
+and subtracts that reservation from the QWORD remaining field. The refill
+mode byte may select an alternate helper whose nonnull result rejoins that
+same reservation path, while a null result goes through new-block setup.
+
+New-block setup reads the global allocation-function cell twice, with one
+metadata-size argument and one unsigned-selected block-size argument. These
+are fresh cell reads, not proof of the same live function value or successful
+allocation. The body stores buffer/cursor and total/remaining metadata, checks
+a QWORD node-count equality guard, allocates and links a payload node, and
+increments the count. The equality path calls the selected failure child
+and reaches INT3 if that child returns normally. Named pool/list/class meaning,
+counter invariants and the alternate/node/failure child effects remain open.
+No inline null guard covers the global allocation results before their use.
+
+All ordinary exits restore the applicable saved registers and stack before
+tail-forwarding the old cursor, a zero fill word and the original count/stride
+byte product. The reservation owner establishes this argument flow. The
+separate clear-tail owner now follows the child through complete normal
+returns: each returns the incoming destination. The actual receiver array
+field receives that old cursor before later flag updates may change AL.
+Normal Win64 calls, compatible stable noninterfering root/block/node storage
+and valid allocation/refill results remain conditions; actual capacity,
+protocol, allocator selection, visibility and observed effects are unproved.
+
+The fill child zero-extends the low input value byte, replicates it through
+a QWORD multiply and initializes the consumed SSE/AVX lanes. Its guarded
+short-length table covers each admitted size, and larger paths select paired
+endpoint stores, aligned loops or REP byte stores. The vector-tail tables
+select only the proved rounded-remainder indices. Affine range comparisons
+cover every natural loop count: the aligned loop advances by exactly its
+store chunk, head/endpoint stores cover the alignment gap and remainder, and
+overlapping writes carry the same byte value. Under the actual context
+arguments, this establishes zero stores across the count/eight-stride range.
+Zero length permits a normal return without payload stores and supplies no
+nonnull-result guarantee.
+
+These effects require a valid writable range and compatible stack/return,
+supported instruction state on the selected SSE/AVX branch, zero direction
+flag for REP, nonwrapping endpoints, and noninterference with control tables,
+globals and saved return state. The REP body saves/restores its nonvolatile
+destination register and frame; that save is a separate stack write. The
+non-temporal path executes SFENCE after its stores, establishing store/store
+ordering under the architectural conditions. All-store visibility at return,
+live path selection and observed payload effects remain unproved. Instruction
+semantics follow Intel's
+[instruction manuals](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html).
+
+The second body saves the incoming address in an entry home cell. Its checked
+frame delta joins later home-cell reloads to that same physical cell, and
+direct stack stores do not overwrite it. Finite provenance over every local
+CFG edge invalidates the origin on any whole or partial RBX/RDX write,
+preserves RBX and invalidates RDX across normal Win64 calls, and proves the
+selected recursive/helper handoffs. RBX's later object-like loads are fresh
+unknown values; they cannot all be treated as the incoming address. Disjoint
+storage and stable saved cells remain conditions: passing the same address
+does not prove that the pointed slot contents, or the caller's post-child
+context pointer, remain unchanged. The ABI condition follows Microsoft's
+[x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention).
+
+The incoming-address helper's complete local graph now includes direct,
+register and imported calls, its normal RET and terminal INT3. Every explicit
+write is checked, including packed vector and immediate-byte stack stores,
+byte flag logic, memory subtraction and the locked QWORD counter step.
+Typed moves preserve the actual REX-extended SIB index; an earlier linear
+display omitted that extension. That display was a byte candidate, not a
+field or effect proof. The optional decoder leaves the frozen stored reader
+unchanged and fails closed on unsupported/truncated selected forms.
+
+Separate frame analysis connects both saved entry values through RSP and
+RBP addressing. Explicit stack-store ranges, PUSH writes and normal CALL
+return-address writes avoid the saved homes. Finite source analysis over all
+local edges invalidates whole/partial register overwrites and volatile
+registers across normal calls, while preserving the applicable nonvolatile
+origins. It enumerates every call site whose RDX is proved to carry the
+original incoming address or its saved copy. A register value at a call site
+does not establish that the callee owns or reads that parameter.
+
+Every normal local return supplies AL zero or one; this is a low-byte return
+fact, not proof of initialization success. Stable homes and noninterference
+by unknown memory aliases or child writes remain conditions. Other indirect
+stores can alias the incoming pointed slot, and child effects are still
+open. The caller's post-child context pointer therefore stays fresh;
+pointed-slot preservation, complete class-field meaning, actual receiver
+identity, capacity and recursive termination are not admitted by this proof.
+
+The first body's direct copy target joins the same owned bulk entry used by
+the maintained [EffectLineCenter copy dispatch proof](../../scripts/game_data/buff_effect_line_center_copy_dispatch_native.py)
+and its [contract](../../scripts/game_data/contracts/buff_effect_line_center_copy_dispatch_native.json).
+This is a current-build entry
+identity, not a name match. Those complete dispatch/store-value proofs can
+be reused for further composition; the new caller still needs its own valid
+buffer/capacity, noninterference, CPU/selection and applicable direction-flag
+conditions. The managed Array.Copy wrapper's assumptions do not automatically
+hold for these anonymous arrays, and observed results/visibility stay open.
 
 Instruction-width facts these owners depend on live in
 [`integer_tag_dispatch`](../../scripts/game_data/il2cpp/integer_tag_dispatch.py)
 (signed-extension/compare/increment operands),
 [`integer_decrement`](../../scripts/game_data/il2cpp/integer_decrement.py)
 and [`integer_effects`](../../scripts/game_data/il2cpp/integer_effects.py)
-(locked exchanges, unary arithmetic, physical write spans).
+(locked exchanges, unary arithmetic, physical write spans). The optional
+[`integer_byte_operations`](../../scripts/game_data/il2cpp/integer_byte_operations.py)
+adds byte-register INC/DEC and selected AND/OR with exact instruction ends,
+partial parent-register writes, REX/high-byte selection and flag effects;
+byte INC preserves CF and wraps rather than widening the count. Instruction
+semantics follow Intel's [instruction manuals](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html).
+The optional [`integer_context_memory`](../../scripts/game_data/il2cpp/integer_context_memory.py)
+adds memory-destination SUB, sign-extended accumulator AND, byte memory
+INC/DEC/XOR and typed memory/register CMP with complete instruction ends.
+This closes the selected helpers' former decoding gaps without changing the
+frozen stored-data reader or treating known linear rows as complete control.
 
-Still `unresolved`: typed conversion/relation meaning, named
-class/interface/slot and inflated MethodInfo, initialization/cache/lock
-semantics, the Baselib export bodies and context children's stack-slot writes
-(next candidates; missing byte INC/OR decoding there is a tooling gap),
+Still `unresolved`: remaining typed conversion/relation meaning, live
+class/interface/slot and inflated MethodInfo identity, initialization/cache/lock
+semantics, live Baselib/API identities, the second context body's complete
+typed field program, context children's pointed-slot mutations and
+allocation/copy effect composition under the actual caller conditions,
+including valid storage/capacity, initialized allocator protocol and actual
+clear/copy execution and visibility,
 callback cursor equivalence, and positive list/full-root admission.
 
 The union formatter's caller prefix saves its entry Reader and wrapper output,

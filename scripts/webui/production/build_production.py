@@ -25,7 +25,7 @@ from scripts.webui.production.recipes import group_recipes
 
 SCHEMA = "endfield.production.v1"
 TABLE_NAMES = (
-    "ItemTable", "ItemTypeTable", "ItemShowingTypeTable", "FactoryItemTable",
+    "ItemTable", "ItemTypeTable", "ItemShowingTypeTable", "FactoryItemTable", "TextTable",
     "FactoryMachineCraftTable", "FactoryMachineCraftGroupTable", "FactoryHubCraftTable",
     "FactoryManualCraftTable", "FactoryBuildingTable", "FactoryBuildingItemTable",
     "FactoryManualCraftUpgradeTable", "ShopGoodsTable", "ShopTable", "ShopGroupTable",
@@ -129,6 +129,11 @@ def build_catalog(tables: dict[str, dict[str, Any]], texts: dict[str, Any]) -> d
             "id": key, "kind": "items", "title": localized(row.get("name"), texts) or key,
             "description": localized(row.get("desc"), texts),
             "lore": localized(row.get("decoDesc"), texts),
+            "wikiDescriptions": [
+                {"id": wiki_key, "text": localized(entry.get("desc"), texts)}
+                for wiki_key, entry in wiki_by_item.get(key, [])
+                if localized(entry.get("desc"), texts)
+            ],
             "type": str(row.get("type", "")),
             "typeName": type_name, "typeGroup": type_groups.get(type_name, str(row.get("type", ""))),
             "showingType": row.get("showingType"),
@@ -407,6 +412,10 @@ def build_catalog(tables: dict[str, dict[str, Any]], texts: dict[str, Any]) -> d
         "itemAliases": aliases,
         "recipeAliases": recipe_aliases,
         "machineCategories": list(building_categories.values()),
+        "labels": {key: localized(table("TextTable").get(key), texts) for key in (
+            "ui_wiki_building_usable_formula", "ui_wiki_building_usable_func",
+            "ui_wiki_item_part_formula", "ui_wiki_fac_tree_activity_foluma",
+        )},
         "stats": {"items": len(items), "recipes": len(recipes), "machines": len(machines),
                   "sourceItems": item_count, "medalGroups": sum("medalLevels" in row for row in items.values()),
                   "sourceRecipes": source_recipe_count, "recipeTypes": recipe_types,
@@ -435,6 +444,7 @@ def publish(catalog: dict[str, Any], language: str, out_dir: Path, inputs: list[
         "itemAliases": catalog.get("itemAliases", {}),
         "recipeAliases": catalog.get("recipeAliases", {}),
         "machineCategories": catalog.get("machineCategories", []),
+        "labels": catalog.get("labels", {}),
     }
     for kind, records in catalog["records"].items():
         shards: dict[str, dict[str, Any]] = defaultdict(dict)
@@ -458,8 +468,16 @@ def publish(catalog: dict[str, Any], language: str, out_dir: Path, inputs: list[
                     ]
             elif kind == "recipes":
                 summary.update({field: row[field] for field in ("ingredients", "outcomes", "machineId", "machineName")})
-                summary.update({field: row[field] for field in ("types", "machineNames", "machineIds", "durationSeconds")
+                summary.update({field: row[field] for field in ("types", "machineNames", "machineIds", "durationSeconds", "gasEnvironment", "activityId")
                                 if field in row})
+                if row.get("recipeVariants"):
+                    summary["recipeVariants"] = [
+                        {field: variant[field] for field in (
+                            "id", "title", "type", "ingredients", "outcomes", "machineId", "machineName",
+                            "durationSeconds", "gasEnvironment", "activityId",
+                        ) if field in variant}
+                        for variant in row["recipeVariants"]
+                    ]
                 summary["variantCount"] = len(row.get("recipeVariants", [])) or 1
             else:
                 summary["recipeCount"] = len(row["recipes"])

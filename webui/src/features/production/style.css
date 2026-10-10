@@ -53,20 +53,34 @@
 .production-dimensions dt { color: var(--muted); font-size: 12px; }
 .production-dimensions dd { margin: 4px 0 0; font-size: 20px; font-weight: 600; }
 .production-description, .production-lore p { white-space: pre-wrap; line-height: 1.8; font-size: 13px; overflow-wrap: anywhere; }
+.production-description.production-deco { margin-top: 12px; font-size: 12px; }
+.production-description.production-wiki { margin-top: 24px; }
 .production-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .production-badge { display: inline-block; padding: 3px 7px; margin: 2px; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); font-size: 11px; }
+.production-activity-tag .production-badge { color: #713c91; border-color: #9563b5; background: rgba(149, 99, 181, .12); }
 .production-rate { display: inline-block; color: var(--accent); white-space: nowrap; margin: 0 5px; }
 .production-gas-requirement { margin: 8px 0; }
+.production-environment-group + .production-environment-group { margin-top: 16px; }
+.production-environment-group > .production-gas-requirement,
+.production-environment-group > h4 { margin: 0 0 8px; font-size: 12px; }
 .production-section { margin: 22px 0; min-width: 0; }
 .production-section h3 { font-size: 15px; margin: 0 0 10px; }
 .production-section h3 span { font-size: 12px; color: var(--muted); font-weight: normal; }
 .production-reference { padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .production-references { display: grid; gap: 7px; }
 .production-machine-recipe { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
+.production-machine-content { display: grid; grid-template-columns: 105px 100px 160px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
+.production-machine-content > * { min-width: 0; }
+.production-machine-content .production-gas-requirement { margin: 0; }
+.production-machine-content .production-activity-tag .production-badge { margin-left: 0; }
+.production-machine-content-compact { grid-template-columns: 105px minmax(0, 1fr); }
+.production-machine-content-compact > .production-machine-device,
+.production-machine-content-compact > .production-machine-environment { display: none; }
 .production-machine-formula { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .production-machine-group { min-width: 0; }
 .production-machine-arrow { color: var(--accent); font-size: 20px; }
 .production-machine-time, .production-machine-recipe-link { white-space: nowrap; font-size: 12px; }
+.production-machine-recipe-link { grid-column: 3; grid-row: 1; }
 .production-reference + .production-reference { margin-top: 7px; }
 .production-reference strong { display: inline-block; margin-bottom: 3px; }
 .production-flow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 15px; align-items: center; }
@@ -98,13 +112,19 @@
 .production-recipe-config { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .production-recipe-config h4 { margin: 0 0 10px; font-size: 13px; }
 .production-recipe-config .production-properties dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.production-shared-tags { flex-wrap: nowrap; overflow-x: auto; }
+.production-shared-tags > * { flex-shrink: 0; white-space: nowrap; }
+.production-entity-switch { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 12px; }
+.production-shared-config { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.production-shared-config .production-properties { min-width: 0; }
+.production-shared-config .production-properties dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .production-sources li, .production-audit li { margin: 6px 0; overflow-wrap: anywhere; }
 .production-error { padding: 12px; color: var(--muted); overflow-wrap: anywhere; }
 body:not(.show-debug) .production-technical { display: none; }
 @media (max-width: 760px) {
-  .production-machine-recipe { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
-  .production-machine-formula { grid-column: 1 / -1; }
-  .production-recipe-config { grid-template-columns: minmax(0, 1fr); }
+  .production-machine-recipe { grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+  .production-machine-content { grid-template-columns: 75px 65px 95px minmax(0, 1fr); gap: 6px; }
+  .production-machine-content-compact { grid-template-columns: 75px minmax(0, 1fr); }
   .production-composite-icon.production-icon-large { width: 60px; height: 60px; }
   #production-app { height: auto; }
   .production-layout { display: block; height: auto; }

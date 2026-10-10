@@ -1,0 +1,341 @@
+{
+  "schema": "endfield.buff-formatter-clear-tail-native-contract.v1",
+  "status": "exact-current-build",
+  "scope": "selected-clear-tail-complete-byte-fill-rep-and-actual-context-result-join-only",
+  "nativeInputs": {
+    "GameAssembly.dll": "C24495E51B406F03B03890C4788EE618AE022C991405BE5D5B8B787CB775AE89",
+    "global-metadata.dat": "0076743397ACADF03D3B0064343A963C7C88863B8160526D397E4B3EFB96F02E",
+    "UnityPlayer.dll": "BEE7BE52370ADDDD67BA61E4937CA51B7F272656841D187E95E505496DA798D1"
+  },
+  "parentContract": "buff_formatter_context_allocation_native.json",
+  "entryRva": 3011520,
+  "repEntryRva": 3011504,
+  "callerEntryRva": 2919712,
+  "selectedCallerDomain": {
+    "unsignedCountBits": 8,
+    "strideBytes": 8,
+    "fillByte": 0
+  },
+  "functions": [
+    {
+      "role": "main",
+      "entryRva": 3011520,
+      "ownedWindows": [
+        {
+          "startRva": 3011520,
+          "endRva": 3012424,
+          "sha256": "0911558785281E30EA030F7BBC0E7A0C98AE0957442581245FA8747EFA1CD635"
+        }
+      ],
+      "codeWindows": [
+        {
+          "startRva": 3011520,
+          "endRva": 3012424,
+          "sha256": "0911558785281E30EA030F7BBC0E7A0C98AE0957442581245FA8747EFA1CD635"
+        }
+      ],
+      "paddingWindows": [],
+      "checkedInstructionCount": 176
+    },
+    {
+      "role": "rep",
+      "entryRva": 3011504,
+      "ownedWindows": [
+        {
+          "startRva": 3011504,
+          "endRva": 3011520,
+          "sha256": "B8721EF30A9F19D1D9AEE591D1CCC36AD691DC4C7B9C04AC8E6E771202F9D9FE"
+        }
+      ],
+      "codeWindows": [
+        {
+          "startRva": 3011504,
+          "endRva": 3011520,
+          "sha256": "B8721EF30A9F19D1D9AEE591D1CCC36AD691DC4C7B9C04AC8E6E771202F9D9FE"
+        }
+      ],
+      "paddingWindows": [],
+      "checkedInstructionCount": 8
+    }
+  ],
+  "globals": {
+    "vectorModeRva": 217652440,
+    "lowerThresholdRva": 217652448,
+    "upperThresholdRva": 217652456,
+    "repModeRva": 230663588
+  },
+  "tables": [
+    {
+      "siteRva": 3011571,
+      "startRva": 176961984,
+      "endRva": 176962048,
+      "sha256": "6599E8AEB7A433B84B3CF527B042D24032ACF02C46D1B9BEC426C136AB7B19A7",
+      "targetRvas": [
+        3011602,
+        3011598,
+        3011611,
+        3011593,
+        3011652,
+        3011636,
+        3011607,
+        3011589,
+        3011690,
+        3011671,
+        3011680,
+        3011657,
+        3011648,
+        3011632,
+        3011603,
+        3011585
+      ],
+      "role": "short",
+      "jumpSiteRva": 3011582
+    },
+    {
+      "siteRva": 3011913,
+      "startRva": 176962048,
+      "endRva": 176962084,
+      "sha256": "BAC29E1412DBE89F974FB9AAE76D907293BE0184874719954F9C84C4244BFB0E",
+      "targetRvas": [
+        3011995,
+        3011988,
+        3011981,
+        3011974,
+        3011967,
+        3011957,
+        3011947,
+        3011937,
+        3011927
+      ],
+      "role": "temporal32",
+      "jumpSiteRva": 3011924
+    },
+    {
+      "siteRva": 3012105,
+      "startRva": 176962084,
+      "endRva": 176962120,
+      "sha256": "0DCD62FD5A6A721ED27E0163DA2A9C066B3F0D329E5AC6AB4D5267B232C9927E",
+      "targetRvas": [
+        3012187,
+        3012180,
+        3012173,
+        3012166,
+        3012159,
+        3012149,
+        3012139,
+        3012129,
+        3012119
+      ],
+      "role": "nonTemporal32",
+      "jumpSiteRva": 3012116
+    },
+    {
+      "siteRva": 3012349,
+      "startRva": 176962120,
+      "endRva": 176962156,
+      "sha256": "CCBD82DFCE7F4FB51E526A37067FFFDFBADE7C2F89EC9D33280EF44BCA652A76",
+      "targetRvas": [
+        3012419,
+        3012412,
+        3012405,
+        3012398,
+        3012391,
+        3012384,
+        3012377,
+        3012370,
+        3012363
+      ],
+      "role": "fallback16",
+      "jumpSiteRva": 3012360
+    }
+  ],
+  "branches": [
+    {
+      "siteRva": 3011559,
+      "kind": "conditional",
+      "targetRva": 3011696,
+      "conditionCode": 7
+    },
+    {
+      "siteRva": 3011704,
+      "kind": "conditional",
+      "targetRva": 3011718,
+      "conditionCode": 7
+    },
+    {
+      "siteRva": 3011725,
+      "kind": "conditional",
+      "targetRva": 3012208,
+      "conditionCode": 2
+    },
+    {
+      "siteRva": 3011738,
+      "kind": "conditional",
+      "targetRva": 3011762,
+      "conditionCode": 6
+    },
+    {
+      "siteRva": 3011747,
+      "kind": "conditional",
+      "targetRva": 3011762,
+      "conditionCode": 7
+    },
+    {
+      "siteRva": 3011756,
+      "kind": "conditional",
+      "targetRva": 3011504,
+      "conditionCode": 5
+    },
+    {
+      "siteRva": 3011795,
+      "kind": "conditional",
+      "targetRva": 3011898,
+      "conditionCode": 6
+    },
+    {
+      "siteRva": 3011804,
+      "kind": "conditional",
+      "targetRva": 3012016,
+      "conditionCode": 7
+    },
+    {
+      "siteRva": 3011896,
+      "kind": "conditional",
+      "targetRva": 3011824,
+      "conditionCode": 3
+    },
+    {
+      "siteRva": 3012088,
+      "kind": "conditional",
+      "targetRva": 3012016,
+      "conditionCode": 3
+    },
+    {
+      "siteRva": 3012215,
+      "kind": "conditional",
+      "targetRva": 3012230,
+      "conditionCode": 6
+    },
+    {
+      "siteRva": 3012224,
+      "kind": "conditional",
+      "targetRva": 3011504,
+      "conditionCode": 5
+    },
+    {
+      "siteRva": 3012257,
+      "kind": "conditional",
+      "targetRva": 3012334,
+      "conditionCode": 6
+    },
+    {
+      "siteRva": 3012332,
+      "kind": "conditional",
+      "targetRva": 3012272,
+      "conditionCode": 3
+    }
+  ],
+  "returnRvas": [
+    3011519,
+    3011602,
+    3011616,
+    3011644,
+    3011656,
+    3011670,
+    3011679,
+    3011689,
+    3011694,
+    3011717,
+    3012002,
+    3012197,
+    3012423
+  ],
+  "payloadStoreSiteRvas": [
+    3011585,
+    3011589,
+    3011593,
+    3011598,
+    3011603,
+    3011607,
+    3011611,
+    3011632,
+    3011636,
+    3011640,
+    3011648,
+    3011652,
+    3011657,
+    3011661,
+    3011666,
+    3011671,
+    3011675,
+    3011680,
+    3011684,
+    3011690,
+    3011706,
+    3011710,
+    3011824,
+    3011828,
+    3011833,
+    3011838,
+    3011843,
+    3011851,
+    3011859,
+    3011867,
+    3011927,
+    3011937,
+    3011947,
+    3011957,
+    3011967,
+    3011974,
+    3011981,
+    3011988,
+    3011995,
+    3012016,
+    3012020,
+    3012025,
+    3012030,
+    3012035,
+    3012043,
+    3012051,
+    3012059,
+    3012119,
+    3012129,
+    3012139,
+    3012149,
+    3012159,
+    3012166,
+    3012173,
+    3012180,
+    3012187,
+    3012272,
+    3012276,
+    3012281,
+    3012286,
+    3012291,
+    3012296,
+    3012301,
+    3012306,
+    3012363,
+    3012370,
+    3012377,
+    3012384,
+    3012391,
+    3012398,
+    3012405,
+    3012412,
+    3012419,
+    3011513
+  ],
+  "selectionConditions": [
+    "Normal complete execution with valid writable destination and a compatible Win64 stack and return address",
+    "Supported SSE2/AVX instruction state on whichever anonymous-global branch is selected",
+    "REP direction flag is zero; destination endpoint does not wrap the address space",
+    "Destination and stack do not interfere with dispatch tables, global selection cells or return state; no concurrent control/payload modification"
+  ],
+  "evidenceBoundary": {
+    "exact": "Selected native main and REP owned bytes, complete typed control, four image-relative dispatch tables, scalar/SSE/AVX value construction, range and normal-return flow.",
+    "conditional": "Normal returned pointer equals incoming destination; every requested byte receives its low incoming value byte under the selection conditions. The actual context caller supplies zero and unsigned-byte count times eight.",
+    "structuralOnly": "Anonymous global fields choose paths; their runtime values and semantic identities are not supplied.",
+    "unresolved": "Actual execution, allocation success and valid capacity, allocator initialization/live callee identity, all-store visibility at return, incoming slot contents, callback equality and serialized child/list/root admission."
+  }
+}

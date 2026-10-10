@@ -474,3 +474,12 @@ complete evidence.
 - Reduce unlinked Story through typed routes, never filenames, proximity, or
   native address order.
 - Keep every parser and validator failure deterministic and actionable.
+
+## Project-authored open-source notice
+
+`black_webui_secret_notice` is emitted for every supported Story data language.
+`scripts/webui/story/language_bundle.py` keeps the translations inside its
+existing notice emitter and uses the same localized title and text for the conversation, index
+preview, and search. Preserve its stable key, line IDs, and
+`gameDataEvidence: false` provenance. It is project content and establishes no
+game recovery claim.

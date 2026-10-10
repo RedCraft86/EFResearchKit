@@ -29,13 +29,23 @@ fixed-reward icons. Both builders retain their own output ownership; Activities
 adds no cross-page build dependency. See [Activities](webui/activities.md).
 
 Gameplay's production catalogs reuse Story's safe rich-text renderer and raw-tag display setting;
+machine flavor text comes from linked items in Production's own publication.
+Production labels sources when linked descriptions or decorative texts differ
+and displays identical text once; the owning [catalog guide](webui/production.md)
+records the distinction from runtime screen selection.
+Production supplies linked wiki explanations from its own tables to Gameplay
+details; displaying them adds no dependency on Story publication.
+Story item wiki navigation targets Gameplay's Items catalog; its reciprocal
+link checks Story's last published index in the displayed catalog language.
 shared facet chips accept optional decorative icons.
 Shared facet chip counts are dataset totals; combined groups and search can
 return no matches even when a chip has a positive count. Assets documents this
 in its chip tooltips and empty-list message (see [Assets](webui/assets.md)).
+Assets OBJ and FBX previews share background and model color controls; see
+[frontend behavior](../webui/README.md#assets-and-text).
 
-Gameplay has one dataset bar for Characters, Weapons, Essences, Equipment, Items, Enemies,
-Recipes and Machines. Equipment manufacturing reads Production's last published
+Gameplay has one dataset bar for Characters, Weapons, Essences, Equipment,
+Machines & buildings, Recipes, Items and Enemies. Equipment manufacturing reads Production's last published
 item/icon lookup for thumbnails; neither builder writes the other page's
 publication (see [Gameplay](webui/gameplay.md)).
 Its Items tab combines the Production catalog with
@@ -232,3 +242,17 @@ and remains selectable for every category, including default ordering.
 Updates owns the optional activities.json source-row comparison sidecar, reused
 from the gated Reference diff for Activity*Table and CheckInRewardTable. Activity
 change badges read this publication without modifying their current catalog.
+
+Assets collapses byte-confirmed identical exported media into one preview
+variant within existing asset groups, including images, OBJ, FBX, and video.
+The index retains every file row; `h` is the full content SHA-256 and `d` marks
+same-kind, same-extension groups also checked for byte equality with bounded
+memory. All original filenames and PathIDs remain searchable and appear in
+same-content file details. Converted-file equality does not establish original
+Unity object equality or ownership; OBJ omits skin weights and blend shapes.
+Sprite crops retain their separate texture/crop content evidence. Export files
+remain in place.
+
+Production relationship display preserves original recipe-method identity and
+all goods provenance when grouping matching shop configurations; see the
+[production guide](webui/production.md) for the evidence boundary.

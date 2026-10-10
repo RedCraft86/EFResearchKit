@@ -1,0 +1,767 @@
+{
+  "schema": "endfield.buff-formatter-class-ancestry-native-contract.v1",
+  "status": "exact-current-build",
+  "scope": "selected-named-class-fields-and-complete-ancestry-consumer-join-only",
+  "nativeInputs": {
+    "GameAssembly.dll": "C24495E51B406F03B03890C4788EE618AE022C991405BE5D5B8B787CB775AE89",
+    "global-metadata.dat": "0076743397ACADF03D3B0064343A963C7C88863B8160526D397E4B3EFB96F02E",
+    "UnityPlayer.dll": "BEE7BE52370ADDDD67BA61E4937CA51B7F272656841D187E95E505496DA798D1"
+  },
+  "parentContract": "buff_formatter_context_setup_native.json",
+  "selectedFirstContextEntryRva": 2919712,
+  "exportDeclarations": {
+    "selectedExports": [
+      {
+        "symbolName": "il2cpp_class_get_element_class",
+        "nameIndex": 59,
+        "namePointerSlotRva": 217627004,
+        "namePointerHex": "97 c7 f8 0c",
+        "nameRva": 217630615,
+        "nameHex": "69 6c 32 63 70 70 5f 63 6c 61 73 73 5f 67 65 74 5f 65 6c 65 6d 65 6e 74 5f 63 6c 61 73 73 00",
+        "ordinalIndexSlotRva": 217628542,
+        "ordinalIndexHex": "3b 00",
+        "ordinalIndex": 59,
+        "ordinal": 60,
+        "functionSlotRva": 217625348,
+        "functionSlotHex": "a0 05 0e 00",
+        "targetRva": 918944,
+        "isForwarder": false,
+        "forwarder": null,
+        "forwarderHex": "",
+        "implementationOrLiveBindingProved": false
+      },
+      {
+        "symbolName": "il2cpp_class_get_name",
+        "nameIndex": 68,
+        "namePointerSlotRva": 217627040,
+        "namePointerHex": "8c c8 f8 0c",
+        "nameRva": 217630860,
+        "nameHex": "69 6c 32 63 70 70 5f 63 6c 61 73 73 5f 67 65 74 5f 6e 61 6d 65 00",
+        "ordinalIndexSlotRva": 217628560,
+        "ordinalIndexHex": "44 00",
+        "ordinalIndex": 68,
+        "ordinal": 69,
+        "functionSlotRva": 217625384,
+        "functionSlotHex": "00 0d 09 00",
+        "targetRva": 593152,
+        "isForwarder": false,
+        "forwarder": null,
+        "forwarderHex": "",
+        "implementationOrLiveBindingProved": false
+      },
+      {
+        "symbolName": "il2cpp_class_get_namespace",
+        "nameIndex": 69,
+        "namePointerSlotRva": 217627044,
+        "namePointerHex": "a2 c8 f8 0c",
+        "nameRva": 217630882,
+        "nameHex": "69 6c 32 63 70 70 5f 63 6c 61 73 73 5f 67 65 74 5f 6e 61 6d 65 73 70 61 63 65 00",
+        "ordinalIndexSlotRva": 217628562,
+        "ordinalIndexHex": "45 00",
+        "ordinalIndex": 69,
+        "ordinal": 70,
+        "functionSlotRva": 217625388,
+        "functionSlotHex": "a0 de 09 00",
+        "targetRva": 646816,
+        "isForwarder": false,
+        "forwarder": null,
+        "forwarderHex": "",
+        "implementationOrLiveBindingProved": false
+      },
+      {
+        "symbolName": "il2cpp_class_get_parent",
+        "nameIndex": 71,
+        "namePointerSlotRva": 217627052,
+        "namePointerHex": "db c8 f8 0c",
+        "nameRva": 217630939,
+        "nameHex": "69 6c 32 63 70 70 5f 63 6c 61 73 73 5f 67 65 74 5f 70 61 72 65 6e 74 00",
+        "ordinalIndexSlotRva": 217628566,
+        "ordinalIndexHex": "47 00",
+        "ordinalIndex": 71,
+        "ordinal": 72,
+        "functionSlotRva": 217625396,
+        "functionSlotHex": "a0 0a 0a 00",
+        "targetRva": 658080,
+        "isForwarder": false,
+        "forwarder": null,
+        "forwarderHex": "",
+        "implementationOrLiveBindingProved": false
+      },
+      {
+        "symbolName": "il2cpp_class_get_type",
+        "nameIndex": 76,
+        "namePointerSlotRva": 217627072,
+        "namePointerHex": "6c c9 f8 0c",
+        "nameRva": 217631084,
+        "nameHex": "69 6c 32 63 70 70 5f 63 6c 61 73 73 5f 67 65 74 5f 74 79 70 65 00",
+        "ordinalIndexSlotRva": 217628576,
+        "ordinalIndexHex": "4c 00",
+        "ordinalIndex": 76,
+        "ordinal": 77,
+        "functionSlotRva": 217625416,
+        "functionSlotHex": "20 f9 09 00",
+        "targetRva": 653600,
+        "isForwarder": false,
+        "forwarder": null,
+        "forwarderHex": "",
+        "implementationOrLiveBindingProved": false
+      },
+      {
+        "symbolName": "il2cpp_class_has_parent",
+        "nameIndex": 80,
+        "namePointerSlotRva": 217627088,
+        "namePointerHex": "da c9 f8 0c",
+        "nameRva": 217631194,
+        "nameHex": "69 6c 32 63 70 70 5f 63 6c 61 73 73 5f 68 61 73 5f 70 61 72 65 6e 74 00",
+        "ordinalIndexSlotRva": 217628584,
+        "ordinalIndexHex": "50 00",
+        "ordinalIndex": 80,
+        "ordinal": 81,
+        "functionSlotRva": 217625432,
+        "functionSlotHex": "50 38 00 00",
+        "targetRva": 14416,
+        "isForwarder": false,
+        "forwarder": null,
+        "forwarderHex": "",
+        "implementationOrLiveBindingProved": false
+      }
+    ],
+    "exportDirectoryRva": 217625072,
+    "exportDirectoryBytes": 14800,
+    "exportDirectoryHeader": {
+      "fileOffset": 448,
+      "rawHex": "f0 b1 f8 0c d0 39 00 00"
+    },
+    "exportDirectoryHex": "00 00 00 00 ff ff ff ff 00 00 00 00 44 c2 f8 0c 01 00 00 00 9e 01 00 00 9e 01 00 00 18 b2 f8 0c 90 b8 f8 0c 08 bf f8 0c",
+    "libraryNameRva": 217629252,
+    "libraryName": "GameAssembly.dll",
+    "libraryNameHex": "47 61 6d 65 41 73 73 65 6d 62 6c 79 2e 64 6c 6c 00",
+    "ordinalBase": 1,
+    "declaredFunctionCount": 414,
+    "declaredNameCount": 414,
+    "functionTableRva": 217625112,
+    "functionTableSha256": "0C0390A8E5063325C2D7EC7A31CE3ED91A3D2BF7319908A9DF5AB90AE5CFABF0",
+    "nameTableRva": 217626768,
+    "nameTableSha256": "7A2FC65B3D792B7D5A1D858B2293037ABE1242FD8CD39D7FC8FA95A85CA2C072",
+    "ordinalTableRva": 217628424,
+    "ordinalTableSha256": "8AA818C09CCCB57973D8F1D7396FEBBD9E845DB143318C401A0B0D8E366F3E0D",
+    "allDeclaredNameOrderAndOrdinalIndicesChecked": true,
+    "completeExportImplementationCatalogProved": false,
+    "liveLoadedLibraryOrBindingProved": false
+  },
+  "importDeclarations": {
+    "selectedImports": [
+      {
+        "slotRva": 176355296,
+        "descriptorRva": 217640052,
+        "descriptorHex": "60 f4 f8 0c 00 00 00 00 00 00 00 00 8e 05 f9 0c c0 f7 82 0a",
+        "libraryNameRva": 217646478,
+        "libraryName": "baselib.dll",
+        "libraryNameHex": "62 61 73 65 6c 69 62 2e 64 6c 6c 00",
+        "originalThunkRva": 217642080,
+        "firstThunkRva": 176355264,
+        "thunkIndex": 4,
+        "actualThunkCount": 13,
+        "terminatedLookupBytes": 112,
+        "terminatedLookupSha256": "583E1E716F1E04F1C21B949EE7E13D89136E00F7057E4867D6F41EE3BB8F9E04",
+        "lookupEntryRva": 217642112,
+        "lookupEntryHex": "ec 00 f9 0c 00 00 00 00",
+        "iatEntryHex": "ec 00 f9 0c 00 00 00 00",
+        "hintNameRva": 217645292,
+        "hint": 77,
+        "hintHex": "4d 00",
+        "symbolName": "?Baselib_SystemSemaphore_Acquire@il2cpp_baselib@@YAXUBaselib_SystemSemaphore_Handle@1@@Z",
+        "symbolNameHex": "3f 42 61 73 65 6c 69 62 5f 53 79 73 74 65 6d 53 65 6d 61 70 68 6f 72 65 5f 41 63 71 75 69 72 65 40 69 6c 32 63 70 70 5f 62 61 73 65 6c 69 62 40 40 59 41 58 55 42 61 73 65 6c 69 62 5f 53 79 73 74 65 6d 53 65 6d 61 70 68 6f 72 65 5f 48 61 6e 64 6c 65 40 31 40 40 5a 00",
+        "onDiskUnboundIatEqualsLookupProved": true,
+        "liveIatValueOrCalleeSelected": false
+      },
+      {
+        "slotRva": 176355304,
+        "descriptorRva": 217640052,
+        "descriptorHex": "60 f4 f8 0c 00 00 00 00 00 00 00 00 8e 05 f9 0c c0 f7 82 0a",
+        "libraryNameRva": 217646478,
+        "libraryName": "baselib.dll",
+        "libraryNameHex": "62 61 73 65 6c 69 62 2e 64 6c 6c 00",
+        "originalThunkRva": 217642080,
+        "firstThunkRva": 176355264,
+        "thunkIndex": 5,
+        "actualThunkCount": 13,
+        "terminatedLookupBytes": 112,
+        "terminatedLookupSha256": "583E1E716F1E04F1C21B949EE7E13D89136E00F7057E4867D6F41EE3BB8F9E04",
+        "lookupEntryRva": 217642120,
+        "lookupEntryHex": "48 01 f9 0c 00 00 00 00",
+        "iatEntryHex": "48 01 f9 0c 00 00 00 00",
+        "hintNameRva": 217645384,
+        "hint": 82,
+        "hintHex": "52 00",
+        "symbolName": "?Baselib_SystemSemaphore_Release@il2cpp_baselib@@YAXUBaselib_SystemSemaphore_Handle@1@I@Z",
+        "symbolNameHex": "3f 42 61 73 65 6c 69 62 5f 53 79 73 74 65 6d 53 65 6d 61 70 68 6f 72 65 5f 52 65 6c 65 61 73 65 40 69 6c 32 63 70 70 5f 62 61 73 65 6c 69 62 40 40 59 41 58 55 42 61 73 65 6c 69 62 5f 53 79 73 74 65 6d 53 65 6d 61 70 68 6f 72 65 5f 48 61 6e 64 6c 65 40 31 40 49 40 5a 00",
+        "onDiskUnboundIatEqualsLookupProved": true,
+        "liveIatValueOrCalleeSelected": false
+      },
+      {
+        "slotRva": 176355312,
+        "descriptorRva": 217640052,
+        "descriptorHex": "60 f4 f8 0c 00 00 00 00 00 00 00 00 8e 05 f9 0c c0 f7 82 0a",
+        "libraryNameRva": 217646478,
+        "libraryName": "baselib.dll",
+        "libraryNameHex": "62 61 73 65 6c 69 62 2e 64 6c 6c 00",
+        "originalThunkRva": 217642080,
+        "firstThunkRva": 176355264,
+        "thunkIndex": 6,
+        "actualThunkCount": 13,
+        "terminatedLookupBytes": 112,
+        "terminatedLookupSha256": "583E1E716F1E04F1C21B949EE7E13D89136E00F7057E4867D6F41EE3BB8F9E04",
+        "lookupEntryRva": 217642128,
+        "lookupEntryHex": "a4 01 f9 0c 00 00 00 00",
+        "iatEntryHex": "a4 01 f9 0c 00 00 00 00",
+        "hintNameRva": 217645476,
+        "hint": 88,
+        "hintHex": "58 00",
+        "symbolName": "?Baselib_Thread_GetCurrentThreadId@il2cpp_baselib@@YA_JXZ",
+        "symbolNameHex": "3f 42 61 73 65 6c 69 62 5f 54 68 72 65 61 64 5f 47 65 74 43 75 72 72 65 6e 74 54 68 72 65 61 64 49 64 40 69 6c 32 63 70 70 5f 62 61 73 65 6c 69 62 40 40 59 41 5f 4a 58 5a 00",
+        "onDiskUnboundIatEqualsLookupProved": true,
+        "liveIatValueOrCalleeSelected": false
+      }
+    ],
+    "importDirectoryRva": 217639872,
+    "importDirectoryBytes": 220,
+    "importDirectoryHeader": {
+      "fileOffset": 456,
+      "rawHex": "c0 eb f8 0c dc 00 00 00"
+    },
+    "iatDirectoryRva": 176353280,
+    "iatDirectoryBytes": 2176,
+    "iatDirectoryHeader": {
+      "fileOffset": 544,
+      "rawHex": "00 f0 82 0a 80 08 00 00"
+    },
+    "walkedDescriptors": 10,
+    "descriptorNullTerminatorRva": 217640072,
+    "actualTerminatedTableOwnershipChecked": true,
+    "completeImportSymbolCatalogProved": false,
+    "liveIatValueOrCalleeSelected": false
+  },
+  "imports": [
+    {
+      "role": "Acquire",
+      "slotRva": 176355296
+    },
+    {
+      "role": "Release",
+      "slotRva": 176355304
+    },
+    {
+      "role": "ThreadId",
+      "slotRva": 176355312
+    }
+  ],
+  "protocol": {
+    "globalContextRva": 222598832,
+    "offsets": {
+      "handle": 0,
+      "count": 8,
+      "limit": 12,
+      "owner": 72,
+      "reentry": 80
+    }
+  },
+  "physicalFields": {
+    "ancestryArray": 200,
+    "ancestryDepth": 306,
+    "readyFlags": 314,
+    "name": 16,
+    "namespace": 24,
+    "parent": 88,
+    "elementClass": 64,
+    "type": 32
+  },
+  "getters": [
+    {
+      "symbolName": "il2cpp_class_get_name",
+      "entryRva": 593152,
+      "fieldRole": "name",
+      "operation": "load",
+      "closedEntryWindow": {
+        "startRva": 593152,
+        "endRva": 593157,
+        "sha256": "01B97D2DA374096B4359DFB781DA44EA9EB61BA0541DE9F2D557CFAD9ADEF8D3"
+      }
+    },
+    {
+      "symbolName": "il2cpp_class_get_namespace",
+      "entryRva": 646816,
+      "fieldRole": "namespace",
+      "operation": "load",
+      "closedEntryWindow": {
+        "startRva": 646816,
+        "endRva": 646821,
+        "sha256": "0C6B8858E139E1A255688DFC8B1FCA61C89CCEA689E8DA8BCD4276A9918F1DBE"
+      }
+    },
+    {
+      "symbolName": "il2cpp_class_get_parent",
+      "entryRva": 658080,
+      "fieldRole": "parent",
+      "operation": "load",
+      "closedEntryWindow": {
+        "startRva": 658080,
+        "endRva": 658085,
+        "sha256": "091F5E45F0BE74D7EE4478154027E057C5C9D8B9D8F3CE62E44700EE355C23DE"
+      }
+    },
+    {
+      "symbolName": "il2cpp_class_get_element_class",
+      "entryRva": 918944,
+      "fieldRole": "elementClass",
+      "operation": "load",
+      "closedEntryWindow": {
+        "startRva": 918944,
+        "endRva": 918949,
+        "sha256": "C0151D9FEAB268CCCF5281F8B14121F2C8F7D02892D3177CC3EFA49B031E22EC"
+      }
+    },
+    {
+      "symbolName": "il2cpp_class_get_type",
+      "entryRva": 653600,
+      "fieldRole": "type",
+      "operation": "address",
+      "closedEntryWindow": {
+        "startRva": 653600,
+        "endRva": 653605,
+        "sha256": "A8ADEAD0A89E8BCC0F6079669194E35B31C483DF478A1515E46C55A9CF74FB51"
+      }
+    }
+  ],
+  "hasParent": {
+    "entryRva": 14416,
+    "ownedWindows": [
+      {
+        "startRva": 14416,
+        "endRva": 14741,
+        "sha256": "4C5BF32B3BDC82C200BC2D88CFD0698694249C52C68BE5B71E87CC596F713C23"
+      }
+    ],
+    "codeWindows": [
+      {
+        "startRva": 14416,
+        "endRva": 14741,
+        "sha256": "4C5BF32B3BDC82C200BC2D88CFD0698694249C52C68BE5B71E87CC596F713C23"
+      }
+    ],
+    "paddingWindows": [],
+    "checkedInstructionCount": 85,
+    "frameBytes": 32,
+    "contextStackOffset": 48,
+    "readyMask": 4,
+    "setupTargetRva": 2919712,
+    "parentPreparationTargetRva": 19072,
+    "labels": {
+      "result": 14674,
+      "sameOwner": 14555,
+      "ownerStore": 14540,
+      "setup": 14561,
+      "retry": 14608,
+      "candidate": 14629,
+      "exchanged": 14646,
+      "decrementReentry": 14670,
+      "false": 14718,
+      "restore": 14720
+    },
+    "explicitStores": [
+      {
+        "siteRva": 14416,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "rbx",
+          "backingRegister": "rbx",
+          "registerBits": 64,
+          "registerBitOffset": 0,
+          "memoryBytes": 8,
+          "address": {
+            "base": "rsp",
+            "index": null,
+            "scale": 1,
+            "displacement": 16,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14421,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "rbp",
+          "backingRegister": "rbp",
+          "registerBits": 64,
+          "registerBitOffset": 0,
+          "memoryBytes": 8,
+          "address": {
+            "base": "rsp",
+            "index": null,
+            "scale": 1,
+            "displacement": 24,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14426,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "rsi",
+          "backingRegister": "rsi",
+          "registerBits": 64,
+          "registerBitOffset": 0,
+          "memoryBytes": 8,
+          "address": {
+            "base": "rsp",
+            "index": null,
+            "scale": 1,
+            "displacement": 32,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14479,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "rax",
+          "backingRegister": "rax",
+          "registerBits": 64,
+          "registerBitOffset": 0,
+          "memoryBytes": 8,
+          "address": {
+            "base": "rsp",
+            "index": null,
+            "scale": 1,
+            "displacement": 48,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14515,
+        "kind": "lockedMemoryExchangeOperation",
+        "facts": {
+          "operation": "xadd",
+          "bits": 32,
+          "sourceRegister": "ecx",
+          "destinationAddress": {
+            "base": null,
+            "index": null,
+            "scale": 1,
+            "displacement": 222584317,
+            "ripRelative": true,
+            "addressBits": 64,
+            "ripBase": 6442465467,
+            "absoluteAddress": 6665049784
+          },
+          "memoryReadBytes": 4,
+          "memoryWriteBytes": 4,
+          "locked": true,
+          "writesFlags": [
+            "CF",
+            "OF",
+            "SF",
+            "ZF",
+            "AF",
+            "PF"
+          ],
+          "sourceRegisterResult": "previous destination memory value",
+          "memoryResult": "previous memory plus previous source modulo 2^32",
+          "sourceWriteZeroExtendsTo64": true,
+          "flagOperation": "previous memory plus previous source"
+        }
+      },
+      {
+        "siteRva": 14540,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "rsi",
+          "backingRegister": "rsi",
+          "registerBits": 64,
+          "registerBitOffset": 0,
+          "memoryBytes": 8,
+          "address": {
+            "base": null,
+            "index": null,
+            "scale": 1,
+            "displacement": 222584357,
+            "ripRelative": true,
+            "addressBits": 64,
+            "ripBase": 6442465491,
+            "absoluteAddress": 6665049848
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14547,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "ebx",
+          "backingRegister": "rbx",
+          "registerBits": 32,
+          "registerBitOffset": 0,
+          "memoryBytes": 4,
+          "address": {
+            "base": null,
+            "index": null,
+            "scale": 1,
+            "displacement": 222584359,
+            "ripRelative": true,
+            "addressBits": 64,
+            "ripBase": 6442465497,
+            "absoluteAddress": 6665049856
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14555,
+        "kind": "memoryStepOperation",
+        "facts": {
+          "operation": "inc",
+          "bits": 32,
+          "destinationAddress": {
+            "base": null,
+            "index": null,
+            "scale": 1,
+            "displacement": 222584351,
+            "ripRelative": true,
+            "addressBits": 64,
+            "ripBase": 6442465505,
+            "absoluteAddress": 6665049856
+          },
+          "memoryReadBytes": 4,
+          "memoryWriteBytes": 4,
+          "locked": false,
+          "delta": 1,
+          "wrapsModulo": 4294967296,
+          "preservesRegisters": true,
+          "preservesCarryFlag": true,
+          "writesFlags": [
+            "OF",
+            "SF",
+            "ZF",
+            "AF",
+            "PF"
+          ]
+        }
+      },
+      {
+        "siteRva": 14596,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "rax",
+          "backingRegister": "rax",
+          "registerBits": 64,
+          "registerBitOffset": 0,
+          "memoryBytes": 8,
+          "address": {
+            "base": "r8",
+            "index": null,
+            "scale": 1,
+            "displacement": 72,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14600,
+        "kind": "memoryOperation",
+        "facts": {
+          "direction": "store",
+          "register": "eax",
+          "backingRegister": "rax",
+          "registerBits": 32,
+          "registerBitOffset": 0,
+          "memoryBytes": 4,
+          "address": {
+            "base": "r8",
+            "index": null,
+            "scale": 1,
+            "displacement": 80,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "valueExtension": null,
+          "upperRegisterEffect": "preserved",
+          "requiredAlignmentBytes": 1,
+          "nonTemporalHint": false,
+          "writesFlags": false
+        }
+      },
+      {
+        "siteRva": 14634,
+        "kind": "lockedMemoryExchangeOperation",
+        "facts": {
+          "operation": "cmpxchg",
+          "bits": 32,
+          "sourceRegister": "ecx",
+          "destinationAddress": {
+            "base": "r8",
+            "index": null,
+            "scale": 1,
+            "displacement": 8,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "memoryReadBytes": 4,
+          "memoryWriteBytes": 4,
+          "locked": true,
+          "writesFlags": [
+            "CF",
+            "OF",
+            "SF",
+            "ZF",
+            "AF",
+            "PF"
+          ],
+          "accumulatorRegister": "eax",
+          "successCondition": "previous accumulator equals previous destination memory",
+          "successMemoryResult": "previous source register",
+          "failureMemoryResult": "previous memory value written back",
+          "failureAccumulatorResult": "previous destination memory value",
+          "failureAccumulatorZeroExtendsTo64": true,
+          "successAccumulatorPreserved": true,
+          "flagOperation": "previous accumulator minus previous memory",
+          "memoryWriteCycleOccursOnBothOutcomes": true
+        }
+      },
+      {
+        "siteRva": 14670,
+        "kind": "memoryStepOperation",
+        "facts": {
+          "operation": "dec",
+          "bits": 32,
+          "destinationAddress": {
+            "base": "r8",
+            "index": null,
+            "scale": 1,
+            "displacement": 80,
+            "ripRelative": false,
+            "addressBits": 64
+          },
+          "memoryReadBytes": 4,
+          "memoryWriteBytes": 4,
+          "locked": false,
+          "delta": -1,
+          "wrapsModulo": 4294967296,
+          "preservesRegisters": true,
+          "preservesCarryFlag": true,
+          "writesFlags": [
+            "OF",
+            "SF",
+            "ZF",
+            "AF",
+            "PF"
+          ]
+        }
+      }
+    ],
+    "calls": [
+      {
+        "siteRva": 14484,
+        "kind": "indirectCall",
+        "cell": 6618806256
+      },
+      {
+        "siteRva": 14534,
+        "kind": "indirectCall",
+        "cell": 6618806240
+      },
+      {
+        "siteRva": 14569,
+        "kind": "call",
+        "target": 6445370656
+      },
+      {
+        "siteRva": 14662,
+        "kind": "indirectCall",
+        "cell": 6618806248
+      },
+      {
+        "siteRva": 14677,
+        "kind": "call",
+        "target": 6442470016
+      }
+    ],
+    "returnRvas": [
+      14740
+    ]
+  },
+  "conditions": [
+    "Microsoft x64 arguments and normal ABI-compatible callees",
+    "Valid readable class and ancestry storage; compatible stack and return state",
+    "Coherent initialized class fields, positive prepared second depth and sufficient ancestry capacity for semantic ancestry interpretation",
+    "Mutable context-slot contents are freshly loaded after the child; equality with the original global remains unresolved"
+  ],
+  "evidenceBoundary": {
+    "exact": [
+      "Current on-disk export names, ordinals and EAT joins",
+      "Closed branch-free field getter entry programs; no unproved physical body extent",
+      "All has-parent primary/chained bytes and complete control/physical operands",
+      "Direct child call equals the reviewed first context entry and uses the same physical ancestry fields"
+    ],
+    "direct": [
+      "Named has-parent export consumes the stored QWORD array with unsigned depth indexing and pointer equality"
+    ],
+    "conditional": [
+      "AL result and class ancestry interpretation under valid coherent storage and normal selected ABI returns"
+    ],
+    "structuralOnly": [
+      "Remaining anonymous initializer fields and runtime receiver identities"
+    ],
+    "unresolved": [
+      "Live class/formatter selection, initialization and synchronization outcomes, context-slot mutation, allocation capacity and termination, callback cursor and complete roots"
+    ]
+  }
+}

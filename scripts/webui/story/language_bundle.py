@@ -19909,11 +19909,32 @@ def build_language_bundle(
             mission_data_files[mission] = rel_file
             mission_data_bytes += out_path.stat().st_size
     def emit_webui_secret_notice() -> None:
-        if language_code != "CN":
-            return
+        notice_repository = "Variante/endfield_research_kit (https://github.com/Variante/endfield_research_kit)"
+
+        # Title, discovery line, open-source terms, and game-content attribution.
+        notice_text = {
+            "CN": ("开源声明", "你在角落里发现了一则小小的系统公告。", "本 WebUI 的代码免费且开源：{repo}。任何人都不应通过付费方式获取本 WebUI 或其代码。", "这里展示的文本、图片、音频、视频、模型及相关内容来自解包并整理后的《明日方舟：终末地》游戏数据。游戏内容的权利归鹰角网络及相关权利人所有。本项目仅用于研究、整理和浏览。"),
+            "TC": ("開源聲明", "你在角落裡發現了一則小小的系統公告。", "本 WebUI 的程式碼免費且開源：{repo}。任何人都不應透過付費方式取得本 WebUI 或其程式碼。", "這裡展示的文字、圖片、音訊、影片、模型及相關內容來自解包並整理後的《明日方舟：終末地》遊戲資料。遊戲內容的權利歸鷹角網路及相關權利人所有。本專案僅用於研究、整理和瀏覽。"),
+            "EN": ("Open-source notice", "You found a small system notice in the corner.", "This WebUI code is free and open source: {repo}. No one should obtain this WebUI or its code through paid access.", "Text, images, audio, video, models, and related content shown here come from unpacked and organized Endfield game data. Rights to game content belong to Hypergryph and the relevant rights holders. This project is for research, organization, and browsing only."),
+            "JP": ("オープンソースに関するお知らせ", "隅に小さなシステムのお知らせを見つけました。", "この WebUI のコードは無料のオープンソースです：{repo}。この WebUI やそのコードを有料で入手しないでください。", "ここに表示されるテキスト、画像、音声、動画、モデルおよび関連コンテンツは、展開・整理された『アークナイツ：エンドフィールド』のゲームデータに由来します。ゲームコンテンツの権利は Hypergryph および各権利者に帰属します。本プロジェクトは研究、整理、閲覧のみを目的としています。"),
+            "KR": ("오픈 소스 안내", "구석에서 작은 시스템 안내를 발견했습니다.", "이 WebUI의 코드는 무료 오픈 소스입니다: {repo}. 이 WebUI나 코드를 유료로 구매하지 마세요.", "여기에 표시되는 텍스트, 이미지, 오디오, 영상, 모델 및 관련 콘텐츠는 추출하여 정리한 명일방주: 엔드필드 게임 데이터에서 가져왔습니다. 게임 콘텐츠의 권리는 Hypergryph 및 해당 권리자에게 있습니다. 이 프로젝트는 연구, 정리 및 열람만을 목적으로 합니다."),
+            "BR": ("Aviso de código aberto", "Você encontrou um pequeno aviso do sistema no canto.", "O código desta WebUI é gratuito e de código aberto: {repo}. Ninguém deve pagar para obter esta WebUI ou seu código.", "Os textos, imagens, áudios, vídeos, modelos e conteúdos relacionados exibidos aqui vêm de dados do jogo Endfield extraídos e organizados. Os direitos sobre o conteúdo do jogo pertencem à Hypergryph e aos respectivos titulares. Este projeto se destina apenas à pesquisa, organização e consulta."),
+            "DE": ("Open-Source-Hinweis", "Du hast in der Ecke einen kleinen Systemhinweis gefunden.", "Der Code dieser WebUI ist kostenlos und quelloffen: {repo}. Niemand sollte für den Zugang zu dieser WebUI oder ihrem Code bezahlen.", "Die hier gezeigten Texte, Bilder, Audiodateien, Videos, Modelle und zugehörigen Inhalte stammen aus entpackten und aufbereiteten Endfield-Spieldaten. Die Rechte an den Spielinhalten liegen bei Hypergryph und den jeweiligen Rechteinhabern. Dieses Projekt dient ausschließlich der Forschung, Aufbereitung und Betrachtung."),
+            "FR": ("Avis relatif au code source ouvert", "Vous avez trouvé une petite notification du système dans un coin.", "Le code de cette WebUI est gratuit et open source : {repo}. Personne ne devrait payer pour obtenir cette WebUI ou son code.", "Les textes, images, sons, vidéos, modèles et contenus associés présentés ici proviennent de données du jeu Endfield extraites et organisées. Les droits sur le contenu du jeu appartiennent à Hypergryph et aux titulaires concernés. Ce projet est destiné uniquement à la recherche, à l’organisation et à la consultation."),
+            "ID": ("Pemberitahuan sumber terbuka", "Kamu menemukan pemberitahuan sistem kecil di sudut.", "Kode WebUI ini gratis dan bersumber terbuka: {repo}. Jangan membayar untuk mendapatkan WebUI ini atau kodenya.", "Teks, gambar, audio, video, model, dan konten terkait yang ditampilkan di sini berasal dari data game Endfield yang diekstrak dan ditata. Hak atas konten game dimiliki oleh Hypergryph dan pemegang hak terkait. Proyek ini hanya ditujukan untuk penelitian, penataan, dan penelusuran."),
+            "IT": ("Avviso sul codice open source", "Hai trovato un piccolo avviso di sistema in un angolo.", "Il codice di questa WebUI è gratuito e open source: {repo}. Nessuno dovrebbe pagare per ottenere questa WebUI o il suo codice.", "I testi, le immagini, l’audio, i video, i modelli e i contenuti correlati mostrati qui provengono da dati del gioco Endfield estratti e organizzati. I diritti sui contenuti del gioco appartengono a Hypergryph e ai rispettivi titolari. Questo progetto è destinato esclusivamente alla ricerca, all’organizzazione e alla consultazione."),
+            "MX": ("Aviso de código abierto", "Encontraste un pequeño aviso del sistema en una esquina.", "El código de esta WebUI es gratuito y de código abierto: {repo}. Nadie debería pagar para obtener esta WebUI o su código.", "Los textos, imágenes, audios, videos, modelos y contenidos relacionados que se muestran aquí provienen de datos del juego Endfield extraídos y organizados. Los derechos sobre el contenido del juego pertenecen a Hypergryph y a los titulares correspondientes. Este proyecto está destinado únicamente a la investigación, organización y consulta."),
+            "RU": ("Уведомление об открытом исходном коде", "Вы нашли небольшое системное уведомление в углу.", "Код этого WebUI бесплатный и открытый: {repo}. Никто не должен платить за получение этого WebUI или его кода.", "Представленные здесь тексты, изображения, аудио, видео, модели и связанные материалы получены из распакованных и упорядоченных данных игры Endfield. Права на игровой контент принадлежат Hypergryph и соответствующим правообладателям. Этот проект предназначен только для исследования, систематизации и просмотра."),
+            "TH": ("ประกาศเกี่ยวกับโอเพนซอร์ส", "คุณพบประกาศเล็ก ๆ ของระบบอยู่ที่มุมหนึ่ง", "โค้ดของ WebUI นี้ใช้ฟรีและเป็นโอเพนซอร์ส: {repo} ทุกคนควรเข้าถึง WebUI นี้หรือโค้ดได้โดยไม่ต้องเสียเงิน", "ข้อความ รูปภาพ เสียง วิดีโอ โมเดล และเนื้อหาที่เกี่ยวข้องที่แสดงที่นี่มาจากข้อมูลเกม Endfield ที่แยกไฟล์และจัดระเบียบแล้ว สิทธิ์ในเนื้อหาของเกมเป็นของ Hypergryph และผู้ถือสิทธิ์ที่เกี่ยวข้อง โครงการนี้มีไว้เพื่อการศึกษา จัดระเบียบ และดูข้อมูลเท่านั้น"),
+            "VN": ("Thông báo mã nguồn mở", "Bạn tìm thấy một thông báo hệ thống nhỏ ở góc.", "Mã nguồn của WebUI này miễn phí và mở: {repo}. Không ai nên trả tiền để có được WebUI này hoặc mã nguồn của nó.", "Văn bản, hình ảnh, âm thanh, video, mô hình và nội dung liên quan hiển thị ở đây được lấy từ dữ liệu trò chơi Endfield đã được giải nén và sắp xếp. Quyền đối với nội dung trò chơi thuộc về Hypergryph và các chủ sở hữu quyền liên quan. Dự án này chỉ phục vụ việc nghiên cứu, sắp xếp và tra cứu."),
+        }
+        title, *texts = notice_text[language_code]
+        lines = [
+            {"id": f"black_webui_secret_notice_{index:03d}", "text": text.format(repo=notice_repository)}
+            for index, text in enumerate(texts, 1)
+        ]
 
         out_key = "black_webui_secret_notice"
-        title = "Open-source notice"
         mission = "webui_secret"
         provenance = {
             "scope": "project_authored",
@@ -19922,30 +19943,6 @@ def build_language_bundle(
             "sourceFile": "scripts/webui/story/language_bundle.py",
             "gameDataEvidence": False,
         }
-        lines = [
-            {
-                "id": f"{out_key}_001",
-                "text": "You found a small system notice in the corner.",
-            },
-            {
-                "id": f"{out_key}_002",
-                "text": (
-                    "This WebUI code is free and open source: "
-                    "Variante/endfield_research_kit "
-                    "(https://github.com/Variante/endfield_research_kit). "
-                    "No one should obtain this WebUI or its code through paid access."
-                ),
-            },
-            {
-                "id": f"{out_key}_003",
-                "text": (
-                    "Text, images, audio, video, models, and related content shown here "
-                    "come from unpacked and organized Endfield game data. Rights to game "
-                    "content belong to Hypergryph and the relevant rights holders. This "
-                    "project is for research, organization, and browsing only."
-                ),
-            },
-        ]
         payload = {
             "key": out_key,
             "kind": "black",
