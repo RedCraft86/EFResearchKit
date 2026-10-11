@@ -45,8 +45,6 @@
       rawLoading: "\u52a0\u8f7d\u539f\u59cb\u6587\u4ef6\u4e2d...",
       rawUnavailable: "\u6ca1\u6709\u539f\u59cb\u6587\u4ef6",
       sourceFile: "\u6e90\u6587\u4ef6",
-      overlayFile: "\u8986\u76d6\u6587\u4ef6",
-      baseFile: "\u57fa\u7840\u6587\u4ef6",
       hash: "\u54c8\u5e0c",
       sameHashFiles: "\u76f8\u540c\u54c8\u5e0c\u6587\u4ef6",
       fields: "\u7ed3\u6784\u5b57\u6bb5",
@@ -91,8 +89,6 @@
       rawLoading: "Loading raw file...",
       rawUnavailable: "No raw file",
       sourceFile: "Source file",
-      overlayFile: "Overlay file",
-      baseFile: "Base file",
       hash: "Hash",
       sameHashFiles: "Same-hash files",
       fields: "Structured fields",
@@ -115,10 +111,6 @@
   };
   const FILTER_PANEL_STORAGE_KEY = "reference_browser_filters_collapsed";
   const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
-  // The export keeps one effective table set under game/Table (layout v2).
-  const RAW_EXPORT_SOURCE_ROOTS = {
-    game: "game",
-  };
   const {
     $,
     escapeHtml,
@@ -199,18 +191,8 @@
     return dataPath(`reference/${relativePath}`, language);
   }
 
-  function referenceSourceKey() {
-    return "game";
-  }
-
-  function exportFullPath(parts) {
-    return `/export_full/${parts.map((part) => encodeURIComponent(String(part || ""))).join("/")}`;
-  }
-
-  function exportTablePath(sourceKey, tableName) {
-    const root = RAW_EXPORT_SOURCE_ROOTS[referenceSourceKey(sourceKey)];
-    const name = String(tableName || "").trim();
-    return root && name ? exportFullPath([root, "Table", name]) : "";
+  function exportTablePath(tableName) {
+    return `/export_full/game/Table/${encodeURIComponent(tableName)}`;
   }
 
   function rawDisplayPath(path) {
@@ -218,70 +200,31 @@
   }
 
   function referenceTableKey(table) {
-    return [
-      table && table.source ? table.source : "",
-      table && table.table ? table.table : "",
-      table && table.file ? table.file : "",
-    ].join("\u0000");
-  }
-  function tableContentHash(table) {
-    return String(table && (table.hash || table.sha256 || "") || "").trim();
-  }
-
-  function referenceTableFileRecord(table) {
-    return {
-      source: String(table && table.source || ""),
-      sourceLabel: String(table && table.sourceLabel || table && table.source || ""),
-      table: String(table && table.table || ""),
-      label: String(table && table.label || table && table.table || ""),
-      file: String(table && table.file || ""),
-      baseFile: String(table && table.baseFile || ""),
-      storage: String(table && table.storage || ""),
-      rows: Number(table && table.rows || 0),
-      texts: Number(table && table.texts || 0),
-      bytes: Number(table && table.bytes || 0),
-      hash: tableContentHash(table),
-    };
+    return [table.source, table.table, table.file].join("\u0000");
   }
 
   function referenceSameHashFiles(table) {
-    if (Array.isArray(table && table.sameHashFiles) && table.sameHashFiles.length) return table.sameHashFiles;
-    const file = referenceTableFileRecord(table || {});
-    return file.file ? [file] : [];
+    return table.sameHashFiles || [table];
   }
 
   function aggregateReferenceTables(tables) {
-    const out = [];
     const byHash = new Map();
-    for (const table of tables || []) {
-      const hash = tableContentHash(table);
-      if (!hash) {
-        out.push(table);
-        continue;
+    for (const table of tables) {
+      if (!byHash.has(table.hash)) {
+        byHash.set(table.hash, { ...table, sameHashFiles: [], fileCount: 0 });
       }
-      const file = referenceTableFileRecord(table);
-      const existing = byHash.get(hash);
-      if (!existing) {
-        const copy = { ...table, sameHashFiles: file.file ? [file] : [], fileCount: file.file ? 1 : 0 };
-        byHash.set(hash, copy);
-        out.push(copy);
-        continue;
-      }
-      const key = `${file.source}\u0000${file.table}\u0000${file.file}`;
-      if (file.file && !existing.sameHashFiles.some((item) => `${item.source}\u0000${item.table}\u0000${item.file}` === key)) {
-        existing.sameHashFiles.push(file);
-        existing.fileCount = existing.sameHashFiles.length;
+      const group = byHash.get(table.hash);
+      const key = referenceTableKey(table);
+      if (!group.sameHashFiles.some((file) => referenceTableKey(file) === key)) {
+        group.sameHashFiles.push(table);
+        group.fileCount++;
       }
     }
-    return out;
-  }
-
-  function tableSourceEntries(table) {
-    return referenceSameHashFiles(table).length ? referenceSameHashFiles(table) : [referenceTableFileRecord(table)];
+    return [...byHash.values()];
   }
 
   function tableSourceKeys(table) {
-    return [...new Set(tableSourceEntries(table).map((file) => file.source).filter(Boolean))];
+    return [...new Set(referenceSameHashFiles(table).map((file) => file.source).filter(Boolean))];
   }
 
   function sameHashFileCount(table) {
@@ -337,34 +280,6 @@
     };
   }
 
-  function mergeReferenceOverlay(basePayload, overlayPayload) {
-    const byId = new Map();
-    for (const row of (basePayload && basePayload.rows) || []) {
-      const id = String(row && row.id || "");
-      if (id) byId.set(id, row);
-    }
-    for (const id of overlayPayload.removedRows || []) {
-      byId.delete(String(id || ""));
-    }
-    for (const row of overlayPayload.rows || []) {
-      const id = String(row && row.id || "");
-      if (id) byId.set(id, row);
-    }
-
-    const rowOrder = Array.isArray(overlayPayload.rowOrder)
-      ? overlayPayload.rowOrder.map((id) => String(id || "")).filter(Boolean)
-      : [];
-    const rows = rowOrder.length
-      ? rowOrder.map((id) => byId.get(id)).filter(Boolean)
-      : Array.from(byId.values());
-
-    return {
-      ...(basePayload || {}),
-      ...(overlayPayload || {}),
-      rows,
-    };
-  }
-
   function tableMetadataMatches(table, q) {
     return window.WebUI.queryMatches([
       window.WebUI.linkedFileSearchText(table, referenceSameHashFiles(table)),
@@ -405,13 +320,6 @@
     }
 
     const promise = fetchReferenceJson(table.file, language, signal)
-      .then(async ({ payload, bytes }) => {
-        if (payload && payload.baseFile) {
-          const base = await fetchReferenceJson(payload.baseFile, language, signal);
-          return { payload: mergeReferenceOverlay(base.payload, payload), bytes: bytes + base.bytes };
-        }
-        return { payload, bytes };
-      })
       .then(({ payload, bytes }) => {
         const normalized = applyReferenceTableMetadata(payload, table);
         if (generation === REF_STATE.dataGeneration) {
@@ -429,26 +337,16 @@
     return promise;
   }
 
-  function referenceI18nSourceOrder(preferredSource) {
-    const preferred = referenceSourceKey(preferredSource);
-    const order = [preferred];
-    for (const source of ["persistent", "streaming"]) {
-      if (!order.includes(source)) order.push(source);
-    }
-    return order;
-  }
-
-  async function loadReferenceI18nMap(sourceKey, language) {
+  async function loadReferenceI18nMap(language) {
     const generation = REF_STATE.dataGeneration;
-    const source = referenceSourceKey(sourceKey);
-    const cacheKey = `${language}\u0000${source}`;
+    const cacheKey = language;
     const cached = REF_STATE.i18nCache.get(cacheKey);
     if (cached) return cached;
 
     const pending = REF_STATE.i18nLoads.get(cacheKey);
     if (pending) return pending;
 
-    const path = exportTablePath(source, `I18nTextTable_${language}.json`);
+    const path = exportTablePath(`I18nTextTable_${language}.json`);
     const promise = fetchAbsoluteJson(path)
       .catch(() => ({}))
       .then((payload) => {
@@ -463,40 +361,7 @@
     return promise;
   }
 
-  async function loadReferenceI18nMaps(preferredSource, language) {
-    const maps = {};
-    await Promise.all(referenceI18nSourceOrder(preferredSource).map(async (source) => {
-      maps[source] = await loadReferenceI18nMap(source, language);
-    }));
-    return maps;
-  }
-
-  function resolveReferenceI18nText(idValue, maps, preferredSource) {
-    const key = String(idValue == null ? "" : idValue);
-    if (!key) return "";
-    for (const source of referenceI18nSourceOrder(preferredSource)) {
-      const text = maps && maps[source] && maps[source][key];
-      if (text) return String(text);
-    }
-    return "";
-  }
-
-  function bundledRawReferencePayload(payload) {
-    if (payload && payload.rawRows && typeof payload.rawRows === "object" && !Array.isArray(payload.rawRows)) {
-      if ((Array.isArray(payload.rowOrder) && payload.rowOrder.length)
-        || (Array.isArray(payload.removedRows) && payload.removedRows.length)) {
-        const out = {};
-        if (Array.isArray(payload.rowOrder)) out.rowOrder = payload.rowOrder;
-        if (Array.isArray(payload.removedRows) && payload.removedRows.length) out.removedRows = payload.removedRows;
-        out.rows = payload.rawRows;
-        return out;
-      }
-      return payload.rawRows;
-    }
-    return payload;
-  }
-
-  function formatRawReferencePayload(payload, maps, preferredSource) {
+  function formatRawReferencePayload(payload, maps) {
     const depths = new WeakMap();
     let remaining = MAX_PREVIEW_CHARS;
     return JSON.stringify(payload == null ? null : payload, function (key, value) {
@@ -515,7 +380,7 @@
       depths.set(value, depth);
       if (maps && Object.prototype.hasOwnProperty.call(value, "id")
         && Object.prototype.hasOwnProperty.call(value, "text")) {
-        const text = resolveReferenceI18nText(value.id, maps, preferredSource);
+        const text = maps?.[String(value.id)];
         if (text) {
           const localized = { ...value, text };
           depths.set(localized, depth);
@@ -540,9 +405,9 @@
         if (!preview.truncated) {
           try {
             const payload = parseRawReferenceJson(text);
-            const maps = path.exported ? await loadReferenceI18nMaps(file.sourceKey, language) : null;
+            const maps = path.exported ? await loadReferenceI18nMap(language) : null;
             if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-            text = formatRawReferencePayload(path.exported ? payload : bundledRawReferencePayload(payload), maps, file.sourceKey);
+            text = formatRawReferencePayload(path.exported ? payload : payload.rawRows, maps);
             verbatim = false;
           } catch (error) {
             if (error.name === "AbortError") throw error;
@@ -1286,39 +1151,12 @@
   }
 
   function referenceRawFiles(table) {
-    const files = [];
-    const seen = new Set();
-    const defaultTableName = String(table && table.table || "").trim();
-    const add = (sourceKey, fallbackPath, labelKey, sourceTableName = defaultTableName) => {
-      const source = referenceSourceKey(sourceKey);
-      const tableName = String(sourceTableName || defaultTableName || "").trim();
-      const key = `${source}\u0000${tableName}\u0000${fallbackPath || ""}\u0000${labelKey || ""}`;
-      if ((!tableName && !fallbackPath) || seen.has(key)) return;
-      seen.add(key);
-      files.push({
-        sourceKey: source,
-        tableName,
-        exportPath: tableName ? exportTablePath(source, tableName) : "",
-        fallbackPath: String(fallbackPath || ""),
-        labelKey,
-      });
-    };
-
-    const sameHashFiles = referenceSameHashFiles(table);
-    if (sameHashFiles.length > 1) {
-      for (const file of sameHashFiles) {
-        add(file.source, file.file, file.file === table.file ? "sourceFile" : "sameHashFiles", file.table);
-        if (file.baseFile && file.baseFile !== file.file) add("streaming", file.baseFile, "baseFile", file.table);
-      }
-      return files;
-    }
-
-    const primarySource = referenceSourceKey(table && table.source);
-    add(primarySource, table && table.file, table && table.baseFile && table.baseFile !== table.file ? "overlayFile" : "sourceFile");
-    if (table && table.baseFile && table.baseFile !== table.file) {
-      add("streaming", table.baseFile, "baseFile");
-    }
-    return files;
+    return referenceSameHashFiles(table).map((file) => ({
+      tableName: file.table,
+      exportPath: exportTablePath(file.table),
+      fallbackPath: file.file,
+      labelKey: file.file === table.file ? "sourceFile" : "sameHashFiles",
+    }));
   }
   async function renderReferenceRaw(table) {
     const generation = REF_STATE.dataGeneration;
@@ -1397,7 +1235,7 @@
       wrap.appendChild(section);
       if (index === 0) await load();
       else {
-        // Identical-file aliases and legacy bases load only on demand.
+        // Identical-file aliases load only on demand.
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = refText("loadPreview");

@@ -172,10 +172,8 @@ closed.
 - The local focused refresh covered `indie_dg008`, `dung02_dg005`, and
   `indie_dg006` (the exact LevelConfig scene for `dung02_bdg002`), plus the
   affected Map previews. Other streaming sidecars need a canonical Map refresh
-  to carry the new per-Mesh grade and ambiguity diagnostics; older rows are
-  labeled as legacy surfaces with an ungraded Mesh relation in the normal task
-  column. Their old background wording is suppressed when no binding status is
-  present, so it does not silently claim exact geometry.
+  to carry the per-Mesh grade and ambiguity diagnostics. The frontend consumes
+  the current surface evidence directly; old publications require regeneration.
 - Map01 and Map02 use exact `UILevelMapLoadConfig` world rectangles for their
   minimaps and exact `InitChunkData` matrices for HLOD geometry. Surface and
   elevation keep every joined triangle; the point layer samples those exact

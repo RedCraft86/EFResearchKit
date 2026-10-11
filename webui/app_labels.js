@@ -1826,17 +1826,6 @@ function sourceGroupSubtitle(entry) {
     .trim();
 }
 
-function normalizeActorNames(raw) {
-  // Accept legacy {aid: "name"} or current {aid: ["name", ...]}.
-  const out = {};
-  for (const [k, v] of Object.entries(raw)) {
-    if (Array.isArray(v)) out[k] = v.slice();
-    else if (v) out[k] = [v];
-    else out[k] = [];
-  }
-  return out;
-}
-
 function computeSimActorIds(entries) {
   const out = new Set();
   for (const actorId of SPECIAL_SIM_ACTOR_IDS) out.add(actorId);

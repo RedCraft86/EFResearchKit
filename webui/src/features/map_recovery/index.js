@@ -641,7 +641,6 @@
       surface_name_candidate_mesh_partial_base_color: "Name-matched mesh preview - partial base color",
       surface_exact_hlod_key_mesh_color_unverified: "Exact HLOD mesh placement - color unverified",
       surface_exact_hlod_key_mesh_partial_base_color: "Exact HLOD mesh placement - partial base color",
-      surface_legacy_streaming_ungraded: "Legacy streaming surface - Mesh relation ungraded",
       surfaceNote_inferred_hlod_crop: "Exact danger markers define the crop; the source-art HLOD grid is inferred.",
       surfaceNote_exact_mesh_color_unverified: "The instance matrix is exact; prefab-to-Mesh ownership remains unproved.",
       surfaceNote_exact_mesh_partial_base_color: "The instance matrix is exact; Mesh ownership remains unproved and base color is partial.",
@@ -649,7 +648,6 @@
       surfaceNote_name_candidate_mesh_partial_base_color: "The instance matrix is exact; Mesh ownership remains unproved and base color is partial.",
       surfaceNote_exact_hlod_key_mesh_color_unverified: "The instance matrix and level/HLOD mesh key agree; color remains unverified.",
       surfaceNote_exact_hlod_key_mesh_partial_base_color: "The instance matrix and level/HLOD mesh key agree; base color is partial.",
-      surfaceNote_legacy_streaming_ungraded: "This publication has no per-Mesh binding grade; ownership remains unverified.",
       controls: "Controls",
       collapse: "Collapse panel",
       expand: "Expand panel",
@@ -796,7 +794,6 @@
       scene3dHint: "Open a representative OBJ in the existing Assets 3D viewer. Mesh placement is inferred and diagnostic only.",
       streamingSceneHint: "The instance transform is exact. Static OBJ candidates match by name; prefab-to-Mesh ownership remains unproved.",
       exactHlodSceneHint: "The instance transform and level/HLOD Mesh key agree. This identifies the placed HLOD Mesh; runtime visibility remains unobserved.",
-      legacyStreamingBoundary: "Recovered instance matrices place exported OBJ geometry. This older publication does not grade the Mesh relation; its ownership remains unverified.",
       scene3dUnplacedHint: "These level-matched OBJ exports have no recovered scene transform. Open them in Assets for inspection; they are not placed on this map.",
       scene3dUnavailable: "No safe OBJ model is published for this level; the map stays marker-only.",
       documentTitle: "\u6587\u6863\u540d",
@@ -832,7 +829,6 @@
       surface_name_candidate_mesh_partial_base_color: "按名称匹配的网格预览 - 部分基础色",
       surface_exact_hlod_key_mesh_color_unverified: "精确 HLOD 网格放置 - 颜色未验证",
       surface_exact_hlod_key_mesh_partial_base_color: "精确 HLOD 网格放置 - 部分基础色",
-      surface_legacy_streaming_ungraded: "旧版 Streaming 表面 - 网格关联未分级",
       surfaceNote_inferred_hlod_crop: "裁切范围由精确的危险地图标记确定；源美术 HLOD 网格为推断放置。",
       surfaceNote_exact_mesh_color_unverified: "实例矩阵精确；预制体到网格的归属尚未证实。",
       surfaceNote_exact_mesh_partial_base_color: "实例矩阵精确；网格归属尚未证实，基础色仅部分恢复。",
@@ -840,7 +836,6 @@
       surfaceNote_name_candidate_mesh_partial_base_color: "实例矩阵精确；网格归属尚未证实，基础色仅部分恢复。",
       surfaceNote_exact_hlod_key_mesh_color_unverified: "实例矩阵与关卡 HLOD 网格键一致；颜色尚未验证。",
       surfaceNote_exact_hlod_key_mesh_partial_base_color: "实例矩阵与关卡 HLOD 网格键一致；基础色仅部分恢复。",
-      surfaceNote_legacy_streaming_ungraded: "此版数据没有逐网格的关联等级；归属仍未验证。",
       controls: "控制面板",
       collapse: "收起面板",
       expand: "展开面板",
@@ -982,7 +977,6 @@
       scene3dHint: "Open a representative OBJ in the existing Assets 3D viewer. Mesh placement is inferred and diagnostic only.",
       streamingSceneHint: "实例变换为精确恢复。静态 OBJ 候选按名称匹配；预制体到网格的归属尚未证实。",
       exactHlodSceneHint: "实例变换与关卡 HLOD 网格键一致，因而可确定放置的 HLOD 网格；运行时可见性尚未观测。",
-      legacyStreamingBoundary: "导出的 OBJ 几何体按已恢复的精确实例矩阵放置。此旧版数据未标注网格关联等级，其归属仍未经验证。",
       scene3dUnavailable: "No safe OBJ model is published for this level; the map stays marker-only.",
     },
   };
@@ -2599,13 +2593,8 @@
           <p class="mr-note">${esc(mapMarkCoverage.boundary || "")}</p></details>`
       : "";
     const bg = data.renderBackground || {};
-    const renderBoundary = String(bg.status || "").startsWith("recovered_streaming_")
-      && !bg.render?.meshBindingStatus ? t("legacyStreamingBoundary") : (bg.boundary || "");
-    const surfaceEvidence = bg.surfaceEvidence && typeof bg.surfaceEvidence === "object"
-      ? bg.surfaceEvidence
-      : String(bg.status || "").startsWith("recovered_streaming_")
-        ? { accuracy: "legacy_streaming_ungraded" }
-        : null;
+    const renderBoundary = bg.boundary || "";
+    const surfaceEvidence = bg.surfaceEvidence;
     const surfaceAccuracy = surfaceEvidence?.accuracy
       ? `<div class="mr-surface-evidence" data-accuracy="${esc(surfaceEvidence.accuracy)}"><span>${esc(t("surfaceAccuracy"))}</span><b>${esc(t(`surface_${surfaceEvidence.accuracy}`))}</b><small>${esc(t(`surfaceNote_${surfaceEvidence.accuracy}`))}</small></div>`
       : "";
@@ -3375,7 +3364,7 @@
     const updatePayloadPhase = () => {
       if (request !== state.mapLoadRequest) return;
       const phase = phases.includes("downloading") ? "downloading" : phases.includes("parsing") ? "parsing" : "preparing";
-      window.WebUI?.updateLoaderPhase?.("map-recovery", phase);
+      window.WebUI.updateLoaderPhase("map-recovery", phase);
     };
     updatePayloadPhase();
     await Promise.all(members.map(async (member, index) => {
@@ -3388,8 +3377,8 @@
       updatePayloadPhase();
     }));
     if (request !== state.mapLoadRequest) return false;
-    window.WebUI?.updateLoaderPhase?.("map-recovery", "preparing");
-    await window.WebUI?.nextPaint?.();
+    window.WebUI.updateLoaderPhase("map-recovery", "preparing");
+    await window.WebUI.nextPaint();
     if (request !== state.mapLoadRequest) return false;
     await window.WebUI?.mapEncounters?.load(members.map((member) => member.id));
     if (request !== state.mapLoadRequest) return false;
@@ -3451,17 +3440,17 @@
     state.previewId = "";
     state.filePath = "";
     state.inspectorKey = "";
-    window.WebUI?.updateLoaderPhase?.("map-recovery", "rendering");
-    await window.WebUI?.nextPaint?.();
+    window.WebUI.updateLoaderPhase("map-recovery", "rendering");
+    await window.WebUI.nextPaint();
     if (request !== state.mapLoadRequest) return false;
     render();
-    await window.WebUI?.nextPaint?.();
+    await window.WebUI.nextPaint();
     return request === state.mapLoadRequest;
   }
 
   async function switchMap(id, variantId = "") {
-    window.WebUI?.setViewBusy?.("map-recovery", true);
-    window.WebUI?.showLoader?.("map-recovery", t("loading"));
+    window.WebUI.setViewBusy("map-recovery", true);
+    window.WebUI.showLoader("map-recovery", t("loading"));
     const pending = loadMap(id, { variantId });
     const request = state.mapLoadRequest;
     try {
@@ -3471,8 +3460,8 @@
       return false;
     } finally {
       if (request === state.mapLoadRequest) {
-        window.WebUI?.setViewBusy?.("map-recovery", false);
-        window.WebUI?.hideLoader?.("map-recovery");
+        window.WebUI.setViewBusy("map-recovery", false);
+        window.WebUI.hideLoader("map-recovery");
       }
     }
   }
@@ -3497,9 +3486,9 @@
     state.loadController?.abort();
     state.loadController = new AbortController();
     host.innerHTML = `<div class="mr-load-state" role="status" aria-live="polite"><span>${esc(t("loading"))}</span></div>`;
-    window.WebUI?.clearShellStatus?.("map-recovery");
-    window.WebUI?.setViewBusy?.("map-recovery", true);
-    window.WebUI?.showLoader?.("map-recovery", t("loading"));
+    window.WebUI.clearShellStatus("map-recovery");
+    window.WebUI.setViewBusy("map-recovery", true);
+    window.WebUI.showLoader("map-recovery", t("loading"));
     try {
       state.index = force || !state.index
         ? await fetchJson("data/map_recovery/index.json", {
@@ -3510,8 +3499,8 @@
         : state.index;
       await Promise.all([window.WebUI.updateBadges.load("map"), window.WebUI.updateBadges.loadFiles()]);
       if (request !== state.loadRequest) return null;
-      window.WebUI?.updateLoaderPhase?.("map-recovery", "preparing");
-      await window.WebUI?.nextPaint?.();
+      window.WebUI.updateLoaderPhase("map-recovery", "preparing");
+      await window.WebUI.nextPaint();
       if (request !== state.loadRequest) return null;
       // Payloads are fetched in parallel by loadMap. Keep the shared loader
       // indeterminate while those files are being decoded and merged.
@@ -3526,8 +3515,8 @@
     } finally {
       if (request === state.loadRequest) {
         state.loadController = null;
-        window.WebUI?.setViewBusy?.("map-recovery", false);
-        window.WebUI?.hideLoader?.("map-recovery");
+        window.WebUI.setViewBusy("map-recovery", false);
+        window.WebUI.hideLoader("map-recovery");
       }
     }
   }

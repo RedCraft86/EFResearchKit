@@ -272,7 +272,6 @@
   }
 
   function setMode(mode, { updateUrl = true } = {}) {
-    if (mode === "decoded") mode = "files";
     if (!MODES.includes(mode) || !page.app) return;
     page.mode = mode;
     for (const [name, pane] of Object.entries(page.panes)) pane.hidden = name !== mode;
@@ -379,10 +378,7 @@
       || link.tags.length || link.name || link.query || link.inspect);
   }
 
-  // `unity:MonoBehaviour`, `game-files:Json/LipSync`, `loose:Lua`, `undecoded:Streaming` and `decoded:<dataset>`
-  // name their source. An unqualified group (the older single-store form)
-  // belongs to the link's store, or to whichever store has a group of that
-  // name.
+  // Each group identifies its source as `<source>:<group>`.
   function selectionFromLink(link) {
     const snapshot = { source: link.stores.filter((id) => SOURCES.includes(id)) };
     const add = (source, group) => {
@@ -391,14 +387,7 @@
     };
     for (const raw of link.groups) {
       const match = raw.match(/^(unity|game-files|loose|undecoded|decoded):(.+)$/);
-      if (match) {
-        add(match[1], match[2]);
-        continue;
-      }
-      const owner = link.stores.find((id) => STORE_SOURCES.includes(id))
-        || STORE_SOURCES.find((id) => storeEntry(files.root, id)?.groups.some((group) => group.name === raw))
-        || "unity";
-      add(owner, raw);
+      if (match) add(match[1], match[2]);
     }
     if (link.statuses.length) snapshot.status = link.statuses;
     if (link.folders.length) snapshot.folder = link.folders;

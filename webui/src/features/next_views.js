@@ -1,4 +1,5 @@
 (() => {
+  const WebUI = window.WebUI;
   let audioLanguage = "";
   let mapRecoveryLoaded = false;
   const trackedLoads = new Map();
@@ -21,54 +22,38 @@
   }
 
   function beginLoad(view) {
-    window.WebUI?.clearShellStatus?.(view);
-    window.WebUI?.setViewBusy?.(view, true);
+    WebUI.clearShellStatus(view);
+    WebUI.setViewBusy(view, true);
   }
 
   function finishLoad(view, succeeded = true) {
-    window.WebUI?.setViewBusy?.(view, false);
+    WebUI.setViewBusy(view, false);
     if (!succeeded && document.body.dataset.activeView === view) {
-      window.WebUI?.setShellStatus?.(errorText(view), { tone: "error", view });
+      WebUI.setShellStatus(errorText(view), { tone: "error", view });
     }
   }
 
-  function trackLoad(view, result, isCurrent = () => true) {
-    if (!result || typeof result.then !== "function") return result;
-    const previous = trackedLoads.get(view);
-    const generation = (previous?.generation || 0) + 1;
-    const tracked = { generation, promise: result };
-    trackedLoads.set(view, tracked);
+  function trackLoad(view, result, onFailure, isCurrent = () => true) {
+    // Both page loaders are async. Promise identity rejects obsolete completions.
+    trackedLoads.set(view, result);
     beginLoad(view);
-    result.then((value) => {
-      const current = trackedLoads.get(view);
-      if (current?.generation !== generation || current.promise !== result || !isCurrent()) return;
+    const finish = (succeeded) => {
+      if (trackedLoads.get(view) !== result || !isCurrent()) return;
       trackedLoads.delete(view);
-      finishLoad(view, value !== null && value !== false);
-    }, () => {
-      const current = trackedLoads.get(view);
-      if (current?.generation !== generation || current.promise !== result || !isCurrent()) return;
-      trackedLoads.delete(view);
-      finishLoad(view, false);
-    });
+      if (!succeeded) onFailure();
+      finishLoad(view, succeeded);
+    };
+    result.then((value) => finish(value !== null && value !== false), () => finish(false));
     return result;
   }
 
   function initAudio(language = currentLanguage(), { force = false } = {}) {
     const nextLanguage = String(language || "CN").toUpperCase();
-    if (!force && audioLanguage === nextLanguage) return trackedLoads.get("audio")?.promise;
+    if (!force && audioLanguage === nextLanguage) return trackedLoads.get("audio");
     audioLanguage = nextLanguage;
-    window.WebUI?.audio?.init?.();
-    const result = window.WebUI?.audio?.load?.(nextLanguage, { force });
-    if (!result) {
-      audioLanguage = "";
-      finishLoad("audio", false);
-      return null;
-    }
-    if (typeof result.then === "function") {
-      trackLoad("audio", result, () => audioLanguage === nextLanguage);
-      result.catch(() => { if (audioLanguage === nextLanguage) audioLanguage = ""; });
-    }
-    return result;
+    WebUI.audio.init();
+    return trackLoad("audio", WebUI.audio.load(nextLanguage, { force }),
+      () => { audioLanguage = ""; }, () => audioLanguage === nextLanguage);
   }
 
   function retryView(view = document.body.dataset.activeView, language = currentLanguage()) {
@@ -91,21 +76,15 @@
   }
 
   function initMapRecovery() {
-    if (mapRecoveryLoaded) return trackedLoads.get("map-recovery")?.promise;
+    if (mapRecoveryLoaded) return trackedLoads.get("map-recovery");
     mapRecoveryLoaded = true;
-    window.WebUI?.mapRecovery?.init?.();
-    const result = window.WebUI?.mapRecovery?.load?.();
-    if (!result) { mapRecoveryLoaded = false; finishLoad("map-recovery", false); return null; }
-    if (typeof result.then === "function") {
-      trackLoad("map-recovery", result);
-      result.catch(() => { mapRecoveryLoaded = false; });
-    }
-    return result;
+    WebUI.mapRecovery.init();
+    return trackLoad("map-recovery", WebUI.mapRecovery.load(),
+      () => { mapRecoveryLoaded = false; });
   }
 
   function initNextViews() {
-    window.WebUI = window.WebUI || {};
-    window.WebUI.retryView = retryView;
+    WebUI.retryView = retryView;
     activate(String(document.body.dataset.activeView || window.location.hash.slice(1) || "story").toLowerCase());
     window.addEventListener("webui:view-changed", (event) => {
       activate(String(event.detail?.view || "").toLowerCase());

@@ -109,6 +109,14 @@
     wrap.replaceChildren(fragment);
   }
 
+  // Standard facet section markup; shared collapse state is bound by the app.
+  function sectionMarkup({ key, label = "", container, hidden = false, body = `${key}-body`, labelId = "", defaultCollapsed = true }) {
+    const esc = window.WebUI.escapeHtml;
+    return `<section class="filter-section is-collapsed" data-filter-section="${esc(key)}"${defaultCollapsed ? ' data-default-collapsed="1"' : ""}${hidden ? " hidden" : ""}>
+      <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="${esc(body)}"><span data-filter-section-label${labelId ? ` id="${esc(labelId)}"` : ""}>${esc(label)}</span></button>
+      <div id="${esc(body)}" class="filter-section-body" hidden><div id="${esc(container)}" class="chips" data-multi="1"></div></div></section>`;
+  }
+
   // Manage the collapse/expand of a whole filter panel, with persistence shared
   // across views via PANEL_STORAGE_KEY.
   //
@@ -162,5 +170,5 @@
     return api;
   }
 
-  window.WebUI.filters = { buildChips, createPanelToggle };
+  window.WebUI.filters = { buildChips, createPanelToggle, sectionMarkup };
 })();

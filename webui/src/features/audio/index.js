@@ -1921,8 +1921,8 @@
     const inline = recordsFromPayload(state.index?.[kind], kind);
     const specs = shardSpecs(state.index?.shards?.[kind]);
     if (!specs.length) {
-      window.WebUI?.updateLoaderPhase?.("audio", "preparing");
-      await window.WebUI?.nextPaint?.();
+      window.WebUI.updateLoaderPhase("audio", "preparing");
+      await window.WebUI.nextPaint();
       if (token !== state.loadToken) return null;
       const records = dedupeRecords(inline, kind);
       if (kind === "events") rebuildEventTaxonomy(records);
@@ -1944,7 +1944,7 @@
       const ratio = downloading && progress.every((item) => item.total > 0)
         ? progress.reduce((sum, item) => sum + item.loaded, 0) / total
         : null;
-      window.WebUI?.updateLoaderPhase?.("audio", phase, ratio);
+      window.WebUI.updateLoaderPhase("audio", phase, ratio);
     };
     updateProgress();
 
@@ -1972,7 +1972,7 @@
     })).then(async (parts) => {
       if (token !== state.loadToken) return null;
       updateProgress();
-      await window.WebUI?.nextPaint?.();
+      await window.WebUI.nextPaint();
       if (token !== state.loadToken) return null;
       const records = dedupeRecords([...inline, ...parts.flat()], kind);
       if (kind === "events") rebuildEventTaxonomy(records);
@@ -2012,9 +2012,9 @@
     syncModeButtons();
     renderLoadingList();
     renderDetail();
-    window.WebUI?.clearShellStatus?.("audio");
-    window.WebUI?.setViewBusy?.("audio", true);
-    window.WebUI?.showLoader?.("audio", t("loading"));
+    window.WebUI.clearShellStatus("audio");
+    window.WebUI.setViewBusy("audio", true);
+    window.WebUI.showLoader("audio", t("loading"));
 
     const promise = (async () => {
       try {
@@ -2030,7 +2030,7 @@
         const payload = await response.json();
         if (token !== state.loadToken) return null;
         state.index = payload && typeof payload === "object" ? payload : {};
-        window.WebUI?.updateLoaderPhase?.("audio", "preparing");
+        window.WebUI.updateLoaderPhase("audio", "preparing");
         state.sceneCatalog = await loadSceneCatalog(nextLanguage, token);
         if (token !== state.loadToken) return null;
         state.gameParameterNameById = new Map(asArray(
@@ -2051,13 +2051,13 @@
           await ensureDataset("media", { token, force });
           if (token !== state.loadToken) return null;
         }
-        window.WebUI?.updateLoaderPhase?.("audio", "rendering");
-        await window.WebUI?.nextPaint?.();
+        window.WebUI.updateLoaderPhase("audio", "rendering");
+        await window.WebUI.nextPaint();
         if (token !== state.loadToken) return null;
         buildFilterChips();
         applyFilters({ resetScroll: true });
         applyRequestedSelection();
-        await window.WebUI?.nextPaint?.();
+        await window.WebUI.nextPaint();
         if (token !== state.loadToken) return null;
         return state.index;
       } catch (error) {
@@ -2068,8 +2068,8 @@
         if (token === state.loadToken) {
           state.indexPromise = null;
           state.indexController = null;
-          window.WebUI?.setViewBusy?.("audio", false);
-          window.WebUI?.hideLoader?.("audio");
+          window.WebUI.setViewBusy("audio", false);
+          window.WebUI.hideLoader("audio");
         }
       }
     })();
@@ -2090,27 +2090,27 @@
     if (state.datasets[kind]) {
       buildFilterChips();
       applyFilters({ resetScroll: true });
-      window.WebUI?.setViewBusy?.("audio", false);
-      window.WebUI?.hideLoader?.("audio");
+      window.WebUI.setViewBusy("audio", false);
+      window.WebUI.hideLoader("audio");
       return;
     }
-    window.WebUI?.setViewBusy?.("audio", true);
-    window.WebUI?.showLoader?.("audio", t(kind === "events" ? "loadingEvents" : "loadingMedia"));
+    window.WebUI.setViewBusy("audio", true);
+    window.WebUI.showLoader("audio", t(kind === "events" ? "loadingEvents" : "loadingMedia"));
     try {
       const records = await ensureDataset(kind, { token });
       if (token !== state.loadToken || state.mode !== kind || !records) return;
-      window.WebUI?.updateLoaderPhase?.("audio", "rendering");
-      await window.WebUI?.nextPaint?.();
+      window.WebUI.updateLoaderPhase("audio", "rendering");
+      await window.WebUI.nextPaint();
       if (token !== state.loadToken || state.mode !== kind) return;
       buildFilterChips();
       applyFilters({ resetScroll: true });
-      await window.WebUI?.nextPaint?.();
+      await window.WebUI.nextPaint();
     } catch (error) {
       if (token === state.loadToken && state.mode === kind && error?.name !== "AbortError") renderLoadError(error, { index: false });
     } finally {
       if (token === state.loadToken && state.mode === kind) {
-        window.WebUI?.setViewBusy?.("audio", false);
-        window.WebUI?.hideLoader?.("audio");
+        window.WebUI.setViewBusy("audio", false);
+        window.WebUI.hideLoader("audio");
       }
     }
   }
@@ -2150,30 +2150,12 @@
                 </div>
               </div>
             </section>
-            <section class="filter-section is-collapsed" data-filter-section="audio-category" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="audio-category-filter-body"><span id="audio-category-label"></span></button>
-              <div id="audio-category-filter-body" class="filter-section-body" hidden><div id="audio-category-filter" class="chips" data-multi="1"></div></div>
-            </section>
-            <section class="filter-section is-collapsed" data-filter-section="audio-context" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="audio-context-filter-body"><span id="audio-context-label"></span></button>
-              <div id="audio-context-filter-body" class="filter-section-body" hidden><div id="audio-context-filter" class="chips" data-multi="1"></div></div>
-            </section>
-            <section class="filter-section is-collapsed" data-filter-section="audio-relation" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="audio-relation-filter-body"><span id="audio-relation-label"></span></button>
-              <div id="audio-relation-filter-body" class="filter-section-body" hidden><div id="audio-relation-filter" class="chips" data-multi="1"></div></div>
-            </section>
-            <section class="filter-section is-collapsed" data-filter-section="audio-recovery" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="audio-recovery-filter-body"><span id="audio-recovery-label"></span></button>
-              <div id="audio-recovery-filter-body" class="filter-section-body" hidden><div id="audio-recovery-filter" class="chips" data-multi="1"></div></div>
-            </section>
-            <section class="filter-section is-collapsed" data-filter-section="audio-scope" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="audio-scope-filter-body"><span id="audio-scope-label"></span></button>
-              <div id="audio-scope-filter-body" class="filter-section-body" hidden><div id="audio-scope-filter" class="chips" data-multi="1"></div></div>
-            </section>
-            <section class="filter-section is-collapsed" data-filter-section="audio-source" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="audio-source-filter-body"><span id="audio-source-label"></span></button>
-              <div id="audio-source-filter-body" class="filter-section-body" hidden><div id="audio-source-filter" class="chips" data-multi="1"></div></div>
-            </section>
+            ${window.WebUI.filters.sectionMarkup({ key: "audio-category", label: '', container: "audio-category-filter", body: "audio-category-filter-body", labelId: "audio-category-label" })}
+            ${window.WebUI.filters.sectionMarkup({ key: "audio-context", label: '', container: "audio-context-filter", body: "audio-context-filter-body", labelId: "audio-context-label" })}
+            ${window.WebUI.filters.sectionMarkup({ key: "audio-relation", label: '', container: "audio-relation-filter", body: "audio-relation-filter-body", labelId: "audio-relation-label" })}
+            ${window.WebUI.filters.sectionMarkup({ key: "audio-recovery", label: '', container: "audio-recovery-filter", body: "audio-recovery-filter-body", labelId: "audio-recovery-label" })}
+            ${window.WebUI.filters.sectionMarkup({ key: "audio-scope", label: '', container: "audio-scope-filter", body: "audio-scope-filter-body", labelId: "audio-scope-label" })}
+            ${window.WebUI.filters.sectionMarkup({ key: "audio-source", label: '', container: "audio-source-filter", body: "audio-source-filter-body", labelId: "audio-source-label" })}
             ${window.WebUI.updateBadges.filterSection("audio")}
           </div>
           <div id="audio-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize audio filters" aria-orientation="horizontal" tabindex="0"></div>

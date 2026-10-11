@@ -3549,7 +3549,7 @@ async function switchLanguage(languageCode, { preserveSelection = true, requeste
     if (token !== STATE.indexRequestToken) return;
 
     STATE.index = index;
-    STATE.actorNames = normalizeActorNames(actorsPayload.actorNames || {});
+    STATE.actorNames = actorsPayload.actorNames;
     STATE.missionNames = missionsPayload.missionNames || {};
     const cgFiles = cgStoryFileDescriptors(storyMediaPayload);
     STATE.entries = normalizeLoadedEntries([...(index.entries || []), ...cgFiles.map((item) => item.entry)]);
@@ -7149,13 +7149,8 @@ function renderConv(conv) {
   }
   if (conv.kind !== "cutscene" && recoveredAudioBlock) frag.appendChild(recoveredAudioBlock);
 
-  // Attach option groups to the dialog line after which they render. The
-  // authoritative signal is the server-provided `after` field (built from the
-  // gap positions in the sparse line numbering: reserved slots with no
-  // DialogTextTable entry are player-response slots, so a group `g` lands on
-  // the g-th gap). Fall back to the legacy `g == lineIndex` heuristic for old
-  // conv files without `after`, and to pre- / orphan-block positions when no
-  // attach point matches.
+  // Current publications provide explicit `after` and `position` anchors.
+  // Unplaced groups remain visible as orphans; numeric IDs do not establish order.
   const lineRawIdx = (ln) => {
     if (!ln || !ln.id) return null;
     const m = /_(\d+)$/.exec(ln.id);
@@ -7168,10 +7163,7 @@ function renderConv(conv) {
     if (id && lineOrderIndexById.has(id)) return lineOrderIndexById.get(id);
     return lineRawIdx({ id });
   };
-  const lineIdxs = conv.lines.map(lineRawIdx).filter((x) => x !== null);
-  const lineIdxSet = new Set(lineIdxs);
   const lineIdSet = new Set(conv.lines.map((ln) => ln && ln.id).filter(Boolean));
-  const minLineIdx = lineIdxs.length ? Math.min(...lineIdxs) : 0;
   const groupsByLineId = new Map(); // line id -> [group, ...]
   const preGroups = [];
   const orphanGroups = [];
@@ -7180,11 +7172,7 @@ function renderConv(conv) {
 
   for (const grp of conv.optionGroups || []) {
     // Authoritative: when another option's scene-graph outcome forwards into
-    // this group, treat it as orphan-positioned regardless of `position` or
-    // any g-equals-line-suffix fallback. The builder mislabels sub-menus as
-    // "pre" (and the suffix fallback pins them to early intro lines), but the
-    // graph data is unambiguous about how they're entered. Renderer pulls
-    // these inline below their caller.
+    // this group, render it inline below its caller rather than as a pre-group.
     if (!grp.after && optionGroupHasForwardOutcomeBacklink(grp, conv, outcomesByOptionId)) {
       orphanGroups.push(grp);
       continue;
@@ -7202,15 +7190,7 @@ function renderConv(conv) {
       }
       continue;
     }
-    if (lineIdxSet.has(grp.g)) {
-      const fallbackId = `${conv.key}_${String(grp.g).padStart(3, "0")}`;
-      if (!groupsByLineId.has(fallbackId)) groupsByLineId.set(fallbackId, []);
-      groupsByLineId.get(fallbackId).push(grp);
-    } else if (lineIdxs.length && grp.g < minLineIdx) {
-      preGroups.push(grp);
-    } else {
-      orphanGroups.push(grp);
-    }
+    orphanGroups.push(grp);
   }
 
   const continuationOptGroups = new Set();

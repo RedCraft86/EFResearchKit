@@ -104,15 +104,20 @@ fall back to Story.
 | `?gameplayKind=` (+ `?gameplay=` / `?gameplayId=` / `?entry=`) | Gameplay dataset (`character`, `weapon`, `equipment`, `item`, `enemy`, `recipe`, `machine`) and selected entity; existing item links open the combined Items catalog |
 | `?productionKind=` + `?productionId=` (+ `?productionQ=`, repeated `?productionType=` / `?productionCategory=` / `?productionTag=`, `?productionSort=`) | Gameplay's item, recipe or machine catalog (`items`, `recipes`, `machines`), selected record, search, facets, and order; old medal item IDs resolve to their achievement group |
 | `?inspectDataset=` + `?inspect=` | Data page, Files mode: the selected decoded record (dataset and record id) |
-| `?dataMode=` + `?dataRoot=` + `?dataStore=` + `?dataGroup=` + `?dataName=` (+ `?dataQ=`, `?dataField=`, `?dataStatus=`, `?dataFolder=`, `?dataTag=`, `?dataSort=`) | Data page mode (`files`, `sql`; the retired `decoded` opens `files`), export (`previous`, omitted for current), selected sources (repeated `dataStore`: `unity`, `game-files`, `loose`, `undecoded`, `decoded`), selected groups (repeated `dataGroup=<source>:<group>`; an unqualified group belongs to `dataStore`), the selected store row, search, and the repeated decoded filters and order; build with `WebUI.dataPageUrl` / `dataPageUrlForRel` |
+| `?dataMode=` + `?dataRoot=` + `?dataStore=` + `?dataGroup=` + `?dataName=` (+ `?dataQ=`, `?dataField=`, `?dataStatus=`, `?dataFolder=`, `?dataTag=`, `?dataSort=`) | Data page mode (`files`, `sql`), export (`previous`, omitted for current), selected sources (repeated `dataStore`: `unity`, `game-files`, `loose`, `undecoded`, `decoded`), selected groups (repeated `dataGroup=<source>:<group>`), the selected store row, search, and the repeated decoded filters and order; build with `WebUI.dataPageUrl` / `dataPageUrlForRel` |
 
 Factory, World, Presentation, Progression, the standalone Combat & Projectiles
 page, and the Mission Pipeline page are retired; their useful progression and
 projectile information lives in Gameplay. Mission Pipeline recovery is a
-standalone Python workflow, and `webui/src/features/mission_pipeline/` is not
-loaded by `index.html`.
+standalone Python workflow; its retired frontend has been removed. Story still
+reads the published Mission Pipeline index through `story_triggers.js`.
 
 ## Frontend map
+
+Frontend consumers target current publications directly. Actor names are arrays;
+Story options use explicit anchors; Data groups use source-qualified keys; Text
+tables are complete records from the effective `game` source. Obsolete format
+adapters and browser API shims do not belong in the frontend.
 
 Load order, as `index.html` declares it:
 
@@ -739,8 +744,8 @@ world bounds share an explicit transform. Generated contract:
   `identityEvidence`: `exact_level_hlod_key` or `name_family_candidate`.
   The latter is preview geometry with an exact instance matrix but unproved
   prefab-to-Mesh ownership; Map labels it as such. Older sidecars without the
-  field are unclassified candidates when rebuilt. Already published streaming
-  maps without `surfaceEvidence` show a legacy ungraded badge until refreshed.
+  field need rebuilding; the frontend reads the current `surfaceEvidence`
+  directly and does not synthesize legacy grades.
 - Every point layer owns its height mask (`pointCloudOverlay.heightMask`), and
   region bounds are derived in the browser from loaded background rectangles.
 - Registry markers may carry `interactive` template/name evidence and

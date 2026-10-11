@@ -674,30 +674,9 @@
               </div>
             </div>
           </section>
-          <section class="filter-section is-collapsed" data-filter-section="characters-kind">
-            <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="characters-kind-filter-body">
-              <span id="characters-kind-filter-label">${ui("Kind", "类型")}</span>
-            </button>
-            <div id="characters-kind-filter-body" class="filter-section-body" hidden>
-              <div id="characters-kind-filter" class="chips" data-multi="1"></div>
-            </div>
-          </section>
-          <section class="filter-section is-collapsed" data-filter-section="characters-source">
-            <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="characters-source-filter-body">
-              <span id="characters-source-filter-label">${ui("Evidence source", "证据来源")}</span>
-            </button>
-            <div id="characters-source-filter-body" class="filter-section-body" hidden>
-              <div id="characters-source-filter" class="chips" data-multi="1"></div>
-            </div>
-          </section>
-          <section class="filter-section is-collapsed" data-filter-section="characters-evidence-type">
-            <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="characters-evidence-type-filter-body">
-              <span id="characters-evidence-type-filter-label">${ui("Evidence type", "证据类型")}</span>
-            </button>
-            <div id="characters-evidence-type-filter-body" class="filter-section-body" hidden>
-              <div id="characters-evidence-type-filter" class="chips" data-multi="1"></div>
-            </div>
-          </section>
+          ${window.WebUI.filters.sectionMarkup({ key: "characters-kind", label: ui("Kind", "类型"), container: "characters-kind-filter", body: "characters-kind-filter-body", labelId: "characters-kind-filter-label", defaultCollapsed: false })}
+          ${window.WebUI.filters.sectionMarkup({ key: "characters-source", label: ui("Evidence source", "证据来源"), container: "characters-source-filter", body: "characters-source-filter-body", labelId: "characters-source-filter-label", defaultCollapsed: false })}
+          ${window.WebUI.filters.sectionMarkup({ key: "characters-evidence-type", label: ui("Evidence type", "证据类型"), container: "characters-evidence-type-filter", body: "characters-evidence-type-filter-body", labelId: "characters-evidence-type-filter-label", defaultCollapsed: false })}
           <section class="filter-section is-collapsed" data-filter-section="characters-counts">
             <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="characters-counts-filter-body">
               <span id="characters-counts-filter-label">${ui("Evidence counts", "证据数量")}</span>
@@ -708,22 +687,8 @@
               <div class="filter-control-row characters-range-row" id="characters-asset-count-range"></div>
             </div>
           </section>
-          <section class="filter-section is-collapsed" data-filter-section="characters-special">
-            <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="characters-special-filter-body">
-              <span id="characters-special-filter-label">${ui("Other", "其他筛选")}</span>
-            </button>
-            <div id="characters-special-filter-body" class="filter-section-body" hidden>
-              <div id="characters-special-filter" class="chips" data-multi="1"></div>
-            </div>
-          </section>
-          ${state.updateData ? `<section class="filter-section is-collapsed" data-filter-section="characters-updates">
-            <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="characters-update-filter-body">
-              <span id="characters-update-filter-label">${ui("Version changes", "版本变化")}</span>
-            </button>
-            <div id="characters-update-filter-body" class="filter-section-body" hidden>
-              <div id="characters-update-filter" class="chips" data-multi="1"></div>
-            </div>
-          </section>` : ""}
+          ${window.WebUI.filters.sectionMarkup({ key: "characters-special", label: ui("Other", "其他筛选"), container: "characters-special-filter", body: "characters-special-filter-body", labelId: "characters-special-filter-label", defaultCollapsed: false })}
+          ${state.updateData ? `${window.WebUI.filters.sectionMarkup({ key: "characters-updates", label: ui("Version changes", "版本变化"), container: "characters-update-filter", body: "characters-update-filter-body", labelId: "characters-update-filter-label", defaultCollapsed: false })}` : ""}
         </div>
         <div id="characters-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize character filters" aria-orientation="horizontal" tabindex="0"></div>
         <div id="characters-list-meta" class="characters-list-meta"></div>

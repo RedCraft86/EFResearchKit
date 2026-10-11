@@ -3735,29 +3735,11 @@
 
   async function copyTextToClipboard(text) {
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch (_error) {
-      // Fall through to the legacy path.
+      return false;
     }
-
-    const input = document.createElement("textarea");
-    input.value = text;
-    input.style.position = "fixed";
-    input.style.opacity = "0";
-    document.body.appendChild(input);
-    input.focus();
-    input.select();
-    let ok = false;
-    try {
-      ok = document.execCommand("copy");
-    } catch (_error) {
-      ok = false;
-    }
-    input.remove();
-    return ok;
   }
 
   function init() {

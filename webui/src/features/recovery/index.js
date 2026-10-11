@@ -634,7 +634,7 @@
   function ensureLoaded() {
     if (STATE.loaded) return Promise.resolve(STATE.payload);
     if (STATE.loading) return STATE.loading;
-    window.WebUI?.showLoader?.("recovery");
+    window.WebUI.showLoader("recovery");
     STATE.loading = fetch(DATA_URL)
       .then((res) => {
         if (res.status === 404) return null;
@@ -658,7 +658,7 @@
         return null;
       })
       .finally(() => {
-        window.WebUI?.hideLoader?.("recovery");
+        window.WebUI.hideLoader("recovery");
       });
     return STATE.loading;
   }

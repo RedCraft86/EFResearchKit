@@ -55,9 +55,11 @@
       values, items: [...statuses], label, ...options };
   }
   function filterSection(prefix) {
-    return `<section class="filter-section is-collapsed" data-filter-section="${prefix}-updates" data-default-collapsed="1" hidden>
-      <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="${prefix}-update-filter-body"><span id="${prefix}-update-filter-label">${ui("Version changes", "版本变化")}</span></button>
-      <div id="${prefix}-update-filter-body" class="filter-section-body" hidden><div id="${prefix}-update-filter" class="chips" data-multi="1"></div></div></section>`;
+    return window.WebUI.filters.sectionMarkup({
+      key: `${prefix}-updates`, label: ui("Version changes", "版本变化"),
+      container: `${prefix}-update-filter`, body: `${prefix}-update-filter-body`,
+      labelId: `${prefix}-update-filter-label`, hidden: true,
+    });
   }
   function syncFilter(prefix, page = prefix, facets = null) {
     const cleared = !available.has(page) && !!facets?.active("update").size;

@@ -64,8 +64,7 @@
   // The Data page (#data-inspector) opens rows from these query parameters:
   // dataRoot (current|previous), dataStore (repeated: a whole source, unity |
   // game-files | decoded), dataGroup (repeated: `<source>:<group>`, a Unity
-  // type, packed game folder or decoded dataset; an unqualified group belongs
-  // to dataStore), dataName (a store row name to select), dataQ/dataField (the
+  // type, packed game folder or decoded dataset), dataName (a store row name to select), dataQ/dataField (the
   // search), dataStatus/dataFolder/dataTag (repeated decoded filters),
   // dataSort (decoded order). dataMode picks the page mode (files|sql).
   const DATA_PAGE_PARAMS = Object.freeze([
@@ -82,7 +81,6 @@
     if (root && root !== "current") url.searchParams.set("dataRoot", root);
     if (store && group) url.searchParams.set("dataGroup", `${store}:${group}`);
     else if (store) url.searchParams.set("dataStore", store);
-    else if (group) url.searchParams.set("dataGroup", group);
     if (name) url.searchParams.set("dataName", name);
     url.hash = "#data-inspector";
     return url.toString();
