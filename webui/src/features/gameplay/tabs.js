@@ -1,10 +1,10 @@
-// Gameplay composes two independently published datasets. This controller
-// owns their shared navigation; each renderer retains its filters and details.
+// Gameplay composes entity, item, stage and activity catalogs. This controller
+// owns navigation and refresh; activities reuses Text and Assets publications
+// on selection. Each renderer retains its own filters and detail layout.
 (() => {
   const W = window.WebUI;
-  const kinds = ["character", "weapon", "gem", "equipment", "machine", "recipe", "item", "enemy"];
-  const catalogs = { item: "items", recipe: "recipes", machine: "machines" };
-  const catalogKinds = Object.fromEntries(Object.entries(catalogs).map(([kind, catalog]) => [catalog, kind]));
+  const kinds = ["character", "weapon", "gem", "equipment", "item", "enemy", "stage", "activity"];
+  const catalogs = { item: "items" };
   let selected = "character";
   let token = 0;
   const active = () => document.body.dataset.activeView === "gameplay";
@@ -12,20 +12,14 @@
   function readKind() {
     const params = new URLSearchParams(location.search);
     const explicit = params.get("gameplayKind");
-    if (kinds.includes(explicit)) return explicit;
-    const entry = params.get("gameplay") || params.get("gameplayId") || params.get("entry") || "";
-    const kind = entry.split(":")[0];
-    if (kinds.includes(kind)) return kind;
-    const id = W.gameplay.normalizeSelection(entry);
-    const resolved = W.gameplay.resolveKind(entry) || Object.entries({ chr_: "character", wpn_: "weapon", eqp_: "equipment", item_equip_: "equipment", item_: "item", eny_: "enemy" }).find(([prefix]) => id.startsWith(prefix))?.[1];
-    return resolved || catalogKinds[params.get("productionKind")] || "character";
+    return kinds.includes(explicit) ? explicit : "character";
   }
 
   function label(kind) {
     const zh = String(window.WEBUI_UI_LOCALE || document.documentElement.lang || "zh").startsWith("zh");
     return (zh
-      ? { character: "角色", weapon: "武器", gem: "基质", equipment: "装备", item: "物品", enemy: "敌人", recipe: "配方", machine: "设备与建筑" }
-      : { character: "Characters", weapon: "Weapons", gem: "Essences", equipment: "Equipment", item: "Items", enemy: "Enemies", recipe: "Recipes", machine: "Machines & buildings" })[kind];
+      ? { character: "角色", weapon: "武器", gem: "基质", equipment: "装备", item: "物品", enemy: "敌人", stage: "战斗关卡", activity: "活动" }
+      : { character: "Characters", weapon: "Weapons", gem: "Essences", equipment: "Equipment", item: "Items", enemy: "Enemies", stage: "Combat stages", activity: "Activities" })[kind];
   }
 
   function render() {
@@ -33,7 +27,7 @@
     if (!root) return;
     const focused = root.contains(document.activeElement) ? document.activeElement.dataset.gameplayKind : "";
     root.innerHTML = kinds.map((kind) => {
-      const count = catalogs[kind] ? W.production.count(catalogs[kind]) : W.gameplay.count(kind);
+      const count = kind === "activity" ? W.gameplayActivities.count() : kind === "stage" ? W.battleStages?.count() : catalogs[kind] ? W.gameplayItems.count(catalogs[kind]) : W.gameplay.count(kind);
       return `<button type="button" class="page-mode-button${selected === kind ? " is-active" : ""}" data-gameplay-kind="${kind}" aria-pressed="${selected === kind}">${W.escapeHtml(label(kind))}${count == null ? "" : ` (${W.formatNumber(count)})`}</button>`;
     }).join("");
     root.setAttribute("aria-label", label("character") === "角色" ? "玩法数据集" : "Gameplay dataset");
@@ -46,33 +40,42 @@
     selected = readKind();
     const catalog = catalogs[selected];
     if (force) W.gameplay.invalidateItems();
-    document.querySelector("#gameplay-app").hidden = !!catalog;
-    document.querySelector("#production-app").hidden = !catalog;
+    document.querySelector("#gameplay-app").hidden = !!catalog || selected === "stage" || selected === "activity";
+    document.querySelector("#gameplay-items-app").hidden = !catalog;
+    document.querySelector("#battle-stages-app").hidden = selected !== "stage";
+    document.querySelector("#activities-app").hidden = selected !== "activity";
     render();
-    if (catalog) {
-      W.hideLoader?.("gameplay");
-      await W.production.load(undefined, force);
-    } else {
-      const data = await W.gameplay.load(force);
-      if (data && generation === token && active()) {
-        // Bare legacy IDs can be resolved exactly once the index is loaded.
-        if (readKind() !== selected) { void route(); return; }
-        W.gameplay.selectKind(selected);
-      }
-    }
-    if (generation === token) render();
+    const [data, catalogData, stageData] = await Promise.all([
+      W.gameplay.load(force),
+      W.gameplayItems.load(undefined, force, { render: false }),
+      W.battleStages.load(force, { render: false }),
+      W.gameplayActivities.loadCount(),
+      selected === "activity" ? W.gameplayActivities.load(force) : null,
+    ]);
+    if (generation !== token || !active()) return;
+    if (selected === "stage") {
+      if (stageData) await W.battleStages.load();
+    } else if (catalog) {
+      if (catalogData) await W.gameplayItems.load();
+    } else if (data && selected !== "activity") W.gameplay.selectKind(selected);
+    if (generation !== token || !active()) return;
+    render();
     window.dispatchEvent(new Event("resize"));
   }
 
   function pageUrl(kind, id = "") {
     const url = new URL(location.href);
     for (const key of [...url.searchParams.keys()]) {
-      if (key.startsWith("production") || ["gameplay", "gameplayId", "entry", "gameplayKind"].includes(key)) url.searchParams.delete(key);
+      if (key.startsWith("item") || ["gameplay", "gameplayKind"].includes(key)) url.searchParams.delete(key);
     }
     url.searchParams.set("gameplayKind", kind);
-    if (catalogs[kind]) {
-      url.searchParams.set("productionKind", catalogs[kind]);
-      if (id) url.searchParams.set("productionId", id);
+    if (kind === "activity") {
+      url.searchParams.delete("activityTable");
+      if (id) url.searchParams.set("activity", id);
+    } else if (kind === "stage") {
+      if (id) url.searchParams.set("battleStage", id);
+    } else if (catalogs[kind]) {
+      if (id) url.searchParams.set("gameplay", id.includes(":") ? id : `items:${id}`);
     } else if (id) url.searchParams.set("gameplay", `${kind}:${id}`);
     url.hash = "gameplay";
     return url.href;

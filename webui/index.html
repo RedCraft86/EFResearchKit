@@ -1,31 +1,31 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="endfield">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>&#21095;&#24773;&#23545;&#35805; &middot; &#32456;&#26411;&#22320;&#30740;&#31350;&#24037;&#20855;</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260701-gp5">
-<link rel="stylesheet" href="style.css?v=20261010-refactor1">
-  <link rel="stylesheet" href="src/features/characters/style.css?v=20261002-appearances2">
-  <link rel="stylesheet" href="src/features/production/style.css?v=20261010-axes">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="stylesheet" href="style.css?v=20261011-logo-svg">
+  <link rel="stylesheet" href="src/features/characters/style.css?v=20261010-continuous1">
+  <link rel="stylesheet" href="src/features/gameplay/items.css?v=20261010-record-audio-materials">
   <link rel="stylesheet" href="src/features/story/branches.css?v=20261002-expansion1">
-  <link rel="stylesheet" href="src/features/map_recovery/style.css?v=20261002-devices2">
-  <link rel="stylesheet" href="src/features/audio/style.css?v=20261002-update-details3">
-  <link rel="stylesheet" href="src/features/data_inspector/style.css?v=20261002-update-details3">
-  <link rel="stylesheet" href="src/features/recovery/style.css?v=20261002-update-details3">
+  <link rel="stylesheet" href="src/features/map_recovery/style.css?v=20261010-continuous1">
+  <link rel="stylesheet" href="src/features/audio/style.css?v=20261010-continuous1">
+  <link rel="stylesheet" href="src/features/data_inspector/style.css?v=20261010-continuous1">
+  <link rel="stylesheet" href="src/features/recovery/style.css?v=20261010-continuous1">
   <link rel="stylesheet" href="src/features/gameplay/skill_refs.css?v=20261002-expansion1">
-  <link rel="stylesheet" href="src/features/gameplay/style.css?v=20261002-catalogs1">
-  <link rel="stylesheet" href="src/features/activities/style.css?v=20261010-axes">
+  <link rel="stylesheet" href="src/features/gameplay/style.css?v=20261010-filter-headings-enemy-layout">
+  <link rel="stylesheet" href="src/features/gameplay/battle_stages.css?v=20261011-hints1">
+  <link rel="stylesheet" href="src/features/gameplay/activities/style.css?v=20261010-activity-best-image">
+  <link rel="stylesheet" href="themes.css?v=20261010-two-themes">
+  <script src="src/core/theme.js?v=20261010-two-themes"></script>
 </head>
 <body data-active-view="story">
 <a class="skip-link" href="#views">Skip to current view</a>
 <div id="shell">
   <header id="topbar">
     <div id="brand">
-      <span id="brand-logo" class="brand-logo" aria-hidden="true">
-        <!-- Logo slot: drop an <img> here, or restyle .brand-logo. -->
-        <span class="brand-logo-mark">ERK</span>
-      </span>
+      <img id="brand-logo" src="logo.svg" width="34" height="34" alt="">
       <span class="brand-copy">
         <span id="brand-title" class="brand-title">&#32456;&#26411;&#22320;&#30740;&#31350;&#24037;&#20855;</span>
         <a id="brand-link" class="brand-subtitle brand-link" href="https://github.com/Variante/endfield_research_kit" target="_blank" rel="noopener" aria-label="GitHub: Variante/endfield_research_kit">
@@ -38,13 +38,12 @@
       <span id="view-tabs-hint" class="sr-only">Use the left and right arrow keys to move between views.</span>
       <button id="story-tab" class="view-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="story-view" tabindex="0" data-view="story" data-i18n="storyTab">剧情</button>
       <button id="gameplay-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="gameplay-view" tabindex="-1" data-view="gameplay" data-i18n="gameplayTab">玩法</button>
-      <button id="activities-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="activities-view" tabindex="-1" data-view="activities" data-i18n="activitiesTab">活动</button>
       <button id="map-recovery-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="map-recovery-view" tabindex="-1" data-view="map-recovery" data-i18n="mapRecoveryTab">地图</button>
       <button id="characters-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="characters-view" tabindex="-1" data-view="characters" data-i18n="charactersTab">人物</button>
       <button id="reference-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="reference-view" tabindex="-1" data-view="reference" data-i18n="referenceTab">文本</button>
       <button id="audio-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="audio-view" tabindex="-1" data-view="audio" data-i18n="audioTab">&#38899;&#39057;</button>
-      <button id="assets-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="assets-view" tabindex="-1" data-view="assets" data-i18n="assetsTab">资源</button>
-      <button id="data-inspector-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="data-inspector-view" tabindex="-1" data-view="data-inspector" data-i18n="dataInspectorTab">数据</button>
+      <button id="assets-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="assets-view" tabindex="-1" data-view="assets" data-i18n="assetsTab">资产</button>
+      <button id="data-inspector-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="data-inspector-view" tabindex="-1" data-view="data-inspector" data-i18n="dataInspectorTab">解码</button>
       <button id="updates-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="updates-view" tabindex="-1" data-view="updates" data-i18n="updatesTab">更新</button>
       <button id="recovery-tab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="recovery-view" tabindex="-1" data-view="recovery" data-debug-view="1" data-i18n="recoveryTab" hidden>&#36827;&#24230;</button>
     </nav>
@@ -61,6 +60,13 @@
           <span class="ui-language-option ui-language-option-en" data-locale-label="en">EN</span>
         </button>
       </div>
+      <label class="topbar-control" for="theme">
+        <span id="theme-label">&#20027;&#39064;</span>
+        <select id="theme">
+          <option value="endfield">Endfield</option>
+          <option value="talos">Talos Night</option>
+        </select>
+      </label>
       <button id="show-debug" class="header-toggle-button topbar-debug-toggle" type="button" aria-pressed="false"><span id="show-debug-label">&#26174;&#31034;&#35843;&#35797;&#20449;&#24687;</span></button>
     </div>
   </header>
@@ -208,57 +214,11 @@
       </div>
     </section>
 
-    <section id="activities-view" class="page-view" data-view="activities" role="tabpanel" aria-labelledby="activities-tab" tabindex="0" hidden>
-      <div id="activities-app">
-        <aside id="activities-left">
-          <header>
-            <h1 id="activities-title">Activities</h1>
-            <div class="panel-actions">
-              <button id="activities-filter-toggle" class="panel-toggle" type="button" aria-controls="activities-filter-panel" aria-expanded="true">Hide filters</button>
-              <button id="activities-reset" type="button">Reset filters</button>
-            </div>
-          </header>
-          <div id="activities-filter-panel" class="filters">
-            <section class="filter-section filter-section-basic" data-filter-section="activities-basic" data-fixed-open="1">
-              <div class="filter-section-body filter-section-body-stack">
-                <label id="activities-table-label" for="activities-table">Dataset</label>
-                <select id="activities-table"></select>
-                <input id="activities-q" type="search" aria-label="Search activities" placeholder="Search activities">
-                <label id="activities-sort-label" for="activities-sort">Sort</label>
-                <select id="activities-sort"><option value="time-desc">Opening time (newest first)</option><option value="time-asc">Opening time (oldest first)</option><option value="title">Name</option><option value="default">Display order</option></select>
-              </div>
-            </section>
-            <section class="filter-section" data-filter-section="activities-tag">
-              <button class="filter-section-toggle" type="button" aria-expanded="true" aria-controls="activities-tag-body"><span id="activities-tag-label">Tags</span></button>
-              <div id="activities-tag-body" class="filter-section-body"><div id="activities-tag-filter" class="chips" data-multi="1"></div></div>
-            </section>
-            <section class="filter-section" data-filter-section="activities-type">
-              <button class="filter-section-toggle" type="button" aria-expanded="true" aria-controls="activities-type-body"><span id="activities-type-label">Type</span></button>
-              <div id="activities-type-body" class="filter-section-body"><div id="activities-type-filter" class="chips" data-multi="1"></div></div>
-            </section>
-            <section class="filter-section is-collapsed" data-filter-section="activities-schedule" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="activities-schedule-body"><span id="activities-schedule-label">Schedule</span></button>
-              <div id="activities-schedule-body" class="filter-section-body" hidden><div id="activities-schedule-filter" class="chips" data-multi="1"></div></div>
-            </section>
-          </div>
-          <div id="activities-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize activity filters" aria-orientation="horizontal" tabindex="0"></div>
-          <div id="activities-count" role="status"></div>
-          <div id="activities-list"></div>
-          <footer id="activities-pager"></footer>
-        </aside>
-        <div id="activities-mobile-splitter" class="filter-splitter activities-mobile-splitter" role="separator" aria-label="Resize activity list on mobile" aria-orientation="horizontal" tabindex="0"></div>
-        <div id="activities-splitter" class="pane-splitter" role="separator" aria-label="Resize activity sidebar" aria-orientation="vertical" tabindex="0"></div>
-        <main id="activities-right">
-          <p id="activities-boundary"></p>
-          <div id="activities-detail"></div>
-        </main>
-      </div>
-    </section>
     <section id="reference-view" class="page-view" data-view="reference" role="tabpanel" aria-labelledby="reference-tab" tabindex="0" hidden>
       <div id="reference-app">
         <aside id="reference-left">
           <header>
-            <h1 id="reference-title">&#25991;&#26412;&#34920;</h1>
+            <h1 id="reference-title">&#25991;&#26412;&#34920;&#26684;</h1>
             <div id="reference-stats"><span id="reference-count">?</span> <span id="reference-count-label">&#24352;&#34920;</span></div>
             <div class="sidebar-header-actions">
               <button id="reference-filter-toggle" class="panel-toggle" type="button" aria-controls="reference-filter-panel" aria-expanded="true">&#38544;&#34255;&#31579;&#36873;</button>
@@ -273,6 +233,10 @@
               </div>
               <div id="reference-filter-section-basic-body" class="filter-section-body filter-section-body-stack">
                 <input id="reference-q" type="search" placeholder="&#25628;&#32034;&#34920; / ID / &#25991;&#26412;">
+                <div class="filter-control-row">
+                  <label id="reference-sort-label" for="reference-sort">&#25490;&#24207;</label>
+                  <select id="reference-sort" aria-labelledby="reference-sort-label"></select>
+                </div>
               </div>
             </section>
             <section class="filter-section is-collapsed" data-filter-section="reference-group" data-default-collapsed="1">
@@ -305,16 +269,19 @@
 
           <div id="reference-list-meta"><span id="reference-shown">0</span> / <span id="reference-total">0</span> <span id="reference-list-unit">&#24352;&#34920;</span></div>
           <div id="reference-list"></div>
-          <footer id="reference-pager"></footer>
+
         </aside>
         <div id="reference-splitter" class="pane-splitter" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" tabindex="0"></div>
 
         <main id="reference-right">
           <div id="reference-empty">&#20174;&#24038;&#20391;&#36873;&#25321;&#19968;&#24352;&#34920;</div>
           <div id="reference-detail" hidden>
-            <header id="reference-detail-header">
-              <div id="reference-detail-title"></div>
-              <div id="reference-detail-meta"></div>
+            <header id="reference-detail-header" class="has-locate-button">
+              <div class="locate-header-main">
+                <div id="reference-detail-title"></div>
+                <div id="reference-detail-meta"></div>
+              </div>
+              <button id="reference-locate-current" class="locate-current-button" type="button" disabled>定位当前文件</button>
             </header>
             <div id="reference-detail-body">
               <section class="reference-detail-pane reference-rendered-pane">
@@ -344,7 +311,55 @@
         <h1 id="gameplay-title">Gameplay</h1>
         <div id="gameplay-kind-tabs" class="page-mode-switch" role="group" aria-label="Gameplay dataset"></div>
       </header>
-      <div id="production-app" hidden></div>
+      <div id="activities-app" hidden>
+        <aside id="activities-left">
+          <header>
+            <div class="sidebar-header-actions">
+              <button id="activities-filter-toggle" class="panel-toggle" type="button" aria-controls="activities-filter-panel" aria-expanded="true">Hide filters</button>
+              <button id="activities-reset" type="button">Reset filters</button>
+            </div>
+          </header>
+          <div id="activities-filter-panel" class="filters">
+            <section class="filter-section filter-section-basic" data-filter-section="activities-basic" data-fixed-open="1">
+              <div class="filter-section-body filter-section-body-stack">
+                <input id="activities-q" type="search" aria-label="Search activities" placeholder="Search activities">
+                <label id="activities-sort-label" for="activities-sort">Sort</label>
+                <select id="activities-sort"><option value="time-desc">Opening time (newest first)</option><option value="time-asc">Opening time (oldest first)</option><option value="title">Name</option><option value="default">Display order</option></select>
+              </div>
+            </section>
+            <section class="filter-section" data-filter-section="activities-tag">
+              <button class="filter-section-toggle" type="button" aria-expanded="true" aria-controls="activities-tag-body"><span id="activities-tag-label">Tags</span></button>
+              <div id="activities-tag-body" class="filter-section-body"><div id="activities-tag-filter" class="chips" data-multi="1"></div></div>
+            </section>
+            <section class="filter-section" data-filter-section="activities-type">
+              <button class="filter-section-toggle" type="button" aria-expanded="true" aria-controls="activities-type-body"><span id="activities-type-label">Type</span></button>
+              <div id="activities-type-body" class="filter-section-body"><div id="activities-type-filter" class="chips" data-multi="1"></div></div>
+            </section>
+            <section class="filter-section is-collapsed" data-filter-section="activities-schedule" data-default-collapsed="1">
+              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="activities-schedule-body"><span id="activities-schedule-label">Schedule</span></button>
+              <div id="activities-schedule-body" class="filter-section-body" hidden><div id="activities-schedule-filter" class="chips" data-multi="1"></div></div>
+            </section>
+          </div>
+          <div id="activities-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize activity filters" aria-orientation="horizontal" tabindex="0"></div>
+          <div id="activities-count" role="status"></div>
+          <div id="activities-list"></div>
+
+        </aside>
+        <div id="activities-mobile-splitter" class="filter-splitter activities-mobile-splitter" role="separator" aria-label="Resize activity list on mobile" aria-orientation="horizontal" tabindex="0"></div>
+        <div id="activities-splitter" class="pane-splitter" role="separator" aria-label="Resize activity sidebar" aria-orientation="vertical" tabindex="0"></div>
+        <main id="activities-right">
+          <header id="activities-detail-header" hidden>
+            <div id="activities-detail-header-main">
+              <h2 id="activities-detail-title"></h2>
+              <div id="activities-detail-meta"></div>
+            </div>
+            <button id="activities-locate-current" class="locate-current-button" type="button" disabled>定位当前文件</button>
+          </header>
+          <div id="activities-detail" class="gameplay-reading-view gameplay-catalog-reading-view"></div>
+        </main>
+      </div>
+      <div id="gameplay-items-app" hidden></div>
+      <div id="battle-stages-app" hidden></div>
       <div id="gameplay-app">
         <aside id="gameplay-left">
           <header>
@@ -486,7 +501,7 @@
 
           <div id="gameplay-list-meta"><span id="gameplay-shown">0</span> / <span id="gameplay-total">0</span> <span id="gameplay-list-meta-label">entries</span></div>
           <div id="gameplay-list"></div>
-          <footer id="gameplay-pager"></footer>
+
         </aside>
         <div id="gameplay-splitter" class="pane-splitter" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" tabindex="0"></div>
 
@@ -541,6 +556,12 @@
               </div>
               <div id="updates-filter-section-basic-body" class="filter-section-body filter-section-body-stack">
                 <input id="updates-q" type="search" placeholder="&#25628;&#32034;&#36335;&#24452; / &#25193;&#23637;&#21517;">
+                <div class="filter-control-row"><label id="updates-sort-label" for="updates-sort">&#25490;&#24207;</label><select id="updates-sort" aria-labelledby="updates-sort-label">
+                  <option id="updates-sort-path" value="path">&#36335;&#24452; (A-Z)</option>
+                  <option id="updates-sort-status" value="status">&#29366;&#24577;</option>
+                  <option id="updates-sort-size-delta" value="size-delta">&#22823;&#23567;&#21464;&#21270;</option>
+                  <option id="updates-sort-line-delta" value="line-delta">&#34892;&#25968;&#21464;&#21270;</option>
+                </select></div>
               </div>
             </section>
             <section class="filter-section is-collapsed" data-filter-section="updates-status" data-default-collapsed="1">
@@ -567,25 +588,12 @@
                 <div id="updates-extension-filter" class="chips" data-multi="1"></div>
               </div>
             </section>
-            <section class="filter-section is-collapsed" data-filter-section="updates-sort-section" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="updates-filter-section-sort-body">
-                <span id="updates-sort-label">&#25490;&#24207;</span>
-              </button>
-              <div id="updates-filter-section-sort-body" class="filter-section-body" hidden>
-                <select id="updates-sort" aria-labelledby="updates-sort-label">
-                  <option id="updates-sort-path" value="path">&#36335;&#24452; (A-Z)</option>
-                  <option id="updates-sort-status" value="status">&#29366;&#24577;</option>
-                  <option id="updates-sort-size-delta" value="size-delta">&#22823;&#23567;&#21464;&#21270;</option>
-                  <option id="updates-sort-line-delta" value="line-delta">&#34892;&#25968;&#21464;&#21270;</option>
-                </select>
-              </div>
-            </section>
           </div>
           <div id="updates-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize filters" aria-orientation="horizontal" tabindex="0"></div>
 
           <div id="updates-list-meta"><span id="updates-shown">0</span> / <span id="updates-total">0</span> <span id="updates-list-meta-label">&#26465;</span></div>
           <div id="updates-list"></div>
-          <footer id="updates-pager"></footer>
+
         </aside>
         <div id="updates-splitter" class="pane-splitter" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" tabindex="0"></div>
 
@@ -613,9 +621,12 @@
 
           <div id="updates-empty">&#20174;&#24038;&#20391;&#36873;&#25321;&#19968;&#39033;&#21464;&#21270;</div>
           <div id="updates-detail" hidden>
-            <header id="updates-detail-header">
-              <div id="updates-detail-title"></div>
-              <div id="updates-detail-meta"></div>
+            <header id="updates-detail-header" class="has-locate-button">
+              <div class="locate-header-main">
+                <div id="updates-detail-title"></div>
+                <div id="updates-detail-meta"></div>
+              </div>
+              <button id="updates-locate-current" class="locate-current-button" type="button" disabled>定位当前文件</button>
             </header>
             <div id="updates-detail-facts"></div>
           </div>
@@ -627,7 +638,7 @@
       <div id="asset-app">
         <aside id="asset-left">
           <header>
-            <h1 id="asset-app-title">&#23548;&#20986;&#36164;&#28304;&#27983;&#35272;&#22120;</h1>
+            <h1 id="asset-app-title">&#35270;&#35273;&#36164;&#20135;</h1>
             <div id="asset-stats"><span id="asset-count">?</span> <span id="asset-count-label">&#39033;&#36164;&#28304;</span></div>
             <div class="sidebar-header-actions">
               <button id="asset-filter-toggle" class="panel-toggle" type="button" aria-controls="asset-filter-panel" aria-expanded="true">&#38544;&#34255;&#31579;&#36873;</button>
@@ -641,7 +652,17 @@
                 <span id="asset-basic-filter-label">&#22522;&#30784;&#31579;&#36873;</span>
               </div>
               <div id="asset-filter-section-basic-body" class="filter-section-body filter-section-body-stack">
+                <div id="asset-empty-model-filter" class="chips" data-multi="1"></div>
                 <input id="asset-q" type="search" placeholder="&#25628;&#32034;&#36335;&#24452; / &#21517;&#31216; / &#25991;&#20214;&#22841; / &#20998;&#31867;">
+                <div class="filter-control-row">
+                  <label id="asset-sort-label" for="asset-sort">&#25490;&#24207;</label>
+                <select id="asset-sort" aria-labelledby="asset-sort-label">
+                  <option id="asset-sort-path" value="path">&#36335;&#24452; (A-Z)</option>
+                  <option id="asset-sort-size-desc" value="size-desc">&#25991;&#20214;&#22823;&#23567;&#20174;&#22823;&#21040;&#23567;</option>
+                  <option id="asset-sort-size-asc" value="size-asc">&#25991;&#20214;&#22823;&#23567;&#20174;&#23567;&#21040;&#22823;</option>
+                  <option id="asset-sort-name" value="name">&#25991;&#20214;&#21517; (A-Z)</option>
+                </select>
+                </div>
               </div>
             </section>
 
@@ -681,19 +702,7 @@
               </div>
             </section>
 
-            <section class="filter-section is-collapsed" data-filter-section="asset-sort-section" data-default-collapsed="1">
-              <button class="filter-section-toggle" type="button" aria-expanded="false" aria-controls="asset-filter-section-sort-body">
-                <span id="asset-sort-label">&#25490;&#24207;</span>
-              </button>
-              <div id="asset-filter-section-sort-body" class="filter-section-body" hidden>
-                <select id="asset-sort" aria-labelledby="asset-sort-label">
-                  <option id="asset-sort-path" value="path">&#36335;&#24452; (A-Z)</option>
-                  <option id="asset-sort-size-desc" value="size-desc">&#25991;&#20214;&#22823;&#23567;&#20174;&#22823;&#21040;&#23567;</option>
-                  <option id="asset-sort-size-asc" value="size-asc">&#25991;&#20214;&#22823;&#23567;&#20174;&#23567;&#21040;&#22823;</option>
-                  <option id="asset-sort-name" value="name">&#25991;&#20214;&#21517; (A-Z)</option>
-                </select>
-              </div>
-            </section>
+
 
           </div>
           <div id="asset-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize filters" aria-orientation="horizontal" tabindex="0"></div>
@@ -703,16 +712,19 @@
             <div id="asset-list-spacer"></div>
             <div id="asset-list"></div>
           </div>
-          <footer id="asset-pager"></footer>
+
         </aside>
         <div id="asset-splitter" class="pane-splitter" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" tabindex="0"></div>
 
         <main id="asset-right">
           <div id="asset-empty">&#20174;&#24038;&#20391;&#36873;&#25321;&#19968;&#24352;&#22270;&#29255;&#25110;&#27169;&#22411;&#25991;&#20214;&#12290;</div>
           <div id="asset-detail" hidden>
-            <header id="asset-detail-header">
-              <div id="asset-detail-title"></div>
-              <div id="asset-detail-meta"></div>
+            <header id="asset-detail-header" class="has-locate-button">
+              <div class="locate-header-main">
+                <div id="asset-detail-title"></div>
+                <div id="asset-detail-meta"></div>
+              </div>
+              <button id="asset-locate-current" class="locate-current-button" type="button" disabled>定位当前文件</button>
             </header>
 
             <div class="asset-detail-toolbar">
@@ -744,6 +756,14 @@
                   <canvas id="asset-model-axes" aria-hidden="true"></canvas>
                 </div>
                 <div id="asset-preview-note" class="asset-preview-note" hidden></div>
+                <div id="asset-variants-wrap" class="asset-preview-variants" hidden>
+                  <div id="asset-variants-label" class="asset-subhead">LOD variants</div>
+                  <div id="asset-variants" class="asset-variant-list"></div>
+                </div>
+                <div id="asset-objects-wrap" class="asset-preview-variants" hidden>
+                  <div id="asset-objects-label" class="asset-subhead">Objects</div>
+                  <div id="asset-objects" class="asset-object-list"></div>
+                </div>
               </section>
 
               <section class="asset-panel asset-info-panel">
@@ -755,10 +775,6 @@
                   <div id="asset-related" class="asset-related-list"></div>
                 </div>
 
-                <div id="asset-variants-wrap" hidden>
-                  <div id="asset-variants-label" class="asset-subhead">LOD variants</div>
-                  <div id="asset-variants" class="asset-variant-list"></div>
-                </div>
 
                 <div id="asset-materials-wrap" hidden>
                   <div id="asset-materials-label" class="asset-subhead">&#20851;&#32852;&#26448;&#36136;</div>
@@ -797,36 +813,41 @@
 <script src="src/core/locale.js?v=20260701-gp5"></script>
 <script src="src/core/paths.js?v=20261010-current-formats"></script>
 <script src="src/ui/media_player.js?v=20260812-multimedia5"></script>
-<script src="src/ui/splitter.js?v=20261009-activities"></script>
+<script src="src/ui/splitter.js?v=20261010-catalogs"></script>
 <script src="src/ui/filters.js?v=20261010-refactor1"></script>
 <script src="src/ui/facets.js?v=20261009-review1"></script>
-<script src="src/ui/sort.js?v=20261009-review1"></script>
+<script src="src/ui/sort.js?v=20261010-filter-headings-enemy-layout"></script>
+<script src="src/ui/continuous_list.js?v=20261010-continuous1"></script>
 <script src="src/ui/pagination.js?v=20261009-text-limits1"></script>
-<script src="src/ui/list_groups.js?v=20261009-review1"></script>
+<script src="src/ui/list_groups.js?v=20261010-continuous1"></script>
+<script src="src/ui/locate.js?v=20261011-locate1"></script>
 <script src="src/ui/update_badges.js?v=20261010-refactor1"></script>
 <script src="app_labels.js?v=20261010-current-formats"></script>
 <script src="app_tree.js?v=20261009-review1"></script>
 <script src="src/features/story_triggers.js?v=20260725-mplayout2"></script>
 <script src="src/features/story/branches.js?v=20261009-review1"></script>
 <script src="app.js?v=20261010-current-formats"></script>
-<script src="assets.js?v=20261010-current-formats"></script>
+<script src="assets.js?v=20261011-obj-materials"></script>
 <script src="src/features/characters/appearances.js?v=20261009-activities"></script>
   <script src="src/features/characters/index.js?v=20261010-refactor1"></script>
-<script src="src/features/production/index.js?v=20261009-review1"></script>
-<script src="src/features/gameplay/labels.js?v=20261009-review1"></script>
+  <script src="src/ui/story_links.js?v=20261010-activity-missions"></script>
+  <script src="src/features/gameplay/detail.js?v=20261010-item-equipment-links"></script>
+<script src="src/features/gameplay/items.js?v=20261010-all-gameplay-metadata"></script>
+<script src="src/features/gameplay/labels.js?v=20261010-energy-point-maps"></script>
 <script src="src/features/gameplay/loadout.js?v=20260924-gp17"></script>
 <script src="src/features/gameplay/skill_refs.js?v=20261002-mechanics2"></script>
-<script src="src/features/gameplay/mechanics.js?v=20261002-mechanics2"></script>
-<script src="src/features/gameplay/index.js?v=20261009-review1"></script>
-<script src="src/features/gameplay/tabs.js?v=20261009-review1"></script>
+<script src="src/features/gameplay/mechanics.js?v=20261011-tags1"></script>
+<script src="src/features/gameplay/index.js?v=20261010-energy-point-maps"></script>
 <script src="src/features/audio/index.js?v=20261010-refactor1"></script>
 <script src="src/features/map_recovery/encounters.js?v=20261002-expansion1"></script>
   <script src="src/features/map_recovery/index.js?v=20261010-current-formats"></script>
 <script src="src/features/next_views.js?v=20261010-refactor1"></script>
 <script src="src/features/reference/files.js?v=20261009-review1"></script>
 <script src="src/features/reference/index.js?v=20261010-current-formats"></script>
-<script src="src/features/activities/index.js?v=20261009-review1"></script>
-<script src="src/features/updates/index.js?v=20261009-review1"></script>
+<script src="src/features/gameplay/battle_stages.js?v=20261010-all-gameplay-metadata"></script>
+<script src="src/features/gameplay/activities/index.js?v=20261010-all-gameplay-metadata"></script>
+<script src="src/features/gameplay/tabs.js?v=20261010-all-catalog-counts"></script>
+<script src="src/features/updates/index.js?v=20261010-continuous1"></script>
 <script src="src/features/recovery/index.js?v=20261010-refactor1"></script>
 <script src="src/features/data_inspector/index.js?v=20261009-activities"></script>
 <script src="src/features/data_inspector/stores.js?v=20261010-current-formats"></script>

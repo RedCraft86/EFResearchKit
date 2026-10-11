@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "gameplayAssetOverrides.v2",
+  "images": {},
+  "models": {
+    "gem:world_energy_point_group05": ["P_monster_elite_wgshoal_01"],
+    "item:item_spaceship_exhibits_tundra_4": ["S_crystal_tree+1_001_01_lod0"]
+  }
+}

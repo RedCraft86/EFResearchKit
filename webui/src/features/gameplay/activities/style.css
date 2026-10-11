@@ -1,0 +1,54 @@
+#activities-app { display: flex; height: 100%; min-height: 0; }
+#activities-left { display: flex; flex-direction: column; width: 420px; min-width: 320px; flex: 0 0 auto; min-height: 0; background: var(--bg-2); overflow: hidden; }
+#activities-left header { padding: 14px 16px 8px; border-bottom: 1px solid var(--border); }
+#activities-filter-panel { flex: 0 0 auto; max-height: 55%; overflow: auto; }
+#activities-filter-panel[hidden] { display: none; }
+#activities-count { padding: 8px 16px; color: var(--muted); font-size: 12px; }
+#activities-list { overflow: auto; flex: 1; min-height: 0; padding: 8px; }
+.activities-entry span { font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
+#activities-right { flex: 1; padding: 0; overflow: auto; min-width: 0; min-height: 0; }
+#activities-detail { padding: 0 22px 24px; overflow-wrap: anywhere; }
+#activities-detail.is-empty { min-height: 55vh; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+#activities-detail-header[hidden] { display: none; }
+.activities-description { margin: 12px 0 16px; line-height: 1.7; white-space: pre-wrap; }
+.activities-reward-summary, .activities-related-rewards, .activities-assets { margin-top: 24px; }
+.activities-reward-summary > p { color: var(--muted); font-size: 12px; }
+.activities-times { display: grid; gap: 8px; padding: 0; margin: 24px 0; }
+#activities-detail .reference-guide-section[data-guide-label="Activity prerequisite"] { padding: 0; margin: 24px 0; border: 0; border-radius: 0; background: transparent; }
+.activities-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+.activities-battle-scroll { overflow-x: auto; }
+.activities-battle-links { width: 100%; border-collapse: collapse; text-align: left; }
+.activities-battle-links th, .activities-battle-links td { padding: 6px 12px 6px 0; vertical-align: top; }
+.activities-battle-links thead th { color: var(--muted); font-size: 12px; font-weight: 500; }
+.activities-battle-links .gameplay-heading-links { margin-top: 0; }
+@media (max-width: 760px) {
+  #activities-app { height: auto; min-height: 100vh; flex-direction: column; }
+  #activities-left { width: 100%; min-width: 0; overflow: visible; border-bottom: 1px solid var(--border); }
+  #activities-filter-panel { max-height: none; }
+  #activities-list { flex: none; min-height: 200px; max-height: 42vh; }
+  #activities-right { overflow: visible; padding: 12px; }
+  #activities-detail { padding: 0; }
+}
+.activities-mobile-splitter { display: none; }
+@media (max-width: 760px) { .activities-mobile-splitter { display: block; flex: 0 0 14px; cursor: row-resize; touch-action: none; } }
+
+.activities-illustrated-field .reference-field-value { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.activities-illustrated-field .activities-image-preview { display: inline-flex; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border-radius: 4px; background: transparent; }
+.activities-illustrated-field .activities-image-preview img { width: 100%; height: 100%; object-fit: contain; border-radius: 0; }
+
+
+/* Activity cards keep their original layout with full-height artwork on the right. */
+.activities-entry { position: relative; display: flex; align-items: center; width: 100%; min-height: 100px; padding: 8px; text-align: left; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-2); color: var(--text); overflow: hidden; }
+.activities-thumbnail { position: absolute; inset: 0 0 0 auto; width: 44%; height: 100%; object-fit: cover; object-position: right center; border-radius: 0; }
+.activities-entry-body { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 7px; }
+.activities-entry.has-tab-image .activities-entry-body { flex: 0 0 calc(56% - 8px); }
+.activities-entry-body strong { font-size: 16px; line-height: 1.35; }
+.activities-entry-heading { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.activities-entry .activities-schedule-tags, .activities-schedule-tags { display: inline-flex; gap: 5px; flex-wrap: wrap; opacity: 1; }
+.activities-schedule-tags .activities-schedule-tag { display: inline-block; padding: 2px 6px; border: 1px solid currentColor; border-radius: 4px; background: transparent; font-size: 11px; font-weight: 600; line-height: 1.4; opacity: 1; white-space: nowrap; }
+.activities-schedule-tag.is-limited { color: var(--status-modified); }
+.activities-schedule-tag.is-permanent { color: var(--status-added); }
+.activities-entry .activities-entry-schedule { font-size: 11px; line-height: 1.4; }
+.activities-entry-meta[hidden] { display: none; }
+.activities-entry.is-active { outline: 2px solid #d9cd38; outline-offset: -2px; box-shadow: inset 4px 0 #d9cd38; }
+.activities-entry:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }

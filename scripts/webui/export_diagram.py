@@ -97,7 +97,7 @@ def render() -> str:
     text(44, 480, "Grouped cells show any matching input. Hover a cell for exact class/block names.", size=15)
     box(44, 499, 1272, 534)
     labels = {"story": "Story", "story-media": "Story media", "map": "Map", "characters": "Characters",
-              "gameplay": "Gameplay", "production": "Production", "audio": "Audio", "assets": "Assets", "data": "Data"}
+              "gameplay": "Gameplay", "audio": "Audio", "assets": "Assets", "data": "Data"}
     for i, name in enumerate(PAGES):
         text(382 + i * 109, 528, labels[name], size=13, weight=600, anchor="middle")
     colors = {"R": "#0f766e", "O": "#b45309", "U": "#64748b", "F": "#0369a1"}
@@ -123,7 +123,7 @@ def render() -> str:
         text(x, 1061, key, fill=colors[key], weight=700)
         text(x + 24, 1061, label, size=15)
     text(44, 1089, "R / O / F enter the --from-game scope. U is extracted only when another selected page owns it.", size=15)
-    text(44, 1114, "production builds the catalog shown inside Gameplay. Story media adds images/video; Audio publishes voice sidecars.", size=15)
+    text(44, 1114, "Gameplay builds its items, buildings and recipes. Story media adds images/video; Audio publishes voice sidecars.", size=15)
 
     text(44, 1161, "All-page build order", size=24, weight=700, fill="#0f172a")
     text(44, 1186, "Earliest dependency depth; tasks start as their inputs succeed (default: 4 concurrent builders).", size=15)
@@ -150,7 +150,7 @@ def render() -> str:
         ("Audio", "Story + Text", "Voice and event sidecars: lang/<LANG>/audio/conv/", "Browser read"),
         ("Story + Text", "Characters", "Appearance navigation after exact source, speaker and text checks", "Browser read"),
         ("Data", "Map / Gameplay", "Last published encounter and skill datasets", "Optional build-time read"),
-        ("Production + Gameplay", "Gameplay browser", "Combined Items, Recipes and Machines; independent publications", "Browser read"),
+        ("Gameplay", "Gameplay browser", "Items, buildings and recipes; one Gameplay publication", "Browser read"),
     )
     for i, (publisher, reader, information, kind) in enumerate(links):
         y = graph_y + 50 + i * 82

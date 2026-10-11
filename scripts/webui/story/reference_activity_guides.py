@@ -8,6 +8,7 @@ lookups through the same resolver as the Text page's structured fields.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -204,6 +205,18 @@ def activity_reference_guide(
             value = row.get(name)
             add(fields, name, label, zh, value, MISSION_SOURCE, row_id=quest_mission_id(value or ""))
         conditions(row.get("conditions"), "conditions", "Activity prerequisite", "活动前置条件")
+        jump_id = row.get("detailJumpId")
+        jump = resolver.row_data("SystemJumpTable", str(jump_id or ""))
+        if isinstance(jump, dict) and jump.get("id") == jump_id and jump.get("phaseId") == "Mission":
+            try:
+                args = json.loads(jump.get("phaseArgs", ""))
+            except (ValueError, TypeError):
+                args = None
+            missions = args.get("autoSelectList") if isinstance(args, dict) else None
+            if isinstance(missions, list) and missions and all(isinstance(mission, str) and mission.strip() for mission in missions):
+                fields = section("Story missions", "剧情任务", "detailJumpId")
+                for index, mission in enumerate(dict.fromkeys(missions)):
+                    add(fields, f"SystemJumpTable/{jump_id}.phaseArgs.autoSelectList.{index}", "Mission", "任务", mission, MISSION_SOURCE)
     elif stem == "CheckInRewardTable":
         for key, day in _records(row.get("stageList")):
             path = f"stageList.{key}"
@@ -226,6 +239,33 @@ def activity_reference_guide(
             add(fields, f"{path}.stageId", "Stage", "阶段", stage.get("stageStrId") or stage.get("stageId", key))
             text(fields, f"{path}.desc", "Description", "说明", stage.get("desc"))
             common(fields, stage, path)
+            supply = resolver.row_data("ActivitySubmitFoodTable", str(stage.get("stageId") or ""))
+            if isinstance(supply, dict) and supply.get("stageId") == stage.get("stageId"):
+                fields_supply = section("Supply stage text", "供给阶段文本", f"{path}.supply", resolver.text(supply.get("name")))
+                for name, label, zh in (
+                    ("submitDesc", "Submission description", "提交说明"),
+                    ("noteDesc", "Stage note", "阶段便签"),
+                ):
+                    text(fields_supply, f"ActivitySubmitFoodTable/{stage['stageId']}.{name}", label, zh, supply.get(name))
+                submission_id = supply.get("submitItemId")
+                submission = resolver.row_data("SubmitItem", str(submission_id or ""))
+                if isinstance(submission, dict) and submission.get("submitId") == submission_id:
+                    for index, entry in _records(submission.get("paramData")):
+                        params = entry.get("paramList")
+                        if entry.get("type") != 1 or not isinstance(params, list) or len(params) != 2:
+                            continue
+                        ids = params[0].get("valueStringList") if isinstance(params[0], dict) else None
+                        counts = params[1].get("valueIntList") if isinstance(params[1], dict) else None
+                        if not isinstance(ids, list) or len(ids) != 1 or not isinstance(counts, list) or len(counts) != 1:
+                            continue
+                        if not isinstance(counts[0], int) or isinstance(counts[0], bool) or counts[0] <= 0:
+                            continue
+                        if not resolver.references.resolve("ItemTable", str(ids[0]))[0]:
+                            continue
+                        submit_fields = section("Stage submission", "阶段提交物品", f"{path}.submission.{index}", resolver.text(stage.get("name")))
+                        add(submit_fields, f"SubmitItem/{submission_id}.paramData.{index}.paramList", "Submit item", "提交物品", ids[0], "ItemTable")
+                        submit_fields[-1]["quantity"] = counts[0]
+                        submit_fields[-1]["role"] = "submission"
             conditions(stage.get("conditions"), f"{path}.conditions", "Stage prerequisite", "阶段前置条件")
             # These side tables are explicitly keyed by their stageId. Show
             # only an exact existing row with a matching stored stageId.

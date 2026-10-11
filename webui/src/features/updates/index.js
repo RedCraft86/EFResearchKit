@@ -4,7 +4,7 @@
 //   * Controls: search plus filter sections basic, category, extension,
 //     status and sort (path, status, file size/change, line delta), the
 //     added/modified/deleted summary counts, the run metadata line, and
-//     pagination over the complete entry set. A feed built with the
+//     continuous virtual scrolling over the complete entry set. A feed built with the
 //     diagnostic --sample-limit cap shows an explicit truncation note.
 //   * Size sort uses current size for additions, previous size for deletions
 //     and absolute size delta for modifications.
@@ -228,7 +228,6 @@
     filtered: [],
     selectedPath: "",
     selectedEntry: null,
-    pager: null,
     facets: null,
     modelCache: new Map(),
   };
@@ -553,7 +552,7 @@
       ],
       chipClassName: "updates-filter-chip",
       onChange: () => {
-        UPDATE_STATE.pager?.reset();
+        window.WebUI.continuousList.reset(up$("#updates-list"));
         applyUpdateFilters();
       },
     });
@@ -566,8 +565,7 @@
 
   function syncFilterSectionActiveCounts() {
     window.WebUI.setFilterSectionActiveCounts?.({
-      "updates-basic": updateQuery() ? 1 : 0,
-      "updates-sort-section": sortMode() === "path" ? 0 : 1,
+      "updates-basic": (updateQuery() ? 1 : 0) + (sortMode() === "path" ? 0 : 1),
     });
   }
 
@@ -576,7 +574,7 @@
     if (q) q.value = "";
     const sort = up$("#updates-sort");
     if (sort) sort.value = "path";
-    UPDATE_STATE.pager?.reset();
+    window.WebUI.continuousList.reset(up$("#updates-list"));
     updateFacets().reset();
   }
 
@@ -595,7 +593,6 @@
       ? (a, b) => ((scores.get(b) || 0) - (scores.get(a) || 0)) || compareEntries(a, b)
       : compareEntries);
     UPDATE_STATE.filtered = filtered;
-    UPDATE_STATE.pager?.setTotal(filtered.length);
     if (
       UPDATE_STATE.selectedEntry
       && !UPDATE_STATE.filtered.some((entry) => entry.path === UPDATE_STATE.selectedEntry.path && entry.status === UPDATE_STATE.selectedEntry.status)
@@ -652,13 +649,10 @@
   function renderUpdateList() {
     const list = up$("#updates-list");
     if (!list) return;
-    list.replaceChildren();
     up$("#updates-shown").textContent = String(UPDATE_STATE.filtered.length);
     up$("#updates-total").textContent = String(UPDATE_STATE.entries.length);
 
-    const fragment = document.createDocumentFragment();
-    const pageEntries = UPDATE_STATE.pager ? UPDATE_STATE.pager.slice(UPDATE_STATE.filtered) : UPDATE_STATE.filtered;
-    for (const entry of pageEntries) {
+    window.WebUI.continuousList.render(list, UPDATE_STATE.filtered, (entry) => {
       const row = document.createElement("button");
       row.type = "button";
       row.className = `updates-row updates-row-${entry.status || "unknown"}`;
@@ -685,9 +679,9 @@
           delta,
         ].filter(Boolean).join(" | "))}</div>`;
       row.addEventListener("click", () => selectUpdateEntry(entry));
-      fragment.appendChild(row);
-    }
-    list.appendChild(fragment);
+      return row;
+    }, { estimateHeight: 80 });
+    window.WebUI.locateCurrent?.sync(up$("#updates-locate-current"), Boolean(UPDATE_STATE.selectedEntry));
   }
 
   function selectUpdateEntry(entry) {
@@ -1734,7 +1728,7 @@
     for (const sel of ["#updates-q", "#updates-sort"]) {
       const node = up$(sel);
       if (node) node.addEventListener(sel === "#updates-q" ? "input" : "change", () => {
-        UPDATE_STATE.pager?.reset();
+        window.WebUI.continuousList.reset(up$("#updates-list"));
         applyUpdateFilters();
       });
     }
@@ -1753,16 +1747,21 @@
     });
   }
 
+  function locateUpdateEntry() {
+    const selected = UPDATE_STATE.selectedEntry;
+    if (!selected) return null;
+    const index = UPDATE_STATE.filtered.indexOf(selected);
+    if (index < 0) return null;
+    window.WebUI.continuousList.reveal(up$("#updates-list"), selected);
+    return up$("#updates-list .updates-row.is-selected");
+  }
+
   function initUpdates() {
     UPDATE_STATE.uiLocale = resolveInitialUiLocale();
     ensureUpdatesPanelToggle();
-    UPDATE_STATE.pager = window.WebUI.pagination?.createPager({
-      container: "#updates-pager",
-      storageKey: "updates_browser_page_size",
-      onChange: renderUpdateList,
-    });
     applyUpdateStrings();
     bindUpdateEvents();
+    window.WebUI.locateCurrent?.bind(up$("#updates-locate-current"), locateUpdateEntry, () => up$("#updates-left"));
     renderUpdateSummary();
     renderUpdateDetail();
     maybeLoadUpdates();

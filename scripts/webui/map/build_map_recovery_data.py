@@ -100,6 +100,7 @@ SPAWNER_CONFIG = export_rel_path(EXPORT_LAYOUT.json_dir / "SpawnerConfig")
 MISSION_RUNTIME_DIR = export_rel_path(EXPORT_LAYOUT.json_dir / "MissionRuntimeAsset")
 
 LEVEL_DESC_REL = export_rel_path(EXPORT_LAYOUT.table_dir / "LevelDescTable.json")
+DUNGEON_TABLE_REL = export_rel_path(EXPORT_LAYOUT.table_dir / "DungeonTable.json")
 I18N_TEXT_REL = export_rel_path(EXPORT_LAYOUT.table_dir / "I18nTextTable_{0}.json")
 MISSION_NAMES_REL = "webui/data/lang/{0}/missions.json"
 TEXT_TABLE_REL = export_rel_path(EXPORT_LAYOUT.table_dir / "TextTable.json")
@@ -1561,6 +1562,10 @@ def _region_key(level_id: str) -> str:
     match = re.match(r"^(.+?)_lv\d+$", value, re.IGNORECASE)
     if match:
         return match.group(1)
+    # Reusing a Streaming art scene does not combine distinct dungeon levels.
+    # Keep their task/marker spaces separate while previews reuse source art.
+    if value in _dungeon_scene_level_ids():
+        return value
     # Danger-reappearance maps are always separate gameplay maps, including
     # the cases that reuse a complete standalone scene rather than a mapXX
     # art level.
@@ -3770,6 +3775,19 @@ def _level_catalog() -> dict[str, int]:
     return catalog
 
 
+def _dungeon_scene_level_ids() -> set[str]:
+    """Authored dungeon scenes remain maps even without registry/Story points.
+
+    The caller intersects these ids with the declared level catalog. A dungeon
+    reference supplies navigation, never a coordinate or inferred scene alias.
+    """
+    table = _load_json(ROOT / DUNGEON_TABLE_REL, {}) or {}
+    return {
+        row["sceneId"] for row in table.values()
+        if isinstance(row, dict) and isinstance(row.get("sceneId"), str) and row["sceneId"]
+    }
+
+
 def _exact_story_trigger_level_ids() -> set[str]:
     """Return levels that own at least one exact decoded Story trigger shape.
 
@@ -5753,6 +5771,7 @@ def _write_action_binding_report(payloads: Iterable[dict], language: str) -> Non
 def build_all(language: str, only: set[str] | None = None) -> list[dict]:
     registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
     catalog: dict[str, int | None] = _level_catalog()
+    dungeon_scenes = _dungeon_scene_level_ids() & catalog.keys()
     exact_story_trigger_levels = _exact_story_trigger_level_ids()
     for trigger_level_id in exact_story_trigger_levels:
         catalog.setdefault(trigger_level_id, None)
@@ -5806,7 +5825,7 @@ def build_all(language: str, only: set[str] | None = None) -> list[dict]:
         level_teleports = teleports.get(level_id, [])
         if not any((
             entities["world"], entities["script"], entities["npc"], digests,
-            level_teleports, level_id in exact_story_trigger_levels,
+            level_teleports, level_id in exact_story_trigger_levels, level_id in dungeon_scenes,
         )):
             continue
         # Chains that run inside a level are the only story evidence some
@@ -5832,8 +5851,13 @@ def build_all(language: str, only: set[str] | None = None) -> list[dict]:
             level_id, id_num, language, registry, entities, digests, level_teleports,
             reading_by_level, names, map_mark_audit,
         )
-        if not payload["markers"] and not payload["questPoints"]:
+        if not payload["markers"] and not payload["questPoints"] and level_id not in dungeon_scenes:
             continue
+        if level_id in dungeon_scenes:
+            payload["sources"].append(DUNGEON_TABLE_REL)
+            payload["relatedFiles"] = _sorted_related(_merge_related(payload["relatedFiles"], [
+                _related(DUNGEON_TABLE_REL, "level_definition", f"authored dungeon sceneId references {level_id}"),
+            ]))
         payloads.append(payload)
 
     return payloads

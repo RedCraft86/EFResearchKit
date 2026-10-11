@@ -6,34 +6,88 @@ and behavior contracts remain in [`../webui/README.md`](../webui/README.md).
 
 ## Active pages
 
+Display names are defined in `webui/README.md`: 人物汇总, 文本表格,
+视觉资产 (tab 资产), and 数据解码 (tab 解码 / Decoded). Routing tokens
+and publication paths remain independent of these labels.
+
+The shared theme offers Endfield (light, default) and Talos Night (dark), applied
+before first paint. Saved Classic or unknown choices fall back to Endfield;
+valid saved choices persist across pages and reloads. Assets uses plain preview and information columns; frontend
+layout details remain in `webui/README.md`.
+
+Page title typography is shared in `webui/style.css`; Activities, Audio and
+Gameplay's top catalog heading use the same rule as the other list pages,
+including the square accent marker in `webui/themes.css`. Its specificity preserves
+the common style when feature stylesheets load later.
+Primary sidebars expose every filtered match in one continuous scroll range.
+`src/ui/continuous_list.js` mounts only viewport rows and overscan for ordinary
+catalogs, measures variable heights, and supports keyboard navigation and direct
+location. Gameplay groups retain one collapsible heading; Story, Assets and Audio
+keep their existing virtual renderers. Data Files discovers source counts and
+fetches only viewport blocks through the existing read-only API, with a bounded
+metadata cache and request-generation gates. Right-pane detail pagination stays
+independent. No source extraction or publication change is needed.
+
+Primary sidebar search and sorting use `src/ui/sort.js`: the Story-style Search
+row and category/direction row share label widths and spacing across pages,
+including all Gameplay datasets, Characters and Data's file browser. Dynamic
+sidebars preserve their source controls and visibility; reset synchronization
+runs after page-owned reset handlers.
+
+Gameplay owns one Items frontend catalog including buildings, alongside entity
+views. Item facet headings use the common label/count markup. Enemy filters and
+sorting omit rarity, and enemy details use the shared catalog section and card
+layout. Building categories and relationships join the item filters; exact
+published building/item links decide which rows merge. The owning
+[catalog guide](webui/gameplay.md) records the Gameplay items v1 index and current-only routing.
+All use shared filter dividers capped at natural filter content height,
+with the shared minimum list height. The item catalog is published by Gameplay’s `items` stage. Catalog filter groups use the shared
+section binding and facets, including selection counts and collapse persistence.
+
 | Page | Recovery guide | Primary builder |
 | --- | --- | --- |
 | Story | [`webui/story.md`](webui/story.md) | `scripts.webui.story` |
-| Activities | [`webui/activities.md`](webui/activities.md) | Reads Story/Text's last reference publication |
+| Gameplay | [`webui/gameplay.md`](webui/gameplay.md), [`webui/activities.md`](webui/activities.md) | `scripts.webui.gameplay.build_gameplay`; Activities reads the last Text/Assets publications |
 | Map | [`webui/map.md`](webui/map.md) | `scripts.webui.map.build_map_recovery_data` |
 | Characters | [`webui/characters.md`](webui/characters.md) | `scripts.webui.characters.build_character_data` |
-| Gameplay | [`webui/gameplay.md`](webui/gameplay.md); [production catalogs](webui/production.md) | `scripts.webui.gameplay.build_gameplay`, `scripts.webui.production.build_production` |
+| Text | [`webui/text.md`](webui/text.md) | `scripts.webui.story` |
 | Audio | [`webui/audio.md`](webui/audio.md) | `scripts.webui.audio.build_audio` |
 | Assets | [`webui/assets.md`](webui/assets.md) | `scripts.webui.assets.build_assets` |
-| Text | [`webui/text.md`](webui/text.md) | `scripts.webui.story` |
+| Decoded (export stores, decoded datasets) | [`webui/data_inspector.md`](webui/data_inspector.md) | `scripts.webui.data_inspector.build_data_inspector` |
 | Updates | [`webui/updates.md`](webui/updates.md) | `scripts.webui.updates.build_updates` |
-| Data page (export stores, decoded datasets) | [`webui/data_inspector.md`](webui/data_inspector.md) | `scripts.webui.data_inspector.build_data_inspector` |
+
+The debug-only Recovery tab is documented in [`webui/recovery.md`](webui/recovery.md).
+Gameplay owns eight dataset tabs: Characters, Weapons, Essences, Equipment,
+Items, Enemies, Combat stages, and Activities. Items includes buildings and
+inline recipes; Activities is a Gameplay subpage with its own recovery guide.
 
 Mission Pipeline is a standalone recovery workflow, not a WebUI page or normal
 export stage. Retired Progression and Combat & Projectiles pages stay retired;
 their useful data belongs to Gameplay.
 
-Activities reads the last Text reference publication for authored schedules and
+Gameplay’s Activities subpage lists ActivityTable and reads supporting
+tables as linked details from the last Text reference publication for authored schedules and
 tags, plus Assets' optional compact activity_media.json for exact artwork and
 fixed-reward icons. Both builders retain their own output ownership; Activities
 adds no cross-page build dependency. See [Activities](webui/activities.md).
+Activities also reads Gameplay's last battle-stage publication for typed
+activity references and stage-to-published-map navigation, without writing page data.
+Map retains declared dungeon scene targets even without recovered points;
+Gameplay links exact published scene IDs, and Activities preserves each stage's
+map association. This remains a last-publication join between independent pages.
+Activity mission links read Story's last localized index and mission names via
+the shared Story navigation helper. Reference-guide mission fields keep their
+stored identity; a navigation target is not a stage-specific playback claim.
 
-Gameplay's production catalogs reuse Story's safe rich-text renderer and raw-tag display setting;
-machine flavor text comes from linked items in Production's own publication.
-Production labels sources when linked descriptions or decorative texts differ
-and displays identical text once; the owning [catalog guide](webui/production.md)
+Gameplay's item catalogs reuse Story's safe rich-text renderer and raw-tag display setting;
+machine flavor text comes from linked items in The Gameplay item catalog’s own publication.
+Currency purchase records show base prices, configured discounts and discounted prices, including an explicit no-discount label. Older publications missing discount fields show a refresh notice.
+Item shop configurations use a collapsed section with configuration-based
+deduplication and omit the section when empty; the [catalog guide](webui/gameplay.md) owns the comparison boundary.
+Gameplay items labels sources when linked descriptions or decorative texts differ
+and displays identical text once; the owning [catalog guide](webui/gameplay.md)
 records the distinction from runtime screen selection.
-Production supplies linked wiki explanations from its own tables to Gameplay
+Gameplay items supplies linked wiki explanations from its own tables to Gameplay
 details; displaying them adds no dependency on Story publication.
 Story item wiki navigation targets Gameplay's Items catalog; its reciprocal
 link checks Story's last published index in the displayed catalog language.
@@ -42,25 +96,114 @@ Shared facet chip counts are dataset totals; combined groups and search can
 return no matches even when a chip has a positive count. Assets documents this
 in its chip tooltips and empty-list message (see [Assets](webui/assets.md)).
 Assets OBJ and FBX previews share background and model color controls; see
-[frontend behavior](../webui/README.md#assets-and-text).
+[frontend behavior](../webui/README.md#assets).
+Assets' optional collision source maps to its own `webui/data/assets/collision/`
+publication, with the source root retained in the index and resources package.
+It does not replace canonical render exports or establish cross-page ownership.
 
 Gameplay has one dataset bar for Characters, Weapons, Essences, Equipment,
-Machines & buildings, Recipes, Items and Enemies. Equipment manufacturing reads Production's last published
+Items, Enemies, Combat stages and Activities. The shared routing controller
+loads all three indexes together on entry and refreshes them together for
+language changes/retries; counts no longer depend on visiting each catalog.
+Details remain selection-driven and publication ownership stays with each
+builder. Combat stages
+owns its Gameplay publication and Table inputs; an explicitly labeled preview
+may reuse the last published Text/Data/Assets/Gameplay rows without reading an
+unfinished export or creating a cross-page build dependency. Data's explicit
+`load_published_snapshot` validates complete publication framing but claims no
+export freshness; native-backed consumers still supply selected-native gates.
+Ordinary `load_dataset` consumers retain source signature/size validation.
+Combat stages distinguishes dungeon-selected hosts from shared scene data and
+shows stored counts/timing/Buff references with their runtime boundary.
+See [Gameplay](webui/gameplay.md).
+Equipment manufacturing reads The Gameplay item catalog’s last published
 item/icon lookup for thumbnails; neither builder writes the other page's
 publication (see [Gameplay](webui/gameplay.md)).
-Its Items tab combines the Production catalog with
+Character, Weapon, Essence and Equipment lists omit repeated kind badges.
+Entity and catalog sidebars reuse the same header renderer for entry counts and filter actions, without repeated dataset titles.
+The Items catalog automatically selects the first filtered
+record when opened without an explicit ID. Formula item groups use centered flex
+rows so operators align with item chips. Catalog and entity sections share heading
+styles and omit horizontal separators. Building records retain their authored IDs and publication paths within Items.
+
+Recipes have no standalone Gameplay tab. Current recipe links open
+an output item's page, selecting the first published output for multi-output recipes.
+Items load complete recipe shards for their source/use rows; inputs, outputs, cycle
+rates, variants, formula items and stored conditions remain available there.
+`itemRecipe` preserves the requested recipe for scrolling within the item detail.
+Recipe publications and the shared crafting renderer remain in use.
+Recipe rows omit the redundant View recipe link; item and building links remain.
+
+Gameplay's entity, item and stage datasets share `src/features/gameplay/detail.js` for the image/title
+shell, plain metadata, section markup, and attribute cards. Entity, catalog and
+combat-stage renderers retain their data joins and interactions. Published images
+supply the title thumbnail when present; missing images leave a text header.
+All detail headers share their desktop/mobile padding, locate-button styling and
+separate Story-link row; catalogs do not add their own header margins.
+Character/weapon level attributes and Equipment attributes use the same
+card renderer, while crafting input/output rows share the catalog recipe renderer.
+
+Building details within Items keep the catalog image and large title, replace tags with
+gray metadata including dimensions and power, and share Equipment's crafting cards and the Assets strip,
+including combined building/item records. Catalog headers omit the repeated kind
+subtitle and place IDs in metadata; the catalog evidence notice is removed.
+Shared asset strips keep bounded thumbnails and wrap images and model links within the detail width.
+Gameplay asset thumbnails and their enlarged previews identify images by the
+complete source filename, with wrapping captions beneath the thumbnail.
+Thumbnail captions are plain text and thumbnails open the enlarged preview.
+Only Gameplay enlarged-image captions link to the exact Assets entry; ordinary navigation
+closes the popup, while modifier clicks keep the native link behavior.
+Gameplay record-item headers link to Audio events using exact SpaceshipMusicTable
+keys and musicEvent/musicEventSample references; playable-media availability
+remains determined by the Audio publication.
+Audio's optional `lang/<LANG>/audio/record_media.json` supplies decoded record
+media to the same Gameplay Assets section. Empty media stays hidden; this exact
+record-table join does not enable unrelated Gameplay sound sidecars or players.
+Spaceship exhibit items join SpaceshipShowcaseItemTable.resPath to model
+container memberships in the last Assets publication using exact prefab names
+and Unity type/PathID. Assets owns those memberships; Gameplay owns the links.
+Factory device/logistics/decoration model links are also Gameplay-owned. Their
+asset-ref stage reads the effective object index and AssetMap config memberships,
+joins rendering Mesh PPtrs to the last Assets publication, and preserves
+conditional evidence for segmented resource-prefix owner candidates.
+Item portraits and Assets cards share the asset sidecar. Authored binary-table
+icon references take priority over filename inference and manual selections.
+Reading art remains supplemental; missing declared icon assets leave a text-only
+header, while directly authored generic icons stay visible.
+Equipment shares Weapon's reading layout and asset strip. Its
+manufacturing view groups separate Recipes input → output rows in one card and hides undecoded
+unlock metadata and pack membership. Gameplay's tracked
+`webui/overrides/gameplay_assets.json` supplies explicit model selections for
+the asset-ref publication; manual selections remain distinct from source proof.
+Its Items tab combines the Gameplay items catalog with
 Gameplay's published use effects and rewards in the same displayed language.
-Picture items reuse Gameplay's asset-token publication to show the corresponding
-`pic_*` illustration above the catalog description with the shared image preview.
+Item illustrations, card themes, stickers and avatar art follow explicit
+Gameplay items media bindings through Gameplay's asset sidecar. They render in the bottom Assets section with the shared Gameplay heading
+and image/model strip, including the weapon/Essence rounded borders and gray backgrounds.
+The sidecar consumes the Gameplay items and Assets publications; no builder
+writes another page's files.
 Both builders retain their own output paths and export scopes; run
-`export.bat gameplay production` to refresh all of these tabs. Legacy
-`#production` links preserve their catalog filters inside Gameplay.
+`export.bat gameplay` to refresh the page data.
+Gameplay's Items sidebar keeps filter visibility and reset together;
+both actions stay available when collapsed.
+Their details end with the shared image gallery, including displayed Gameplay items
+icons and published Gameplay item assets, deduplicated by path.
 Audio and Data share the dataset-tab styling below their sidebar title.
+All range thumbs share a circular theme-colored outline, including custom
+range controls and visible media-player seek handles.
+All Gameplay detail headers use the shared image and large-title shell with gray metadata; character Data / Loadout controls follow the character name in the title row.
+Weapon details reuse character section headings and asset thumbnails, with
+spacing in place of horizontal section dividers.
+Essence details reuse that layout, with three term columns, compatible weapons
+and image assets; the world-level cost section is omitted.
 Story completion rewards use its own mission/Table inputs; their item links
 open Gameplay's last published Items catalog without adding a page dependency.
+Resolved item rewards render in a separate block titled Mission Completion Rewards;
+empty or unavailable item lists show no block. Map links appear as small gray text
+below the Story detail title, using Map's last published mission index.
 Their names and IDs enter Story's own localized search sidecar before detail loading.
 
-Updates owns optional `updates/{characters,story,map,gameplay,production,reference}.json`
+Updates owns optional `updates/{characters,story,map,gameplay,reference}.json`
 sidecars. Page consumers add change badges and old/current detail panels to
 their current publications, including grouped Map variants and linked files;
 the comparison never writes into another page's dataset or alters its
@@ -141,7 +284,7 @@ The flow is:
    earlier build fails the check and is named, while an absent optional input
    only degrades its builder.
 4. Run ready tasks in the build graph within the job limit. Story, Assets,
-   Production, projectile recovery and Data can start together; later tasks
+   Gameplay items, projectile recovery and Data can start together; later tasks
    start as soon as their selected dependency edges succeed. The registry
    owns this order; `python -m scripts.webui.export_diagram` regenerates the
    scope matrix and dependency depths in `res/export_pages.svg`.
@@ -172,7 +315,7 @@ initializes a baseline. See [Updates](webui/updates.md) for comparison ownership
   order or manual option overrides.
 - A schema change updates producer and consumer together. Missing optional
   sidecars render as unavailable or degraded, never as a silent empty success.
-- Normal navigation contains only the eight pages above; debug state may
+- Normal navigation contains only the nine main pages above; debug state may
   reveal raw sources and recovery evidence, but Story issue/method filters stay
   visible.
 - Evidence types remain distinct: authored reference, recovered relation,
@@ -253,6 +396,10 @@ Unity object equality or ownership; OBJ omits skin weights and blend shapes.
 Sprite crops retain their separate texture/crop content evidence. Export files
 remain in place.
 
-Production relationship display preserves original recipe-method identity and
+Gameplay items relationship display preserves original recipe-method identity and
 all goods provenance when grouping matching shop configurations; see the
-[production guide](webui/production.md) for the evidence boundary.
+[Gameplay guide](webui/gameplay.md) for the evidence boundary.
+
+Item storage limits appear in header metadata only for finite values greater than one. Equal storage/backpack limits share one label; different limits retain explicit storage/backpack labels. Building buffer limits remain separately labeled. Sentinel/default values are omitted without claiming unlimited storage. Raw item/building/recipe configuration remains available behind Show debug info; source identifiers, booleans and anonymous enums are not normal-view metadata.
+
+Weapon and equipment records link both ways between Gameplay’s Items and their respective datasets using exact matching IDs in the displayed language. Header buttons appear only when the target exists in the current publication, share the Story Wiki button style, and sit beside it in one wrapping row using shared dataset routing.

@@ -18,9 +18,10 @@
 //   * Source/debug blocks, Timeline evidence, cutscene diagnostics and the
 //     order-edit controls (#story-order-editor-row, #story-order-save-status)
 //     render only under Show debug info.
-//   * The mission summary includes notes and configured mission completion
-//     reward items and quantities, including missions without notes. Quest
-//     rewards are separate; unresolved reward rows remain visibly unavailable.
+//   * Mission map links appear in the gray metadata line below the detail title.
+//     Mission notes and configured completion rewards render as separate blocks;
+//     rewards keep their own heading, including missions without notes. The reward
+//     block appears only when resolved item rewards exist. Quest rewards are separate.
 //     Search includes localized reward names and item IDs before mission details
 //     are opened, using the language's search sidecar.
 //   * sns_emoji_* renders as ordinary inline emoji with no hover or modal
@@ -435,22 +436,17 @@ function ensureStoryPanelToggle() {
   return storyPanel;
 }
 
-function availableFilterSectionKeys() {
-  return new Set($$(".filter-section[data-filter-section]:not([data-fixed-open='1'])").map((section) => section.dataset.filterSection).filter(Boolean));
-}
-
 function defaultCollapsedFilterSectionKeys() {
   return new Set($$(".filter-section[data-default-collapsed='1']:not([data-fixed-open='1'])").map((section) => section.dataset.filterSection).filter(Boolean));
 }
 
 function resolveInitialFilterSectionsCollapsed() {
-  const available = availableFilterSectionKeys();
   const stored = storageGet(FILTER_SECTION_STORAGE_KEY);
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) {
-        return new Set(parsed.filter((key) => available.has(key)));
+        return new Set(parsed.filter((key) => typeof key === "string"));
       }
     } catch (_error) {
       // Fall back to the markup defaults.
@@ -502,19 +498,29 @@ function setFilterSectionCollapsed(key, collapsed, { persist = true } = {}) {
   requestAnimationFrame(renderList);
 }
 
-function initFilterSections() {
-  STATE.filterSectionsCollapsed = resolveInitialFilterSectionsCollapsed();
-  for (const button of $$(".filter-section-toggle")) {
-    const section = button.closest(".filter-section[data-filter-section]");
-    if (!section) continue;
+const boundFilterSectionButtons = new WeakSet();
+function bindFilterSections(root = document) {
+  const stored = storageGet(FILTER_SECTION_STORAGE_KEY);
+  for (const section of root.querySelectorAll(".filter-section[data-filter-section]")) {
+    const button = section.querySelector(".filter-section-toggle");
+    if (!button || boundFilterSectionButtons.has(button)) { syncFilterSection(section); continue; }
+    if (!stored && section.dataset.defaultCollapsed === "1") STATE.filterSectionsCollapsed.add(section.dataset.filterSection);
+    boundFilterSectionButtons.add(button);
     button.addEventListener("click", () => {
       const key = section.dataset.filterSection || "";
       setFilterSectionCollapsed(key, !STATE.filterSectionsCollapsed.has(key));
     });
+    syncFilterSection(section);
   }
-  syncFilterSections();
   requestFilterLayoutSync();
 }
+window.WebUI.filters.bindSections = bindFilterSections;
+
+function initFilterSections() {
+  STATE.filterSectionsCollapsed = resolveInitialFilterSectionsCollapsed();
+  bindFilterSections();
+}
+
 
 
 function getLanguageInfo(code) {
@@ -3385,6 +3391,7 @@ function applyUiStrings() {
     el.textContent = uiText(el.dataset.i18n);
   });
   $("#ui-language-label").textContent = uiText("uiLanguage");
+  $("#theme-label").textContent = uiText("theme");
   syncUiLanguageSwitch();
 
   if (!document.body.dataset.activeView || document.body.dataset.activeView === "story") {
@@ -6691,11 +6698,9 @@ function gameplayHrefForWikiEntry(entry, conv) {
   if (gameplayId.startsWith("item_") && !gameplayId.startsWith("item_equip_")) {
     return window.WebUI.gameplayTabs.pageUrl("item", gameplayId);
   }
-  const params = new URLSearchParams();
-  params.set("lang", STATE.language || "CN");
-  params.set("ui", STATE.uiLocale || "zh");
-  params.set("gameplay", gameplayId);
-  return `?${params.toString()}#gameplay`;
+  const kind = gameplayId.startsWith("chr_") ? "character" : gameplayId.startsWith("wpn_") ? "weapon"
+    : gameplayId.startsWith("eny_") ? "enemy" : "equipment";
+  return window.WebUI.gameplayTabs.pageUrl(kind, gameplayId);
 }
 
 // Compact "Gameplay" link tag, styled identically to the gameplay page's
@@ -6988,6 +6993,7 @@ function renderConv(conv) {
     meta.push(`level_refs=${missionExtras.levelRefs.map(formatLevelRef).join(", ")}`);
   }
   $("#conv-meta").textContent = meta.join(" | ");
+  $("#conv-meta").appendChild(renderMissionMaps(conv.mission, meta.length > 0));
   syncConvGameplayLink(entry, conv);
   syncStoryTriggerPanel(conv.key);
 
@@ -7088,13 +7094,6 @@ function renderConv(conv) {
 
   const hintBlock = renderConversationHints(conv);
   if (hintBlock) frag.appendChild(hintBlock);
-
-  const branchOverview = window.WebUI.storyBranches?.render(conv, {
-    missionTimelineRecovery,
-    language: STATE.language,
-    showDebug: STATE.showDebug,
-  });
-  if (branchOverview) frag.appendChild(branchOverview);
 
   const dialogLifecycleAudioBlock = renderDialogLifecycleAudioBlock(conv);
   if (dialogLifecycleAudioBlock) frag.appendChild(dialogLifecycleAudioBlock);
@@ -8277,22 +8276,73 @@ function renderConv(conv) {
   focusStoryDeepLink(conv);
 }
 
+// Map pages publish which missions each map hosts; reading that sidecar keeps
+// the Story page independent of the Map build while linking both ways.
+function loadMapMissionIndex() {
+  if (!STATE.mapMissionIndexPromise) {
+    STATE.mapMissionIndexPromise = fetchJson("data/map_recovery/index.json")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        const byMission = new Map();
+        for (const map of (payload && payload.maps) || []) {
+          for (const mission of map.missions || []) {
+            if (!byMission.has(mission)) byMission.set(mission, []);
+            byMission.get(mission).push({ id: map.id, name: map.name || map.label || map.id });
+          }
+        }
+        return byMission;
+      })
+      .catch(() => new Map());
+  }
+  return STATE.mapMissionIndexPromise;
+}
+
+function renderMissionMaps(mission, hasMeta) {
+  const box = document.createElement("span");
+  box.className = "mission-map-links";
+  box.hidden = true;
+  if (!mission) return box;
+  loadMapMissionIndex().then((byMission) => {
+    const maps = byMission.get(String(mission).toLowerCase()) || byMission.get(String(mission)) || [];
+    if (!maps.length) return;
+    box.appendChild(document.createTextNode(`${hasMeta ? " | " : ""}${uiText("missionMaps")}: `));
+    for (const map of maps) {
+      const url = new URL(location.href);
+      url.searchParams.delete("story");
+      url.searchParams.set("map", map.id);
+      url.searchParams.set("mission", mission);
+      url.hash = "map-recovery";
+      const link = document.createElement("a");
+      link.className = "mission-map-link";
+      link.href = url.pathname + url.search + url.hash;
+      link.title = `${uiText("missionMapOpen")}: ${map.id}`;
+      link.textContent = map.name;
+      if (box.querySelector("a")) box.appendChild(document.createTextNode(" · "));
+      box.appendChild(link);
+    }
+    box.hidden = false;
+  });
+  return box;
+}
+
 function renderMissionContext(missionExtras) {
   const notes = missionExtras?.notes || [];
   const reward = missionExtras?.completionReward;
-  if (!notes.length && !reward) {
+  const hasRewardItems = reward?.status === "resolved" && Array.isArray(reward.items) && reward.items.length > 0;
+  if (!notes.length && !hasRewardItems) {
     return null;
   }
 
-  const box = document.createElement("div");
-  box.className = "summary-box mission-summary-box";
-
-  const label = document.createElement("div");
-  label.className = "summary-label";
-  label.textContent = uiText("missionSummary");
-  box.appendChild(label);
+  const blocks = document.createDocumentFragment();
 
   if (notes.length) {
+    const box = document.createElement("div");
+    box.className = "summary-box mission-summary-box";
+    const label = document.createElement("div");
+    label.className = "summary-label";
+    label.textContent = uiText("missionSummary");
+    box.appendChild(label);
+
     for (const note of notes) {
       const p = document.createElement("div");
       p.className = "summary-text";
@@ -8300,69 +8350,64 @@ function renderMissionContext(missionExtras) {
       box.appendChild(p);
       appendDebugTrace(p, note._debug, "mission note");
     }
+    blocks.appendChild(box);
   }
 
-  if (reward) {
+  if (hasRewardItems) {
     const section = document.createElement("div");
-    section.className = "mission-completion-rewards";
+    section.className = "summary-box mission-completion-rewards";
+    section.setAttribute("aria-label", uiText("missionCompletionRewards"));
     const heading = document.createElement("div");
     heading.className = "summary-label";
     heading.textContent = uiText("missionCompletionRewards");
     section.appendChild(heading);
-    if (reward.status === "resolved") {
-      const list = document.createElement("div");
-      list.className = "mission-reward-items";
-      section.appendChild(list);
-      for (const item of reward.items || []) {
-        const link = document.createElement("a");
-        link.className = "mission-reward-item";
-        link.href = window.WebUI.gameplayTabs.pageUrl("item", item.id);
-        link.title = item.id;
-        const iconAsset = STATE.inlineImageAssetByStem.get(normalizeInlineImageId(item.iconId));
-        if (iconAsset) {
-          const icon = document.createElement("img");
-          icon.className = "mission-reward-icon";
-          icon.src = exportedAssetHref(iconAsset.rel);
-          icon.alt = "";
-          icon.loading = "lazy";
-          icon.decoding = "async";
-          icon.addEventListener("error", () => icon.remove(), { once: true });
-          link.appendChild(icon);
-        }
-        const name = document.createElement("span");
-        name.innerHTML = highlight(item.name || item.id, STATE.filters.q);
-        link.appendChild(name);
-        if (typeof item.count === "number") {
-          const count = document.createElement("span");
-          count.className = "mission-reward-count";
-          count.textContent = `× ${item.count.toLocaleString()}`;
-          link.appendChild(count);
-        }
-        link.addEventListener("click", (event) => {
-          if (!window.WebUI.isPlainClick(event)) return;
-          event.preventDefault();
-          window.WebUI.gameplayTabs.open("item", item.id);
-        });
-        list.appendChild(link);
-        appendDebugTrace(section, item._debug, "reward item");
+    const list = document.createElement("div");
+    list.className = "mission-reward-items";
+    section.appendChild(list);
+    for (const item of reward.items || []) {
+      const link = document.createElement("a");
+      link.className = "mission-reward-item";
+      link.href = window.WebUI.gameplayTabs.pageUrl("item", item.id);
+      link.title = item.id;
+      const iconAsset = STATE.inlineImageAssetByStem.get(normalizeInlineImageId(item.iconId));
+      if (iconAsset) {
+        const icon = document.createElement("img");
+        icon.className = "mission-reward-icon";
+        icon.src = exportedAssetHref(iconAsset.rel);
+        icon.alt = "";
+        icon.loading = "lazy";
+        icon.decoding = "async";
+        icon.addEventListener("error", () => icon.remove(), { once: true });
+        link.appendChild(icon);
       }
-      if (reward.hasRandomRewards || !list.childElementCount) {
-        const note = document.createElement("div");
-        note.className = "summary-text";
-        note.textContent = uiText(reward.hasRandomRewards ? "missionRandomRewards" : "missionNoRewardItems");
-        section.appendChild(note);
+      const name = document.createElement("span");
+      name.innerHTML = highlight(item.name || item.id, STATE.filters.q);
+      link.appendChild(name);
+      if (typeof item.count === "number") {
+        const count = document.createElement("span");
+        count.className = "mission-reward-count";
+        count.textContent = `× ${item.count.toLocaleString()}`;
+        link.appendChild(count);
       }
-    } else {
+      link.addEventListener("click", (event) => {
+        if (!window.WebUI.isPlainClick(event)) return;
+        event.preventDefault();
+        window.WebUI.gameplayTabs.open("item", item.id);
+      });
+      list.appendChild(link);
+      appendDebugTrace(section, item._debug, "reward item");
+    }
+    if (reward.hasRandomRewards) {
       const note = document.createElement("div");
       note.className = "summary-text";
-      note.textContent = reward.rewardId ? `${uiText("missionRewardUnavailable")} (${reward.rewardId})` : uiText("missionRewardUnavailable");
+      note.textContent = uiText("missionRandomRewards");
       section.appendChild(note);
     }
     appendDebugTrace(section, reward._debug, "mission completion reward");
-    box.appendChild(section);
+    blocks.appendChild(section);
   }
 
-  return box;
+  return blocks;
 }
 
 function missionTimelineArray(value) {
@@ -10184,6 +10229,16 @@ function openInlineImageModal(imageTag) {
   img.src = src;
   img.alt = imageName || imageId || "Image preview";
   caption.textContent = imageName || imageId;
+  const assetHref = imageTag.dataset.inlineImageHref;
+  if (assetHref) {
+    const link = document.createElement("a");
+    link.href = assetHref;
+    link.textContent = imageName || imageId;
+    link.addEventListener("click", (event) => {
+      if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0) closeInlineImageModal();
+    });
+    caption.replaceChildren(link);
+  }
   modal.hidden = false;
   document.body.classList.add("inline-image-modal-open");
   const close = modal.querySelector(".inline-image-modal-close");
@@ -10394,7 +10449,7 @@ function hasInlineRichTextTag(text) {
 function renderHighlightedRichTextHtml(text, q) {
   const source = String(text || "");
   const parts = [];
-  const tokenRe = /<image\b(?!\s*=)[^>]*>[\s\S]*?<\/image>|<image\s*=[^>]+>|<image\b(?=[^>]*(?:src|source|path|name|id)\s*=)[^>]*>|<@[^>]*>([\s\S]*?)<\/>|<s>([\s\S]*?)<\/s>|<b>([\s\S]*?)<\/b>/gi;
+  const tokenRe = /<image\b(?!\s*=)[^>]*>[\s\S]*?<\/image>|<image\s*=[^>]+>|<image\b(?=[^>]*(?:src|source|path|name|id)\s*=)[^>]*>|<@[^>]*>([\s\S]*?)<\/>|<s>([\s\S]*?)<\/s>|<b>([\s\S]*?)<\/b>|<color\s*=\s*(#[0-9a-f]{6}(?:[0-9a-f]{2})?)\s*>([\s\S]*?)<\/color>|<size\s*=\s*(\d+(?:\.\d+)?)\s*>([\s\S]*?)<\/size>/gi;
   let lastIndex = 0;
   let match;
 
@@ -10410,6 +10465,11 @@ function renderHighlightedRichTextHtml(text, q) {
       parts.push(`<span class="rich-strike">${renderHighlightedRichTextHtml(match[2] || "", q)}</span>`);
     } else if (match[3] !== undefined) {
       parts.push(`<b>${renderHighlightedRichTextHtml(match[3] || "", q)}</b>`);
+    } else if (match[4] !== undefined) {
+      parts.push(`<span style="color:${match[4]}">${renderHighlightedRichTextHtml(match[5] || "", q)}</span>`);
+    } else if (match[6] !== undefined) {
+      const size = Math.min(96, Math.max(1, Number(match[6])));
+      parts.push(`<span style="font-size:${size}px">${renderHighlightedRichTextHtml(match[7] || "", q)}</span>`);
     } else if (/^<@nar\.mark\b/i.test(rawToken)) {
       const inner = match[1] || "";
       parts.push(highlightTextFragment("#".repeat([...inner].length), q));

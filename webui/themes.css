@@ -1,0 +1,217 @@
+/* Colour themes. Loaded last; each theme only retunes the tokens declared on
+   :root in style.css (palette + shape), plus the few light-only literals that
+   have no token. Endfield is the default palette; Talos Night is the dark option.
+   webui/src/core/theme.js sets html[data-theme] before first paint.
+
+   Endfield themes follow the game's industrial UI: flat neutral planes,
+   signature hazard yellow as the only saturated fill, near-black ink on the
+   yellow, a cool cyan for secondary/selection, and squared-off controls. */
+
+:root[data-theme="endfield"] {
+  color-scheme: light;
+  --bg: #e9eae8;
+  --bg-2: #eeefed;
+  --bg-3: #fafaf8;
+  --bg-rgb: 233, 234, 232;
+  --bg-3-rgb: 250, 250, 248;
+  --surface: #fafaf8;
+  --panel: #fafaf8;
+  --panel-bg: #fafaf8;
+  --border: rgba(24, 26, 29, 0.16);
+  --text: #181a1d;
+  /* Solid ink, not alpha: small grey text over tinted planes stays >= 7:1. */
+  --muted: #474c52;
+  --accent: #ffe100;
+  /* Yellow never carries text on a light plane. Accent text is warm ink and
+     the yellow moves to a marker beside it (see the endfield rules below). */
+  --accent-text: #3a2f00;
+  --accent-2: #1f9fbf;
+  --accent-2-text: #0e5568;
+  --status-added: #1d6438;
+  --status-added-rgb: 29, 100, 56;
+  --status-modified: #7a4f00;
+  --status-modified-rgb: 122, 79, 0;
+  --status-deleted: #9e2f2f;
+  --status-deleted-rgb: 158, 47, 47;
+  --hover: rgba(31, 159, 191, 0.10);
+  --selected: rgba(31, 159, 191, 0.18);
+  --good: #1f9fbf;
+  --warn: #d9480f;
+  --accent-rgb: 255, 225, 0;
+  --accent-2-rgb: 31, 159, 191;
+  --fg-rgb: 24, 26, 29;
+  --on-accent: #141517;
+
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-control: 2px;
+  --radius-chip: 2px;
+  --radius-tab: 2px;
+  --shadow-sm: 0 1px 0 rgba(var(--fg-rgb), 0.08), 0 2px 8px rgba(var(--fg-rgb), 0.08);
+  --shadow-md: 0 1px 0 rgba(var(--fg-rgb), 0.10), 0 8px 24px rgba(var(--fg-rgb), 0.14);
+}
+
+:root[data-theme="talos"] {
+  color-scheme: dark;
+  --bg: #111315;
+  --bg-2: #15181b;
+  --bg-3: #1c2024;
+  --bg-rgb: 17, 19, 21;
+  --bg-3-rgb: 28, 32, 36;
+  --surface: #1c2024;
+  --panel: #1c2024;
+  --panel-bg: #1c2024;
+  --border: rgba(228, 231, 234, 0.13);
+  --text: #e4e7ea;
+  --muted: rgba(228, 231, 234, 0.64);
+  --accent: #ffe100;
+  --accent-text: #ffe100;
+  --accent-2: #45c4dc;
+  --accent-2-text: #7fd8ea;
+  --hover: rgba(69, 196, 220, 0.10);
+  --selected: rgba(69, 196, 220, 0.18);
+  --good: #45c4dc;
+  --warn: #ff8a4c;
+  --status-added: #5fcf8f;
+  --status-added-rgb: 95, 207, 143;
+  --status-modified: #e6b54e;
+  --status-modified-rgb: 230, 181, 78;
+  --status-deleted: #ff7b7b;
+  --status-deleted-rgb: 255, 123, 123;
+  --tone-violet: #b59cf0;
+  --syntax-string: #9fd67f;
+  --syntax-number: #f0a868;
+  --syntax-boolean: #c4a6ff;
+  --accent-rgb: 255, 225, 0;
+  --accent-2-rgb: 69, 196, 220;
+  --fg-rgb: 228, 231, 234;
+  --on-accent: #111315;
+
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-control: 2px;
+  --radius-chip: 2px;
+  --radius-tab: 2px;
+  /* Shadows read as darkness, not as the light ink colour. */
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+/* ---- Shared Endfield chrome (both Endfield themes) ---- */
+
+:root[data-theme] #view-tabs { border-radius: var(--radius-lg); }
+
+:root[data-theme] .brand-logo {
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+/* Hazard stripe under the top bar. */
+:root[data-theme] #topbar {
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* The active tab and pressed toggles use the solid yellow plate. */
+:root[data-theme] .view-tab.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+:root[data-theme] .panel-toggle {
+  background: transparent;
+  border-color: var(--border);
+  border-left: 3px solid var(--accent);
+}
+:root[data-theme] .panel-toggle:hover { border-color: var(--muted); border-left-color: var(--accent); }
+
+/* A filled yellow plate is invisible as a focus ring on a light plane. */
+:root[data-theme="endfield"] :focus-visible { outline-color: var(--text); }
+
+/* Page titles get a small square marker, as section heads do in game. */
+:root[data-theme] body :is(#left, #asset-left, #reference-left, #updates-left, #characters-left, #gameplay-left, #battle-left, #activities-left, #audio-left, .gameplay-catalog-header) h1::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 8px 2px 0;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+/* Keep native track fills and custom range geometry; outline every visible thumb. */
+:root[data-theme] input[type="range"]::-webkit-slider-thumb {
+  border-radius: 50%;
+  outline: 1px solid var(--muted);
+  outline-offset: 0;
+}
+:root[data-theme] input[type="range"]::-moz-range-thumb {
+  border-radius: 50%;
+  outline: 1px solid var(--muted);
+  outline-offset: 0;
+}
+:root[data-theme] .media-player-thumb {
+  outline: 1px solid var(--muted);
+  outline-offset: 0;
+}
+
+/* ---- Dark-theme fixes for literals that assume a light plane ---- */
+
+:root[data-theme="talos"] .badge-dlg        { background: rgba(110, 160, 230, 0.16); color: #a9c8f2; }
+:root[data-theme="talos"] .badge-sns        { background: rgba(214, 130, 200, 0.16); color: #e3b0da; }
+:root[data-theme="talos"] .badge-cutscene   { background: rgba(232, 160, 80, 0.16);  color: #f0c08c; }
+:root[data-theme="talos"] .badge-video      { background: rgba(140, 190, 100, 0.16); color: #b9d9a0; }
+:root[data-theme="talos"] .badge-black      { background: rgba(200, 200, 200, 0.12); color: #c8c8c8; }
+:root[data-theme="talos"] .badge-remotecomm { background: rgba(80, 180, 200, 0.16);  color: #9fd8e4; }
+:root[data-theme="talos"] .badge-radio      { background: rgba(150, 140, 230, 0.16); color: #bdb6f0; }
+:root[data-theme="talos"] .badge-text       { background: rgba(110, 160, 200, 0.16); color: #a8c8e0; }
+:root[data-theme="talos"] .badge-reading    { background: rgba(220, 120, 160, 0.16); color: #ecb0c8; }
+:root[data-theme="talos"] .badge-mail       { background: rgba(210, 170, 100, 0.16); color: #e2c896; }
+:root[data-theme="talos"] .badge-prts       { background: rgba(180, 185, 195, 0.14); color: #c4c8d0; }
+:root[data-theme="talos"] .badge-wiki       { background: rgba(200, 195, 90, 0.16);  color: #dcd890; }
+:root[data-theme="talos"] .badge-responsive { background: rgba(140, 190, 90, 0.16);  color: #b8d896; }
+:root[data-theme="talos"] .badge-env        { background: rgba(110, 180, 120, 0.16); color: #a8d6b0; }
+:root[data-theme="talos"] .badge-misc       { background: rgba(200, 200, 200, 0.12); color: #c4c4c4; }
+
+:root[data-theme="talos"] .story-order-unused-badge { color: #f2d36b; }
+:root[data-theme="talos"] .story-automatic-unused-badge { color: #f2a86b; }
+:root[data-theme="talos"] .story-order-branch-badge { color: #7fd0e2; }
+:root[data-theme="talos"] .construction-banner { color: #f2cf7a; }
+:root[data-theme="talos"] .gameplay-token-icon.gameplay-passive-talent-icon { background: #2a2f35; }
+:root[data-theme="talos"] .mr-registry-code { background: rgba(255, 225, 0, 0.08); }
+:root[data-theme="talos"] .mr-registry-line mark { background: rgba(255, 225, 0, 0.28); }
+:root[data-theme="talos"] .characters-row-sources .characters-evidence-type[data-evidence-type="major_npc_asset"] { color: #e0b84a; }
+:root[data-theme="talos"] .characters-row-sources .characters-evidence-type[data-evidence-type="npc_animal_asset"] { color: #9cc79c; }
+
+/* Endfield light: yellow is a fill or marker, never a text colour. Tinted
+   active states become solid plates with ink text; accent headings and
+   highlighted values carry a yellow marker instead of coloured glyphs. */
+:root[data-theme="endfield"] :is(
+  .gameplay-view-switch-button.is-active,
+  .characters-flag-toggle.is-active,
+  .media-player-icon-button.is-active,
+  .gameplay-detail-wiki-link > span
+) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+:root[data-theme="endfield"] :is(.gameplay-section-title, .gameplay-section h2, .updates-detail-panel h2) {
+  padding-left: 8px;
+  border-left: 4px solid var(--accent);
+}
+:root[data-theme="endfield"] .gameplay-desc-value {
+  box-shadow: inset 0 -0.4em rgba(var(--accent-rgb), 0.7);
+}
+:root[data-theme="endfield"] .chip.is-facet-empty:not(.on) { opacity: 0.72; }
+
+:root[data-theme="endfield"] :is(.characters-kind, .characters-evidence-source, .characters-evidence-type) {
+  color: var(--text);
+}

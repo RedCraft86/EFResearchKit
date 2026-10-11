@@ -38,14 +38,12 @@
     "map-recovery",
     "assets",
     "reference",
-    "activities",
     "updates",
     "recovery",
     "data-inspector",
   ]);
   const DEBUG_ONLY_VIEWS = new Set(["recovery"]);
   const DEBUG_VIEW_FALLBACKS = Object.freeze({ recovery: "story" });
-  const RETIRED_VIEW_FALLBACKS = Object.freeze({ projectiles: "gameplay", production: "gameplay" });
   // Facet value for files directly under the export root (empty source).
   const ROOT_SOURCE = "(root)";
   const SHARED_ASSET_NAME_PREFIXES = new Set(["S", "T", "P", "M"]);
@@ -103,7 +101,7 @@
     zh: {
       showFilters: "\u663e\u793a\u7b5b\u9009",
       hideFilters: "\u9690\u85cf\u7b5b\u9009",
-      title: "\u5bfc\u51fa\u8d44\u6e90",
+      title: "\u89c6\u89c9\u8d44\u4ea7",
       countLabel: "\u9879\u8d44\u6e90",
       basicFilters: "\u57fa\u7840\u7b5b\u9009",
       searchPlaceholder: "\u641c\u7d22\u8def\u5f84 / \u540d\u79f0 / \u6587\u4ef6\u5939 / \u5206\u7ec4",
@@ -116,8 +114,8 @@
       sortSizeAsc: "\u6587\u4ef6\u5927\u5c0f\u4ece\u5c0f\u5230\u5927",
       sortName: "\u6587\u4ef6\u540d (A-Z)",
       reset: "\u91cd\u7f6e\u7b5b\u9009",
-      filterCountHint: "\u6570\u91cf\u4e3a\u5168\u90e8\u8d44\u6e90\u6761\u76ee\u7684\u603b\u6570\u3002\u7c7b\u578b\u3001\u5206\u7c7b\u548c\u6765\u6e90\u7b5b\u9009\u9700\u540c\u65f6\u6ee1\u8db3\u3002",
-      noMatchingAssets: "\u6ca1\u6709\u8d44\u6e90\u7b26\u5408\u5f53\u524d\u641c\u7d22\u548c\u7b5b\u9009\u3002\u6807\u7b7e\u6570\u91cf\u4e3a\u5168\u90e8\u8d44\u6e90\u6761\u76ee\u7684\u603b\u6570\u3002\u8bf7\u6e05\u7a7a\u641c\u7d22\u6216\u91cd\u7f6e\u7b5b\u9009\u3002",
+      filterCountHint: "\u6570\u91cf\u4e3a\u5168\u90e8\u8d44\u6e90\u6761\u76ee\u7684\u603b\u6570\u3002\u7c7b\u578b\u3001\u5206\u7c7b\u548c\u6765\u6e90\u7b5b\u9009\u9700\u540c\u65f6\u6ee1\u8db3\u3002 无可绘制面的 OBJ 默认隐藏，开启对应标签后显示。",
+      noMatchingAssets: "\u6ca1\u6709\u8d44\u6e90\u7b26\u5408\u5f53\u524d\u641c\u7d22\u548c\u7b5b\u9009\u3002\u6807\u7b7e\u6570\u91cf\u4e3a\u5168\u90e8\u8d44\u6e90\u6761\u76ee\u7684\u603b\u6570\u3002\u8bf7\u6e05\u7a7a\u641c\u7d22\u6216\u91cd\u7f6e\u7b5b\u9009\u3002 查看无可绘制面的模型需开启对应标签。",
       listUnit: "\u6761\u76ee",
       empty: "\u4ece\u5de6\u4fa7\u9009\u62e9\u4e00\u4e2a\u5bfc\u51fa\u8d44\u6e90\u3002",
       openRawFile: "\u6253\u5f00\u539f\u59cb\u6587\u4ef6",
@@ -151,6 +149,12 @@
       factKind: "\u7c7b\u578b",
       factSource: "\u6765\u6e90",
       factFolder: "\u5206\u7ec4",
+      factAssetPath: "\u8d44\u6e90\u8def\u5f84",
+      modelObjects: "\u5bf9\u8c61\uff08{count}\uff09",
+      modelLod: "LOD {lod}",
+      modelLodShared: "\u6240\u6709 LOD",
+      modelObjectVfx: "\u7279\u6548",
+      modelObjectShadow: "\u9634\u5f71",
       factSize: "\u5927\u5c0f",
       factCropOf: "\u88c1\u5207\u81ea",
       factCopies: "\u526f\u672c",
@@ -189,6 +193,17 @@
       noModelFile: "\u6ca1\u6709\u53ef\u7528\u7684\u6a21\u578b\u6587\u4ef6\u3002",
       previewingModel: "\u6b63\u5728\u9884\u89c8 {name}\u3002\u5de6\u952e\u62d6\u52a8\u65cb\u8f6c\uff0c\u53f3\u952e\u6216 Shift \u62d6\u52a8\u5e73\u79fb\uff0c\u6eda\u8f6e\u7f29\u653e\uff0c\u53cc\u51fb\u590d\u4f4d\u3002",
       previewingModelViaObj: "\u6b63\u5728\u901a\u8fc7\u914d\u5957 OBJ \u5ba1\u9605 {name}\u3002\u5de6\u952e\u62d6\u52a8\u65cb\u8f6c\uff0c\u53f3\u952e\u6216 Shift \u62d6\u52a8\u5e73\u79fb\uff0c\u6eda\u8f6e\u7f29\u653e\uff0c\u53cc\u51fb\u590d\u4f4d\u3002",
+      emptyModelTag: "空网格 / 无可绘制面",
+      collisionTag: "碰撞网格",
+      collisionHint: "显示从已验证的烘焙数据恢复的碰撞网格。",
+      collisionPreviewHint: "碰撞几何 · 网格局部坐标；场景位置和运行时归属尚未验证。",
+      collisionBuffer: "烘焙碰撞数据 SHA-256",
+      collisionIdentity: "Unity 对象标识",
+      collisionTriangle: "三角形碰撞网格",
+      collisionConvex: "凸碰撞包络",
+      collisionUnavailable: "碰撞预览不可用：{reason}",
+      emptyModelHint: "显示无可绘制面的 OBJ，保留原始标识和下载链接。",
+      geometry: "几何",
       objPreviewUnavailable: "\u65e0\u6cd5\u9884\u89c8\u6b64 OBJ \u6587\u4ef6\u3002",
       fbxSummaryLoaded: "\u8fd9\u4e2a FBX \u6ca1\u6709\u53ef\u9884\u89c8\u7684\u7f51\u683c\uff0c\u4e0b\u65b9\u5c55\u793a\u6587\u4ef6\u7ed3\u6784\u6458\u8981\u3002",
       fbxSummaryUnavailable: "\u65e0\u6cd5\u8bfb\u53d6\u8fd9\u4e2a FBX \u6587\u4ef6\u7684\u7ed3\u6784\u6458\u8981\u3002",
@@ -224,8 +239,8 @@
       sortSizeAsc: "File size (low to high)",
       sortName: "File name (A-Z)",
       reset: "Reset filters",
-      filterCountHint: "Counts are totals across all asset entries. Type, category and source filters must all match.",
-      noMatchingAssets: "No assets match the current search and filters. Tag counts show totals across all asset entries. Clear the search or reset filters.",
+      filterCountHint: "Counts are totals across all asset entries. Type, category and source filters must all match. OBJ files without drawable faces stay hidden until their tag is enabled.",
+      noMatchingAssets: "No assets match the current search and filters. Tag counts show totals across all asset entries. Clear the search or reset filters. To include models without drawable faces, enable their tag.",
       listUnit: "items",
       empty: "Choose an exported asset from the left.",
       openRawFile: "Open raw file",
@@ -259,6 +274,12 @@
       factKind: "Kind",
       factSource: "Source",
       factFolder: "Group",
+      factAssetPath: "Asset path",
+      modelObjects: "Objects ({count})",
+      modelLod: "LOD {lod}",
+      modelLodShared: "All LODs",
+      modelObjectVfx: "VFX",
+      modelObjectShadow: "Shadow",
       factSize: "Size",
       factCropOf: "Cropped from",
       factCopies: "Copies",
@@ -297,6 +318,17 @@
       noModelFile: "No model file is available.",
       previewingModel: "Previewing {name}. Drag to rotate, right-drag or Shift-drag to pan, scroll to zoom, double-click to reset.",
       previewingModelViaObj: "Reviewing {name} through a paired OBJ preview. Drag to rotate, right-drag or Shift-drag to pan, scroll to zoom, double-click to reset.",
+      emptyModelTag: "Empty mesh / no drawable faces",
+      collisionTag: "Collision",
+      collisionHint: "Include collision meshes recovered from validated cooked data.",
+      collisionPreviewHint: "Collision geometry in mesh local coordinates; scene placement and runtime ownership are unverified.",
+      collisionBuffer: "Cooked collision SHA-256",
+      collisionIdentity: "Unity object identity",
+      collisionTriangle: "Triangle collision mesh",
+      collisionConvex: "Convex collision hull",
+      collisionUnavailable: "Collision previews unavailable: {reason}",
+      emptyModelHint: "Include OBJ files with no drawable faces. These files retain their original identity and download link.",
+      geometry: "Geometry",
       objPreviewUnavailable: "Unable to preview this OBJ file.",
       fbxSummaryLoaded: "This FBX has no previewable mesh, so the panel below shows its structure summary.",
       fbxSummaryUnavailable: "Unable to read a structure summary for this FBX file.",
@@ -337,10 +369,10 @@
     tableOwners: {},
     exportRoot: "",
     sourceRoots: {},
+    collisionStatus: null,
     selectedRel: null,
     selectedEntry: null,
     selectedVariantRel: null,
-    pager: null,
     initialAssetHandled: false,
     previewBackground: DEFAULT_PREVIEW_BACKGROUND,
     modelColor: DEFAULT_MODEL_COLOR,
@@ -430,7 +462,7 @@
   }
 
   function createDefaultFilters() {
-    return { q: "", sort: "path" };
+    return { q: "", sort: "path", showEmptyModels: false, showCollision: false };
   }
 
   // Type/category/source chips. Counts are totals over every asset (not
@@ -514,6 +546,7 @@
   function selectedAssetSupportsPreviewBackground(entry = ASSET_STATE.selectedEntry) {
     if (!entry) return false;
     const activeFile = getActiveAssetFile(entry);
+    if (activeFile?.noDrawableFaces) return false;
     if (entry.kind === "image") return activeFile?.ext === "png";
     if (entry.kind !== "model") return false;
     const activeModel = getActiveModelFile(entry);
@@ -635,14 +668,7 @@
 
   function resolveViewFromHash() {
     const hash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
-    if (hash === "production") {
-      const url = new URL(window.location.href);
-      const kinds = { items: "item", recipes: "recipe", machines: "machine" };
-      url.searchParams.set("gameplayKind", kinds[url.searchParams.get("productionKind")] || "recipe");
-      url.hash = "gameplay";
-      history.replaceState(history.state, "", url);
-    }
-    if (RETIRED_VIEW_FALLBACKS[hash]) return RETIRED_VIEW_FALLBACKS[hash];
+    if (hash === "activities") return "activities"; // Legacy links normalize in setActiveView.
     return AVAILABLE_VIEWS.has(hash) ? hash : "story";
   }
 
@@ -716,7 +742,15 @@
   }
 
   function setActiveView(view, { updateHash = true } = {}) {
-    const requestedView = RETIRED_VIEW_FALLBACKS[view] || (AVAILABLE_VIEWS.has(view) ? view : "story");
+    if (view === "activities") {
+      const url = new URL(location.href);
+      url.hash = "gameplay";
+      url.searchParams.set("gameplayKind", "activity");
+      url.searchParams.delete("activityTable");
+      history.replaceState(history.state, "", url);
+      view = "gameplay";
+    }
+    const requestedView = AVAILABLE_VIEWS.has(view) ? view : "story";
     ASSET_STATE.activeView = availableView(requestedView);
     document.body.dataset.activeView = ASSET_STATE.activeView;
 
@@ -884,6 +918,7 @@
           })
           .catch(() => {});
         ASSET_STATE.exportRoot = String(payload.root || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+        ASSET_STATE.collisionStatus = payload.collision || null;
         ASSET_STATE.sourceRoots = payload.sourceRoots && typeof payload.sourceRoots === "object"
           ? Object.fromEntries(
               Object.entries(payload.sourceRoots).map(([key, value]) => [
@@ -1062,6 +1097,8 @@
 
   function formatAssetCategoryMeta(entry) {
     const values = assetCategoryValues(entry).map(assetCategoryLabel);
+    if (entry.noDrawableFaces) values.push(assetUiText("emptyModelTag"));
+    if (entry.collision) values.push(assetUiText("collisionTag"));
     return values.join(" / ");
   }
 
@@ -1081,10 +1118,14 @@
       const ext = extIndex >= 0 ? name.slice(extIndex + 1).toLowerCase() : "";
       const stemInfo = exportedAssetStemInfo(rel, name);
       if (!stemInfo || !stemInfo.stem) return null;
-      const stem = stemInfo.stem;
+      const stem = raw.cl && raw.n ? String(raw.n) : stemInfo.stem;
       const groupInfo = deriveAssetGroupInfo(kind, stem, ext);
       const textureVariant = kind === "image" ? inferTextureVariantStem(stem, ext) : null;
-      const variantScope = kind === "model" || textureVariant ? source : dir;
+      // Animator FBX: the prefab path recovered from the asset map. Same-name
+      // prefabs at different paths are different models, so an FBX forms a
+      // variant set (LOD levels) only within its own prefab path.
+      const container = kind === "model" ? String(raw.c || "") : "";
+      const variantScope = raw.cl ? `${source}::${raw.cl.key}` : ext === "fbx" ? `${source}::${container || rel}` : (kind === "model" || textureVariant ? source : dir);
       const lodMatch = kind === "model" ? stem.match(/(?:^|[_-])lod(\d+)$/i) : null;
       const lod = lodMatch ? Number(lodMatch[1]) : null;
       const imageCategory = kind === "image" ? normalizeImageCategory(raw.ic) : "";
@@ -1095,12 +1136,15 @@
         kind,
         rel,
         size: Number(raw.s || 0),
+        noDrawableFaces: kind === "model" && raw.nd === true,
+        collision: kind === "model" && raw.cl ? raw.cl : null,
         // A Sprite image has no file: it is a crop of this texture.
         cropOf: String(raw.crop || ""),
         pixelSize: raw.iw && raw.ih ? `${raw.iw}\u00d7${raw.ih}` : "",
-        name,
+        name: raw.cl ? `${stem}.${ext}` : name,
         dir,
         variantScope,
+        container,
         source,
         ext,
         stem,
@@ -1208,23 +1252,18 @@
       const lodFamilyKey = `${scopeKey}::${entry.family}`.toLowerCase();
       const suffixFamilyKey = suffixed ? `${scopeKey}::${suffixed.parentStem}`.toLowerCase() : "";
 
-      if (entry.sceneGroup && (sceneRootCounts.get(`${entry.source}::${entry.sceneGroup}`.toLowerCase()) || 0) > 1) {
-        entry.family = entry.sceneGroup;
-        entry.grouped = true;
-        entry.variantLabel = entry.sceneRoot === entry.sceneGroup ? entry.name : `${entry.sceneRoot} / ${entry.name}`;
-      } else if (entry.sceneGroup) {
-        entry.family = entry.sceneGroup;
-        entry.grouped = false;
-        entry.variantLabel = `${entry.sceneRoot} / ${entry.name}`;
-      } else if (supportsAssetVariants(entry.kind) && entry.lod !== null && groupedFamilies.has(lodFamilyKey)) {
+      // Separate FBX files are listed one by one; only LOD levels of one
+      // prefab form a variant set, as for OBJ meshes. A prefab name's
+      // trailing number is part of the name, so FBX skip suffix families.
+      if (supportsAssetVariants(entry.kind) && entry.lod !== null && groupedFamilies.has(lodFamilyKey)) {
         entry.family = entry.family;
         entry.grouped = true;
         entry.variantLabel = `LOD ${entry.lod}`;
-      } else if (supportsAssetVariants(entry.kind) && suffixed && groupedFamilies.has(suffixFamilyKey)) {
+      } else if (supportsAssetVariants(entry.kind) && entry.ext !== "fbx" && suffixed && groupedFamilies.has(suffixFamilyKey)) {
         entry.family = suffixed.parentStem;
         entry.grouped = true;
         entry.variantLabel = suffixed.suffixLabel;
-      } else if (supportsAssetVariants(entry.kind) && groupedFamilies.has(ownFamilyKey)) {
+      } else if (supportsAssetVariants(entry.kind) && entry.ext !== "fbx" && groupedFamilies.has(ownFamilyKey)) {
         entry.family = entry.stem;
         entry.grouped = true;
         entry.variantLabel = entry.name;
@@ -1249,6 +1288,7 @@
         entry.groupLabel,
         entry.groupRaw,
         entry.sceneRoot,
+        entry.container,
         entry.rawStem,
         entry.pathId,
         entry.contentHash,
@@ -1258,6 +1298,7 @@
         ...(entry.imageExtraCategories || []),
         ...(entry.modelCategories || []),
         entry.materialLike ? "material material-like texture engine" : "",
+        entry.collision ? "collision cooked physics" : "",
         entry.ext,
         entry.kind,
       ].join(" ").toLowerCase();
@@ -1286,7 +1327,7 @@
   }
   function pathIdVariantLabel(entry, index = 0) {
     const pathLabel = entry?.pathId ? `p${entry.pathId}` : (entry?.name || `File ${index + 1}`);
-    const baseLabel = entry?.variantLabel && entry.variantLabel !== entry.name ? entry.variantLabel : "";
+    const baseLabel = entry?.variantLabel && ![entry.name, pathLabel].includes(entry.variantLabel) ? entry.variantLabel : "";
     return baseLabel ? `${baseLabel} / ${pathLabel}` : pathLabel;
   }
 
@@ -1307,8 +1348,11 @@
     for (const entry of entries) {
       const hash = assetContentHash(entry);
       const identity = supportsAssetVariants(entry.kind) ? entry.stem : entry.rel;
-      const key = supportsAssetVariants(entry.kind)
-        ? `${entry.kind}::${entry.ext}::${entry.source}::${entry.stem}::${entry.sceneRoot || ""}`.toLowerCase()
+      // FBX of the same name collapse only when byte-identical.
+      const key = entry.ext === "fbx"
+        ? (hash ? `hash::${hash}` : `rel::${entry.rel}`.toLowerCase())
+        : supportsAssetVariants(entry.kind)
+        ? `${entry.kind}::${entry.ext}::${entry.source}::${entry.stem}::${entry.sceneRoot || ""}::${entry.collision?.key || "render"}::${entry.noDrawableFaces ? "empty" : "geometry"}`.toLowerCase()
         : (hash ? `hash::${hash}` : `${entry.kind}::${entry.ext}::${entry.source}::${identity}`.toLowerCase());
       let bucket = buckets.get(key);
       if (!bucket) {
@@ -1386,11 +1430,13 @@
       }
 
       const scopeDir = entry.variantScope || entry.dir;
-      const key = `${entry.kind}::${entry.ext}::${scopeDir.toLowerCase()}::${entry.family.toLowerCase()}`;
+      const key = `${entry.kind}::${entry.ext}::${scopeDir.toLowerCase()}::${entry.family.toLowerCase()}::${entry.noDrawableFaces ? "empty" : "geometry"}`;
       let group = assetGroups.get(key);
       if (!group) {
         group = {
           kind: entry.kind,
+          noDrawableFaces: entry.noDrawableFaces,
+          collision: entry.collision,
           rel: entry.rel,
           size: 0,
           name: `${entry.family}.${entry.ext}`,
@@ -1523,20 +1569,45 @@
 
   function syncFilterSectionActiveCounts() {
     window.WebUI.setFilterSectionActiveCounts?.({
-      "asset-basic": ASSET_STATE.filters.q ? 1 : 0,
-      "asset-sort-section": ASSET_STATE.filters.sort === "path" ? 0 : 1,
+      "asset-basic": (ASSET_STATE.filters.q ? 1 : 0) + (ASSET_STATE.filters.sort === "path" ? 0 : 1),
+    });
+  }
+
+  function renderEmptyModelTag() {
+    window.WebUI.filters.buildChips("#asset-empty-model-filter", [{
+      value: "empty-models",
+      label: assetUiText("emptyModelTag"),
+      count: ASSET_STATE.entries.filter((entry) => entry.noDrawableFaces).length,
+    }, {
+      value: "collision", label: assetUiText("collisionTag"),
+      count: ASSET_STATE.entries.filter((entry) => entry.collision).length,
+    }], {
+      active: new Set([
+        ...(ASSET_STATE.filters.showEmptyModels ? ["empty-models"] : []),
+        ...(ASSET_STATE.filters.showCollision ? ["collision"] : []),
+      ]),
+      className: "asset-filter-chip",
+      title: (value) => value === "collision" && ASSET_STATE.collisionStatus?.diagnostic
+        ? assetUiText("collisionUnavailable", { reason: ASSET_STATE.collisionStatus.diagnostic })
+        : assetUiText(value === "collision" ? "collisionHint" : "emptyModelHint"),
+      onToggle: (value, { on }) => {
+        ASSET_STATE.filters[value === "collision" ? "showCollision" : "showEmptyModels"] = on;
+        applyAssetFilters();
+      },
     });
   }
 
   function applyAssetFilters() {
-    ASSET_STATE.pager?.reset();
+    renderEmptyModelTag();
     syncFilterSectionActiveCounts();
     const filters = ASSET_STATE.filters;
     const tokens = window.WebUI.parseQuery(filters.q);
     const scores = new Map();
 
     // With no chip active the facet pass keeps every entry, so skip it.
-    const faceted = ASSET_STATE.facets.isFiltered() ? ASSET_STATE.facets.filter(ASSET_STATE.entries) : ASSET_STATE.entries;
+    const visibleEntries = ASSET_STATE.entries.filter((entry) =>
+      (filters.showEmptyModels || !entry.noDrawableFaces) && (filters.showCollision || !entry.collision));
+    const faceted = ASSET_STATE.facets.isFiltered() ? ASSET_STATE.facets.filter(visibleEntries) : visibleEntries;
     ASSET_STATE.filtered = !tokens.length ? faceted.slice() : faceted.filter((entry) => {
       const score = window.WebUI.queryScore(entry.searchText, tokens);
       if (score > 0) scores.set(entry, score);
@@ -1546,12 +1617,10 @@
     ASSET_STATE.searchTokens = tokens;
     ASSET_STATE.searchScores = tokens.length ? scores : null;
     const byOrder = window.WebUI.sorting.comparator("asset-sort", (a, b) => compareAssets(a, b, filters.sort));
-    // A multi-word query ranks entries matching more words first across every
-    // page, not only within the visible page slice.
+    // A multi-word query ranks every match before virtual rendering.
     ASSET_STATE.filtered.sort(tokens.length > 1
       ? (a, b) => ((scores.get(b) || 0) - (scores.get(a) || 0)) || byOrder(a, b)
       : byOrder);
-    ASSET_STATE.pager?.setTotal(ASSET_STATE.filtered.length);
     $("#asset-shown").textContent = ASSET_STATE.filtered.length.toLocaleString();
     $("#asset-total").textContent = ASSET_STATE.entries.length.toLocaleString();
     rebuildAssetTree();
@@ -1606,8 +1675,8 @@
     }
 
     const tree = {};
-    const pageEntries = ASSET_STATE.pager ? ASSET_STATE.pager.slice(ASSET_STATE.filtered) : ASSET_STATE.filtered;
-    for (const entry of pageEntries) {
+    const filteredEntries = ASSET_STATE.filtered;
+    for (const entry of filteredEntries) {
       const source = entry.source || assetUiText("rootFolder");
       (tree[source] ??= {});
       const bucket = (tree[source][entry.groupKey] ??= {
@@ -1682,7 +1751,7 @@
 
   function rebuildFlatAssetSearch({ resetScroll = true } = {}) {
     // applyAssetFilters already ordered the matches by score, then sort order.
-    const items = ASSET_STATE.pager ? ASSET_STATE.pager.slice(ASSET_STATE.filtered) : ASSET_STATE.filtered;
+    const items = ASSET_STATE.filtered;
 
     const rows = [];
     let offset = 0;
@@ -1804,7 +1873,7 @@
 
     const dir = document.createElement("div");
     dir.className = "asset-row-dir";
-    dir.textContent = entry.dir || assetUiText("rootFolder");
+    dir.textContent = entry.container || entry.dir || assetUiText("rootFolder");
     line2.appendChild(dir);
 
     const extra = document.createElement("div");
@@ -1881,7 +1950,6 @@
     if (!rel) return;
     const entry = ASSET_STATE.entryByRel.get(rel);
     if (!entry) return;
-    if (ASSET_STATE.pager?.showIndex(ASSET_STATE.filtered.indexOf(entry))) rebuildAssetTree();
     selectAsset(entry, { scrollIntoView: true, updateUrl: false, variantRel: rel });
   }
 
@@ -1952,7 +2020,18 @@
     }
   }
 
+  function locateSelectedAsset() {
+    const entry = ASSET_STATE.selectedEntry;
+    if (!entry) return null;
+    expandAssetEntryPaths(entry);
+    renderAssetList();
+    scrollSelectedAssetIntoView(entry);
+    if (isMobileLayout()) $("#asset-left")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    return null;
+  }
+
   function renderSelectedAsset() {
+    window.WebUI.locateCurrent?.sync($("#asset-locate-current"), Boolean(ASSET_STATE.selectedEntry));
     const entry = ASSET_STATE.selectedEntry;
     if (!entry) {
       $("#asset-empty").hidden = false;
@@ -1979,6 +2058,7 @@
     $("#asset-inspector-label").insertAdjacentHTML("afterend", window.WebUI.updateBadges.fileDetails(activeVariant || entry));
     ASSET_STATE.detailToken += 1;
     resetAssetPreviewSurface();
+    renderModelObjectToggles(null);
     window.WebUI.updateBadges.decorateFiles(detail, { exclude: activeVariant || entry });
     syncPreviewBackgroundControls(entry);
 
@@ -2024,6 +2104,7 @@
   // stem the index carries, so a lookup either hits an exported row that names
   // this asset or the asset stays unowned. No prefix or family fallback.
   function assetTableOwnerSummary(entry) {
+    if (entry?.collision) return "";
     const stem = String(entry?.stem || entry?.rawStem || "");
     const record = stem ? ASSET_STATE.tableOwners[stem] : null;
     const owners = (record && record.owners) || [];
@@ -2044,7 +2125,16 @@
       [assetUiText("factSize"), formatAssetSize(entry)],
     ];
     if (entry.cropOf) facts.push([assetUiText("factCropOf"), entry.cropOf]);
+    if ((activeVariant || entry).container) facts.push([assetUiText("factAssetPath"), (activeVariant || entry).container]);
     const activeFile = activeVariant || entry;
+    if (activeFile.noDrawableFaces) facts.push([assetUiText("geometry"), assetUiText("emptyModelTag")]);
+    if (activeFile.collision) {
+      const collision = activeFile.collision;
+      const identity = collision.identity;
+      facts.push([assetUiText("geometry"), assetUiText(collision.kind === "convex" ? "collisionConvex" : "collisionTriangle")]);
+      facts.push([assetUiText("collisionIdentity"), `${identity.sourceFile} / PathID ${identity.pathId}\n${identity.sourceOriginalPath} @ ${identity.sourceOffset}`]);
+      facts.push([assetUiText("collisionBuffer"), collision.bufferSha256]);
+    }
     if (entry.kind === "image") {
       facts.push([assetUiText("factImageCategory"), formatAssetCategoryMeta(activeFile || entry)]);
       facts.push([
@@ -2533,7 +2623,9 @@
 
     const res = await fetch(assetHref(rel));
     if (!res.ok) throw new Error(`OBJ HTTP ${res.status}`);
-    return rememberCached(ASSET_STATE.modelCache, rel, parseObj(await res.text()));
+    const model = parseObj(await res.text());
+    bindObjMaterials(model, ASSET_STATE.relations[rel] || {});
+    return rememberCached(ASSET_STATE.modelCache, rel, model);
   }
 
   function resolveReviewModelFile(activeVariant) {
@@ -2570,7 +2662,7 @@
 
   function meshModelStats(model) {
     return [
-      [assetUiText("vertices"), model.vertexCount.toLocaleString()],
+      [assetUiText("vertices"), (model.triangleCount ? model.vertexCount : (model.sourceVertexCount ?? model.vertexCount)).toLocaleString()],
       [assetUiText("faces"), model.faceCount.toLocaleString()],
       [assetUiText("triangles"), model.triangleCount.toLocaleString()],
       [assetUiText("objectsGroups"), model.objectCount.toLocaleString()],
@@ -2608,6 +2700,7 @@
     if (reviewVariant && reviewVariant.rel !== activeVariant?.rel) {
       stats.push([assetUiText("factPreviewProxy"), reviewVariant.rel]);
     }
+    if (model && !model.triangleCount) stats.push([assetUiText("geometry"), assetUiText("emptyModelTag")]);
     if (model) stats.push(...meshModelStats(model));
     if (summary) stats.push(...fbxSummaryStats(summary));
     renderModelStatGrid(stats);
@@ -2615,7 +2708,87 @@
 
   function showViewerModel(model) {
     Object.assign(ASSET_STATE.viewer, VIEWER_DEFAULTS, { model });
+    renderModelObjectToggles(model);
     queueModelRender();
+  }
+
+  // One switch per FBX mesh object, grouped by LOD. The LOD chips pick which
+  // level draws without touching the switches; effects and shadow proxies
+  // start off.
+  function renderModelObjectToggles(model) {
+    const wrap = $("#asset-objects-wrap");
+    const list = $("#asset-objects");
+    const objects = model?.objects || [];
+    list.replaceChildren();
+    wrap.hidden = objects.length < 2;
+    if (wrap.hidden) return;
+    $("#asset-objects-label").textContent = assetUiText("modelObjects", { count: objects.length });
+    const lods = model.lods || [];
+    const sections = new Map();
+    const lodChips = [];
+    const syncLods = () => {
+      for (const [lod, chip] of lodChips) chip.classList.toggle("is-active", lod === model.lod);
+      for (const [lod, section] of sections) section.classList.toggle("is-inactive", lod !== null && lod !== model.lod);
+    };
+    if (lods.length > 1) {
+      const bar = document.createElement("div");
+      bar.className = "asset-variant-list asset-lod-list";
+      for (const lod of lods) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "asset-variant-chip";
+        chip.textContent = assetUiText("modelLod", { lod });
+        chip.addEventListener("click", () => {
+          model.lod = lod;
+          syncLods();
+          queueModelRender();
+        });
+        lodChips.push([lod, chip]);
+        bar.append(chip);
+      }
+      list.append(bar);
+    }
+    const ordered = [...objects].sort((a, b) => (a.lod ?? -1) - (b.lod ?? -1));
+    for (const object of ordered) {
+      object.visible = object.defaultVisible;
+      const lod = lods.length ? object.lod : null;
+      if (!sections.has(lod)) {
+        const section = document.createElement("div");
+        section.className = "asset-object-section";
+        if (lods.length) {
+          const head = document.createElement("div");
+          head.className = "asset-object-section-head";
+          head.textContent = lod === null ? assetUiText("modelLodShared") : assetUiText("modelLod", { lod });
+          section.append(head);
+        }
+        const grid = document.createElement("div");
+        grid.className = "asset-object-grid";
+        section.append(grid);
+        sections.set(lod, section);
+        list.append(section);
+      }
+      const label = document.createElement("label");
+      label.className = "asset-object-toggle";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = object.visible !== false;
+      input.addEventListener("change", () => {
+        object.visible = input.checked;
+        queueModelRender();
+      });
+      const name = document.createElement("span");
+      name.textContent = object.name;
+      name.title = object.name;
+      label.append(input, name);
+      if (object.kind) {
+        const tag = document.createElement("em");
+        tag.className = "asset-object-tag";
+        tag.textContent = assetUiText(object.kind === "vfx" ? "modelObjectVfx" : "modelObjectShadow");
+        label.append(tag);
+      }
+      sections.get(lod).lastChild.append(label);
+    }
+    syncLods();
   }
 
   async function renderModelPreview(entry) {
@@ -2633,6 +2806,7 @@
     note.textContent = assetUiText("previewPlaceholder");
     modelWrap.hidden = true;
     ASSET_STATE.viewer.model = null;
+    renderModelObjectToggles(null);
     $("#asset-model-stats").replaceChildren();
 
     initModelViewer(canvas);
@@ -2677,6 +2851,13 @@
           note.textContent = reviewVariant.rel === activeVariant.rel
             ? assetUiText("previewingModel", { name: activeVariant.name })
             : assetUiText("previewingModelViaObj", { name: activeVariant.name });
+          if (activeVariant.collision) note.textContent = assetUiText("collisionPreviewHint");
+          if (!model.triangleCount) {
+            canvas.hidden = true;
+            placeholder.hidden = false;
+            placeholder.textContent = assetUiText("emptyModelTag");
+            note.textContent = assetUiText("emptyModelHint");
+          }
           showViewerModel(model);
           return;
         } catch (error) {
@@ -2933,14 +3114,17 @@
   const MODEL_VERTEX_SHADER = `
     attribute vec3 aPosition;
     attribute vec3 aNormal;
+    attribute vec2 aUv;
     uniform mat4 uModelView;
     uniform mat4 uProjection;
     varying vec3 vNormal;
     varying vec3 vView;
+    varying vec2 vUv;
     void main() {
       vec4 viewPos = uModelView * vec4(aPosition, 1.0);
       vNormal = mat3(uModelView) * aNormal;
       vView = viewPos.xyz;
+      vUv = aUv;
       gl_Position = uProjection * viewPos;
     }
   `;
@@ -2949,7 +3133,14 @@
     precision mediump float;
     varying vec3 vNormal;
     varying vec3 vView;
+    varying vec2 vUv;
     uniform vec3 uColor;
+    uniform sampler2D uTexture;
+    uniform float uHasTexture;
+    uniform vec4 uTint;
+    uniform float uAlphaClip;
+    uniform float uEffect;
+    uniform float uPremultiply;
     void main() {
       vec3 n = normalize(vNormal);
       if (!gl_FrontFacing) n = -n;
@@ -2958,8 +3149,23 @@
       float fill = max(dot(n, normalize(vec3(-0.6, -0.15, 0.4))), 0.0);
       float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
       float spec = pow(max(dot(n, normalize(normalize(vec3(0.45, 0.6, 0.65)) + v)), 0.0), 32.0);
-      vec3 color = uColor * (0.24 + key * 0.62 + fill * 0.22) + vec3(0.32) * rim + vec3(0.18) * spec;
-      gl_FragColor = vec4(color, 1.0);
+      vec3 color;
+      float alpha = uTint.a;
+      if (uHasTexture > 0.5) {
+        vec4 texel = texture2D(uTexture, vUv);
+        alpha *= texel.a;
+        if (alpha < uAlphaClip) discard;
+        // Transparent effects (glows, beams) are unlit: texture times tint.
+        color = uEffect > 0.5
+          ? texel.rgb * uTint.rgb
+          : texel.rgb * (0.55 + key * 0.4 + fill * 0.12) + vec3(0.08) * rim;
+      } else {
+        color = uEffect > 0.5
+          ? uColor * uTint.rgb
+          : uColor * (0.24 + key * 0.62 + fill * 0.22) + vec3(0.32) * rim + vec3(0.18) * spec;
+      }
+      if (uPremultiply > 0.5) color *= alpha;
+      gl_FragColor = vec4(color, alpha);
     }
   `;
 
@@ -2990,12 +3196,21 @@
       return {
         context: gl,
         program,
+        isWebGl2,
         uint32Indices: isWebGl2 || Boolean(gl.getExtension("OES_element_index_uint")),
         aPosition: gl.getAttribLocation(program, "aPosition"),
         aNormal: gl.getAttribLocation(program, "aNormal"),
+        aUv: gl.getAttribLocation(program, "aUv"),
         uModelView: gl.getUniformLocation(program, "uModelView"),
         uProjection: gl.getUniformLocation(program, "uProjection"),
         uColor: gl.getUniformLocation(program, "uColor"),
+        uTexture: gl.getUniformLocation(program, "uTexture"),
+        uHasTexture: gl.getUniformLocation(program, "uHasTexture"),
+        uTint: gl.getUniformLocation(program, "uTint"),
+        uAlphaClip: gl.getUniformLocation(program, "uAlphaClip"),
+        uEffect: gl.getUniformLocation(program, "uEffect"),
+        uPremultiply: gl.getUniformLocation(program, "uPremultiply"),
+        textures: new Map(),
         uploaded: null,
         buffers: null,
         lost: false,
@@ -3006,26 +3221,128 @@
     }
   }
 
+  // Material name -> base-colour texture rel, from the index's Material
+  // relations. FBX materials carry only their Unity name, so a name whose
+  // exported materials disagree on the base map stays untextured.
+  const MODEL_BASE_TEXTURE_SLOTS = ["_BaseMap", "_BaseColorMap", "_MainTex"];
+  function materialBaseTextureIndex() {
+    if (ASSET_STATE.materialBaseTextures?.source === ASSET_STATE.relations) return ASSET_STATE.materialBaseTextures.byName;
+    const candidates = new Map();
+    for (const [rel, relation] of Object.entries(ASSET_STATE.relations || {})) {
+      const match = rel.match(/^Unity\/Material\/(.+)_p[0-9A-F]{16}\.json$/i);
+      if (!match) continue;
+      const textures = relation?.textures || [];
+      const base = MODEL_BASE_TEXTURE_SLOTS.map((slot) => textures.find((texture) => texture.slot === slot && texture.rel)).find(Boolean);
+      const name = match[1].toLowerCase();
+      if (!candidates.has(name)) candidates.set(name, new Set());
+      candidates.get(name).add(base?.rel || "");
+    }
+    // When same-name materials disagree, keep the one texture named after
+    // the material itself (M_x -> T_x...); otherwise leave it untextured.
+    const byName = new Map();
+    for (const [name, rels] of candidates) {
+      if (rels.size === 1) {
+        byName.set(name, [...rels][0]);
+        continue;
+      }
+      const stem = name.replace(/^m_/, "");
+      const own = [...rels].filter((rel) => rel && rel.split("/").pop().toLowerCase().replace(/^t_/, "").startsWith(stem));
+      byName.set(name, own.length === 1 ? own[0] : "");
+    }
+    ASSET_STATE.materialBaseTextures = { source: ASSET_STATE.relations, byName };
+    return byName;
+  }
+
+  // How a material blends (index `blend`: render queue, Unity BlendMode
+  // src/dst, depth write, alpha-test threshold, cull, tint), by material name.
+  // Same-name materials take the one whose base texture the viewer chose.
+  function materialBlendIndex() {
+    if (ASSET_STATE.materialBlends?.source === ASSET_STATE.relations) return ASSET_STATE.materialBlends.byName;
+    const chosen = materialBaseTextureIndex();
+    const byName = new Map();
+    for (const [rel, relation] of Object.entries(ASSET_STATE.relations || {})) {
+      if (!relation?.blend) continue;
+      const match = rel.match(/^Unity\/Material\/(.+)_p[0-9A-F]{16}\.json$/i);
+      if (!match) continue;
+      const name = match[1].toLowerCase();
+      const textures = relation.textures || [];
+      const base = MODEL_BASE_TEXTURE_SLOTS.map((slot) => textures.find((texture) => texture.slot === slot && texture.rel)).find(Boolean);
+      if (!byName.has(name) || (base?.rel || "") === chosen.get(name)) byName.set(name, relation.blend);
+    }
+    ASSET_STATE.materialBlends = { source: ASSET_STATE.relations, byName };
+    return byName;
+  }
+
+  // Unity BlendMode enum → WebGL factor.
+  function modelBlendFactor(gl, mode) {
+    return [gl.ZERO, gl.ONE, gl.DST_COLOR, gl.SRC_COLOR, gl.ONE_MINUS_DST_COLOR, gl.SRC_ALPHA,
+      gl.ONE_MINUS_SRC_COLOR, gl.DST_ALPHA, gl.ONE_MINUS_DST_ALPHA, gl.SRC_ALPHA_SATURATE,
+      gl.ONE_MINUS_SRC_ALPHA][mode] ?? gl.ONE;
+  }
+
+  function modelGroupTexture(state, material, textureRel = null) {
+    const rel = textureRel ?? (material ? materialBaseTextureIndex().get(material.toLowerCase()) : "");
+    if (!rel) return null;
+    let entry = state.textures.get(rel);
+    if (!entry) {
+      const gl = state.context;
+      entry = { texture: null };
+      state.textures.set(rel, entry);
+      const image = new Image();
+      image.onload = () => {
+        if (state.lost) return;
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        const powerOfTwo = (n) => (n & (n - 1)) === 0;
+        // WebGL1 can only repeat and mipmap power-of-two textures.
+        if (state.isWebGl2 || (powerOfTwo(image.width) && powerOfTwo(image.height))) {
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        } else {
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        }
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        entry.texture = texture;
+        queueModelRender();
+      };
+      image.onerror = () => console.warn("[assets] model texture failed to load:", rel);
+      image.src = assetHref(rel);
+    }
+    return entry.texture;
+  }
+
   function uploadModelGl(state, model) {
     const gl = state.context;
     if (state.buffers) {
       gl.deleteBuffer(state.buffers.position);
       gl.deleteBuffer(state.buffers.normal);
+      if (state.buffers.uv) gl.deleteBuffer(state.buffers.uv);
       if (state.buffers.index) gl.deleteBuffer(state.buffers.index);
     }
 
     let positions = model.positions;
     let normals = model.normals;
+    let uvs = model.uvs || null;
     let indices = model.indices;
-    // Without 32-bit index support, large meshes are drawn unindexed.
+    // Without 32-bit index support, large meshes are drawn unindexed. The
+    // expansion keeps index order, so material groups keep their ranges.
     const needsUnindexed = !state.uint32Indices && model.vertexCount > 65535;
     if (needsUnindexed) {
       positions = new Float32Array(indices.length * 3);
       normals = new Float32Array(indices.length * 3);
+      uvs = model.uvs ? new Float32Array(indices.length * 2) : null;
       for (let i = 0; i < indices.length; i += 1) {
         const src = indices[i] * 3;
         positions.set(model.positions.subarray(src, src + 3), i * 3);
         normals.set(model.normals.subarray(src, src + 3), i * 3);
+        if (uvs) uvs.set(model.uvs.subarray(indices[i] * 2, indices[i] * 2 + 2), i * 2);
       }
       indices = null;
     } else if (!state.uint32Indices) {
@@ -3038,18 +3355,28 @@
     const normal = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, normal);
     gl.bufferData(gl.ARRAY_BUFFER, normals, gl.STATIC_DRAW);
+    let uv = null;
+    if (uvs) {
+      uv = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, uv);
+      gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+    }
     let index = null;
     if (indices) {
       index = gl.createBuffer();
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
     }
+    const count = indices ? indices.length : positions.length / 3;
     state.buffers = {
       position,
       normal,
+      uv,
       index,
       indexType: indices instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT,
-      count: indices ? indices.length : positions.length / 3,
+      indexSize: indices instanceof Uint16Array ? 2 : 4,
+      count,
+      groups: model.groups?.length ? model.groups : [{ material: "", start: 0, count }],
     };
     state.uploaded = model;
   }
@@ -3071,6 +3398,7 @@
     gl.uniformMatrix4fv(state.uProjection, false, viewerProjectionMatrix(width / height, VIEWER_DISTANCE / ASSET_STATE.viewer.zoom));
     const color = ASSET_STATE.modelColor;
     gl.uniform3f(state.uColor, ...[1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255));
+    gl.uniform1i(state.uTexture, 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
     gl.enableVertexAttribArray(state.aPosition);
@@ -3078,13 +3406,66 @@
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
     gl.enableVertexAttribArray(state.aNormal);
     gl.vertexAttribPointer(state.aNormal, 3, gl.FLOAT, false, 0, 0);
-
-    if (buffers.index) {
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
-      gl.drawElements(gl.TRIANGLES, buffers.count, buffers.indexType, 0);
-    } else {
-      gl.drawArrays(gl.TRIANGLES, 0, buffers.count);
+    if (state.aUv >= 0) {
+      if (buffers.uv) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.uv);
+        gl.enableVertexAttribArray(state.aUv);
+        gl.vertexAttribPointer(state.aUv, 2, gl.FLOAT, false, 0, 0);
+      } else {
+        gl.disableVertexAttribArray(state.aUv);
+        gl.vertexAttrib2f(state.aUv, 0, 0);
+      }
     }
+    if (buffers.index) gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
+
+    // Opaque and alpha-tested groups first, then transparent ones in render
+    // queue order with their own blend factors and depth write, so glass,
+    // hair cards and light effects (additive, unlit) composite over the body.
+    const blends = materialBlendIndex();
+    const visible = buffers.groups
+      .filter((group) => !modelGroupHidden(model, group))
+      .map((group) => ({ group, blend: group.blend ?? blends.get(String(group.material || "").toLowerCase()) ?? null }));
+    const transparent = (item) => item.blend && item.blend.src !== undefined;
+    const draw = ({ group, blend }) => {
+      const texture = buffers.uv && group.hasUvs !== false ? modelGroupTexture(state, group.material, group.textureRel) : null;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1f(state.uHasTexture, texture ? 1 : 0);
+      const tint = blend?.tint || [1, 1, 1, 1];
+      gl.uniform4f(state.uTint, tint[0], tint[1], tint[2], tint[3]);
+      gl.uniform1f(state.uAlphaClip, blend?.clip ?? -1);
+      const additive = transparent({ blend }) && blend.dst === 1;
+      gl.uniform1f(state.uEffect, additive ? 1 : 0);
+      gl.uniform1f(state.uPremultiply, transparent({ blend }) && blend.src === 1 && !additive ? 1 : 0);
+      if (buffers.index) {
+        gl.drawElements(gl.TRIANGLES, group.count, buffers.indexType, group.start * buffers.indexSize);
+      } else {
+        gl.drawArrays(gl.TRIANGLES, group.start, group.count);
+      }
+    };
+    for (const item of visible) if (!transparent(item)) draw(item);
+    const layered = visible.filter(transparent).sort((a, b) => (a.blend.q ?? 3000) - (b.blend.q ?? 3000));
+    if (layered.length) {
+      gl.enable(gl.BLEND);
+      for (const item of layered) {
+        gl.blendFunc(modelBlendFactor(gl, item.blend.src), modelBlendFactor(gl, item.blend.dst));
+        gl.depthMask(Boolean(item.blend.zw));
+        draw(item);
+      }
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    }
+  }
+
+  function modelGroupHidden(model, group) {
+    const object = group.object === undefined ? null : model.objects?.[group.object];
+    return Boolean(object) && !modelObjectShown(model, object);
+  }
+
+  // A part draws when its own switch is on and it belongs to the selected LOD;
+  // changing the LOD leaves every switch as the user set it.
+  function modelObjectShown(model, object) {
+    return object.visible !== false && (object.lod === null || model.lod === null || model.lod === undefined || object.lod === model.lod);
   }
 
   // Software fallback for browsers without WebGL: painter-sorted triangles,
@@ -3117,8 +3498,12 @@
     const indices = model.indices;
     const triangleCount = indices.length / 3;
     const stride = Math.max(1, Math.ceil(triangleCount / CANVAS_TRIANGLE_LIMIT));
+    const shown = new Uint8Array(triangleCount).fill(1);
+    for (const group of model.groups || []) {
+      if (modelGroupHidden(model, group)) shown.fill(0, group.start / 3, (group.start + group.count) / 3);
+    }
     const order = [];
-    for (let t = 0; t < triangleCount; t += stride) order.push(t);
+    for (let t = 0; t < triangleCount; t += stride) if (shown[t]) order.push(t);
     const faceDepth = new Float32Array(triangleCount);
     for (const t of order) {
       faceDepth[t] = screen[indices[t * 3] * 3 + 2] + screen[indices[t * 3 + 1] * 3 + 2] + screen[indices[t * 3 + 2] * 3 + 2];
@@ -3151,7 +3536,9 @@
 
   // Shared mesh shape for OBJ and FBX: flat typed arrays, area-weighted
   // vertex normals, and a fit-to-unit-cube center/scale for the camera.
-  function finalizeMesh(positions, indices, faceCount, objectCount) {
+  // `welds` (optional) maps each vertex to the vertex whose normal it shares,
+  // so per-polygon-vertex splits for UVs still shade smoothly.
+  function finalizeMesh(positions, indices, faceCount, objectCount, welds = null) {
     const vertexCount = positions.length / 3;
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -3168,10 +3555,11 @@
     }
 
     const normals = new Float32Array(positions.length);
+    const weld = welds ? (index) => welds[index] * 3 : (index) => index * 3;
     for (let t = 0; t < indices.length; t += 3) {
-      const a = indices[t] * 3;
-      const b = indices[t + 1] * 3;
-      const c = indices[t + 2] * 3;
+      const a = weld(indices[t]);
+      const b = weld(indices[t + 1]);
+      const c = weld(indices[t + 2]);
       const ux = positions[b] - positions[a];
       const uy = positions[b + 1] - positions[a + 1];
       const uz = positions[b + 2] - positions[a + 2];
@@ -3195,6 +3583,12 @@
         normals[i + 2] /= len;
       } else {
         normals[i + 2] = 1;
+      }
+    }
+    if (welds) {
+      for (let v = 0; v < vertexCount; v += 1) {
+        const from = welds[v] * 3;
+        if (from !== v * 3) normals.set(normals.subarray(from, from + 3), v * 3);
       }
     }
 
@@ -3227,65 +3621,106 @@
     return next;
   }
 
+  // OBJ face corners have independent position/UV/normal indexes. Split at
+  // UV and authored-normal seams; weld generated normals by source position.
   function parseObj(text) {
-    let positions = new Float32Array(3 * 4096);
-    let vertexCount = 0;
+    const sourcePositions = [], sourceUvs = [], sourceNormals = [];
+    let positions = new Float32Array(3 * 4096), uvs = new Float32Array(2 * 4096);
     let indices = new Uint32Array(3 * 8192);
-    let indexCount = 0;
-    let faceCount = 0;
-    let objectCount = 0;
-    const face = [];
-
+    const corners = new Map(), weldByPosition = new Map(), welds = [], normals = [];
+    const groups = [];
+    let vertexCount = 0, indexCount = 0, faceCount = 0, objectCount = 0;
+    let material = "", name = "", group = null, anyUvs = false;
+    const resolve = (value, count) => {
+      if (!/^-?\d+$/.test(value || "")) return -1;
+      const raw = Number(value);
+      const index = raw > 0 ? raw - 1 : count + raw;
+      return raw && index >= 0 && index < count ? index : -1;
+    };
     let start = 0;
-    const length = text.length;
-    while (start < length) {
+    while (start < text.length) {
       let end = text.indexOf("\n", start);
-      if (end < 0) end = length;
-      const c0 = text.charCodeAt(start);
-      const c1 = text.charCodeAt(start + 1);
-      // Only "v ", "f ", "o " and "g " lines matter; skip the rest unsplit.
-      if (c1 === 32 || c1 === 9) {
-        if (c0 === 118) {
-          const parts = text.slice(start + 2, end).trim().split(/\s+/);
-          const x = Number(parts[0]);
-          const y = Number(parts[1]);
-          const z = Number(parts[2]);
-          if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-            positions = growFloat32(positions, (vertexCount + 1) * 3);
-            positions[vertexCount * 3] = x;
-            positions[vertexCount * 3 + 1] = y;
-            positions[vertexCount * 3 + 2] = z;
-            vertexCount += 1;
-          }
-        } else if (c0 === 102) {
-          faceCount += 1;
-          face.length = 0;
-          for (const token of text.slice(start + 2, end).trim().split(/\s+/)) {
-            const slash = token.indexOf("/");
-            const rawIndex = parseInt(slash < 0 ? token : token.slice(0, slash), 10);
-            if (!rawIndex) continue;
-            const resolved = rawIndex > 0 ? rawIndex - 1 : vertexCount + rawIndex;
-            if (resolved >= 0 && resolved < vertexCount) face.push(resolved);
-          }
-          for (let i = 1; i + 1 < face.length; i += 1) {
-            const a = face[0];
-            const b = face[i];
-            const c = face[i + 1];
-            if (a === b || b === c || a === c) continue;
-            indices = growUint32(indices, indexCount + 3);
-            indices[indexCount] = a;
-            indices[indexCount + 1] = b;
-            indices[indexCount + 2] = c;
-            indexCount += 3;
-          }
-        } else if (c0 === 111 || c0 === 103) {
-          objectCount += 1;
+      if (end < 0) end = text.length;
+      const line = text.slice(start, end).split("#", 1)[0].trim();
+      start = end + 1;
+      const match = line.match(/^(\S+)\s+(.*)$/);
+      if (!match) continue;
+      const [, command, value] = match;
+      if (["v", "vt", "vn"].includes(command)) {
+        const values = value.trim().split(/\s+/).map(Number);
+        const width = command === "vt" ? 2 : 3;
+        if (values.length >= width && values.slice(0, width).every(Number.isFinite)) {
+          (command === "v" ? sourcePositions : command === "vt" ? sourceUvs : sourceNormals).push(values.slice(0, width));
+        }
+      } else if (command === "usemtl") {
+        material = value.trim();
+        group = null;
+      } else if (command === "o" || command === "g") {
+        name = value.trim();
+        objectCount += 1;
+        group = null;
+      } else if (command === "f") {
+        const face = value.trim().split(/\s+/).map((token) => {
+          const parts = token.split("/");
+          return [resolve(parts[0], sourcePositions.length), resolve(parts[1], sourceUvs.length), resolve(parts[2], sourceNormals.length)];
+        });
+        // Reject the entire invalid polygon rather than inventing a smaller one.
+        if (face.length < 3 || face.some(([position]) => position < 0)) continue;
+        if (!group) {
+          group = { material, name, start: indexCount, count: 0, hasUvs: true };
+          groups.push(group);
+        }
+        faceCount += 1;
+        const vertices = face.map(([position, uv, normal]) => {
+          if (uv < 0) group.hasUvs = false;
+          const key = `${position}/${uv}/${normal}`;
+          if (corners.has(key)) return corners.get(key);
+          const index = vertexCount++;
+          corners.set(key, index);
+          positions = growFloat32(positions, vertexCount * 3);
+          uvs = growFloat32(uvs, vertexCount * 2);
+          positions.set(sourcePositions[position], index * 3);
+          if (uv >= 0) { uvs.set(sourceUvs[uv], index * 2); anyUvs = true; }
+          if (!weldByPosition.has(position)) weldByPosition.set(position, index);
+          welds.push(weldByPosition.get(position));
+          normals.push(normal >= 0 ? sourceNormals[normal] : null);
+          return index;
+        });
+        for (let i = 1; i + 1 < vertices.length; i += 1) {
+          if (new Set([face[0][0], face[i][0], face[i + 1][0]]).size < 3) continue;
+          indices = growUint32(indices, indexCount + 3);
+          indices.set([vertices[0], vertices[i], vertices[i + 1]], indexCount);
+          indexCount += 3;
+          group.count += 3;
         }
       }
-      start = end + 1;
     }
+    const mesh = finalizeMesh(positions.slice(0, vertexCount * 3), indices.slice(0, indexCount), faceCount, objectCount, welds);
+    for (let index = 0; index < normals.length; index += 1) {
+      const normal = normals[index];
+      if (!normal) continue;
+      const length = Math.hypot(...normal);
+      if (length) mesh.normals.set(normal.map((value) => value / length), index * 3);
+    }
+    return Object.assign(mesh, { sourceVertexCount: sourcePositions.length, uvs: anyUvs ? uvs.slice(0, vertexCount * 2) : null, groups: groups.filter((group) => group.count) });
+  }
 
-    return finalizeMesh(positions.slice(0, vertexCount * 3), indices.slice(0, indexCount), faceCount, objectCount);
+  // Name-linked materials are preview candidates, not renderer slot proof.
+  // A single linked material can shade an exported Mesh OBJ; multiple
+  // candidates require an explicit usemtl name, never guessed slot order.
+  function bindObjMaterials(model, relation) {
+    const linked = relation.materials || [];
+    const names = [...new Set(linked.map((material) => material.name).filter(Boolean))];
+    for (const group of model.groups || []) {
+      if (!group.material && names.length === 1) group.material = names[0];
+      const candidates = linked.filter((material) => material.name?.toLowerCase() === group.material.toLowerCase());
+      if (candidates.length !== 1) continue;
+      const data = ASSET_STATE.relations[candidates[0].rel];
+      if (!data) continue;
+      const base = MODEL_BASE_TEXTURE_SLOTS.map((slot) => data.textures?.find((texture) => texture.slot === slot && texture.rel)).find(Boolean);
+      group.textureRel = base?.rel || "";
+      group.blend = data.blend || null;
+    }
   }
 
   async function loadFbxAsset(rel) {
@@ -3583,26 +4018,47 @@
     return { local, geometric };
   }
 
+  // LayerElement* reader: values are addressed by polygon-vertex or by control
+  // point (MappingInformationType), optionally through an index array.
+  async function decodeFbxLayer(buffer, layer, valueName, indexName) {
+    if (!layer) return null;
+    const values = await decodeFbxArray(buffer, fbxChild(layer, valueName)?.props[0]);
+    if (!values) return null;
+    const reference = String(fbxChild(layer, "ReferenceInformationType")?.props[0] || "");
+    const index = reference === "Direct" ? null : await decodeFbxArray(buffer, fbxChild(layer, indexName)?.props[0]);
+    const byPolygonVertex = String(fbxChild(layer, "MappingInformationType")?.props[0] || "") === "ByPolygonVertex";
+    return { values, index, byPolygonVertex };
+  }
+
   // Bakes every Geometry "Mesh" into one indexed mesh in scene space, placing
-  // it through its Model chain (Connections "OO" child -> parent).
+  // it through its Model chain (Connections "OO" child -> parent). Vertices are
+  // emitted per polygon-vertex so UVs survive; triangles are grouped by the
+  // owner Model's material (LayerElementMaterial slot -> connected Material).
   async function buildFbxMesh(tree, buffer) {
     const objects = tree.nodes.find((node) => node.name === "Objects");
     if (!objects) return null;
     const connections = tree.nodes.find((node) => node.name === "Connections");
 
     const models = new Map();
+    const materialNames = new Map();
     const geometries = [];
     for (const node of objects.children) {
       if (node.name === "Model") models.set(node.props[0], node);
+      else if (node.name === "Material") materialNames.set(node.props[0], String(node.props[1] || "").split("\u0000\u0001")[0]);
       else if (node.name === "Geometry" && node.props[2] === "Mesh") geometries.push(node);
     }
 
     const parentsOf = new Map();
+    const modelMaterials = new Map();
     for (const record of connections?.children || []) {
       if (record.name !== "C" || record.props[0] !== "OO") continue;
       const [, child, parent] = record.props;
       if (!parentsOf.has(child)) parentsOf.set(child, []);
       parentsOf.get(child).push(parent);
+      if (materialNames.has(child)) {
+        if (!modelMaterials.has(parent)) modelMaterials.set(parent, []);
+        modelMaterials.get(parent).push(materialNames.get(child));
+      }
     }
 
     const worldCache = new Map();
@@ -3616,55 +4072,155 @@
       return world;
     };
 
+    // Prefabs carry every LOD and an untransformed shadow proxy beside the
+    // render meshes; the viewer shows one LOD at a time and starts with the
+    // shadow proxies off so copies do not overlap.
+    const modelName = (id) => String(models.get(id)?.props[1] || "").split("\u0000\u0001")[0];
+    const shadowPattern = /shadow_?proxy|eyes?[_\s-]?shadow|hair[_\s-]?shadow|(?:^|[_\s-])hs(?:[_\s\d-]|$)/i;
+    const lodOf = (id) => {
+      for (let current = id, depth = 0; current && depth < 256; depth += 1) {
+        const match = modelName(current).match(/(?:^|[_-])lod(\d+)$/i);
+        if (match) return Number(match[1]);
+        current = (parentsOf.get(current) || []).find((candidate) => models.has(candidate));
+      }
+      return null;
+    };
+    const isShadowPart = (id) => {
+      for (let current = id, depth = 0; current && depth < 256; depth += 1) {
+        if (shadowPattern.test(modelName(current))) return true;
+        current = (parentsOf.get(current) || []).find((candidate) => models.has(candidate));
+      }
+      return false;
+    };
+
     const parts = [];
     let totalVertices = 0;
-    let totalIndices = 0;
     let faceCount = 0;
+    let hasUvs = false;
     for (const geometry of geometries) {
       const vertices = await decodeFbxArray(buffer, fbxChild(geometry, "Vertices")?.props[0]);
       const polygonIndex = await decodeFbxArray(buffer, fbxChild(geometry, "PolygonVertexIndex")?.props[0]);
       if (!vertices || !polygonIndex || vertices.length < 9) continue;
       const vertexCount = Math.floor(vertices.length / 3);
+      const uv = await decodeFbxLayer(buffer, fbxChild(geometry, "LayerElementUV"), "UV", "UVIndex");
+      const materialLayer = fbxChild(geometry, "LayerElementMaterial");
+      const polygonMaterials = await decodeFbxArray(buffer, fbxChild(materialLayer, "Materials")?.props[0]);
+      const allSameMaterial = String(fbxChild(materialLayer, "MappingInformationType")?.props[0] || "") === "AllSame";
+      const controlPoint = (pv) => (polygonIndex[pv] < 0 ? ~polygonIndex[pv] : polygonIndex[pv]);
 
+      // Triangles as polygon-vertex indices, with each triangle's material slot.
       const triangles = [];
+      const triangleSlots = [];
       let polygonStart = 0;
+      let polygon = 0;
       for (let i = 0; i < polygonIndex.length; i += 1) {
         if (polygonIndex[i] >= 0) continue;
         faceCount += 1;
-        const first = polygonIndex[polygonStart];
+        const slot = polygonMaterials ? polygonMaterials[allSameMaterial ? 0 : polygon] || 0 : 0;
+        const first = controlPoint(polygonStart);
         for (let k = polygonStart + 1; k + 1 <= i; k += 1) {
-          const b = polygonIndex[k];
-          const c = k + 1 === i ? ~polygonIndex[i] : polygonIndex[k + 1];
+          const b = controlPoint(k);
+          const c = controlPoint(k + 1);
           if (first === b || b === c || first === c) continue;
           if (first >= vertexCount || b >= vertexCount || c >= vertexCount) continue;
-          triangles.push(first, b, c);
+          triangles.push(polygonStart, k, k + 1);
+          triangleSlots.push(slot);
         }
         polygonStart = i + 1;
+        polygon += 1;
       }
       if (!triangles.length) continue;
+      if (uv) hasUvs = true;
 
+      // Every mesh object is kept so the viewer can toggle it; only the
+      // lowest LOD outside the shadow proxy starts visible.
       const owners = (parentsOf.get(geometry.props[0]) || []).filter((id) => models.has(id));
-      const transforms = owners.length
-        ? owners.map((id) => mat4Multiply(worldMatrix(id), fbxModelLocalMatrix(models.get(id)).geometric))
-        : [null];
-      for (const transform of transforms) {
-        parts.push({ vertices, vertexCount, triangles, transform });
-        totalVertices += vertexCount;
-        totalIndices += triangles.length;
+      const placements = owners.length
+        ? owners.map((id) => ({
+            object: id,
+            transform: mat4Multiply(worldMatrix(id), fbxModelLocalMatrix(models.get(id)).geometric),
+            materials: modelMaterials.get(id) || [],
+          }))
+        : [{ object: geometry.props[0], transform: null, materials: [] }];
+      for (const { object, transform, materials } of placements) {
+        parts.push({ object, vertices, polygonIndex, controlPoint, uv, triangles, triangleSlots, transform, materials });
+        totalVertices += polygonIndex.length;
       }
     }
     if (!parts.length) return null;
 
+    const meshObjects = [];
+    const objectIndex = new Map();
+    for (const { object } of parts) {
+      if (objectIndex.has(object)) continue;
+      objectIndex.set(object, meshObjects.length);
+      meshObjects.push({
+        id: object,
+        name: models.has(object) ? modelName(object) : "Mesh",
+        lod: models.has(object) ? lodOf(object) : null,
+        kind: models.has(object) && isShadowPart(object) ? "shadow" : null,
+        materials: new Set(),
+      });
+    }
+    for (const { object, materials } of parts) {
+      for (const material of materials) meshObjects[objectIndex.get(object)].materials.add(material);
+    }
+    // Effect parts (fx meshes or fx materials) start hidden like shadow proxies,
+    // unless the prefab is nothing but effects.
+    const vfxPattern = /(?:^|[_\s-])v?fx(?:part)?(?:[_\s\d-]|$)|effect/i;
+    for (const object of meshObjects) {
+      if (!object.kind && [...object.materials].some((name) => shadowPattern.test(name))) {
+        object.kind = "shadow";
+      }
+      if (!object.kind && (vfxPattern.test(object.name) || [...object.materials].some((name) => vfxPattern.test(name)))) {
+        object.kind = "vfx";
+      }
+      delete object.materials;
+    }
+    const hasPlain = meshObjects.some((object) => !object.kind);
+    const lodLevels = [...new Set(meshObjects.map((object) => object.lod).filter((lod) => lod !== null))].sort((a, b) => a - b);
+    const lod = lodLevels.length ? lodLevels[0] : null;
+    for (const object of meshObjects) {
+      object.defaultVisible = object.kind === "shadow" ? false : object.kind === "vfx" ? !hasPlain : true;
+      object.framed = object.defaultVisible && (object.lod === null || object.lod === lod);
+    }
+
+    // Group triangles by object and material name so each group is one draw
+    // call that can be hidden with its object.
+    const groupKey = (object, material) => `${objectIndex.get(object)}\u0000${material}`;
+    const groupCounts = new Map();
+    for (const { object, triangleSlots, materials } of parts) {
+      for (const slot of triangleSlots) {
+        const key = groupKey(object, materials[slot] || "");
+        groupCounts.set(key, (groupCounts.get(key) || 0) + 3);
+      }
+    }
+    const groups = [];
+    const groupCursor = new Map();
+    let totalIndices = 0;
+    for (const [key, count] of groupCounts) {
+      const split = key.indexOf("\u0000");
+      groups.push({ material: key.slice(split + 1), object: Number(key.slice(0, split)), start: totalIndices, count });
+      groupCursor.set(key, totalIndices);
+      totalIndices += count;
+    }
+
     const positions = new Float32Array(totalVertices * 3);
+    const uvs = hasUvs ? new Float32Array(totalVertices * 2) : null;
+    const welds = new Uint32Array(totalVertices);
     const indices = new Uint32Array(totalIndices);
     let vertexBase = 0;
-    let indexCursor = 0;
-    for (const { vertices, vertexCount, triangles, transform: m } of parts) {
-      for (let v = 0; v < vertexCount; v += 1) {
-        const x = vertices[v * 3];
-        const y = vertices[v * 3 + 1];
-        const z = vertices[v * 3 + 2];
-        const out = (vertexBase + v) * 3;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (const { object, vertices, polygonIndex, controlPoint, uv, triangles, triangleSlots, transform: m, materials } of parts) {
+      const framed = meshObjects[objectIndex.get(object)].framed;
+      const firstUse = new Int32Array(Math.floor(vertices.length / 3)).fill(-1);
+      for (let pv = 0; pv < polygonIndex.length; pv += 1) {
+        const cp = controlPoint(pv);
+        const x = vertices[cp * 3];
+        const y = vertices[cp * 3 + 1];
+        const z = vertices[cp * 3 + 2];
+        const out = (vertexBase + pv) * 3;
         if (m) {
           positions[out] = m[0] * x + m[4] * y + m[8] * z + m[12];
           positions[out + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
@@ -3674,11 +4230,41 @@
           positions[out + 1] = y;
           positions[out + 2] = z;
         }
+        if (framed) {
+          minX = Math.min(minX, positions[out]); maxX = Math.max(maxX, positions[out]);
+          minY = Math.min(minY, positions[out + 1]); maxY = Math.max(maxY, positions[out + 1]);
+          minZ = Math.min(minZ, positions[out + 2]); maxZ = Math.max(maxZ, positions[out + 2]);
+        }
+        if (firstUse[cp] < 0) firstUse[cp] = pv;
+        welds[vertexBase + pv] = vertexBase + firstUse[cp];
+        if (uv) {
+          const at = uv.byPolygonVertex ? pv : cp;
+          const u = uv.index ? uv.index[at] : at;
+          uvs[(vertexBase + pv) * 2] = uv.values[u * 2] || 0;
+          uvs[(vertexBase + pv) * 2 + 1] = uv.values[u * 2 + 1] || 0;
+        }
       }
-      for (const index of triangles) indices[indexCursor++] = vertexBase + index;
-      vertexBase += vertexCount;
+      for (let t = 0; t < triangleSlots.length; t += 1) {
+        const key = groupKey(object, materials[triangleSlots[t]] || "");
+        let cursor = groupCursor.get(key);
+        indices[cursor++] = vertexBase + triangles[t * 3];
+        indices[cursor++] = vertexBase + triangles[t * 3 + 1];
+        indices[cursor++] = vertexBase + triangles[t * 3 + 2];
+        groupCursor.set(key, cursor);
+      }
+      vertexBase += polygonIndex.length;
     }
-    return finalizeMesh(positions, indices, faceCount, parts.length);
+    const mesh = finalizeMesh(positions, indices, faceCount, meshObjects.length, welds);
+    // Frame the objects shown by default, not hidden LODs or proxies.
+    if (minX <= maxX) {
+      mesh.center = [(minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5];
+      mesh.scale = 2 / Math.max(maxX - minX || 1, maxY - minY || 1, maxZ - minZ || 1);
+    }
+    for (const object of meshObjects) {
+      object.visible = object.defaultVisible;
+      delete object.framed;
+    }
+    return Object.assign(mesh, { uvs, groups, objects: meshObjects, lods: lodLevels, lod });
   }
 
   function cleanFbxSampleName(value) {
@@ -3748,16 +4334,12 @@
     syncDebugViewVisibility();
     bindViewTabs();
     bindAssetEvents();
-    ASSET_STATE.pager = window.WebUI.pagination?.createPager({
-      container: "#asset-pager",
-      storageKey: "asset_browser_page_size",
-      onChange: () => rebuildAssetTree(),
-    });
     window.addEventListener("webui:ui-locale-changed", (event) => {
       setAssetUiLocale(event.detail && event.detail.locale);
     });
     window.addEventListener("webui:debug-changed", syncDebugViewVisibility);
     ensureAssetPanelToggle();
+    window.WebUI.locateCurrent?.bind($("#asset-locate-current"), locateSelectedAsset);
     setActiveView(resolveViewFromHash());
     Object.assign(window.WebUI, { setViewBusy, setShellStatus, clearShellStatus, setActiveView });
   }

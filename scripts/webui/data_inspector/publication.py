@@ -56,13 +56,14 @@ def input_file_signature(root: Path) -> dict[str, Any]:
                       "bytes": total, "latestMtimeNs": latest})
 
 
-def load_dataset(data_root: Path, export_root: Path, dataset: str, source_root_rel: str,
+def load_published_snapshot(data_root: Path, dataset: str, source_root_rel: str,
                  *, signature_check: Callable[[dict[str, Any]], str] | None = None,
                  ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Validate the complete published family; optional caller owns native proof.
+    """Validate published framing without claiming export freshness.
 
-    ``signature_check`` receives the recorded input signature and returns a
-    diagnostic on rejection. Consumers of native-backed fields must supply it.
+    Explicit preview consumers may use this during extraction. Native-backed
+    consumers still supply their selected-native gate. The resulting snapshot
+    must be labelled as such; ordinary consumers use ``load_dataset`` below.
     """
     audit: dict[str, Any] = {"datasetId": dataset, "status": "unavailable"}
     try:
@@ -84,13 +85,7 @@ def load_dataset(data_root: Path, export_root: Path, dataset: str, source_root_r
         provenance = _object(manifest.get("provenance"), "Data provenance")
         if provenance.get("sourceRoot") != source_root_rel:
             raise ValueError("Data sourceRoot does not match the requested family")
-        source_root = _within(export_root, source_root_rel)
-        if not source_root.is_dir():
-            raise ValueError(f"source directory missing: {source_root_rel}")
-        current = input_file_signature(source_root)
         recorded = _object(provenance.get("inputSignature"), "Data provenance inputSignature")
-        if any(recorded.get(key) != value for key, value in current.items()):
-            raise ValueError("Data publication is stale for the selected export; rebuild the Data page")
         if signature_check:
             diagnostic = signature_check(recorded)
             if diagnostic:
@@ -115,18 +110,50 @@ def load_dataset(data_root: Path, export_root: Path, dataset: str, source_root_r
                         or entry.get("status") != row.get("status")
                         or entry.get("sourcePath") != source.get("path")):
                     raise ValueError(f"Data shard/catalog mismatch: {key}")
-                source_path = _within(source_root, str(_within(export_root, source["path"]).relative_to(source_root)))
-                if source_path.stat().st_size != source.get("bytes"):
-                    raise ValueError(f"Data source size mismatch: {source['path']}")
+                _within(Path(source_root_rel), str(Path(source["path"]).relative_to(source_root_rel)))
                 seen.add(key)
                 records.append(row)
         if seen != set(expected) or len(records) != descriptor.get("recordCount"):
             raise ValueError("Data root/catalog/shard record count mismatch")
-        audit.update(status="current", recordCount=len(records), inputSignature=current,
+        audit.update(status="publishedSnapshot", recordCount=len(records), inputSignature=recorded,
                      manifestSha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest())
         return records, audit
     except (OSError, ValueError, KeyError, TypeError, StopIteration) as exc:
         audit["diagnostic"] = str(exc)[:600]
+        return [], audit
+
+
+def load_dataset(data_root: Path, export_root: Path, dataset: str, source_root_rel: str,
+                 *, signature_check: Callable[[dict[str, Any]], str] | None = None,
+                 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Validate a complete publication against the selected export and native proof."""
+    current = {}
+
+    def current_check(recorded):
+        source_root = _within(export_root, source_root_rel)
+        if not source_root.is_dir():
+            return f"source directory missing: {source_root_rel}"
+        current.update(input_file_signature(source_root))
+        if any(recorded.get(key) != value for key, value in current.items()):
+            return "Data publication is stale for the selected export; rebuild the Data page"
+        return signature_check(recorded) if signature_check else ""
+
+    records, audit = load_published_snapshot(data_root, dataset, source_root_rel,
+                                             signature_check=current_check)
+    if audit["status"] == "unavailable":
+        return [], audit
+    try:
+        source_root = _within(export_root, source_root_rel)
+        for row in records:
+            source = row["source"]
+            source_path = _within(export_root, source["path"])
+            source_path.relative_to(source_root)
+            if source_path.stat().st_size != source.get("bytes"):
+                raise ValueError(f"Data source size mismatch: {source['path']}")
+        audit.update(status="current", inputSignature=current)
+        return records, audit
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        audit.update(status="unavailable", diagnostic=str(exc)[:600])
         return [], audit
 
 

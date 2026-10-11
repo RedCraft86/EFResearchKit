@@ -164,6 +164,36 @@ def normalize_inline_image_id(value: str) -> str:
     return re.sub(r"\.[^.]+$", "", last_segment, flags=re.IGNORECASE).lower()
 
 
+def quest_inventory_image_tokens(item_id: str) -> list[str]:
+    """Display candidates: exact quest ID, then a trailing numbered variant's base.
+
+    Only digits immediately following a final word are a variant suffix here;
+    mission identifiers and underscore-separated record numbers stay intact.
+    This is conditional display naming, not a runtime item ownership claim.
+    """
+    token = normalize_inline_image_id(item_id)
+    base = re.sub(r"(?<=_)([a-z]+)\d+$", r"\1", token)
+    return list(dict.fromkeys(value for value in (token, base) if value))
+
+
+def quest_reading_image_tokens(item_id: str, icon_id: str) -> list[str]:
+    """Conditional display candidates from complete item/reading name suffixes.
+
+    This naming convention is not a runtime reading/mission ownership claim.
+    Consumers must match a full exported basename, never a prefix or substring.
+    """
+    tokens: list[str] = []
+    for value in (item_id, icon_id):
+        value = normalize_inline_image_id(value)
+        for prefix in ("item_mission_", "item_quest_", "item_"):
+            if value.startswith(prefix):
+                suffix = value[len(prefix):]
+                if suffix:
+                    tokens.extend((f"reading_{suffix}", f"read_{suffix}"))
+                break
+    return list(dict.fromkeys(tokens))
+
+
 def inline_image_number_key(value: str) -> str:
     match = re.search(r"(?:^|[_-])(\d{1,3})$", str(value or ""))
     return str(int(match.group(1))) if match else ""

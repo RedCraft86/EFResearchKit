@@ -16,12 +16,14 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from scripts.common import read_json, write_json
-from scripts.game_data.media_resolver import icon_shape_rank
+from scripts.repo_paths import REPO_ROOT
+from scripts.game_data.media_resolver import icon_shape_rank, quest_inventory_image_tokens, quest_reading_image_tokens
 
 
-SCHEMA_VERSION = "gameplayAssetRefs.v10"
+SCHEMA_VERSION = "gameplayAssetRefs.v11"
 SOURCE_GRAPH_SCHEMA_VERSION = "sourceGraph.v1"
 DEFAULT_OUTPUT = Path("webui/data/assets/gameplay_refs.json")
+DEFAULT_OVERRIDES = REPO_ROOT / "webui/overrides/gameplay_assets.json"
 PATH_ID_SUFFIX_RE = re.compile(r"_p[0-9a-f]{16}$", re.IGNORECASE)
 NON_ALNUM_RE = re.compile(r"[^a-z0-9]+", re.IGNORECASE)
 
@@ -313,7 +315,7 @@ def _source_graph_proof(
 
 
 def _token_candidates(entry: dict[str, Any]) -> list[str]:
-    values: list[Any] = [entry.get("id"), entry.get("iconId"), entry.get("iconCompositeId"), entry.get("modelKey")]
+    values: list[Any] = [entry.get("id"), entry.get("iconId"), entry.get("iconCompositeId"), entry.get("modelKey"), entry.get("showcaseResource")]
     model_path = str(entry.get("modelPath") or "").replace("\\", "/")
     if model_path:
         values.append(Path(model_path).stem)
@@ -542,7 +544,7 @@ def _nested_image_rank(asset: dict[str, Any], token: str) -> tuple[Any, ...]:
     return (
         category_rank,
         material_rank,
-        (0, 0.0) if _is_item_picture_token(token) else shape_rank,
+        (0, 0.0) if _is_item_picture_token(token) or token.startswith(("reading_", "read_")) else shape_rank,
         *_resolution_rank(asset),
         _source_rank(rel),
         directory_rank + exact_rank,
@@ -819,6 +821,9 @@ def build_gameplay_asset_refs(
     max_images: int = 4,
     max_models: int = 3,
     source_graph_path: Path | None = None,
+    manual_models: dict[str, list[str]] | None = None,
+    manual_images: dict[str, list[str]] | None = None,
+    factory_models: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Return representative image/model refs keyed by ``kind:id``.
 
@@ -922,7 +927,87 @@ def build_gameplay_asset_refs(
         else:
             selected_images = _dedupe_asset_candidates(asset for asset, _token in image_candidates[:max(0, max_images)])
         images = [_path_ref(asset) for asset in selected_images]
+        if kind == "item" and direct_icon_tokens:
+            for image in images:
+                image.update({"role": "icon", "evidenceBoundary": "direct", "association": "item-icon-reference"})
+        # Authored media bindings are independent of inventory icon selection.
+        # Match the complete basename, so sticker_1 cannot select sticker_10.
+        for raw_token in entry.get("mediaTokens", []):
+            token = _clean_token(raw_token)
+            choices = [asset for asset in assets_by_base.get(token, []) if asset.get("k") == "image"]
+            if choices:
+                asset = min(choices, key=lambda value: _nested_image_rank(value, token))
+                ref = {**_path_ref(asset), "role": "content", "token": raw_token, "evidenceBoundary": "direct", "association": "item-media-reference"}
+                images = [image for image in images if image["rel"] != ref["rel"]] + [ref]
+        # Quest reading illustrations are a conditional naming association:
+        # the authored item/icon suffix must equal the complete reading basename.
+        # Reading artwork supplements, but never replaces, authored icon fields.
+        if kind == "item" and str(entry.get("type")) == "13":
+            # Filename conventions apply only without an authored icon field.
+            # Numbered variants can then share the complete unnumbered name.
+            for token in ([] if direct_icon_tokens else quest_inventory_image_tokens(entry.get("id", ""))):
+                choices = [asset for asset in assets_by_base.get(token, []) if asset.get("k") == "image"]
+                if not choices:
+                    continue
+                asset = min(choices, key=lambda value: _nested_image_rank(value, token))
+                images = [{**_path_ref(asset), "token": token, "evidenceBoundary": "conditional",
+                           "association": "quest-item-name"}]
+                break
+            for token in quest_reading_image_tokens(entry.get("id", ""), entry.get("iconId", "")):
+                choices = [asset for asset in assets_by_base.get(token, []) if asset.get("k") == "image"]
+                if not choices:
+                    continue
+                asset = min(choices, key=lambda value: _nested_image_rank(value, token))
+                ref = {**_path_ref(asset), "role": "content", "token": token,
+                       "evidenceBoundary": "conditional", "association": "quest-reading-name"}
+                images = [image for image in images if image["rel"] != ref["rel"]] + [ref]
+            if not direct_icon_tokens:
+                reading_images = [image for image in images if image.get("role") == "content"]
+                images = reading_images or [image for image in images
+                                           if not _asset_base_name(image["rel"]).startswith(("item_mission_general_", "item_read_", "item_paper_", "item_radio_", "item_poster_"))]
+        if key in (manual_images or {}) and not (kind == "item" and direct_icon_tokens):
+            images = []
+            for stem in manual_images[key]:
+                token = str(stem).lower()
+                choices = [asset for asset in assets_by_base.get(token, []) if asset.get("k") == "image"]
+                if not choices:
+                    raise ValueError(f"Gameplay image override {key}: no exported image named {stem}")
+                ref = {**_path_ref(min(choices, key=lambda asset: _nested_image_rank(asset, token))),
+                       "manualOverride": True, "evidenceBoundary": "conditional", "association": "manual-image-selection"}
+                if not any(image["rel"] == ref["rel"] for image in images):
+                    images.append(ref)
         models = [_path_ref(asset) for asset, _token in model_candidates[:max(0, max_models)]]
+        factory_item = (kind == "item" and (entry.get("factoryRenderResources") or entry.get("logisticId") or entry.get("buildingIds"))) or kind == "machines"
+        if factory_item:
+            models = [{**_path_ref(ref["asset"]), **{k: v for k, v in ref.items() if k != "asset"}}
+                      for ref in (factory_models or {}).get(key, [])]
+        if kind == "item" and entry.get("showcaseResource"):
+            resource = str(entry["showcaseResource"]).lower()
+            choices = [asset for asset in assets_list if asset.get("k") == "model"
+                       and any(Path(container).stem.lower() == resource
+                               for container in ([asset["c"]] if asset.get("c") else asset.get("cs", [])))]
+            # Prefer the complete Animator, otherwise the highest-detail Mesh.
+            choices.sort(key=lambda asset: (0 if "/Animator/" in asset["r"] else 1,
+                                          0 if "_lod0_" in asset["r"].lower() else 1, asset["r"]))
+            models = [{**_path_ref(asset), "evidenceBoundary": "direct",
+                       "association": "showcase-prefab-pathid", "resource": entry["showcaseResource"]}
+                      for asset in choices[:max(0, min(1, max_models))]]
+        if key in (manual_models or {}) and not factory_item and not (kind == "item" and entry.get("showcaseResource") and models):
+            models = []
+            for stem in manual_models[key]:
+                token = str(stem).lower()
+                choices = [asset for asset in assets_by_base.get(token, []) if asset.get("k") == "model"]
+                if not choices:
+                    raise ValueError(f"Gameplay model override {key}: no exported model named {stem}")
+                chosen = min(choices, key=lambda asset: _model_rank(asset, token))
+                ref = _path_ref(chosen)
+                ref["manualOverride"] = True
+                ref["evidenceBoundary"] = "conditional"
+                ref["association"] = "manual-model-selection"
+                if kind == "item" and entry.get("showcaseResource"):
+                    ref["temporaryAssociation"] = True
+                if not any(item["rel"] == ref["rel"] for item in models):
+                    models.append(ref)
         if images or models:
             output[key] = {"images": images, "models": models}
             matched_images += bool(images)
@@ -1050,6 +1135,8 @@ def build_from_paths(
     asset_index_path: Path,
     output_path: Path = DEFAULT_OUTPUT,
     source_graph_path: Path | None = None,
+    items_path: Path | None = None,
+    export_root: Path | None = None,
 ) -> dict[str, Any]:
     gameplay = read_json(gameplay_path, {})
     asset_index = read_json(asset_index_path, {})
@@ -1057,17 +1144,36 @@ def build_from_paths(
         raise FileNotFoundError(f"Gameplay payload is missing or invalid: {gameplay_path}")
     if not isinstance(asset_index, dict):
         raise FileNotFoundError(f"Asset index is missing or invalid: {asset_index_path}")
+    if items_path is not None and items_path.is_file():
+        items = read_json(items_path, {})
+        if items.get("schema") != "endfield.gameplay-items.v1":
+            raise ValueError(f"Rebuild the current item catalog: {items_path}")
+        entries = {f"{row['kind']}:{row['id']}": row for row in gameplay.get("entries", [])}
+        for row in items["items"] + items["machines"]:
+            kind = "item" if row["kind"] == "items" else "machines"
+            key = f"{kind}:{row['id']}"
+            entries[key] = {**entries.get(key, {}), **row, "kind": kind}
+        gameplay = {**gameplay, "entries": list(entries.values())}
     if source_graph_path is None:
         # The source graph is optional because the normal WebUI phase may run
         # before graph rebuild.  When present, it contributes proof only.
-        repo_root = asset_index_path.resolve().parents[3]
-        candidate_graph = repo_root / "reports" / "source_graph" / "endfield_source_graph.sqlite"
+        candidate_graph = REPO_ROOT / "reports" / "source_graph" / "endfield_source_graph.sqlite"
         source_graph_path = candidate_graph if candidate_graph.is_file() else None
+    from scripts.source_paths import ExportLayout
+    from scripts.webui.gameplay.factory_models import load_factory_models
+    factory_models, factory_diagnostics = load_factory_models(
+        export_root or ExportLayout.configured().root, gameplay.get("entries", []), asset_index.get("entries") or [])
     payload = build_gameplay_asset_refs(
         gameplay,
         asset_index.get("entries") or [],
         source_graph_path=source_graph_path,
+        manual_models=read_json(DEFAULT_OVERRIDES, {}).get("models", {}),
+        manual_images=read_json(DEFAULT_OVERRIDES, {}).get("images", {}),
+        factory_models=factory_models,
     )
+    payload["factoryModelDiagnostics"] = factory_diagnostics
     payload["sourcePath"] = str(asset_index_path).replace("\\", "/")
+    if items_path is not None and items_path.is_file():
+        payload["itemsPath"] = str(items_path).replace("\\", "/")
     write_json(output_path, payload, trailing_newline=True)
     return payload

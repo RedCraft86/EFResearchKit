@@ -76,6 +76,7 @@ from scripts.webui.audio.semantics import (
     native_evidence,
     purpose,
     responsive_voice,
+    record_media,
     rtpc_alignment,
     runtime_observations,
     scene_backgrounds,
@@ -1664,6 +1665,7 @@ def build_audio_semantic_data(
             wwise_source_event_counts[source_kind] += 1
 
     out_root = webui_root / f"data/lang/{language}/audio"
+    json_dump(out_root / "record_media.json", record_media.build_record_media(events))
     events_name = "events.json"
     media_details: dict[str, list[dict[str, Any]]] = defaultdict(list)
     media_summaries: list[dict[str, Any]] = []

@@ -26,7 +26,7 @@
 .gp-ref-table :is(th, td) { padding: 6px 7px; border-bottom: 1px solid var(--border); }
 .gp-ref-table tr.is-selected { background: var(--hover); }
 .gp-ref-table small { display: block; color: var(--muted); }
-.gp-ref-table button, .gp-ref-links button, .gp-ref-incoming button, .gp-ref-target-skills button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; overflow-wrap: anywhere; font: inherit; }
+.gp-ref-table button, .gp-ref-links button, .gp-ref-incoming button, .gp-ref-target-skills button { background: none; border: 0; padding: 0; color: var(--accent-text); cursor: pointer; text-align: left; overflow-wrap: anywhere; font: inherit; }
 .gp-ref-node, .gp-ref-target, .gp-ref-incoming { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 .gp-ref-node h4, .gp-ref-target h4, .gp-ref-incoming h4 { margin: 0 0 7px; overflow-wrap: anywhere; }
 .gp-ref-path { font: 11px/1.5 monospace; color: var(--muted); overflow-wrap: anywhere; }

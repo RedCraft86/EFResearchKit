@@ -1,0 +1,70 @@
+/* Combat stage detail only; the sidebar, list and detail header use the
+   shared Gameplay shell selectors in webui/style.css. */
+#battle-boundary { font-size: 12px; margin: 0 0 12px; }
+.battle-row-art { flex-basis: 76px; width: 76px; height: 56px; }
+.battle-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.battle-prose { white-space: pre-wrap; line-height: 1.8; margin: 12px 0; }
+.battle-art.gameplay-image-preview.inline-image-tag { padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; cursor: zoom-in; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.battle-art img { width: 100%; height: 100%; object-fit: contain; }
+.battle-enemy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); align-items: start; gap: 12px; margin: 12px 0; }
+.battle-enemy-card { align-content: start; }
+.battle-enemy-head { display: flex; align-items: center; gap: 12px; }
+.battle-enemy-head > div { min-width: 0; }
+.battle-enemy-art { width: 72px; height: 72px; }
+.battle-variant-id { color: var(--muted); font-size: 10px; }
+.battle-buff-reference { padding: 6px 0; overflow-wrap: anywhere; }
+.battle-buff-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.battle-buff-reference code { font-size: 11px; color: var(--text); }
+.battle-reward + .battle-reward { margin-top: 12px; }
+.battle-reward h4 { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.battle-section pre { max-height: 420px; overflow: auto; font-size: 12px; }
+.battle-rules { display: grid; gap: 10px; }
+.battle-rules h4 { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.battle-links .battle-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.battle-spawner + .battle-spawner { margin-top: 16px; }
+.battle-spawner-head { margin: 0 0 8px; font-size: 14px; }
+.battle-wave-scroll { overflow-x: auto; }
+.battle-wave-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.battle-wave-table th, .battle-wave-table td { text-align: left; padding: 4px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+.battle-wave-table thead th { border-top: 0; color: var(--muted); font-weight: 600; font-size: 12px; }
+.battle-wave-table { font-size: 12px; }
+.battle-wave-table th, .battle-wave-table td { padding: 3px 8px; vertical-align: middle; }
+.battle-wave-table tbody th { font-weight: 400; white-space: nowrap; }
+.battle-wave-table tbody th .gameplay-value-chip { margin-left: 4px; }
+.battle-wave-row th { background: var(--bg-2); border-top: 2px solid var(--border); padding: 5px 8px; white-space: normal; }
+.battle-wave-row .gameplay-value-chip { margin-left: 6px; }
+.battle-wave-row .gameplay-caption { display: inline; margin: 0 0 0 6px; }
+.battle-wave-table th[scope="rowgroup"] .gameplay-value-chip { margin: 1px 0 1px 4px; }
+.battle-num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.battle-field-table td:first-child { width: 1%; white-space: nowrap; }
+.battle-buff-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
+.battle-buff-tag { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border: 1px solid rgba(var(--accent-2-rgb), 0.45); border-radius: var(--radius-chip); background: rgba(var(--accent-2-rgb), 0.1); color: var(--accent-2-text); font: inherit; font-size: 11px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; text-align: left; cursor: help; }
+.battle-buff-tag:hover, .battle-buff-tag:focus-visible { background: rgba(var(--accent-2-rgb), 0.2); outline: none; }
+.battle-buff-tag.is-unresolved { border-style: dashed; border-color: var(--border); background: transparent; color: var(--muted); font-family: var(--mono); }
+#battle-buff-pop { position: fixed; z-index: 50; width: min(380px, calc(100vw - 16px)); max-height: 60vh; overflow: auto; padding: 8px 12px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); pointer-events: none; }
+#battle-buff-pop .gameplay-mechanic-list { gap: 4px; font-size: 12px; }
+.battle-section .gameplay-item-chip-link, .battle-section .gameplay-item-chip-link:hover { text-decoration: none; }
+.battle-section .gameplay-item-chip { display: inline-flex; gap: 6px; }
+.battle-section .gameplay-item-chip b { color: var(--text); }
+.battle-enemy-icon { flex-basis: 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--bg-2); }
+.battle-enemy-icon img { object-fit: cover; object-position: top center; }
+.battle-enemy-name { margin: 0 0 2px; font-size: 14px; }
+.battle-enemy-name a { color: var(--text); text-decoration: none; }
+.battle-enemy-name a:hover { color: var(--accent-text); }
+.battle-field-table td:first-child { width: 40%; min-width: 220px; }
+/* Fixed column widths so every configuration table in a stage lines up. */
+.battle-spawn-table { table-layout: fixed; min-width: 760px; }
+.battle-spawn-table .battle-col-group { width: 22%; }
+.battle-spawn-table .battle-col-enemy { width: 22%; }
+.battle-spawn-table .battle-col-count { width: 6%; }
+.battle-spawn-table .battle-col-level { width: 8%; }
+.battle-spawn-table .battle-col-time { width: 20%; }
+.battle-spawn-table .battle-col-buff { width: 22%; }
+.battle-spawn-table tbody th[scope="rowgroup"] { white-space: normal; }
+.battle-spawn-table td, .battle-spawn-table th { overflow-wrap: anywhere; }
+.battle-wave-scroll { overflow-x: auto; }
+.battle-condition[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 2px; }
+.battle-condition-legend { margin: 0 0 12px; }
+.battle-condition-legend dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 8px 0 0; font-size: 13px; }
+.battle-condition-legend dt { font-weight: 600; }
+.battle-condition-legend dd { margin: 0; color: var(--muted); }

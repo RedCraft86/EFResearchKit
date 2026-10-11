@@ -100,21 +100,6 @@
   color: var(--accent-text);
 }
 
-#audio-reset {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1.2;
-}
-
-#audio-reset:hover {
-  color: var(--text);
-  border-color: var(--muted);
-}
 
 #audio-filter-panel {
   overflow: auto;
@@ -247,7 +232,13 @@
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 94%, transparent);
   backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
+
+.audio-detail-header-main { min-width: 0; }
 
 .audio-manual-note {
   display: grid;

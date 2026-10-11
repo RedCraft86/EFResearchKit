@@ -122,8 +122,10 @@
 .chip.is-tone-3.on,
 .chip.is-tone-4.on,
 .chip.is-tone-5.on {
-  border-color: hsl(var(--di-tone));
-  background: hsl(var(--di-tone));
+  /* Darkened so white text clears 4.5:1 on every tone (the raw teal and
+     violet fills sat near 3.8:1). */
+  border-color: color-mix(in srgb, hsl(var(--di-tone)) 72%, #000);
+  background: color-mix(in srgb, hsl(var(--di-tone)) 72%, #000);
   color: #fff;
 }
 
@@ -152,7 +154,7 @@
 .data-inspector-chip.is-warn {
   border-color: rgba(190, 55, 55, .4);
   background: rgba(190, 55, 55, .1);
-  color: #b93636;
+  color: var(--status-deleted);
 }
 
 .data-inspector-status.is-unsupported,
@@ -164,7 +166,7 @@
 .data-inspector-chip.is-status-bounded_partial {
   border-color: rgba(176, 120, 20, .42);
   background: rgba(176, 120, 20, .12);
-  color: #a06c0e;
+  color: var(--status-modified);
 }
 
 /* ------------------------------------------------------------ detail pane -- */
@@ -175,7 +177,7 @@
 }
 
 .data-inspector-empty.is-error {
-  color: #b93636;
+  color: var(--status-deleted);
 }
 
 .data-inspector-detail-header {
@@ -227,7 +229,7 @@
 
 .data-inspector-boundary > span {
   margin-right: 8px;
-  color: #6f53a8;
+  color: var(--tone-violet);
   font-weight: 700;
 }
 
@@ -386,7 +388,7 @@
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--bg);
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -628,7 +630,7 @@
 .data-inspector-fold:hover,
 .data-inspector-fold:focus-visible {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .data-inspector-children {
@@ -654,7 +656,7 @@
 }
 
 .data-inspector-key {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 
@@ -758,7 +760,7 @@
 .data-inspector-chip.is-boundary {
   border-color: rgba(120, 88, 180, .38);
   background: rgba(120, 88, 180, .1);
-  color: #6f53a8;
+  color: var(--tone-violet);
 }
 
 .data-inspector-chip.is-ok {
@@ -776,10 +778,10 @@
 
 /* ---- scalar value tokens ---- */
 
-.json-string { color: #4f8a3c; }
+.json-string { color: var(--syntax-string); }
 .json-string.is-empty { color: var(--muted); font-style: italic; }
-.json-number { color: #a25b18; }
-.json-boolean { color: #7454b5; font-weight: 650; }
+.json-number { color: var(--syntax-number); }
+.json-boolean { color: var(--syntax-boolean); font-weight: 650; }
 .json-boolean.is-false { opacity: .7; }
 .json-null { color: var(--muted); font-style: italic; }
 .json-missing { color: var(--muted); font-style: italic; }
@@ -981,21 +983,6 @@
   margin: 0;
 }
 
-.data-page-reset {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1.2;
-}
-
-.data-page-reset:hover {
-  border-color: var(--muted);
-  color: var(--text);
-}
 
 #data-files-filter-panel,
 .data-sql-panel {
@@ -1047,6 +1034,16 @@
   overflow: auto;
 }
 
+.data-files-locate {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0;
+  padding: 8px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
 .data-files-groups {
   display: flex;
   flex-direction: column;
@@ -1077,7 +1074,7 @@
 
 .data-files-groups > .data-page-hint.is-error,
 .data-page-list-meta .is-error {
-  color: #b93636;
+  color: var(--status-deleted);
 }
 
 .data-files-api-note code {
@@ -1097,7 +1094,7 @@
 }
 
 .data-files-hits .is-error {
-  color: #b93636;
+  color: var(--status-deleted);
 }
 
 .data-files-hits-close {
@@ -1315,7 +1312,7 @@
   border: 1px solid rgba(185, 54, 54, .4);
   border-radius: 8px;
   background: rgba(185, 54, 54, .06);
-  color: #b93636;
+  color: var(--status-deleted);
 }
 
 .data-sql-error pre {

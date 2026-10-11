@@ -63,18 +63,25 @@ def projection_streaming_scene(
     level_config_root: Path = LEVEL_CONFIG_ROOT,
 ) -> dict | None:
     """Resolve a published level to an available exact-transform sidecar."""
+    authored = authored_streaming_scene(
+        level_id,
+        level_config_root=level_config_root,
+    )
+    # Regional sidecars are deliberately partitioned to member level ids by
+    # the exact HLOD key/member-suffix join. Standalone aliases instead follow
+    # LevelConfig, even when another art scene produced a same-name sidecar.
+    regional_member = bool(
+        authored and authored["sceneId"] in {"map01", "map02"}
+        and re.fullmatch(r"map0[12]_lv\d+", level_id, re.IGNORECASE)
+    )
     direct = instance_root / f"{level_id}.json"
-    if direct.is_file():
+    if direct.is_file() and (not authored or authored["sceneId"] == level_id or regional_member):
         return {
             "sceneId": level_id,
             "method": "level_init_chunk_data",
             "source": str(direct.relative_to(ROOT)).replace("\\", "/") if direct.is_relative_to(ROOT) else str(direct),
             "instanceSource": direct,
         }
-    authored = authored_streaming_scene(
-        level_id,
-        level_config_root=level_config_root,
-    )
     if authored:
         sidecar = instance_root / f"{authored['sceneId']}.json"
         if sidecar.is_file():

@@ -1,6 +1,6 @@
 #characters-view {
   overflow: hidden;
-  background: linear-gradient(145deg, #f6f8f7 0%, var(--bg) 42%, #edf3f1 100%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--bg-3) 40%, var(--bg)) 0%, var(--bg) 42%, color-mix(in srgb, var(--accent-2) 8%, var(--bg)) 100%);
 }
 
 #characters-app {
@@ -59,7 +59,7 @@
   min-height: 0;
 }
 
-#characters-filter-panel .filter-control-row {
+#characters-filter-panel .characters-range-row {
   align-items: stretch;
   flex-direction: column;
   gap: 5px;
@@ -72,17 +72,6 @@
 
 #characters-filter-panel input[type="search"] {
   margin-bottom: 0;
-}
-
-.characters-sort-controls {
-  display: flex;
-  flex-direction: row;
-  gap: 6px;
-}
-
-#characters-sort-direction {
-  width: 100%;
-  min-width: 0;
 }
 
 .characters-range-value {
@@ -448,7 +437,7 @@
 .characters-name-override-badge {
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
   background: color-mix(in srgb, var(--accent) 14%, var(--hover));
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .characters-name-detected-row {
@@ -488,7 +477,7 @@
 .characters-flag-toggle.is-active {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   background: color-mix(in srgb, var(--accent) 16%, var(--panel));
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -603,7 +592,7 @@
 
 .characters-asset-link,
 .characters-asset-key-link {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 

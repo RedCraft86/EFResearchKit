@@ -18,6 +18,9 @@ Run from the repo root:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -31,12 +34,21 @@ from scripts.webui.assets.index import AssetScanResult, scan_exported_media_asse
 from scripts.webui.assets.story_media import build_story_media_payload, write_story_media_payload
 from scripts.webui.assets.activity_media import build_activity_media_payload
 from scripts.webui.assets.table_asset_owners import build_table_asset_owner_payload
-from scripts.common import ASSET_DIR, EXPORT_ROOT, ROOT, TABLE_DIR, require_export_layout, write_json
+from scripts.webui.assets.collision import add_collision_publication, publish_collision_previews
+from scripts.common import ASSET_DIR, EXPORT_ROOT, ROOT, TABLE_DIR, rel_path, require_export_layout, write_json
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build the WebUI exported asset indexes.",
+    )
+    parser.add_argument(
+        "--collision-corpus", type=Path, default=ROOT / "reports/assets/cooked_collision_current_latest.json",
+        help="Optional authenticated selected-corpus receipt for separate collision previews (broad Assets index only).",
+    )
+    parser.add_argument(
+        "--collision-vfs-summary", type=Path,
+        help="VFS audit summary for older collision receipts without outerSummaryPath.",
     )
     parser.add_argument(
         "--mode",
@@ -50,12 +62,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--publish",
-        choices=("all", "index", "story-media"),
+        choices=("all", "index", "story-media", "collision"),
         default="all",
         help=(
             "`index` writes the Assets page's index.json, table_owners.json and activity_media.json; "
             "`story-media` writes only the Story page's story_media.json (its "
-            "images and videos); `all` writes both."
+            "images and videos); `all` writes both. `collision` refreshes only "
+            "collision previews in the existing broad Assets index without rescanning render media."
         ),
     )
     return parser.parse_args(argv)
@@ -129,6 +142,10 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     require_export_layout()
 
+    if args.publish == "collision":
+        publish_collision_only(args)
+        return
+
     print(f"Building {args.mode} asset index ({args.publish}) from {EXPORT_ROOT}...")
     asset_index_path = ASSET_DIR / "index.json"
     scan = scan_exported_media_assets(root=ROOT, export_root=EXPORT_ROOT)
@@ -143,13 +160,19 @@ def main(argv: list[str] | None = None) -> None:
         report_story_media(write_story_media_payload(story_payload))
     if args.publish == "story-media":
         return
+    if args.mode != "focused":
+        collision = publish_collision_previews(
+            args.collision_corpus, root=ROOT, asset_dir=ASSET_DIR, summary_path=args.collision_vfs_summary,
+        )
+        add_collision_publication(asset_payload, collision)
+        print("Collision previews:", collision["status"], collision.get("counts", collision.get("diagnostic", "")))
     write_json(asset_index_path, asset_payload)
     # Exact table-row ownership for the indexed assets. The scan is the full
     # index, not the focused Story/Wiki projection, so the sidecar describes
     # every exported asset regardless of the published index mode.
     owner_index_path = ASSET_DIR / "table_owners.json"
     owner_payload = build_table_asset_owner_payload(
-        full_asset_payload["entries"],
+        [entry for entry in full_asset_payload["entries"] if "cl" not in entry],
         TABLE_DIR,
     )
     write_json(owner_index_path, owner_payload)
@@ -176,6 +199,27 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     print("Video index:", f"{video_payload['counts']['video']} videos (in-memory Story media input)")
+
+
+def publish_collision_only(args: argparse.Namespace) -> None:
+    """Refresh this optional projection while preserving the last media scan."""
+    index_path = ASSET_DIR / "index.json"
+    original = index_path.read_bytes()
+    payload = json.loads(original)
+    if payload.get("mode") == "webui" or payload.get("root") != rel_path(EXPORT_ROOT, ROOT):
+        raise ValueError("collision publication needs a broad Assets index for the selected export root")
+    payload["entries"] = [row for row in payload["entries"] if "cl" not in row]
+    counts = Counter(row["k"] for row in payload["entries"])
+    payload["counts"] = {"total": len(payload["entries"]), **{kind: counts[kind] for kind in ("image", "model", "video")}}
+    payload["sourceRoots"].pop("Collision", None)
+    collision = publish_collision_previews(args.collision_corpus, root=ROOT, asset_dir=ASSET_DIR,
+                                            summary_path=args.collision_vfs_summary)
+    add_collision_publication(payload, collision)
+    payload["generated"] = int(time.time())
+    if hashlib.sha256(index_path.read_bytes()).digest() != hashlib.sha256(original).digest():
+        raise ValueError("Assets index changed during collision publication; rerun against its new publication")
+    write_json(index_path, payload)
+    print("Collision previews:", collision["status"], collision.get("counts", collision.get("diagnostic", "")), flush=True)
 
 
 def report_story_media(stats: dict) -> None:

@@ -22,7 +22,7 @@
   const REF_TEXTS = {
     zh: {
       tab: "\u6587\u672c",
-      title: "\u6587\u672c\u8868",
+      title: "\u6587\u672c\u8868\u683c",
       countLabel: "\u5f20\u8868",
       search: "\u641c\u7d22\u8868 / ID / \u6587\u672c",
       showFilters: "\u663e\u793a\u7b5b\u9009",
@@ -140,7 +140,6 @@
     loadingIndex: null,
     facets: null,
     collapsedTablePrefixes: new Set(),
-    pager: null,
     rowPager: null,
     rowPagerKey: "",
     // Row id a maintained structured-field reference asked to focus after the
@@ -563,7 +562,7 @@
       onChange: () => {
         REF_STATE.focusRowId = "";
         REF_STATE.rowPagerKey = "";
-        REF_STATE.pager?.reset();
+        window.WebUI.continuousList.reset(ref$("#reference-list"));
         renderReferenceList();
         renderReferenceRows();
       },
@@ -781,16 +780,13 @@
     syncReferenceFilterSectionActiveCounts();
     const sourceKey = sourceFilterKey();
     const rows = filteredTables().slice().sort(window.WebUI.sorting.comparator("reference-sort", compareReferenceTablesForList));
-    REF_STATE.pager?.setTotal(rows.length);
-    const pageRows = REF_STATE.pager ? REF_STATE.pager.slice(rows) : rows;
-    list.replaceChildren();
     ref$("#reference-count").textContent = String(REF_STATE.tables.length || 0);
     ref$("#reference-shown").textContent = String(rows.length);
     ref$("#reference-total").textContent = String(REF_STATE.tables.length || 0);
 
     const sections = [];
     let current = null;
-    for (const table of pageRows) {
+    for (const table of rows) {
       const prefix = tablePrefix(table);
       if (!current || current.prefix !== prefix) {
         current = { prefix, tables: [] };
@@ -799,16 +795,18 @@
       current.tables.push(table);
     }
 
-    const fragment = document.createDocumentFragment();
+    const visible = [];
     for (const section of sections) {
-      const collapsed = tablePrefixIsCollapsed(section.prefix);
-      fragment.appendChild(renderReferencePrefixHeading(section.prefix, section.tables.length, collapsed));
-      if (collapsed) continue;
-      for (const table of section.tables) {
-        fragment.appendChild(renderReferenceTableRow(table, q, sourceKey));
-      }
+      visible.push(section);
+      if (!tablePrefixIsCollapsed(section.prefix)) visible.push(...section.tables);
     }
-    list.appendChild(fragment);
+    window.WebUI.continuousList.render(list, visible, (row) => row.tables
+      ? renderReferencePrefixHeading(row.prefix, row.tables.length, tablePrefixIsCollapsed(row.prefix))
+      : renderReferenceTableRow(row, q, sourceKey), {
+      estimateHeight: (row) => row.tables ? 32 : 80,
+      keyOf: (row) => row.tables ? `prefix:${row.prefix}` : referenceTableKey(row),
+    });
+    window.WebUI.locateCurrent?.sync(ref$("#reference-locate-current"), Boolean(REF_STATE.selectedTable));
   }
 
   async function selectReferenceTable(table) {
@@ -869,15 +867,33 @@
     target.scrollIntoView({ block: "center" });
   }
 
-  function renderReferenceFieldValue(field) {
+  function renderReferenceFieldValue(field, options = {}) {
     const node = document.createElement("div");
     node.className = "reference-field-value";
     const ref = field && field.ref;
     const value = String(field?.value ?? "");
     const display = field && field.name ? String(field.name) : value;
     const quantity = field && field.quantity !== undefined ? ` × ${field.quantity}` : "";
+    if (ref?.table === 'ItemTable') {
+      const link = document.createElement('a'); link.className = 'reference-field-link';
+      link.href = window.WebUI.gameplayTabs.pageUrl('item', String(ref.row));
+      link.textContent = display + quantity;
+      link.addEventListener('click', (event) => {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault(); window.WebUI.gameplayTabs.open('item', String(ref.row));
+      });
+      node.appendChild(link);
+      return node;
+    }
     if (!ref) {
-      node.textContent = value + quantity;
+      node.innerHTML = window.renderDisplayedTextHtml(value + quantity, "");
+      return node;
+    }
+    const external = field.resolved === true && options.resolveReference?.(field);
+    if (external?.href) {
+      const link = document.createElement('a'); link.className = 'reference-field-link';
+      link.href = external.href; link.textContent = external.label || display;
+      node.appendChild(link);
       return node;
     }
     const target = referenceTableByStem(ref.table);
@@ -906,7 +922,7 @@
     else if (!target) parts.push(refText("fieldRefMissing"));
     note.textContent = parts.join(" | ");
     if (!resolved) note.classList.add("is-unresolved");
-    node.appendChild(note);
+    if (!options.compact) node.appendChild(note);
     return node;
   }
 
@@ -948,33 +964,43 @@
     const heading = document.createElement("div");
     heading.className = "reference-fields-title";
     heading.textContent = refText(guide.kind === "achievement" ? "guideAchievement" : guide.kind === "reward" ? "guideReward" : "guideActivity");
-    block.appendChild(heading);
+    if (!options.compact) block.appendChild(heading);
     const note = document.createElement("p");
     note.className = "reference-field-ref";
     note.textContent = refText("guideBoundary");
-    block.appendChild(note);
+    if (!options.compact) block.appendChild(note);
     for (const group of guide.sections) {
       const section = document.createElement("section");
       section.className = "reference-fields reference-guide-section";
+      section.dataset.guideLabel = group.label || "";
       const title = document.createElement("div");
       title.className = "reference-fields-title";
       title.textContent = referenceFieldLabel(group);
       title.title = String(group.path || "");
-      section.appendChild(title);
+      if (!(options.hideConfigurationHeading && group.label === 'Activity configuration')) section.appendChild(title);
       if (group.title) {
         const description = document.createElement("p");
-        description.textContent = group.title;
+        description.innerHTML = window.renderDisplayedTextHtml(group.title, "");
         section.appendChild(description);
       }
       let technical = null;
+      let rewardTags = null;
       for (const field of group.fields || []) {
+        if (options.compact && field.technical) continue;
+        if (options.renderRewardTag && field.ref?.table === 'ItemTable' && field.quantity !== undefined) {
+          if (!rewardTags) {
+            rewardTags = document.createElement('div'); rewardTags.className = 'item-reward-tags';
+          }
+          rewardTags.appendChild(options.renderRewardTag(field));
+          continue;
+        }
         const line = document.createElement("div");
         line.className = "reference-field";
         const label = document.createElement("div");
         label.className = "reference-field-label";
         label.textContent = referenceFieldLabel(field);
         label.title = String(field.field || "");
-        line.append(label, renderReferenceFieldValue(field));
+        line.append(label, renderReferenceFieldValue(field, options));
         options.decorateField?.(line, field);
         if (field.technical) {
           if (!technical) {
@@ -989,6 +1015,7 @@
           section.appendChild(line);
         }
       }
+      if (rewardTags) section.appendChild(rewardTags);
       block.appendChild(section);
     }
     item.appendChild(block);
@@ -1056,7 +1083,7 @@
         textNode.innerHTML =
           `<div class="reference-text-field">${escapeHtml(label)}</div>` +
           `<div class="reference-text-path">${escapeHtml(text.path || "")}${text.i18nId ? " | " + escapeHtml(text.i18nId) : ""}</div>` +
-          `<div class="reference-text-body">${escapeHtml(text.text || "")}</div>`;
+          `<div class="reference-text-body">${window.renderDisplayedTextHtml(text.text || "", "")}</div>`;
         body.appendChild(textNode);
       }
     };
@@ -1264,7 +1291,7 @@
     if (reset) reset.addEventListener("click", resetReferenceFilters);
     const q = ref$("#reference-q");
     if (q) q.addEventListener("input", () => {
-      REF_STATE.pager?.reset();
+      window.WebUI.continuousList.reset(ref$("#reference-list"));
       renderReferenceList();
       renderReferenceRows();
     });
@@ -1285,25 +1312,33 @@
     });
   }
 
+  function locateReferenceTable() {
+    const selected = REF_STATE.selectedTable;
+    if (!selected) return null;
+    const key = referenceTableKey(selected);
+    const rows = filteredTables().slice().sort(window.WebUI.sorting.comparator("reference-sort", compareReferenceTablesForList));
+    const index = rows.findIndex((table) => referenceTableKey(table) === key);
+    if (index < 0) return null;
+    REF_STATE.collapsedTablePrefixes.delete(tablePrefixCollapseKey(tablePrefix(selected)));
+    renderReferenceList();
+    window.WebUI.continuousList.reveal(ref$("#reference-list"), selected);
+    return ref$("#reference-list .reference-table-row.is-selected");
+  }
+
   function initReference() {
-    const sort = document.createElement("select");
-    sort.id = "reference-sort";
+    const sort = ref$("#reference-sort");
     const refreshSortLabels = () => {
       const en = window.WEBUI_UI_LOCALE === "en";
+      ref$("#reference-sort-label").textContent = en ? "Sort" : "排序";
       sort.replaceChildren(new Option(en ? "Type and name" : "类型和名称", "default"), new Option(en ? "Name" : "名称", "name"));
     };
     refreshSortLabels();
-    ref$("#reference-q")?.parentElement.after(sort);
-    sort.addEventListener("change", () => { REF_STATE.pager?.reset(); renderReferenceList(); });
+    sort.addEventListener("change", () => { window.WebUI.continuousList.reset(ref$("#reference-list")); renderReferenceList(); });
     window.addEventListener("webui:ui-locale-changed", () => { const value = sort.value; refreshSortLabels(); sort.value = value; });
     ensureReferencePanelToggle();
-    REF_STATE.pager = window.WebUI.pagination?.createPager({
-      container: "#reference-pager",
-      storageKey: "reference_browser_page_size",
-      onChange: renderReferenceList,
-    });
     applyReferenceStrings();
     bindReferenceEvents();
+    window.WebUI.locateCurrent?.bind(ref$("#reference-locate-current"), locateReferenceTable, () => ref$("#reference-left"));
     maybeLoadReference();
   }
 
@@ -1319,6 +1354,9 @@
     },
     render(item, row, options = {}) {
       const hasGuide = renderReferenceGuide(item, row, options);
+      // A compact guide can intentionally become empty after its useful text
+      // moves to the page header. Do not fall back to duplicate raw fields.
+      if (options.compact && Array.isArray(row.guide?.sections)) return;
       renderReferenceFields(item, row, options);
       let host = item;
       if (hasGuide && row.texts?.length) {

@@ -12,8 +12,9 @@ bundle that carries it, so the same mesh bytes repeat dozens of times across
 files that are never byte-identical. An FBX row therefore stores its binary
 node tree with every large property block (``FBX_CHUNK_MIN`` bytes or more:
 vertex, index, normal, UV and skin arrays) cut out into the shared ``chunks``
-table, keyed by SHA256 and stored once; the row keeps the zlib-compressed
-remainder and where each chunk goes back. :meth:`UnityObjectStore.read_bytes`
+table, keyed by SHA256 and stored once. The packed document (the
+zlib-compressed remainder and where each chunk goes back) is itself a chunk
+and the row holds only its SHA256, so identical exports are stored once. :meth:`UnityObjectStore.read_bytes`
 rejoins them, so a reader still gets the exported file byte for byte, and
 ``serve.py`` answers the path as before.
 
@@ -70,6 +71,7 @@ from typing import Any, Iterable, Iterator, Mapping
 if __package__ in {None, ""}:
     raise SystemExit("Run as: python -m scripts.game_data.unity_store")
 
+from scripts.game_data.fbx_normalize import normalize_fbx
 from scripts.source_paths import ExportLayout
 
 STORE_SCHEMA = "endfield.unity-object-store.v1"
@@ -85,6 +87,10 @@ ZLIB_LEVEL = 6
 FBX_CHUNK_MIN = 256
 #: Prefix of a chunked FBX row. A plain row is a zlib stream, which starts with 0x78.
 _FBX_PACKED_MAGIC = b"\x00EFXP1"
+#: Prefix of a shared FBX row: the SHA256 of its packed document follows, and
+#: the packed document itself is stored once in ``chunks`` under that key, so
+#: exports that normalize to the same bytes keep a single copy.
+_FBX_SHARED_MAGIC = b"\x00EFXS1"
 _FBX_MAGIC = b"Kaydara FBX Binary  \x00"
 _FBX_INSERT = struct.Struct("<Q32s")
 #: meta key listing source documents the v2 packer could not read and the
@@ -194,7 +200,17 @@ def _encode_document(name: str, data: bytes) -> tuple[bytes, tuple[tuple[bytes, 
         cursor = end
     remainder += data[cursor:]
     blob = _FBX_PACKED_MAGIC + bytes(inserts) + zlib.compress(bytes(remainder), ZLIB_LEVEL)
-    return blob, tuple(chunks.items())
+    return _share_packed(blob, chunks)
+
+
+def _share_packed(
+    blob: bytes, chunks: dict[bytes, bytes] | None = None
+) -> tuple[bytes, tuple[tuple[bytes, bytes], ...]]:
+    """A shared row for a packed document, which joins its ``chunks`` after its own inserts."""
+    digest = hashlib.sha256(blob).digest()
+    items = dict(chunks or {})
+    items[digest] = blob
+    return _FBX_SHARED_MAGIC + digest, tuple(items.items())
 
 
 def _packed_inserts(blob: bytes) -> tuple[list[tuple[int, bytes]], int]:
@@ -208,6 +224,12 @@ def _packed_inserts(blob: bytes) -> tuple[list[tuple[int, bytes]], int]:
 
 def _decode_document(connection: sqlite3.Connection, blob: bytes) -> bytes:
     """The exact document bytes of one row's ``data`` blob."""
+    if blob.startswith(_FBX_SHARED_MAGIC):
+        digest = bytes(blob[len(_FBX_SHARED_MAGIC):])
+        found = connection.execute("SELECT data FROM chunks WHERE sha256 = ?", (digest,)).fetchone()
+        if found is None:
+            raise UnityStoreError("the packed FBX document a shared row references is missing from the store")
+        blob = found[0]
     if not blob.startswith(_FBX_PACKED_MAGIC):
         return zlib.decompress(blob)
     inserts, remainder_start = _packed_inserts(blob)
@@ -661,6 +683,10 @@ def _prepare(name: str, path: Path) -> _Prepared:
 
 
 def _prepare_bytes(name: str, data: bytes, mtime_ns: int) -> _Prepared:
+    if name.lower().endswith(".fbx"):
+        # Same content, same bytes: drops the SDK's per-write stamps and ids,
+        # so content-identical exports dedup by hash. Size is preserved.
+        data = normalize_fbx(data)
     blob, chunks = _encode_document(name, data)
     return _Prepared(
         name=name,
@@ -926,15 +952,42 @@ class UnityObjectStoreWriter:
             return 0
         connection.execute("CREATE TEMP TABLE IF NOT EXISTS chunk_refs (sha256 BLOB PRIMARY KEY) WITHOUT ROWID")
         connection.execute("DELETE FROM temp.chunk_refs")
-        head = len(_FBX_PACKED_MAGIC)
-        rows = connection.execute(
-            "SELECT data FROM objects WHERE name LIKE '%.fbx' AND substr(data, 1, ?) = ?", (head, _FBX_PACKED_MAGIC)
-        )
-        for (blob,) in rows:
-            inserts, _start = _packed_inserts(blob)
-            connection.executemany(
-                "INSERT OR IGNORE INTO temp.chunk_refs (sha256) VALUES (?)", ((digest,) for _position, digest in inserts)
+        def keep(digests: Any) -> None:
+            connection.executemany("INSERT OR IGNORE INTO temp.chunk_refs (sha256) VALUES (?)", ((d,) for d in digests))
+
+        head = len(_FBX_SHARED_MAGIC)
+        shared = {
+            bytes(blob[head:head + 32])
+            for (blob,) in connection.execute(
+                "SELECT data FROM objects WHERE name LIKE '%.fbx' AND substr(data, 1, ?) = ?", (head, _FBX_SHARED_MAGIC)
             )
+        }
+        keep(shared)
+        # A packed document's inserts sit in its header; read only that much,
+        # and re-read the rare header longer than the window in full.
+        header = len(_FBX_PACKED_MAGIC) + 4 + _FBX_INSERT.size * 4096
+
+        def keep_inserts(rows: Any, reread: str) -> None:
+            for key, blob in rows:
+                if len(blob) == header:
+                    count = struct.unpack_from("<I", blob, len(_FBX_PACKED_MAGIC))[0]
+                    needed = len(_FBX_PACKED_MAGIC) + 4 + count * _FBX_INSERT.size
+                    if needed > header:
+                        blob = connection.execute(reread, (needed, key)).fetchone()[0]
+                inserts, _start = _packed_inserts(blob)
+                keep(digest for _position, digest in inserts)
+
+        keep_inserts(list(connection.execute(
+            "SELECT rowid, substr(data, 1, ?) FROM objects WHERE name LIKE '%.fbx' AND substr(data, 1, ?) = ?",
+            (header, len(_FBX_PACKED_MAGIC), _FBX_PACKED_MAGIC),
+        )), "SELECT substr(data, 1, ?) FROM objects WHERE rowid = ?")
+        wanted = list(shared)
+        for start in range(0, len(wanted), 500):
+            batch = wanted[start:start + 500]
+            keep_inserts(list(connection.execute(
+                f"SELECT sha256, substr(data, 1, ?) FROM chunks WHERE sha256 IN ({','.join('?' * len(batch))})",
+                [header, *batch],
+            )), "SELECT substr(data, 1, ?) FROM chunks WHERE sha256 = ?")
         removed = connection.execute(
             "DELETE FROM chunks WHERE sha256 NOT IN (SELECT sha256 FROM temp.chunk_refs)"
         ).rowcount
@@ -958,6 +1011,55 @@ class UnityObjectStoreWriter:
         self.connection.close()
         self.connection = None  # type: ignore[assignment]
         UnityObjectStore.clear_cache()
+
+
+def normalize_stored_fbx(path: Path, *, batch: int = 200, progress: Any = None) -> dict[str, int]:
+    """Rewrite stored ``.fbx`` rows that predate :func:`normalize_fbx` or shared rows, in place.
+
+    A row whose bytes are already normalized but whose packed document still
+    sits in the row is moved into ``chunks`` without decoding it again.
+    Resumable: rows already shared are skipped by their prefix alone.
+    """
+    changed = shared = 0
+    head = len(_FBX_SHARED_MAGIC)
+    with UnityObjectStoreWriter(Path(path)) as writer:
+        # The reader must be closed before the writer's close switches the
+        # journal mode, which needs the database to itself.
+        reader = UnityObjectStore(Path(path))
+        try:
+            connection = reader._connection()
+            targets = connection.execute(
+                "SELECT type, name, mtime_ns FROM objects WHERE name LIKE '%.fbx' AND substr(data, 1, ?) != ? "
+                "ORDER BY type, name",
+                (head, _FBX_SHARED_MAGIC),
+            ).fetchall()
+            for start in range(0, len(targets), batch):
+                pending: dict[str, list[_Prepared]] = {}
+                moves: list[tuple[bytes, str, str]] = []
+                for type_name, name, mtime_ns in targets[start:start + batch]:
+                    blob = connection.execute(
+                        "SELECT data FROM objects WHERE type=? AND name=?", (type_name, name)
+                    ).fetchone()[0]
+                    data = _decode_document(connection, blob)
+                    if normalize_fbx(data) != data:
+                        pending.setdefault(type_name, []).append(_prepare_bytes(name, data, mtime_ns))
+                        continue
+                    if not blob.startswith(_FBX_PACKED_MAGIC):
+                        continue  # too small to chunk; a plain zlib row has nothing to share
+                    row_blob, chunks = _share_packed(blob)
+                    writer.connection.executemany("INSERT OR IGNORE INTO chunks (sha256, data) VALUES (?, ?)", chunks)
+                    moves.append((row_blob, type_name, name))
+                for type_name, prepared in pending.items():
+                    writer._insert(type_name, prepared)
+                    changed += len(prepared)
+                writer.connection.executemany("UPDATE objects SET data=? WHERE type=? AND name=?", moves)
+                shared += len(moves)
+                writer.connection.commit()
+                if progress:
+                    progress(min(start + batch, len(targets)), len(targets))
+        finally:
+            reader.close()
+    return {"fbx": len(targets), "rewritten": changed, "shared": shared}
 
 
 def verify_store(path: Path, *, jobs: int = 8, schema: str = STORE_SCHEMA) -> dict[str, Any]:
@@ -1034,6 +1136,7 @@ def main(argv: list[str] | None = None) -> int:
     extract.add_argument("--out", type=Path, required=True)
     verify = sub.add_parser("verify", help="Check every row against its SHA256.")
     verify.add_argument("--jobs", type=int, default=8)
+    sub.add_parser("normalize-fbx", help="Make stored FBX deterministic (fbx_normalize) so equal content dedups.")
     args = parser.parse_args(argv)
 
     try:
@@ -1058,6 +1161,14 @@ def main(argv: list[str] | None = None) -> int:
                 print("\t".join("" if value is None else str(value) for value in row))
         elif args.command == "extract":
             print(f"wrote {store.export(args.type, args.pattern, args.out)} file(s) under {args.out / args.type}")
+        elif args.command == "normalize-fbx":
+            path = store.path
+            store.close()
+            report = normalize_stored_fbx(
+                path, progress=lambda done, total: print(f"{done}/{total}", end="\r", file=sys.stderr, flush=True)
+            )
+            print(file=sys.stderr)
+            print(json.dumps(report))
         elif args.command == "verify":
             report = verify_store(store.path, jobs=args.jobs)
             print(json.dumps(report, indent=2))

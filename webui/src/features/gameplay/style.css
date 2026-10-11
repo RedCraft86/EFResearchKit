@@ -1,23 +1,23 @@
-/* Shared dataset navigation over the entity and production catalog panes. */
+/* Shared dataset navigation over the entity and item catalog panes. */
 #gameplay-view { display: flex; flex-direction: column; }
-#gameplay-view[hidden], #gameplay-app[hidden], #production-app[hidden] { display: none; }
-.gameplay-catalog-header { flex: 0 0 auto; padding: 12px 16px 8px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
-.gameplay-catalog-header h1 { margin: 0 0 8px; font-size: 18px; }
-#gameplay-view > #gameplay-app, #gameplay-view > #production-app { flex: 1 1 0; height: auto; min-height: 0; }
-.production-gameplay-item { margin-top: 20px; }
+#gameplay-view[hidden], #gameplay-app[hidden], #gameplay-items-app[hidden], #battle-stages-app[hidden], #activities-app[hidden] { display: none; }
+.gameplay-catalog-header { flex: 0 0 auto; padding: 14px 16px 8px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+.gameplay-catalog-header h1 { margin: 0 0 4px; }
+#gameplay-view > #gameplay-app, #gameplay-view > #gameplay-items-app, #gameplay-view > #battle-stages-app, #gameplay-view > #activities-app { flex: 1 1 0; height: auto; min-height: 0; }
+.gameplay-items-gameplay-item { margin-top: 20px; }
+
+/* Character view controls follow the name; facts keep the shared metadata line. */
+#gameplay-detail-title.has-view-switch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+#gameplay-detail-title > span { min-width: 0; }
+#gameplay-detail-title .gameplay-view-switch { flex-shrink: 0; margin: 0; }
+#gameplay-detail-title .gameplay-view-switch-button { font-size: 12px; padding: 3px 10px; }
 
 /* Character and enemy reading views; other Gameplay kinds keep their layout. */
-.gameplay-overview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 28px;
-  margin: 12px 0 4px;
-  font-family: var(--sans);
-}
-.gameplay-overview > div { min-width: 56px; }
-.gameplay-overview dt { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
-.gameplay-overview dd { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-.gameplay-source-meta { margin-bottom: 0; overflow-wrap: anywhere; }
 .gameplay-contents {
   display: flex;
   flex-wrap: wrap;
@@ -39,8 +39,14 @@
 }
 .gameplay-contents button:hover, .gameplay-variant-options button:hover { background: var(--hover); color: var(--text); }
 .gameplay-reading-view [data-gameplay-section] { scroll-margin-top: 18px; }
+.gameplay-heading-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.gameplay-heading-links[hidden] { display: none; }
 .gameplay-reading-view > .gameplay-section { padding-top: 24px; }
 .gameplay-reading-view .gameplay-section-title { letter-spacing: .02em; font-size: 16px; margin-bottom: 16px; }
+.gameplay-catalog-reading-view > .gameplay-section + .gameplay-section { border-top: 0; }
+.gameplay-gem-term-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.gameplay-gem-term-column { min-width: 0; }
+.gameplay-gem-term-column .chips { flex-wrap: wrap; }
 .gameplay-reading-view .gameplay-skill-notes { padding: 0; list-style: none; margin: 0 0 16px; }
 .gameplay-reading-view .gameplay-skill-notes li + li { margin-top: 6px; }
 .gameplay-reading-view .gameplay-skill-blocks { gap: 16px; }
@@ -98,8 +104,6 @@
 .gameplay-reading-view .gameplay-effect-summary { padding: 15px; }
 .gameplay-effect-summary .gameplay-buff-card-head { margin-bottom: 14px; }
 @media (max-width: 700px) {
-  .gameplay-overview { gap: 10px 20px; }
-  .gameplay-overview dd { font-size: 13px; }
   .gameplay-reading-view .gameplay-skill-block { padding: 13px; }
   .gameplay-reading-view .gameplay-skill-block-head { flex-wrap: wrap; }
   .gameplay-reading-view .gameplay-level-slider-control { flex-wrap: wrap; max-width: 100%; }
@@ -108,3 +112,50 @@
   .gameplay-reading-view .gp-skill-refs-content { padding: 10px; }
   .gameplay-mechanic-row { grid-template-columns: 5em minmax(0, 1fr); gap: 8px; font-size: 12px; }
 }
+
+/* One detail shell for entity, catalog and combat-stage renderers. */
+.gameplay-detail-heading,
+#gameplay-detail-header.gameplay-detail-heading,
+#battle-detail-header.gameplay-detail-heading {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  padding: 14px 22px 10px;
+  align-items: flex-start;
+  gap: 12px;
+  border-bottom: 0;
+  background: transparent;
+}
+.gameplay-heading-identity { display: flex; align-items: flex-start; gap: 18px; min-width: 0; flex: 1; }
+.gameplay-heading-content { min-width: 0; flex: 1; }
+.gameplay-heading-picture { width: 88px; flex: 0 0 88px; }
+.gameplay-heading-picture img { width: 88px; height: 88px; object-fit: contain; }
+.gameplay-heading-title,
+#gameplay-detail-title.gameplay-heading-title,
+#battle-detail-title.gameplay-heading-title,
+.gameplay-items-detail-header .gameplay-heading-title { margin: 4px 0 8px; font-size: 25px; font-weight: 700; letter-spacing: .01em; overflow-wrap: anywhere; }
+.gameplay-heading-meta { margin-top: 4px; color: var(--muted); font-size: 12px; font-family: ui-monospace, "SF Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.gameplay-reading-view > .gameplay-section + .gameplay-section { border-top: 0; }
+.gameplay-catalog-reading-view .gameplay-items-section { margin: 24px 0; }
+.gameplay-catalog-reading-view .gameplay-section-title { font-size: 16px; letter-spacing: .02em; margin-bottom: 16px; }
+.gameplay-catalog-reading-view .gameplay-section + .gameplay-section { border-top: 0; }
+.gameplay-catalog-reading-view .gameplay-items-description,
+.gameplay-catalog-reading-view .gameplay-items-machine-recipe { font-size: 13px; line-height: 1.85; }
+.gameplay-catalog-reading-view .gameplay-items-references { gap: 12px; }
+@media (max-width: 760px) {
+  .gameplay-detail-heading,
+  #gameplay-detail-header.gameplay-detail-heading,
+  #battle-detail-header.gameplay-detail-heading {
+    flex-direction: column; align-items: stretch; margin: 0 0 12px; padding: 0 0 10px;
+  }
+  .gameplay-heading-title,
+  #gameplay-detail-title.gameplay-heading-title,
+  #battle-detail-title.gameplay-heading-title,
+  .gameplay-items-detail-header .gameplay-heading-title { font-size: 21px; }
+  .gameplay-heading-identity { gap: 12px; }
+}
+
+/* Entity and catalog sidebars use the same header component. */
+.gameplay-sidebar-header { padding: 14px 16px 8px; border-bottom: 1px solid var(--border); }
+.gameplay-sidebar-stats { color: var(--muted); font-size: 12px; }

@@ -20,7 +20,7 @@
 // group chips is on, or when nothing is selected at all; within a listed
 // source, selected groups narrow it and no selected group means all of them.
 // The list is the listed sources in order (Unity, packed, loose, undecoded, decoded),
-// paged as one sequence. Decode status, source folder and tag filters apply to
+// continuously virtualized as one sequence. Decode status, source folder and tag filters apply to
 // decoded records and are shown only while decoded datasets are selected.
 //
 // SQL runs one read-only statement over a store. A static package has no
@@ -139,15 +139,18 @@
     selectionRestored: false,
     decodedMatcher: () => true,
     total: 0,
-    offset: 0,
     rows: [],
-    tops: [],
     height: 0,
+    scrollScale: 1,
     segments: [],
     loading: false,
     error: "",
     reqToken: 0,
-    pager: null,
+    resident: new Map(),
+    blocks: new Map(),
+    pendingBlocks: new Map(),
+    failedBlocks: new Set(),
+    selectedIndex: -1,
     filterPanel: null,
     selected: null,
     autoSelect: null,
@@ -478,7 +481,7 @@
 
   // Apply a deep link: its selection, search and target row. A store row is
   // found by setting the search to its name; a decoded record by listing its
-  // dataset. The exact row is selected once its page arrives.
+  // dataset. The exact row is selected once its viewport block arrives.
   function applyLink(link) {
     page.lastAppliedLink = linkKey(link);
     const mode = link.mode === "sql" && apiAvailable() ? "sql" : "files";
@@ -495,10 +498,8 @@
         ? { kind: "decoded", datasetId: link.inspectDataset, recordId: link.inspect }
         : link.name ? { kind: "store", name: link.name } : null;
       files.pathIdHits = null;
-      files.offset = 0;
       files.rows = [];
       files.error = "";
-      files.pager?.reset();
       if (page.rendered.files) renderFilesPane();
     }
     setMode(mode);
@@ -652,7 +653,6 @@
     files.autoSelect = null;
     syncFieldSelect();
     renderHits();
-    files.pager?.reset();
     fetchRows();
   }
 
@@ -711,7 +711,7 @@
       <div class="data-inspector-shell data-page-shell">
         <aside id="data-files-left" class="data-page-left">
           <header>
-            <h1>${esc(ui("Data", "数据"))}</h1>
+            <h1>${esc(ui("Data Decoding", "数据解码"))}</h1>
             ${modeSwitchHtml("files")}
             <div id="data-files-stats" class="data-page-stats"></div>
             <div class="sidebar-header-actions">
@@ -721,7 +721,7 @@
           </header>
           <div id="data-files-filter-panel" class="filters">
             <section class="filter-section filter-section-basic" data-filter-section="data-files-basic" data-fixed-open="1">
-              <div class="filter-section-title"><span data-filter-section-label>${esc(ui("Search", "搜索"))}</span></div>
+              <div class="filter-section-title"><span data-filter-section-label>${esc(ui("Basic filters", "基础筛选"))}</span></div>
               <div class="filter-section-body filter-section-body-stack">
                 <div id="data-files-root-row" class="filter-control-row" hidden>
                   <label for="data-files-root">${esc(ui("Export", "导出"))}</label>
@@ -729,6 +729,10 @@
                 </div>
                 <input id="data-files-q" type="search" autocomplete="off" spellcheck="false" value="${esc(files.query)}"
                   placeholder="${esc(ui("Search the selected sources", "在所选来源中搜索"))}">
+                <div id="data-files-sort-row" class="filter-control-row" hidden>
+                  <label for="data-files-sort">${esc(ui("Sort", "排序"))}</label>
+                  <select id="data-files-sort"></select>
+                </div>
                 <div class="filter-control-row">
                   <label for="data-files-field">${esc(ui("Match", "匹配"))}</label>
                   <select id="data-files-field"></select>
@@ -745,11 +749,6 @@
               </div>
             </section>
             <div id="data-files-decoded-filters" class="data-files-decoded-filters" hidden>
-              ${filterSectionHtml("data-files-decoded-sort", ui("Decoded record order", "解码记录排序"), `
-                <div class="filter-control-row">
-                  <label for="data-files-sort">${esc(ui("Sort", "排序"))}</label>
-                  <select id="data-files-sort"></select>
-                </div>`, { collapsed: false })}
               ${filterSectionHtml("data-files-status", ui("Decode status", "解码状态"), '<div id="data-files-status-filter" class="chips" data-multi="1"></div>')}
               ${filterSectionHtml("data-files-folder", ui("Source folder", "源文件目录"), '<div id="data-files-folder-filter" class="chips" data-multi="1"></div>')}
               ${filterSectionHtml("data-files-tag", ui("Tags", "标签"), '<div id="data-files-tag-filter" class="chips" data-multi="1"></div>')}
@@ -762,10 +761,13 @@
             <div id="data-files-list-spacer"></div>
             <div id="data-files-list" class="data-page-list" role="listbox" aria-label="${esc(ui("Rows", "行"))}" tabindex="-1"></div>
           </div>
-          <footer id="data-files-pager"></footer>
+
         </aside>
         <div id="data-files-splitter" class="pane-splitter" role="separator" aria-label="${esc(ui("Resize sidebar", "调整侧栏宽度"))}" aria-orientation="vertical" tabindex="0"></div>
-        <main id="data-files-right" class="data-page-right"></main>
+        <main class="data-page-right">
+          <div class="locate-toolbar data-files-locate"><button id="data-files-locate-current" class="locate-current-button" type="button" disabled></button></div>
+          <div id="data-files-right"></div>
+        </main>
       </div>`;
     bindFilesEvents(pane);
     shell().bindFilterSections?.(pane);
@@ -787,11 +789,6 @@
       paneStorageKey: PANE_STORAGE_KEY,
       filterStorageKey: FILES_FILTER_HEIGHT_KEY,
     });
-    files.pager = WebUI.pagination?.createPager({
-      container: $("#data-files-pager", pane),
-      storageKey: FILES_PAGE_SIZE_KEY,
-      onChange: () => fetchRows(),
-    }) || null;
     syncRootSelects();
     syncSortSelect();
     renderStats();
@@ -800,8 +797,6 @@
     renderHits();
     renderViewer();
     if (!fetch) {
-      files.pager?.setTotal(files.total);
-      files.pager?.showIndex(files.offset);
       renderListMeta();
       applyListRows({ resetScroll: false });
     } else {
@@ -815,7 +810,6 @@
     updateMatcher();
     renderFacets();
     renderHits();
-    files.pager?.reset();
   }
 
   function bindFilesEvents(pane) {
@@ -839,7 +833,6 @@
     });
     $("#data-files-sort", pane)?.addEventListener("change", (event) => {
       files.sort = SORTS.includes(event.target.value) ? event.target.value : "path";
-      files.pager?.reset();
       fetchRows();
     });
     $("#data-files-root", pane)?.addEventListener("change", (event) => {
@@ -877,15 +870,19 @@
     });
     $("#data-files-list", pane)?.addEventListener("keydown", (event) => {
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-      const index = files.rows.findIndex((item) => rowKey(item) === selectedKey());
+      const index = findLoaded((item) => rowKey(item) === selectedKey());
       const next = index + (event.key === "ArrowDown" ? 1 : -1);
       if (next < 0 || next >= files.rows.length) return;
       event.preventDefault();
-      selectItem(files.rows[next]);
-      scrollRowIntoView(next);
-      requestAnimationFrame(() => $(`.data-inspector-row[data-row-index="${next}"]`, pane)?.focus());
+      const token = files.reqToken;
+      loadRange(next, next + 1, token).then(() => {
+        if (token !== files.reqToken || !files.rows[next]) return;
+        selectItem(files.rows[next]); scrollRowIntoView(next);
+        requestAnimationFrame(() => $(`.data-inspector-row[data-row-index="${next}"]`, pane)?.focus());
+      });
     });
     $("#data-files-right", pane)?.addEventListener("click", onViewerClick);
+    window.WebUI.locateCurrent?.bind($("#data-files-locate-current", pane), locateSelected, () => $("#data-files-left", pane));
     $("#data-files-hits", pane)?.addEventListener("click", (event) => {
       if (event.target.closest("[data-hits-close]")) {
         files.pathIdHits = null;
@@ -943,6 +940,7 @@
     const host = $("#data-files-decoded-filters", page.panes.files);
     if (!host) return;
     const shown = decodedFiltersShown() && decodedReady();
+    $("#data-files-sort-row", page.panes.files).hidden = !shown;
     if (host.hidden === !shown) return;
     host.hidden = !shown;
     window.dispatchEvent(new Event("resize"));
@@ -1065,97 +1063,122 @@
     return compare ? rows.sort(window.WebUI.sorting.comparator("data-files-sort", compare)) : rows;
   }
 
-  // One page of the listed sources, read as one sequence: each store segment
-  // is one /api/stores/rows request (the API caps a request at 1,000 rows, so
-  // a larger remainder is read in consecutive requests), and a segment the
-  // page does not reach is still asked for one row to learn its total.
+  // Discover source totals once, then fetch only blocks around the viewport.
+  // The scrollbar spans all matching records; the API still caps each read.
   async function fetchRows() {
     syncFilesUrl();
     const token = ++files.reqToken;
-    const facets = ensureFacets();
-    const sources = includedSources();
-    const pageSize = files.pager?.pageSize || WebUI.pagination?.DEFAULT_PAGE_SIZE || MAX_API_ROWS;
-    const start = (files.pager?.page || 0) * pageSize;
     files.loading = true;
-    renderListMeta();
-    let rows = [];
-    let cumulative = 0;
-    const segments = [];
-    const errors = [];
-    for (const source of sources) {
-      const offset = Math.max(0, start - cumulative);
-      if (source === "decoded") {
-        const list = decodedRows();
-        const want = pageSize - rows.length;
-        if (want > 0) rows = rows.concat(list.slice(offset, offset + want).map((entry) => ({ kind: "decoded", entry })));
-        segments.push({ source, start: cumulative, total: list.length, pending: page.decoded.status === "loading" });
-        cumulative += list.length;
+    files.resident.clear(); files.blocks.clear(); files.pendingBlocks.clear(); files.failedBlocks.clear();
+    files.selectedIndex = -1;
+    files.rows = []; files.segments = []; files.height = 0;
+    applyListRows({ resetScroll: true }); renderListMeta();
+    const facets = ensureFacets(), segments = [], errors = [];
+    let total = 0, top = 0;
+    for (const source of includedSources()) {
+      if (source === 'decoded') {
+        const entries = decodedRows();
+        segments.push({ source, start: total, top, total: entries.length, pending: page.decoded.status === 'loading' });
+        entries.forEach((entry, offset) => files.resident.set(total + offset, { kind: 'decoded', entry }));
+        total += entries.length; top += entries.length * DECODED_ROW_HEIGHT;
         continue;
       }
-      if (files.query && files.field !== "name" && source !== "unity") {
-        segments.push({ source, start: cumulative, total: 0, skipped: true });
-        continue;
+      if (files.query && files.field !== 'name' && source !== 'unity') {
+        segments.push({ source, start: total, top, total: 0, skipped: true }); continue;
       }
       try {
-        let total = 0;
-        let read = 0;
-        for (;;) {
-          const want = pageSize - rows.length;
-          const limit = Math.max(1, Math.min(MAX_API_ROWS, want));
-          const result = await storeApi("rows", {
-            root: files.root,
-            store: source,
-            group: [...facets.active(source)],
-            q: files.query,
-            field: files.query ? files.field : "name",
-            offset: offset + read,
-            limit,
-          });
-          if (token !== files.reqToken) return;
-          total = Number(result.total) || 0;
-          const batch = want > 0 ? (result.rows || []) : [];
-          rows = rows.concat(batch.map((row) => ({ kind: "store", store: source, row })));
-          read += batch.length;
-          if (want <= 0 || batch.length < limit) break;
-        }
-        segments.push({ source, start: cumulative, total });
-        cumulative += total;
+        const result = await storeApi('rows', {
+          root: files.root, store: source, group: [...facets.active(source)],
+          q: files.query, field: files.query ? files.field : 'name', offset: 0, limit: 1,
+        });
+        if (token !== files.reqToken) return;
+        const count = Number(result.total) || 0;
+        segments.push({ source, start: total, top, total: count });
+        total += count; top += count * STORE_ROW_HEIGHT;
       } catch (error) {
         if (token !== files.reqToken) return;
         errors.push(`${sourceLabel(source)}: ${error.message}`);
-        segments.push({ source, start: cumulative, total: 0, error: error.message });
+        segments.push({ source, start: total, top, total: 0, error: error.message });
       }
     }
-    files.loading = false;
-    files.rows = rows;
-    files.total = cumulative;
-    files.segments = segments;
-    files.offset = start;
-    files.error = errors.join("\n");
-    files.pager?.setTotal(cumulative);
-    if (files.pager && files.pager.page * pageSize !== start && cumulative > 0) {
-      // The total shrank below this page; the pager moved back, so refetch.
-      fetchRows();
-      return;
-    }
-    computeTops();
-    renderListMeta();
-    applyListRows({ resetScroll: true });
-    resolveAutoSelect();
+    if (token !== files.reqToken) return;
+    files.segments = segments; files.total = total; files.height = top;
+    files.rows = new Array(total);
+    for (const [index, item] of files.resident) files.rows[index] = item;
+    files.error = errors.join('\n'); files.loading = false;
+    await loadRange(0, Math.min(total, 50), token);
+    if (token !== files.reqToken) return;
+    renderListMeta(); applyListRows({ resetScroll: true }); resolveAutoSelect();
   }
 
-  function computeTops() {
-    let top = 0;
-    files.tops = files.rows.map((item) => {
-      const current = top;
-      top += item.kind === "decoded" ? DECODED_ROW_HEIGHT : STORE_ROW_HEIGHT;
-      return current;
-    });
-    files.height = top;
+  function findLoaded(predicate) {
+    for (const [index, item] of files.resident) if (predicate(item)) return index;
+    return -1;
   }
-
+  function segmentAt(index) {
+    return files.segments.find((segment) => index >= segment.start && index < segment.start + segment.total);
+  }
   function rowHeight(index) {
-    return files.rows[index]?.kind === "decoded" ? DECODED_ROW_HEIGHT : STORE_ROW_HEIGHT;
+    return segmentAt(index)?.source === 'decoded' ? DECODED_ROW_HEIGHT : STORE_ROW_HEIGHT;
+  }
+  function rowTop(index) {
+    const segment = segmentAt(index);
+    return segment ? segment.top + (index - segment.start) * rowHeight(index) : files.height;
+  }
+  async function loadRange(start, end, token = files.reqToken) {
+    const requests = [];
+    for (const segment of files.segments) {
+      if (segment.source === 'decoded' || !segment.total) continue;
+      const first = Math.max(start, segment.start), last = Math.min(end, segment.start + segment.total);
+      for (let index = first; index < last;) {
+        const offset = Math.floor((index - segment.start) / MAX_API_ROWS) * MAX_API_ROWS;
+        const blockKey = `${segment.source}:${offset}`;
+        index = segment.start + offset + MAX_API_ROWS;
+        if (files.blocks.has(blockKey)) {
+          const block = files.blocks.get(blockKey);
+          files.blocks.delete(blockKey); files.blocks.set(blockKey, block); continue;
+        }
+        if (files.pendingBlocks.has(blockKey)) { requests.push(files.pendingBlocks.get(blockKey)); continue; }
+        if (files.failedBlocks.has(blockKey)) continue;
+        const pending = (async () => {
+          try {
+            const result = await storeApi('rows', {
+              root: files.root, store: segment.source, group: [...ensureFacets().active(segment.source)],
+              q: files.query, field: files.query ? files.field : 'name', offset, limit: MAX_API_ROWS,
+            });
+            if (token !== files.reqToken) return;
+            const indices = [];
+            for (const [local, row] of (result.rows || []).entries()) {
+              const position = segment.start + offset + local;
+              const item = { kind: 'store', store: segment.source, row };
+              files.rows[position] = item; files.resident.set(position, item); indices.push(position);
+            }
+            files.blocks.set(blockKey, indices);
+            // Retain a bounded metadata cache, including the current selection.
+            while (files.blocks.size > 8) {
+              const oldest = files.blocks.keys().next().value;
+              for (const position of files.blocks.get(oldest)) {
+                if (position === files.selectedIndex) continue;
+                delete files.rows[position]; files.resident.delete(position);
+              }
+              files.blocks.delete(oldest);
+            }
+          } catch (error) {
+            if (token === files.reqToken) {
+              files.failedBlocks.add(blockKey);
+              files.error = `${sourceLabel(segment.source)}: ${error.message}`;
+              renderListMeta();
+            }
+          } finally {
+            if (token === files.reqToken) files.pendingBlocks.delete(blockKey);
+          }
+        })();
+        files.pendingBlocks.set(blockKey, pending); requests.push(pending);
+      }
+    }
+    if (!requests.length) return;
+    await Promise.all(requests);
+    if (token === files.reqToken) scheduleListRender();
   }
 
   function resolveAutoSelect() {
@@ -1166,26 +1189,16 @@
       let index = -1;
       if (wanted.kind === "decoded") {
         const entry = decodedApi()?.find(wanted.datasetId, wanted.recordId);
-        index = entry ? files.rows.findIndex((item) => item.kind === "decoded" && item.entry._key === entry._key) : -1;
-        if (index < 0 && entry && !wanted.moved) {
-          // The record is listed on another page: move there once.
-          const segment = files.segments.find((item) => item.source === "decoded");
-          const position = decodedRows().findIndex((candidate) => candidate._key === entry._key);
-          if (segment && position >= 0 && files.pager?.showIndex(segment.start + position)) {
-            files.autoSelect = { ...wanted, moved: true };
-            fetchRows();
-            return;
-          }
-        }
+        index = entry ? findLoaded((item) => item.kind === "decoded" && item.entry._key === entry._key) : -1;
         if (index < 0) {
           showViewerMessage(`${esc(ui("No decoded record", "未找到解码记录"))} <code>${esc(wanted.recordId)}</code>${
             wanted.datasetId ? ` (<code>${esc(wanted.datasetId)}</code>)` : ""} ${esc(ui("in the current list.", "（当前列表中）。"))}`, { error: true });
           return;
         }
       } else {
-        index = files.rows.findIndex((item) => item.kind === "store" && item.row.name === wanted.name);
+        index = findLoaded((item) => item.kind === "store" && item.row.name === wanted.name);
         if (index < 0) {
-          index = files.rows.findIndex((item) => item.kind === "store"
+          index = findLoaded((item) => item.kind === "store"
             && item.row.name.toLowerCase() === wanted.name.toLowerCase());
         }
         if (index < 0) {
@@ -1238,8 +1251,11 @@
 
   function applyListRows({ resetScroll = false } = {}) {
     const spacer = $("#data-files-list-spacer", page.panes.files);
-    if (spacer) spacer.style.height = `${files.height}px`;
     const wrap = $("#data-files-list-wrap", page.panes.files);
+    const viewport = wrap?.clientHeight || 600;
+    const scrollHeight = Math.min(files.height, 8000000);
+    files.scrollScale = files.height > scrollHeight ? (files.height - viewport) / (scrollHeight - viewport) : 1;
+    if (spacer) spacer.style.height = `${scrollHeight}px`;
     if (resetScroll && wrap) wrap.scrollTop = 0;
     renderList();
   }
@@ -1248,7 +1264,7 @@
     if (files.renderFrame) return;
     files.renderFrame = requestAnimationFrame(() => {
       files.renderFrame = 0;
-      renderList();
+      applyListRows();
     });
   }
 
@@ -1280,19 +1296,17 @@
   }
 
   function firstVisibleIndex(top) {
-    let low = 0;
-    let high = files.tops.length;
-    while (low < high) {
-      const mid = (low + high) >> 1;
-      if (files.tops[mid] + rowHeight(mid) <= top) low = mid + 1;
-      else high = mid;
+    for (const segment of files.segments) {
+      const height = segment.source === 'decoded' ? DECODED_ROW_HEIGHT : STORE_ROW_HEIGHT;
+      if (top < segment.top + segment.total * height) return segment.start + Math.max(0, Math.floor((top - segment.top) / height));
     }
-    return low;
+    return files.total;
   }
 
   function renderList() {
     const wrap = $("#data-files-list-wrap", page.panes.files);
     const list = $("#data-files-list", page.panes.files);
+    window.WebUI.locateCurrent?.sync($("#data-files-locate-current", page.panes.files), Boolean(selectedKey()));
     if (!wrap || !list) return;
     if (files.error && !files.rows.length) {
       list.innerHTML = `<div class="data-inspector-empty-list is-error">${esc(files.error)}</div>`;
@@ -1305,17 +1319,37 @@
       return;
     }
     const current = selectedKey();
-    const startTop = Math.max(0, wrap.scrollTop - OVERSCAN_PX);
-    const endTop = wrap.scrollTop + wrap.clientHeight + OVERSCAN_PX;
+    const logicalTop = wrap.scrollTop * files.scrollScale;
+    const startTop = Math.max(0, logicalTop - OVERSCAN_PX);
+    const endTop = logicalTop + wrap.clientHeight + OVERSCAN_PX;
+    const displayTop = (index) => wrap.scrollTop + rowTop(index) - logicalTop;
     const fragment = document.createDocumentFragment();
     const decoded = decodedApi();
-    for (let index = firstVisibleIndex(startTop); index < files.rows.length && files.tops[index] < endTop; index += 1) {
+    const first = firstVisibleIndex(startTop), end = Math.min(files.total, firstVisibleIndex(endTop) + 1);
+    if (!files.loading && [...Array(end - first).keys()].some((offset) => !files.rows[first + offset])) {
+      loadRange(first, end);
+    }
+    for (let index = first; index < end; index += 1) {
       const item = files.rows[index];
+      if (!item) {
+        const placeholder = document.createElement(files.failedBlocks.size ? 'button' : 'div');
+        placeholder.className = 'data-inspector-row';
+        placeholder.style.top = `${displayTop(index)}px`; placeholder.style.height = `${rowHeight(index)}px`;
+        placeholder.textContent = files.error || ui('Loading…', '正在加载…');
+        if (files.failedBlocks.size) {
+          placeholder.type = 'button';
+          placeholder.textContent += ` · ${ui('Retry', '重试')}`;
+          placeholder.addEventListener('click', () => {
+            files.failedBlocks.clear(); files.error = ''; renderListMeta(); renderList();
+          });
+        }
+        fragment.appendChild(placeholder); continue;
+      }
       const selected = rowKey(item) === current;
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.rowIndex = String(index);
-      button.style.top = `${files.tops[index]}px`;
+      button.style.top = `${displayTop(index)}px`;
       button.style.height = `${rowHeight(index)}px`;
       button.setAttribute("role", "option");
       button.setAttribute("aria-selected", String(selected));
@@ -1332,13 +1366,23 @@
     list.replaceChildren(fragment);
   }
 
+  // Selection positions survive metadata cache eviction.
+  function locateSelected() {
+    const key = selectedKey();
+    const index = key ? findLoaded((item) => rowKey(item) === key) : -1;
+    if (index < 0) return null;
+    scrollRowIntoView(index);
+    return $("#data-files-list .data-inspector-row.is-selected", page.panes.files);
+  }
+
   function scrollRowIntoView(index) {
     const wrap = $("#data-files-list-wrap", page.panes.files);
     if (!wrap) return;
-    const top = files.tops[index] || 0;
+    const top = rowTop(index) || 0;
     const height = rowHeight(index);
-    if (top < wrap.scrollTop || top + height > wrap.scrollTop + wrap.clientHeight) {
-      wrap.scrollTop = Math.max(0, top - wrap.clientHeight / 2);
+    const logicalTop = wrap.scrollTop * files.scrollScale;
+    if (top < logicalTop || top + height > logicalTop + wrap.clientHeight) {
+      wrap.scrollTop = Math.max(0, (top + height / 2 - wrap.clientHeight / 2) / files.scrollScale);
     }
     renderList();
   }
@@ -1346,6 +1390,7 @@
   // -------------------------------------------------------------- viewer --
 
   function selectItem(item) {
+    files.selectedIndex = findLoaded((candidate) => rowKey(candidate) === rowKey(item));
     files.selected = item.kind === "decoded"
       ? { kind: "decoded", entry: item.entry }
       : { kind: "store", root: files.root, store: item.store, group: item.row.group, row: item.row };

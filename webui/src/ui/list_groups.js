@@ -1,4 +1,4 @@
-// Collapsible list groups shared by the Gameplay and Production catalogs.
+// Collapsible list groups shared by the Gameplay lists.
 // Each page keeps its own collapsed-group set (owned by the returned
 // controller), renders groups as <details data-list-group>, and reopens a
 // collapsed group before scrolling a selected row into view.
@@ -23,6 +23,45 @@
 
   function create() {
     const collapsed = new Set();
+    const views = new WeakMap();
+    const headings = new Map();
+    function render(host, entries, { keyOf, title, icon = () => '', renderRow, estimateHeight = 80 }) {
+      const options = { keyOf, title, icon, renderRow, estimateHeight };
+      views.set(host, { entries, options });
+      const groups = new Map();
+      for (const entry of entries) {
+        const id = keyOf(entry);
+        if (!groups.has(id)) groups.set(id, []);
+        groups.get(id).push(entry);
+      }
+      const rows = [];
+      for (const [id, items] of groups) {
+        if (!headings.has(id)) headings.set(id, { heading: true, id });
+        rows.push(headings.get(id));
+        if (!collapsed.has(id)) rows.push(...items);
+      }
+      WebUI.continuousList.render(host, rows, (row) => {
+        if (!row.heading) return renderRow(row);
+        const items = groups.get(row.id);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'list-group-summary continuous-list-group';
+        button.setAttribute('aria-expanded', String(!collapsed.has(row.id)));
+        button.innerHTML = `${icon(items[0])}<strong>${esc(title(items[0]))}</strong><span>${WebUI.formatNumber(items.length)}</span>`;
+        button.addEventListener('click', () => {
+          if (collapsed.has(row.id)) collapsed.delete(row.id); else collapsed.add(row.id);
+          render(host, entries, options);
+          WebUI.continuousList.reveal(host, row)?.querySelector('button')?.focus({ preventScroll: true });
+        });
+        return button;
+      }, { estimateHeight: (row) => row.heading ? 40 : estimateHeight });
+    }
+    function locate(host, entry) {
+      const view = views.get(host);
+      if (!view || !view.entries.includes(entry)) return null;
+      if (collapsed.delete(view.options.keyOf(entry))) render(host, view.entries, view.options);
+      return WebUI.continuousList.reveal(host, entry)?.querySelector('button') || null;
+    }
     // Opening markup only when `body` is omitted, so a caller that streams rows
     // can close the group itself with "</details>".
     function section({ id, title, count, icon = "", className = "", body }) {
@@ -43,7 +82,7 @@
       if (group) { collapsed.delete(group.dataset.listGroup); group.open = true; }
       row?.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-    return { section, bind, reveal };
+    return { section, bind, reveal, render, locate };
   }
 
   WebUI.listGroups = { create, counts };

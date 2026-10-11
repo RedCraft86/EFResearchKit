@@ -51,6 +51,45 @@ OBJ and FBX previews share background presets and custom background/model
 color controls in both WebGL and the software fallback. Model color is a
 preview tint, not recovered material appearance.
 
+Cooked collision previews are a separate Assets-owned projection from an
+authenticated selected-corpus receipt. The broad builder checks its audited
+inputs, full exporter closure, explicit identity coverage and typed/raw buffer
+hashes, then runs the complete readers before publishing staged OBJs under
+`webui/data/assets/collision/`. The `cl` metadata preserves physical source,
+CAB, offset and decimal PathID without JavaScript integer rounding. The
+`Collision` tag starts off and reset hides it again; collision variants remain
+separate from render models and from other serialized collision identities.
+There are no name-based material or table-owner joins for this projection.
+Preview coordinates and winding remain in mesh local space.
+
+`build_assets --publish collision` updates this projection in the existing
+broad index without rescanning render media or rewriting ownership/media
+sidecars. It rejects a changed index during publication. A missing/stale
+receipt clears collision rows and retains an unavailable diagnostic; ordinary
+Assets rows keep their last publication. The optional receipt is produced by
+the raw-format corpus command, not by the page's ordinary `--from-game` scope.
+
+OBJ WebGL previews preserve face UVs, authored normals, and `usemtl` draw
+ranges. An OBJ without `usemtl` uses a material only when its published links
+have one distinct material name; multiple candidates remain neutral. Linked
+Unity material relations supply base textures, tint, alpha testing and blending.
+Missing UVs keep the affected range untextured. These name-based preview links
+do not prove runtime renderer ownership; the software fallback stays untextured.
+
+FBX mesh controls classify `eyesshadow`, `hairshadow`, and a separate `hs`
+token as shadows, alongside shadow proxies. Shadow model ancestors and shadow
+material names also supply this preview classification. `vfxpart` names count
+as VFX alongside FX/effect names. Shadows start hidden; VFX starts hidden when
+ordinary meshes exist and remains visible in effect-only prefabs. These name
+rules organize the preview and do not establish runtime renderer ownership.
+
+The FBX viewer bakes stored mesh transforms into a static preview; its
+Animation-stack count is metadata, not animation playback. Ultimate assets
+often use `ult` or `ultskill` rather than `ultimate`, and appear as separate
+effect, camera or model pieces. AnimationClip `.anim` documents belong to the
+Data store browser, not the Assets media list. Complete FBX indexing therefore
+does not establish complete skill presentation or its timed composition.
+
 ## Evidence boundary
 
 - Source/CAB plus PathID is the stable Unity identity. Normalized names are
@@ -82,6 +121,20 @@ Sprite, Mesh and Animator media. Use `.\export.bat debug --from-game` only for
 broad investigation; the index then also carries every debug class.
 
 ## Highest-value remaining gaps
+
+- Empty OBJ markers and point-only OBJ files are inventoried, but hidden by
+  default behind the off `Empty mesh / no drawable faces` tag. The index's
+  `nd` flag follows the preview's valid indices and triangle-fan checks, not
+  filename or file size. Reset hides them again, and empty variants never
+  share a preview group with drawable variants. Classification says only
+  that the exported OBJ has no drawable surface, not why its Unity source
+  lacks render geometry; the extraction topic records the collision evidence.
+
+- Decoded collision previews close the stored-geometry gap for their admitted
+  selection. A MeshCollider PPtr and complete reciprocal Transform hierarchy
+  can establish a serialized prefab binding; they do not establish a live
+  scene instance, activation or physics behavior. See the Unity-assets topic
+  for this boundary and the bounded scene-object reader.
 
 - Improve object-level dependency and conversion diagnostics.
 - Recover exact renderer/material/texture and animation ownership.

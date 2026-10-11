@@ -153,24 +153,40 @@
     return result;
   }
 
-  function modifierRows(record, text, statAttrLabel) {
+  // ModifierType terms of attribute_formula_native.json: additions add, the
+  // (Base)Multiplier terms sum into max(1 + sum, 0), Final multipliers multiply.
+  const signed = (value) => `${value >= 0 ? "+" : ""}${number(value)}`;
+  const formulaBodies = {
+    Addition: (v) => signed(v),
+    FinalAddition: (v) => tr(`${signed(v)} (final)`, `${signed(v)}（最终）`),
+    BaseAddition: (v) => tr(`${signed(v)} base`, `基础 ${signed(v)}`),
+    BaseFinalAddition: (v) => tr(`${signed(v)} base (final)`, `基础 ${signed(v)}（最终）`),
+    Multiplier: (v) => `${signed(v * 100)}%`,
+    BaseMultiplier: (v) => tr(`${signed(v * 100)}% base`, `基础 ${signed(v * 100)}%`),
+    FinalMultiplier: (v) => `×${number(v)}`,
+    BaseFinalMultiplier: (v) => tr(`×${number(v)} base`, `基础 ×${number(v)}`),
+  };
+
+  function modifierRows(record, text, statAttrLabel, values = new Map()) {
     const rows = [];
     if (record.evidenceStatus === "unresolved") return rows;
     for (const modifier of record.attributeModifier?.attributeModifiers || []) {
       if (modifier.modifyAttributeTypeName !== "Specific") continue;
-      const value = operand(modifier.param);
+      const value = operand(modifier.param, values);
       const label = statAttrLabel ? statAttrLabel({ type: modifier.attributeType, label: modifier.attributeTypeName }) : ({ MaxPoise: tr("Maximum stagger", "韧性上限") })[modifier.attributeTypeName];
-      if (!label || /^Attr \d+$/.test(label) || value == null) continue;
-      const formula = modifier.formulaItemName;
-      const body = formula === "Addition" ? `${value >= 0 ? "+" : ""}${number(value)}`
-        : formula === "Multiply" ? `×${number(value)}` : "";
-      if (body) rows.push({ label, body });
+      const format = formulaBodies[modifier.formulaItemName];
+      if (!label || /^Attr \d+$/.test(label) || !format) continue;
+      // A blackboard-keyed amount comes from the applier; name the key rather
+      // than presenting the serialized placeholder as the effective value.
+      const key = modifier.param?.useBlackboardKey === true ? modifier.param.blackboardKey : "";
+      if (value != null) rows.push({ label, body: format(value) });
+      else if (key) rows.push({ label, body: tr(`${modifier.formulaItemName} set by “${key}”`, `${modifier.formulaItemName}，数值由“${key}”指定`), muted: true });
     }
     return rows;
   }
 
-  function buffRows(record, { text, statAttrLabel, decodedActions }) {
-    const rows = modifierRows(record, text, statAttrLabel);
+  function buffRows(record, { text, statAttrLabel, decodedActions, values = new Map(), stackingLabel = (name) => name }) {
+    const rows = modifierRows(record, text, statAttrLabel, values);
     const events = { OnOwnerHpZero: tr("When HP reaches zero", "生命归零时"), OnTakeDamage: tr("When taking damage", "受到伤害时"), OnBeforeCastSkill: tr("Before casting", "施放技能前"), OnSkillEnd: tr("When a skill ends", "技能结束时"), OnAfterOutputWeaknessTriggered: tr("After triggering weakness", "触发弱点后") };
     let unresolved = false;
     for (const event of record.abilityEventActions || []) {
@@ -203,12 +219,21 @@
         }
       }
     }
-    if (record.lifeType?.name === "Infinity") rows.push({ label: tr("Duration", "持续"), body: tr("No fixed expiry", "无固定结束时间") });
+    if (record.lifeType?.name === "Infinity") rows.push({ kind: "meta", label: tr("Duration", "持续"), body: tr("No fixed expiry", "无固定结束时间") });
     if (record.lifeType?.name === "Limited") {
-      const duration = operand(record.duration);
-      rows.push({ label: tr("Duration", "持续"), body: duration == null ? tr("Determined at runtime", "由运行时参数决定") : `${number(duration)} ${tr("s", "秒")}` });
+      const duration = operand(record.duration, values);
+      rows.push({ kind: "meta", label: tr("Duration", "持续"), body: duration == null ? tr("Determined at runtime", "由运行时参数决定") : `${number(duration)} ${tr("s", "秒")}` });
     }
-    if (!rows.length || unresolved) rows.push({ label: tr("Pending", "待解析"), body: tr("Some effect behavior remains unresolved", "部分效果或触发关系尚未解析"), muted: true });
+    const pending = !rows.length || unresolved;
+    // Stored timing/stacking fields; stacking uses the page's enum label map.
+    const interval = operand(record.triggerInterval, values);
+    if (interval != null && interval > 0) rows.push({ kind: "meta", label: tr("Trigger interval", "触发间隔"), body: `${number(interval)} ${tr("s", "秒")}` });
+    const stacking = record.stacking;
+    if (stacking?.stackingTypeName) {
+      const cap = stacking.useMaxStackCntKey ? values.get(stacking.maxStackCntKey) : stacking.maxStackCnt;
+      rows.push({ kind: "meta", label: tr("Stacking", "叠加"), body: typeof cap === "number" && cap > 1 ? `${stackingLabel(stacking.stackingTypeName)} · ${tr("max", "上限")} ${number(cap)}` : stackingLabel(stacking.stackingTypeName) });
+    }
+    if (pending) rows.push({ label: tr("Pending", "待解析"), body: tr("Some effect behavior remains unresolved", "部分效果或触发关系尚未解析"), muted: true });
     return compact(rows);
   }
 

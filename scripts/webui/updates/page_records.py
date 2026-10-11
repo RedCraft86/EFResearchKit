@@ -21,7 +21,7 @@ from scripts.webui.story.story_keys import canonical_cutscene_key
 from scripts.game_data.unity_store import UnityStoreError, open_store_if_present
 from scripts.webui.game_tables import is_activity_table
 from scripts.webui.updates.details import source_changes
-from scripts.webui.updates.production import production_source_records
+from scripts.webui.updates.gameplay_items import item_source_records
 from scripts.webui.updates.scanner import (
     TEXT_DIFF_MAX_BYTES, TEXT_KIND_BINARY, TEXT_KIND_DECODED_PARTIAL,
     TEXT_KIND_DECODED_WHOLE, build_text_diff, textual_form,
@@ -199,6 +199,9 @@ def _gameplay(layout, tables, localization, *, file_families=()):
                         if path not in file_hashes:
                             file_hashes[path] = hashlib.sha256(path.read_bytes()).hexdigest()
                         records[record_key][path.relative_to(layout.root).as_posix()] = file_hashes[path]
+    for key, sources in item_source_records(tables).items():
+        for source, row in sources.items():
+            _add(records, key, source, row, localization)
     return records
 
 
@@ -258,14 +261,6 @@ def _file_comparison(source: str, status: str, roots: list[Path]) -> dict[str, A
     return result
 
 
-def _production(layout, tables, localization):
-    records: dict[str, Any] = {}
-    for key, sources in production_source_records(tables).items():
-        for source, row in sources.items():
-            _add(records, key, source, row, localization)
-    return records
-
-
 def build_page_updates(previous_root: Path, current_root: Path) -> dict[str, dict[str, Any]]:
     """Return independently available, uncapped page sidecars for two exports."""
     result = {}
@@ -297,9 +292,8 @@ def build_page_updates(previous_root: Path, current_root: Path) -> dict[str, dic
     file_comparisons = {}
     for page, projector, required in (
         ("story", lambda layout, rows, text: _story(layout, rows, text, include_unity=include_unity), ("DialogTextTable", "TextTable")),
-        ("gameplay", lambda layout, rows, text: _gameplay(layout, rows, text, file_families=file_families), tuple(GAMEPLAY_TABLES.values())),
+        ("gameplay", lambda layout, rows, text: _gameplay(layout, rows, text, file_families=file_families), (*GAMEPLAY_TABLES.values(), "ItemTable")),
         ("map", lambda layout, rows, text: _map(layout, rows, text, families=map_families), ()),
-        ("production", _production, ("ItemTable",)),
     ):
         payload = {"schemaVersion": 3, "generated": int(time.time()),
                    "source": "export_source_record_diff", "page": page,

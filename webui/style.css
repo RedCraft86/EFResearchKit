@@ -1,61 +1,57 @@
 * { box-sizing: border-box; }
 
-/* Single light palette —neutral gray + muted teal + slate + orange.
-   Palette: #F5F5F5 (bg), #76ABAE (secondary), #303841 (text), #FF5722 (accent). */
+/* Endfield light defaults. themes.css supplies the selectable palettes. */
 :root {
-  /* There is exactly one palette (light). Declaring it explicitly stops the UA
-     from rendering native widgets (select popups, date pickers, default
-     scrollbars) in dark mode when the OS prefers dark, which previously left
-     dark popups floating over a light UI. */
   color-scheme: light;
+  --bg: #e9eae8;
+  --bg-2: #eeefed;
+  --bg-3: #fafaf8;
+  --bg-rgb: 233, 234, 232;
+  --bg-3-rgb: 250, 250, 248;
+  --surface: #fafaf8;
+  --panel: #fafaf8;
+  --panel-bg: #fafaf8;
+  --border: rgba(24, 26, 29, 0.16);
+  --text: #181a1d;
+  /* Solid ink, not alpha: small grey text over tinted planes stays >= 7:1. */
+  --muted: #474c52;
+  --accent: #ffe100;
+  /* Yellow never carries text on a light plane. Accent text is warm ink and
+     the yellow moves to a marker beside it (see the endfield rules below). */
+  --accent-text: #3a2f00;
+  --accent-2: #1f9fbf;
+  --accent-2-text: #0e5568;
+  --status-added: #1d6438;
+  --status-added-rgb: 29, 100, 56;
+  --status-modified: #7a4f00;
+  --status-modified-rgb: 122, 79, 0;
+  --status-deleted: #9e2f2f;
+  --status-deleted-rgb: 158, 47, 47;
+  --hover: rgba(31, 159, 191, 0.10);
+  --selected: rgba(31, 159, 191, 0.18);
+  --good: #1f9fbf;
+  --warn: #d9480f;
+  --accent-rgb: 255, 225, 0;
+  --accent-2-rgb: 31, 159, 191;
+  --fg-rgb: 24, 26, 29;
+  --on-accent: #141517;
 
-  --bg: #f5f5f5;
-  --bg-2: #f5f5f5;
-  --bg-3: #ffffff;
-  /* Shared feature surfaces. Keep these explicit so standalone feature CSS
-     never falls back to its legacy dark palette. */
-  --bg-rgb: 245, 245, 245;
-  --surface: #ffffff;
-  --panel: #ffffff;
-  --panel-bg: #ffffff;
-  --border: rgba(48, 56, 65, 0.18);
-  --text: #303841;
-  /* WCAG AA: at 0.62 alpha this blended to ~#7f8489 (3.8:1 on #fff, 3.6:1 on
-     --bg) and failed 4.5:1 for the 11-12px secondary text it is used for.
-     0.72 blends to ~#696f76 -> 5.1:1 on #fff, 4.7:1 on --bg. */
-  --muted: rgba(48, 56, 65, 0.72);
-  --accent: #ff5722;
-  /* --accent as *text* on a light surface is only 3.2:1. Use --accent-text
-     (same hue, darkened) wherever the accent carries a text label. */
-  --accent-text: #c8410f;
-  --accent-2: #76abae;
-  /* --accent-2 as text is only 2.6:1 on a light surface. */
-  --accent-2-text: #3d7478;
-  /* One monospace stack for the whole app (four near-identical variants were
-     in use). Existing declarations still resolve the same. */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-control: 2px;
+  --radius-chip: 2px;
+  --radius-tab: 2px;
+  --shadow-sm: 0 1px 0 rgba(var(--fg-rgb), 0.08), 0 2px 8px rgba(var(--fg-rgb), 0.08);
+  --shadow-md: 0 1px 0 rgba(var(--fg-rgb), 0.10), 0 8px 24px rgba(var(--fg-rgb), 0.14);
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
-  /* The body UI stack, exposed as a token so feature CSS can name it inside a
-     `font:` shorthand. An undefined var there makes the whole shorthand invalid
-     at computed-value time and silently drops the size/weight with it. */
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-          "Microsoft YaHei", sans-serif;
-  --hover: rgba(118, 171, 174, 0.14);
-  --selected: rgba(118, 171, 174, 0.22);
-  --good: #76abae;
-  --warn: #ff5722;
-  /* Shared version-change status colors. Characters and Updates use the same
-     semantic palette so an added/deleted tag reads consistently site-wide. */
-  --status-added: #287a4b;
-  --status-added-rgb: 40, 122, 75;
-  --status-modified: #9a6812;
-  --status-modified-rgb: 154, 104, 18;
-  --status-deleted: #b43f3f;
-  --status-deleted-rgb: 180, 63, 63;
-
-  --accent-rgb: 255, 87, 34;
-  --accent-2-rgb: 118, 171, 174;
-  --fg-rgb: 48, 56, 65;
-  --on-accent: #f5f5f5;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --radius-pill: 999px;
+  --tone-violet: #6f53a8;
+  --syntax-string: #4f8a3c;
+  --syntax-number: #a25b18;
+  --syntax-boolean: #7454b5;
 }
 
 html, body {
@@ -155,7 +151,7 @@ html, body {
   backdrop-filter: saturate(1.1);
 }
 
-/* ------- Brand / logo slot ------- */
+/* ------- Brand ------- */
 #brand {
   display: flex;
   align-items: center;
@@ -166,31 +162,12 @@ html, body {
   min-width: 0;
 }
 
-.brand-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+#brand-logo {
+  display: block;
   width: 34px;
   height: 34px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent), #ff8a5c);
-  color: var(--on-accent);
-  box-shadow: 0 2px 6px rgba(var(--accent-rgb), 0.28);
-  overflow: hidden;
-  flex: 0 0 auto;
-}
-
-/* If a logo <img> is dropped in, let it fill the slot cleanly. */
-.brand-logo img {
-  width: 100%;
-  height: 100%;
   object-fit: contain;
-}
-
-.brand-logo-mark {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  flex: 0 0 auto;
 }
 
 .brand-copy {
@@ -232,7 +209,7 @@ html, body {
 }
 
 .brand-link:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .brand-link:hover span {
@@ -332,7 +309,7 @@ html, body {
   background: var(--bg-3);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   font-size: 12px;
 }
 
@@ -493,7 +470,7 @@ textarea:focus-visible,
 }
 
 #asset-empty.is-error {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -615,7 +592,7 @@ textarea:focus-visible,
   background: rgba(var(--accent-rgb), 0.08);
   color: var(--text);
   border: 1px solid rgba(var(--accent-rgb), 0.22);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 12px;
   line-height: 1.2;
@@ -671,7 +648,7 @@ textarea:focus-visible,
 .filter-section-active-count {
   margin-left: -2px;
   margin-right: auto;
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 .filter-section-toggle::after {
@@ -815,7 +792,7 @@ textarea:focus-visible,
   padding-right: 0;
 }
 .chip {
-  padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px;
+  padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--radius-chip);
   background: transparent; color: var(--muted);
   cursor: pointer; font-size: 11px; user-select: none;
 }
@@ -835,13 +812,15 @@ textarea:focus-visible,
   font-weight: 600;
 }
 
-#reset, #asset-reset, #reference-reset, #gameplay-reset, #updates-reset, #characters-reset {
+/* One reset-button chrome for every page sidebar. */
+#reset, #asset-reset, #reference-reset, #gameplay-reset, #updates-reset, #characters-reset, #activities-reset,
+#audio-reset, #battle-reset, #gameplay-items-reset, .data-page-reset {
   padding: 6px 10px; font-size: 12px;
   background: transparent; color: var(--muted);
-  border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-control); cursor: pointer;
   line-height: 1.2;
 }
-#reset:hover, #asset-reset:hover, #reference-reset:hover, #gameplay-reset:hover, #updates-reset:hover, #characters-reset:hover { color: var(--text); border-color: var(--muted); }
+#reset:hover, #asset-reset:hover, #reference-reset:hover, #gameplay-reset:hover, #updates-reset:hover, #characters-reset:hover, #activities-reset:hover, #audio-reset:hover, #battle-reset:hover, #gameplay-items-reset:hover, .data-page-reset:hover { color: var(--text); border-color: var(--muted); }
 
 #list-meta, #asset-list-meta {
   padding: 6px 16px; font-size: 11px; color: var(--muted);
@@ -927,7 +906,7 @@ textarea:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.group .label.mono { font-family: ui-monospace, Consolas, monospace; color: var(--accent); }
+.group .label.mono { font-family: ui-monospace, Consolas, monospace; color: var(--accent-text); }
 .group .sub {
   color: var(--muted); font-size: 11px;
   min-width: 0;
@@ -1050,7 +1029,7 @@ textarea:focus-visible,
 .item .item-key {
   flex: 1; min-width: 0;
   font-family: ui-monospace, "SF Mono", Consolas, monospace;
-  font-size: 11px; color: var(--accent);
+  font-size: 11px; color: var(--accent-text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .item .item-meta {
@@ -1254,7 +1233,9 @@ textarea:focus-visible,
   margin-top: 6px;
 }
 #gameplay-reveal-current,
-#reveal-current {
+#reveal-current,
+.locate-current-button {
+  flex: 0 0 auto;
   padding: 7px 12px;
   border-radius: 999px;
   border: 1px solid rgba(var(--accent-rgb), 0.22);
@@ -1264,13 +1245,31 @@ textarea:focus-visible,
   font-size: 12px;
   white-space: nowrap;
 }
+/* Detail headers that carry a locate button keep it top right. */
+.has-locate-button {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.locate-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.locate-header-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 #gameplay-reveal-current:hover,
-#reveal-current:hover {
+#reveal-current:hover,
+.locate-current-button:hover {
   background: rgba(var(--accent-rgb), 0.14);
   border-color: var(--border);
 }
 #gameplay-reveal-current:disabled,
-#reveal-current:disabled {
+#reveal-current:disabled,
+.locate-current-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -1307,7 +1306,7 @@ textarea:focus-visible,
 #conv-related .conv-related-link {
   font-family: ui-monospace, monospace;
   text-decoration: none;
-  color: var(--accent);
+  color: var(--accent-text);
   border-bottom: 1px dotted var(--text);
 }
 #conv-related .conv-related-link:hover { color: var(--fg); border-bottom-style: solid; }
@@ -1468,7 +1467,7 @@ textarea:focus-visible,
 .opt-group-branch-link {
   font-family: ui-monospace, monospace;
   text-decoration: none;
-  color: var(--accent);
+  color: var(--accent-text);
   border-bottom: 1px dotted var(--text);
 }
 .opt-group-branch-link:hover { color: var(--fg); border-bottom-style: solid; }
@@ -1918,7 +1917,7 @@ a.opt-target-chip { cursor: pointer; }
 }
 .trace-json-label {
   font-size: 10px;
-  color: var(--accent);
+  color: var(--accent-text);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 4px;
@@ -1991,14 +1990,14 @@ a.opt-target-chip { cursor: pointer; }
   border-radius: 3px;
 }
 .summary-label {
-  font-size: 11px; color: var(--accent); font-weight: 600;
+  font-size: 11px; color: var(--accent-text); font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.5px;
   margin-bottom: 6px;
 }
 .summary-text { font-size: 13px; color: var(--text); }
 .summary-text + .summary-text { margin-top: 4px; }
-.mission-completion-rewards { margin-top: 12px; }
-.mission-summary-box > .summary-label + .mission-completion-rewards { margin-top: 0; }
+.mission-map-link { color: var(--muted); text-decoration: none; }
+.mission-map-link:hover { color: var(--accent-text); text-decoration: underline; }
 .mission-reward-items { display: flex; flex-wrap: wrap; gap: 6px; }
 .mission-reward-item {
   display: inline-flex; align-items: center; gap: 10px;
@@ -2012,7 +2011,7 @@ a.opt-target-chip { cursor: pointer; }
   object-fit: contain;
   flex-shrink: 0;
 }
-.mission-reward-count { color: var(--accent); white-space: nowrap; }
+.mission-reward-count { color: var(--accent-text); white-space: nowrap; }
 .mission-reward-items + .summary-text { margin-top: 6px; }
 .source-link-row {
   font-family: ui-monospace, Consolas, monospace;
@@ -2026,7 +2025,7 @@ a.opt-target-chip { cursor: pointer; }
   /* inherits --accent left border from .summary-box */
 }
 .narrative-video-box .summary-label {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .narrative-video-grid {
   margin-top: 8px;
@@ -2063,7 +2062,7 @@ a.opt-target-chip { cursor: pointer; }
   /* inherits --accent left border from .summary-box */
 }
 .wiki-media-box .summary-label {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .wiki-image-grid {
   display: flex;
@@ -2255,7 +2254,7 @@ a.opt-target-chip { cursor: pointer; }
   width: 34px;
   height: 34px;
   background: rgba(var(--accent-rgb), 0.18);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .media-player-play:hover,
 .media-player-play:focus-visible {
@@ -2356,7 +2355,7 @@ a.opt-target-chip { cursor: pointer; }
   transform: translateY(-50%) scale(1);
 }
 .media-player-icon-button.is-active {
-  color: var(--accent);
+  color: var(--accent-text);
   background: rgba(var(--accent-rgb), 0.20);
 }
 .media-player-icon-button.is-loading {
@@ -2477,7 +2476,7 @@ a.opt-target-chip { cursor: pointer; }
   border: 1px solid rgba(var(--accent-rgb), 0.55);
   border-radius: 999px;
   background: var(--accent);
-  color: var(--bg);
+  color: var(--on-accent);
   box-shadow: 0 8px 24px rgba(var(--fg-rgb), 0.25);
   cursor: pointer;
   font-weight: 700;
@@ -2637,7 +2636,7 @@ a.opt-target-chip { cursor: pointer; }
 
 /* Cutscene structured info panel */
 .cutscene-info-box { /* inherits --accent left border from .summary-box */ }
-.cutscene-info-box .summary-label { color: var(--accent); }
+.cutscene-info-box .summary-label { color: var(--accent-text); }
 .cs-semantic-shape {
   display: inline-flex; align-items: center;
   margin: 0 0 8px; padding: 3px 8px;
@@ -2802,7 +2801,7 @@ a.opt-target-chip { cursor: pointer; }
   max-width: 100%;
 }
 .archive-link {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
   border-bottom: 1px dotted var(--text);
   overflow-wrap: anywhere;
@@ -2929,7 +2928,7 @@ a.opt-target-chip { cursor: pointer; }
 }
 .story-order-source-tab.is-active,
 .story-order-builder button.is-primary {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: rgba(var(--accent-rgb), 0.35);
   background: rgba(var(--accent-rgb), 0.1);
 }
@@ -3575,7 +3574,7 @@ button.story-order-key-button:hover,
   border: 0;
   appearance: none;
   font-family: ui-monospace, Consolas, monospace;
-  font-size: 11px; color: var(--accent);
+  font-size: 11px; color: var(--accent-text);
   cursor: pointer; padding: 1px 6px; border-radius: 2px;
   background: rgba(var(--accent-rgb), 0.1);
   display: inline-flex;
@@ -3633,7 +3632,7 @@ mark { background: rgba(var(--fg-rgb), 0.08); color: var(--text); padding: 0 2px
 /* Inline rich-text tags <@xxx.key>text</> in source: surface the inner text,
    hide the wrapper, and tint to indicate it was a tag. */
 .rich-tag {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -3651,7 +3650,7 @@ mark { background: rgba(var(--fg-rgb), 0.08); color: var(--text); padding: 0 2px
   border-radius: 999px;
   border: 1px dashed rgba(var(--accent-rgb), 0.45);
   background: rgba(var(--accent-rgb), 0.08);
-  color: var(--accent);
+  color: var(--accent-text);
   font-family: ui-monospace, Consolas, monospace;
   font-size: 0.92em;
   line-height: 1.45;
@@ -4030,6 +4029,12 @@ body.inline-image-modal-open {
   overflow-wrap: anywhere;
 }
 
+.inline-image-modal-caption a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .inline-image-modal-close {
   position: absolute;
   top: 8px;
@@ -4244,7 +4249,7 @@ body.is-resizing-filter * {
 }
 
 .reference-table-prefix-heading .label {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .reference-table-row {
@@ -4398,7 +4403,7 @@ body.is-resizing-filter * {
 }
 
 .reference-fields-title {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -4430,7 +4435,7 @@ body.is-resizing-filter * {
   background: none;
   border: none;
   padding: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
   font: inherit;
   text-decoration: underline;
@@ -4457,7 +4462,7 @@ body.is-resizing-filter * {
 }
 
 .reference-text-field {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -4484,7 +4489,7 @@ body.is-resizing-filter * {
 }
 
 .reference-raw-label {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -4521,13 +4526,15 @@ body.is-resizing-filter * {
 }
 
 /* ------- Gameplay view ------- */
-#gameplay-app {
+#gameplay-app,
+#battle-stages-app {
   display: flex;
   height: 100%;
   min-height: 0;
 }
 
-#gameplay-left {
+#gameplay-left,
+#battle-left {
   width: 430px;
   min-width: 300px;
   max-width: none;
@@ -4539,7 +4546,8 @@ body.is-resizing-filter * {
   overflow: hidden;
 }
 
-#gameplay-left header {
+#gameplay-left header,
+#battle-left header {
   padding: 14px 16px 8px;
   border-bottom: 1px solid var(--border);
 }
@@ -4552,6 +4560,8 @@ body.is-resizing-filter * {
 
 #gameplay-stats,
 #gameplay-list-meta,
+#battle-stats,
+#battle-list-meta,
 .gameplay-row-meta,
 .gameplay-list-note,
 .gameplay-skill-meta,
@@ -4560,12 +4570,14 @@ body.is-resizing-filter * {
   font-size: 12px;
 }
 
-#gameplay-list-meta {
+#gameplay-list-meta,
+#battle-list-meta {
   padding: 8px 16px;
   border-bottom: 1px solid var(--border);
 }
 
-#gameplay-list {
+#gameplay-list,
+#battle-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -4698,7 +4710,8 @@ body.is-resizing-filter * {
   border-bottom: 1px solid var(--border);
 }
 
-#gameplay-right {
+#gameplay-right,
+#battle-right {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -4708,7 +4721,8 @@ body.is-resizing-filter * {
   padding: 0;
 }
 
-#gameplay-empty {
+#gameplay-empty,
+#battle-empty {
   min-height: 55vh;
   display: flex;
   align-items: center;
@@ -4717,7 +4731,8 @@ body.is-resizing-filter * {
 }
 
 /* Mirror the story page's #conv-header: a sticky, full-bleed header bar. */
-#gameplay-detail-header {
+#gameplay-detail-header,
+#battle-detail-header {
   position: sticky;
   top: 0;
   z-index: 5;
@@ -4731,12 +4746,14 @@ body.is-resizing-filter * {
   border-bottom: 1px solid var(--border);
 }
 
-#gameplay-detail-header-main {
+#gameplay-detail-header-main,
+#battle-detail-header-main {
   min-width: 0;
   flex: 1 1 auto;
 }
 
-#gameplay-detail-title {
+#gameplay-detail-title,
+#battle-detail-title {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -4744,13 +4761,8 @@ body.is-resizing-filter * {
 }
 
 /* Facts render as a plain conv-meta-style text line rather than pills. */
-#gameplay-detail-meta {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  font-family: ui-monospace, "SF Mono", Consolas, monospace;
-  overflow-wrap: anywhere;
-}
+#gameplay-detail-meta,
+#battle-detail-meta { margin-top: 4px; }
 
 .gameplay-detail-tag {
   display: inline-flex;
@@ -4798,19 +4810,20 @@ body.is-resizing-filter * {
   margin-left: 0;
   border-color: rgba(var(--accent-rgb), 0.42);
   background: rgba(var(--accent-rgb), 0.12);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.08) inset;
 }
 
 .gameplay-detail-wiki-link > span {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .gameplay-detail-wiki-link > b {
   color: var(--text);
 }
 
-#gameplay-detail-body {
+#gameplay-detail-body,
+#battle-detail-body {
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -4824,7 +4837,7 @@ body.is-resizing-filter * {
 
 .gameplay-section-title {
   margin: 0 0 10px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -4860,7 +4873,7 @@ body.is-resizing-filter * {
 
 .gameplay-view-switch-button.is-active {
   background: rgba(var(--accent-rgb), 0.12);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .gameplay-loadout {
@@ -4890,7 +4903,7 @@ body.is-resizing-filter * {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 12px;
   font-weight: 800;
 }
@@ -4936,7 +4949,7 @@ body.is-resizing-filter * {
 }
 
 .gameplay-loadout-warn {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .gameplay-loadout-suits {
@@ -4951,7 +4964,7 @@ body.is-resizing-filter * {
 }
 
 .gameplay-loadout-stats tr.is-changed td b {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .gameplay-loadout-stats td div {
@@ -4980,7 +4993,7 @@ body.is-resizing-filter * {
 
 /* A value substituted into an authored description at the selected level. */
 .gameplay-desc-value {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -5026,7 +5039,7 @@ body.is-resizing-filter * {
 
 .gameplay-skill-type {
   margin-left: 8px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 11px;
   font-weight: 700;
 }
@@ -5199,7 +5212,7 @@ body.is-resizing-filter * {
 
 .gameplay-section h2 {
   margin: 0 0 10px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -5407,7 +5420,7 @@ body.is-resizing-filter * {
 }
 
 .gameplay-level-num {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -5523,7 +5536,7 @@ body.is-resizing-filter * {
   background: rgba(var(--accent-rgb), 0.13);
 }
 .gameplay-value-chip.gameplay-diff > b {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .gameplay-value-chip.gameplay-tag-unresolved {
@@ -5558,10 +5571,12 @@ body.is-resizing-filter * {
 }
 
 .gameplay-item-chip-link {
+  text-decoration: none;
   align-items: center;
   cursor: pointer;
   text-align: left;
 }
+.item-reward-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .gameplay-subheading {
   margin: 12px 0 6px;
@@ -5606,7 +5621,7 @@ body.is-resizing-filter * {
 .gameplay-status-badge.is-partial,
 .gameplay-integration-confidence.is-inferred {
   border-color: rgba(var(--accent-rgb), 0.34);
-  color: var(--accent);
+  color: var(--accent-text);
   background: rgba(var(--accent-rgb), 0.06);
 }
 
@@ -5642,6 +5657,7 @@ body.is-resizing-filter * {
 
 .gameplay-character-asset-strip {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
@@ -5723,7 +5739,7 @@ body.is-resizing-filter * {
 .gender-variant-button.is-selected,
 .gender-variant-button[aria-pressed="true"] {
   background: var(--accent);
-  color: var(--accent-contrast, #fff);
+  color: var(--on-accent);
 }
 
 .gameplay-character-gender-button code,
@@ -5743,17 +5759,21 @@ body.is-resizing-filter * {
 .gameplay-character-asset-images {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 1 1 192px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .gameplay-character-asset-thumb {
+  flex: 0 0 160px;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 96px;
-  height: 112px;
+  width: 160px;
+  height: auto;
   overflow: hidden;
   border: 1px solid rgba(var(--fg-rgb), 0.14);
   border-radius: 5px;
@@ -5786,11 +5806,39 @@ body.is-resizing-filter * {
 
 .gameplay-character-asset-thumb img {
   display: block;
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 112px;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+.gameplay-character-asset-thumb figure {
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.gameplay-asset-image-preview.gameplay-image-preview {
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.gameplay-character-asset-thumb figcaption a,
+.gameplay-asset-thumb figcaption a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gameplay-character-asset-thumb figcaption {
+  padding: 5px 7px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .gameplay-character-asset-thumb.is-missing {
@@ -5941,17 +5989,6 @@ body.is-resizing-filter * {
   object-fit: contain;
 }
 
-/* Item picture cards are illustrations, not fixed-ratio icon tiles. Keep the
-   source aspect ratio so a 2:1 or portrait picture is displayed naturally. */
-.gameplay-item-picture.gameplay-image-preview {
-  display: block;
-  width: min(480px, 100%) !important;
-  height: auto !important;
-  max-height: none;
-  padding: 0;
-  line-height: 0;
-}
-
 /* Collapsible catalog list groups (webui/src/ui/list_groups.js), shared by
    Gameplay and Production; a page may override the summary padding. */
 .list-group-summary { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--bg-2); border-bottom: 1px solid var(--border); font-size: 12px; cursor: pointer; }
@@ -5961,13 +5998,7 @@ body.is-resizing-filter * {
 .list-group-section[open] > .list-group-summary::before { content: "▾"; }
 .list-group-section > button { width: 100%; box-sizing: border-box; }
 
-.gameplay-item-picture.gameplay-image-preview img {
-  display: block;
-  width: 100% !important;
-  height: auto !important;
-  max-height: none;
-  object-fit: contain;
-}
+
 
 .gameplay-potential-assets .gameplay-token-asset {
   box-sizing: border-box;
@@ -6396,13 +6427,15 @@ body.is-resizing-filter * {
 }
 
 @media (max-width: 760px) {
-  #gameplay-app {
+  #gameplay-app,
+  #battle-stages-app {
     height: auto;
     min-height: 100vh;
     flex-direction: column;
   }
 
-  #gameplay-left {
+  #gameplay-left,
+  #battle-left {
     width: 100%;
     min-width: 0;
     max-width: none;
@@ -6412,18 +6445,22 @@ body.is-resizing-filter * {
   }
 
   #gameplay-left header,
-  #gameplay-list-meta {
+  #gameplay-list-meta,
+  #battle-left header,
+  #battle-list-meta {
     padding-left: 12px;
     padding-right: 12px;
   }
 
-  #gameplay-list {
+  #gameplay-list,
+  #battle-list {
     flex: none;
     min-height: 240px;
     max-height: 42vh;
   }
 
-  #gameplay-right {
+  #gameplay-right,
+  #battle-right {
     overflow: visible;
     padding: 14px 12px 24px;
   }
@@ -6565,7 +6602,7 @@ body.is-resizing-filter * {
   white-space: nowrap;
   font-family: ui-monospace, Consolas, monospace;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .updates-row-meta {
@@ -6739,7 +6776,7 @@ body.is-resizing-filter * {
 }
 
 .updates-detail-link {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 
@@ -6759,7 +6796,7 @@ body.is-resizing-filter * {
 
 .updates-detail-panel h2 {
   margin: 0 0 8px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -6867,7 +6904,7 @@ body.is-resizing-filter * {
   padding: 4px 9px;
   border-radius: 6px;
   background: rgba(var(--accent-rgb), 0.12);
-  color: var(--accent);
+  color: var(--accent-text);
   font-family: ui-monospace, Consolas, monospace;
   font-size: 13px;
   font-weight: 700;
@@ -6910,7 +6947,7 @@ body.is-resizing-filter * {
 }
 
 .updates-model-note.is-error {
-  color: #9d2323;
+  color: var(--status-deleted);
 }
 
 .updates-media-diff-stage {
@@ -6950,7 +6987,7 @@ body.is-resizing-filter * {
 }
 
 .updates-media-diff-note.is-error {
-  color: #9d2323;
+  color: var(--status-deleted);
 }
 
 .updates-audio-diff-stage {
@@ -7000,7 +7037,7 @@ body.is-resizing-filter * {
 .updates-media-open {
   display: inline-block;
   margin-top: 8px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-family: ui-monospace, Consolas, monospace;
   font-size: 11px;
   overflow-wrap: anywhere;
@@ -7030,13 +7067,13 @@ body.is-resizing-filter * {
 .updates-diff-add {
   background: rgba(42, 157, 88, 0.14);
   border-left-color: #2a9d58;
-  color: #17683a;
+  color: var(--status-added);
 }
 
 .updates-diff-del {
   background: rgba(214, 63, 63, 0.14);
   border-left-color: #d63f3f;
-  color: #9d2323;
+  color: var(--status-deleted);
 }
 
 .updates-diff-hunk,
@@ -7155,7 +7192,7 @@ body.is-resizing-filter * {
 
 .asset-badge-video {
   background: rgba(var(--accent-rgb), 0.14);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .asset-badge-file {
@@ -7196,7 +7233,7 @@ body.is-resizing-filter * {
 .asset-detail-toolbar button,
 .asset-link-button {
   padding: 7px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   border: 1px solid rgba(var(--accent-rgb), 0.22);
   background: rgba(var(--accent-rgb), 0.08);
   color: var(--text);
@@ -7220,18 +7257,13 @@ body.is-resizing-filter * {
 }
 
 .asset-panel {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(var(--fg-rgb), 0.025), rgba(var(--fg-rgb), 0)),
-    var(--bg-2);
-  padding: 16px;
+  min-width: 0;
 }
 
 .asset-panel-label {
   margin-bottom: 12px;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -7265,7 +7297,7 @@ body.is-resizing-filter * {
   height: 28px;
   padding: 0;
   border: 1px solid rgba(var(--fg-rgb), 0.18);
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   cursor: pointer;
 }
@@ -7280,7 +7312,7 @@ body.is-resizing-filter * {
   height: 24px;
   padding: 0;
   border: 1px solid rgba(var(--fg-rgb), 0.24);
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--swatch-color);
   cursor: pointer;
 }
@@ -7294,8 +7326,8 @@ body.is-resizing-filter * {
   min-height: 420px;
   max-height: 80vh;
   width: 100%;
-  border: 1px dashed rgba(var(--accent-rgb), 0.24);
-  border-radius: 10px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   display: flex;
   align-items: center;
@@ -7354,16 +7386,22 @@ body.is-resizing-filter * {
   font-size: 12px;
 }
 
+.asset-preview-variants {
+  margin-top: 12px;
+}
+
 .asset-facts {
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .asset-fact {
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(var(--fg-rgb), 0.03);
-  border: 1px solid rgba(var(--fg-rgb), 0.04);
+  display: grid;
+  grid-template-columns: minmax(90px, 0.35fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .asset-fact-label {
@@ -7374,7 +7412,7 @@ body.is-resizing-filter * {
 }
 
 .asset-fact-value {
-  margin-top: 4px;
+  margin-top: 0;
   color: var(--text);
   font-size: 13px;
   word-break: break-word;
@@ -7400,9 +7438,57 @@ body.is-resizing-filter * {
   gap: 8px;
 }
 
+.asset-object-list {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.asset-object-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 12px;
+}
+
+.asset-object-section-head {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.asset-object-section.is-inactive {
+  opacity: 0.45;
+}
+
+.asset-object-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 0;
+  background: rgba(var(--fg-rgb), 0.08);
+  font-size: 11px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.asset-object-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.asset-object-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .asset-variant-chip {
   padding: 7px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   border: 1px solid rgba(var(--accent-rgb), 0.18);
   background: rgba(var(--fg-rgb), 0.03);
   color: var(--text);
@@ -7422,14 +7508,12 @@ body.is-resizing-filter * {
 }
 
 .asset-related-item {
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(var(--fg-rgb), 0.03);
-  border: 1px solid rgba(var(--fg-rgb), 0.04);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .asset-related-item a {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 
@@ -7451,12 +7535,10 @@ body.is-resizing-filter * {
 
 .asset-model-stat {
   /* A grid item defaults to min-width: auto, which lets one long value
-     (a mesh or LOD name) widen the card past its column into the next. */
+     (a mesh or LOD name) widen the row past its column into the next. */
   min-width: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(var(--fg-rgb), 0.03);
-  border: 1px solid rgba(var(--fg-rgb), 0.04);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .asset-model-stat-label {
@@ -7603,7 +7685,8 @@ body.is-resizing-filter * {
   #asset-reset,
   #reference-reset,
   #updates-reset,
-  #characters-reset {
+  #characters-reset,
+  #activities-reset {
     width: 100%;
   }
 
@@ -7658,7 +7741,8 @@ body.is-resizing-filter * {
     padding: 12px;
   }
 
-  #gameplay-detail-header {
+  #gameplay-detail-header,
+  #battle-detail-header {
     position: static;
     flex-direction: column;
     align-items: stretch;
@@ -7669,13 +7753,20 @@ body.is-resizing-filter * {
 
   /* The mobile #gameplay-right restores its own padding, so the body must not
      add a second inset. */
-  #gameplay-detail-body {
+  #gameplay-detail-body,
+  #battle-detail-body {
     padding: 0;
   }
 
   #gameplay-reveal-current,
-  #reveal-current {
+  #reveal-current,
+  .locate-current-button {
     width: 100%;
+  }
+
+  .has-locate-button {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .conv-controls {
@@ -7746,12 +7837,12 @@ html, body, #topbar, #left, #asset-left, #reference-left, #updates-app aside,
 .topbar-title {
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .topbar-subtitle { color: var(--muted); }
 
 /* Page-level titles inside each view */
-#left h1, #asset-left h1, #reference-left h1, #updates-left h1, #characters-left h1 {
+body :is(#left, #asset-left, #reference-left, #updates-left, #characters-left, #gameplay-left, #battle-left, #activities-left, #audio-left, .gameplay-catalog-header) h1 {
   color: var(--text);
   font-weight: 700;
   text-transform: uppercase;
@@ -7777,7 +7868,7 @@ html, body, #topbar, #left, #asset-left, #reference-left, #updates-app aside,
 /* Modern segmented-control tabs —borderless chips inside the #view-tabs rail */
 .view-tab {
   padding: 7px 16px;
-  border-radius: 7px;
+  border-radius: var(--radius-tab);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   background: transparent;
@@ -7793,7 +7884,7 @@ html, body, #topbar, #left, #asset-left, #reference-left, #updates-app aside,
 .view-tab.is-active {
   background: var(--bg-3);
   border-color: var(--border);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: 0 1px 3px rgba(var(--fg-rgb), 0.10);
 }
 
@@ -7921,16 +8012,16 @@ html, body, #topbar, #left, #asset-left, #reference-left, #updates-app aside,
 }
 .conv-warning-status.is-missing {
   background: rgba(var(--accent-rgb), 0.18);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Mission timeline warn chip / status emphasis -> accent */
 .mission-timeline-chip-warn {
-  color: var(--accent);
+  color: var(--accent-text);
   background: rgba(var(--accent-rgb), 0.12);
   border-color: var(--border);
 }
-.conv-warning-section-detail-emphasis { color: var(--accent); }
+.conv-warning-section-detail-emphasis { color: var(--accent-text); }
 
 /* Track-chip parent rule reset: ensure the .track-chip pill itself reads cleanly */
 .track-chip {
@@ -8208,7 +8299,7 @@ body:not(.show-debug) .story-order-remove-from-mission {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 12px;
   line-height: 1.2;
@@ -8387,16 +8478,6 @@ code, kbd, samp, pre, tt {
   font-family: var(--mono);
 }
 
-/* Sidebar page titles: #left / #asset-left / #reference-left / #updates-left
-   are 15px 700 uppercase; #gameplay-left h1 was the only one left at 16px 600. */
-#gameplay-left h1 {
-  color: var(--text);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 15px;
-}
-
 /* Shared table chrome: tabular figures so dense numeric columns line up. */
 table {
   font-variant-numeric: tabular-nums;
@@ -8432,7 +8513,7 @@ table {
 }
 
 .gameplay-asset-thumb figure {
-  height: 132px;
+  height: auto;
   margin: 0;
   overflow: hidden;
   border: 1px solid rgba(var(--fg-rgb), 0.12);
@@ -8483,8 +8564,9 @@ table {
   overflow: hidden;
   color: var(--muted);
   font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .gameplay-asset-thumb.is-missing {
@@ -8602,6 +8684,7 @@ table {
 }
 
 .gameplay-related-link {
+  text-decoration: none;
   max-width: min(46ch, 100%);
   padding: 2px 5px;
   overflow: hidden;
@@ -8633,7 +8716,7 @@ table {
 
 .gameplay-integration-confidence.is-inferred {
   border-color: rgba(var(--accent-rgb), 0.34);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .gameplay-integration-evidence {
@@ -8713,7 +8796,7 @@ table {
 
 .gameplay-projectile-status {
   flex: 0 0 auto;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 11px;
 }
 
@@ -8800,6 +8883,10 @@ table {
 .sort-control > label { font-size: 12px; color: var(--muted); }
 
 .sort-control > label[hidden] { display: none; }
+.search-control-row > label,
+.search-sort-controls .sort-control > label { width: 56px; flex: 0 0 56px; }
+.search-control-row > input[type=search] { width: 100%; margin: 0; }
+.search-sort-controls .sort-control:last-of-type { flex: 0 0 5.5em; }
 .version-update-badge {
   display: inline-block;
   margin-inline: .3em;
@@ -8885,3 +8972,13 @@ table {
 .version-update-details.is-inline { margin: 7px 0; font-weight: 400; }
 .version-update-file-marker { display: inline-block; margin-inline: 4px; vertical-align: middle; }
 .asset-info-panel > .version-update-files { margin: 0 0 12px; }
+
+/* Continuous sidebar lists keep only viewport rows mounted. */
+.continuous-list { overflow-anchor: none; }
+.continuous-list-spacer, .continuous-list-body, .continuous-list-item { flex: none; }
+.continuous-list-item { overflow: hidden; }
+.continuous-list-content { display: flow-root; }
+.continuous-list-content > button { width: 100%; box-sizing: border-box; }
+.continuous-list-group { width: 100%; border: 0; border-bottom: 1px solid var(--border); background: var(--bg); cursor: pointer; text-align: left; padding: 10px 16px; }
+.continuous-list-group::before { content: "▾"; }
+.continuous-list-group[aria-expanded="false"]::before { content: "▸"; }

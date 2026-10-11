@@ -26,6 +26,21 @@ shared script context, or available assets into ownership.
    publishes minimap, terrain, HLOD/streaming surface, water, and point layers
    as independent evidence.
 
+DungeonTable's exact `sceneId` references retain every declared dungeon scene
+in the Map publication, including scenes without recovered registry or Story
+points. Point counts do not determine whether a dungeon has a map. Each scene
+keeps its own payload and streaming source; normal/hard stages share a map only
+when their stored scene IDs agree. Undeclared scene IDs create no synthetic
+coordinate space, and empty point arrays remain empty.
+Distinct standalone dungeon scene IDs also keep separate `regionKey` values when their
+LevelConfigs reuse the same Streaming art scene. That source-art relation can
+reuse a preview, but never stitches their tasks, markers, or map selection.
+Standalone projection selects the Streaming scene explicitly named by
+LevelConfig before a same-name sidecar: another level may use that name for a
+different art scene. Missing declared art stays unavailable rather than using
+the colliding sidecar. Map01/Map02 member sidecars retain their separate exact
+HLOD key/member-suffix partition.
+
 ## Primary generated outputs
 
 `webui/data/map_recovery/{index.json,maps/<levelId>.json,render/**}`; the
@@ -80,6 +95,10 @@ They prove neither runtime state nor interaction availability. Object-specific
 stems take priority over generic template families; a gas-core template keeps
 its more specific category. Unclassified objects retain the generic bucket.
 Classification never changes coordinates, mission ownership or Story links.
+
+Story links into Map with `?map=<id>&mission=<id>`, built from
+`index.json` `maps[].missions`. The mission is applied once and only when the
+map's `facets.missions` contains it; otherwise the default mission stays.
 
 The payload carries localized category labels and glyph keys in its facets,
 per-marker `interactive` identity metadata, and shared source links under

@@ -40,7 +40,6 @@
     showDebug: false,
     sortKey: "default",
     sortDirection: "asc",
-    pager: null,
     filterSignature: "",
   };
 
@@ -82,15 +81,6 @@
     deleted: ui("Deleted", "删除"),
   }[status] || status);
   const SORT_KEYS = ["default", "alphabet", "identities", "evidence_groups", "assets", "names", "sources"];
-  const DEFAULT_SORT_DIRECTIONS = {
-    default: "asc",
-    alphabet: "asc",
-    identities: "desc",
-    evidence_groups: "desc",
-    assets: "desc",
-    names: "desc",
-    sources: "desc",
-  };
   const sortKeyLabel = (key) => ({
     default: ui("Default order", "原有默认排序"),
     alphabet: ui("Alphabetical", "字母顺序"),
@@ -646,7 +636,7 @@
     state.container.innerHTML = `
       <aside id="characters-left">
         <header>
-          <h1>${ui("Characters & NPCs", "人物")}</h1>
+          <h1>${ui("Characters & NPCs", "人物汇总")}</h1>
           <div class="characters-count">${groupCount.toLocaleString()} ${ui("names", "个名称")}</div>
           <div class="sidebar-header-actions">
             <button id="characters-filter-toggle" class="panel-toggle" type="button" aria-controls="characters-filter-panel" aria-expanded="true"></button>
@@ -658,19 +648,9 @@
           <section class="filter-section filter-section-basic" data-filter-section="characters-basic" data-fixed-open="1">
             <div class="filter-section-title"><span id="characters-basic-filter-label">${ui("Basic filters", "基础筛选")}</span></div>
             <div class="filter-section-body filter-section-body-stack">
+              <input id="characters-q" type="search" value="${esc(state.query)}" aria-label="${esc(ui("Search", "搜索"))}" placeholder="${ui("Name, ID, table key, or asset path", "名称、ID、表键或资源路径")}">
               <div class="filter-control-row">
-                <label for="characters-q">${ui("Search", "搜索")}</label>
-                <input id="characters-q" type="search" value="${esc(state.query)}" placeholder="${ui("Name, ID, table key, or asset path", "名称、ID、表键或资源路径")}">
-              </div>
-              <div class="filter-control-row">
-                <label for="characters-sort">${ui("Sort", "排序")}</label>
-                <div class="characters-sort-controls sort-controls">
-                  <div class="sort-control"><label for="characters-sort">${ui("Category", "类别")}</label><select id="characters-sort">${SORT_KEYS.map((key) => `<option value="${esc(key)}"${state.sortKey === key ? " selected" : ""}>${esc(sortKeyLabel(key))}</option>`).join("")}</select></div>
-                  <div class="sort-control"><label for="characters-sort-direction" hidden>${ui("Order", "顺序")}</label><select id="characters-sort-direction" aria-label="${esc(ui("Sort direction", "排序方向"))}" title="${esc(ui("Sort direction", "排序方向"))}">
-                    <option value="asc"${state.sortDirection === "asc" ? " selected" : ""}>${ui("Ascending ↑", "正序 ↑")}</option>
-                    <option value="desc"${state.sortDirection === "desc" ? " selected" : ""}>${ui("Descending ↓", "倒序 ↓")}</option>
-                  </select></div>
-                </div>
+                <select id="characters-sort" data-sort-direction="${esc(state.sortDirection)}">${SORT_KEYS.map((key) => `<option value="${esc(key)}"${state.sortKey === key ? " selected" : ""}>${esc(sortKeyLabel(key))}</option>`).join("")}</select>
               </div>
             </div>
           </section>
@@ -693,30 +673,21 @@
         <div id="characters-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize character filters" aria-orientation="horizontal" tabindex="0"></div>
         <div id="characters-list-meta" class="characters-list-meta"></div>
         <div id="characters-list" class="characters-list"></div>
-        <footer id="characters-pager"></footer>
+
       </aside>
       <div id="characters-splitter" class="pane-splitter" role="separator" aria-label="Resize character sidebar" aria-orientation="vertical" tabindex="0"></div>
       <main id="characters-detail" class="characters-detail"></main>`;
+    window.WebUI.sorting.refresh();
     state.container.querySelector("#characters-q")?.addEventListener("input", (event) => {
       state.query = event.target.value;
-      state.pager?.reset();
+      window.WebUI.continuousList.reset(state.container?.querySelector("#characters-list"));
       renderList();
     });
     state.container.querySelector("#characters-sort")?.addEventListener("change", (event) => {
       const nextKey = SORT_KEYS.includes(event.target.value) ? event.target.value : "default";
       state.sortKey = nextKey;
-      state.sortDirection = DEFAULT_SORT_DIRECTIONS[nextKey] || "asc";
-      state.pager?.reset();
-      const direction = state.container.querySelector("#characters-sort-direction");
-      if (direction) {
-        direction.value = state.sortDirection;
-        direction.disabled = false;
-      }
-      renderList();
-    });
-    state.container.querySelector("#characters-sort-direction")?.addEventListener("change", (event) => {
-      state.sortDirection = event.target.value === "desc" ? "desc" : "asc";
-      state.pager?.reset();
+      state.sortDirection = window.WebUI.sorting.direction("characters-sort");
+      window.WebUI.continuousList.reset(state.container?.querySelector("#characters-list"));
       renderList();
     });
     state.container.querySelector("#characters-reset")?.addEventListener("click", () => {
@@ -727,7 +698,7 @@
       state.facets?.reset({ silent: true });
       state.sortKey = "default";
       state.sortDirection = "asc";
-      state.pager?.reset();
+      window.WebUI.continuousList.reset(state.container?.querySelector("#characters-list"));
       const search = state.container.querySelector("#characters-q");
       if (search) search.value = "";
       const sort = state.container.querySelector("#characters-sort");
@@ -741,11 +712,6 @@
       renderList();
     });
     bindFilterSections();
-    state.pager = window.WebUI.pagination?.createPager({
-      container: state.container.querySelector("#characters-pager"),
-      storageKey: "characters_browser_page_size",
-      onChange: renderList,
-    });
     renderFilterChips();
     setupFilterPanel();
     setupSplitters();
@@ -776,18 +742,16 @@
       sortKey: state.sortKey,
       sortDirection: state.sortDirection,
     });
-    if (state.filterSignature && state.filterSignature !== filterSignature) state.pager?.reset();
+    if (state.filterSignature && state.filterSignature !== filterSignature) window.WebUI.continuousList.reset(state.container?.querySelector("#characters-list"));
     state.filterSignature = filterSignature;
     const rows = filteredRecords();
-    state.pager?.setTotal(rows.length);
-    const pageRows = state.pager ? state.pager.slice(rows) : rows;
     if (state.selectedId && !rows.some((row) => row.id === state.selectedId)) state.selectedId = "";
     if (!state.selectedId && rows.length) state.selectedId = rows[0].id;
     const sortSummary = state.sortKey === "default"
       ? ""
       : ` · ${sortKeyLabel(state.sortKey)} ${state.sortDirection === "desc" ? "↓" : "↑"}`;
     meta.textContent = `${rows.length.toLocaleString()} ${ui("matching names", "个匹配名称")}${sortSummary}`;
-    list.innerHTML = pageRows.map((row) => {
+    window.WebUI.continuousList.render(list, rows, (row) => {
       const evidenceTypes = [...new Set(row.records.flatMap((r) => (r.evidence || []).map((e) => e.type).filter(Boolean)))].sort();
       const typeTags = evidenceTypes.map((t) => `<span class="characters-evidence-type" data-evidence-type="${esc(t)}">${esc(evidenceTypeLabel(t))}</span>`).join("");
       const stats = rowStats(row);
@@ -803,15 +767,15 @@
           <code title="${esc(`${stats.assetPathSamples.toLocaleString()} ${ui("asset path samples", "资源路径示例")}`)}">${stats.assetCount.toLocaleString()} ${ui(stats.assetCount === 1 ? "asset" : "assets", "个资源")}</code>
         </span>
       </button>`;
-    }).join("");
-    list.querySelectorAll("[data-character-id]").forEach((button) => {
-      button.addEventListener("click", () => {
+    }, { estimateHeight: 110, keyOf: (row) => row.id });
+    list.onclick = (event) => {
+      const button = event.target.closest("[data-character-id]");
+      if (!button) return;
         state.selectedId = button.dataset.characterId || "";
         list.querySelector(".characters-list-row.is-selected")?.classList.remove("is-selected");
         button.classList.add("is-selected");
         renderDetail();
-      });
-    });
+    };
     renderDetail();
   }
 
@@ -894,6 +858,21 @@
 
   let detailCache = null;
 
+  function locateSelected() {
+    const list = state.container?.querySelector("#characters-list");
+    const index = filteredRecords().findIndex((row) => row.id === state.selectedId);
+    if (!list || index < 0) return null;
+    renderList();
+    window.WebUI.continuousList.reveal(list, filteredRecords()[index]);
+    return list.querySelector(".characters-list-row.is-selected");
+  }
+
+  function bindLocate(detail) {
+    const button = detail.querySelector("[data-characters-locate]");
+    window.WebUI.locateCurrent?.bind(button, locateSelected, () => state.container?.querySelector("#characters-left"));
+    window.WebUI.locateCurrent?.sync(button, Boolean(state.selectedId));
+  }
+
   function renderDetail() {
     const detail = state.container?.querySelector("#characters-detail");
     if (!detail) return;
@@ -914,6 +893,7 @@
             <h2>${esc(row.primaryName)}</h2>
             <code>${esc(row.updateId)}</code>
           </div>
+          <button class="locate-current-button" type="button" data-characters-locate></button>
         </header>
         <section class="characters-section characters-deleted-snapshot">
           <h3>${ui("Previous-version snapshot", "旧版本快照")}</h3>
@@ -921,6 +901,7 @@
           ${row.oldName ? `<div class="characters-name"><strong>${esc(row.oldName)}</strong><span>${ui("Previous name", "旧版名称")}</span></div>` : ""}
         </section>`;
       window.WebUI.updateBadges.mount(detail, "characters", row.updateId);
+      bindLocate(detail);
       return;
     }
     const stats = rowStats(row);
@@ -936,6 +917,7 @@
           <code>${stats.identities.toLocaleString()} ${ui(stats.identities === 1 ? "grouped identity" : "grouped identities", "已合并身份")}</code>
         </div>
         <div class="characters-detail-count">
+          <button class="locate-current-button" type="button" data-characters-locate></button>
           <div>${stats.evidenceGroups.toLocaleString()} ${ui("evidence groups", "组证据")}</div>
           <div>${stats.assetPathSamples.toLocaleString()} ${ui("asset path samples", "资源路径示例")}</div>
         </div>
@@ -1022,6 +1004,7 @@
           </section>`).join("")}
         </div>
       </section>`;
+    bindLocate(detail);
     window.WebUI.updateBadges.mount(detail, "characters", updateIds);
     window.WebUI.characterAppearances?.mount(detail.querySelector("[data-character-appearances]"), row.records, currentLanguage());
     detail.querySelectorAll("[data-unmerge-id]").forEach((button) => {

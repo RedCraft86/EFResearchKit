@@ -31,19 +31,19 @@
   --mr-travel: #2b6cb0;
   --mr-trigger: #7759a8;
   --mr-pin: #c8410f;
-  --mr-panel: #ffffff;
-  --mr-sunken: #ffffff;
+  --mr-panel: var(--bg-3);
+  --mr-sunken: var(--bg-3);
 
   /* One chrome recipe for every floating surface (panels, tool bars, tips,
      scale bar) so they read as one layer of glass over the map instead of five
      slightly different whites. */
-  --mr-glass: rgba(255, 255, 255, 0.93);
-  --mr-glass-solid: rgba(255, 255, 255, 0.97);
-  --mr-radius: 12px;
-  --mr-radius-sm: 8px;
-  --mr-radius-xs: 6px;
-  --mr-shadow: 0 10px 30px rgba(var(--fg-rgb), 0.16);
-  --mr-shadow-sm: 0 3px 12px rgba(var(--fg-rgb), 0.13);
+  --mr-glass: rgba(var(--bg-3-rgb, 255, 255, 255), 0.93);
+  --mr-glass-solid: rgba(var(--bg-3-rgb, 255, 255, 255), 0.97);
+  --mr-radius: var(--radius-lg);
+  --mr-radius-sm: var(--radius-md);
+  --mr-radius-xs: var(--radius-sm);
+  --mr-shadow: var(--shadow-md);
+  --mr-shadow-sm: var(--shadow-sm);
   /* Control labels: the palette text ink, one step lighter than headings. */
   --mr-control-ink: rgba(var(--fg-rgb), 0.86);
   /* Sliders and checkboxes take the palette's secondary teal rather than the
@@ -196,7 +196,7 @@
   margin: 0 0 7px;
   padding: 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -216,11 +216,11 @@
 .mr-layer-group > .mr-layer { align-self: flex-start; }
 .mr-layer-heading { display: flex; align-items: center; }
 .mr-type-details > summary { cursor: pointer; color: var(--muted); font-size: 10px; padding: 2px 0 3px 12px; }
-.mr-type-search { width: 100%; box-sizing: border-box; min-width: 0; margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; color: var(--text); background: var(--bg); font: inherit; font-size: 11px; }
+.mr-type-search { width: 100%; box-sizing: border-box; min-width: 0; margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--mr-radius-xs); color: var(--text); background: var(--bg); font: inherit; font-size: 11px; }
 .mr-type-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mr-filter-summary { display: grid; gap: 4px; margin: 0 0 10px; font-size: 11px; color: var(--muted); }
 .mr-filter-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
-.mr-filter-summary button { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-align: left; cursor: pointer; }
+.mr-filter-summary button { padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; text-align: left; cursor: pointer; }
 .mr-filter-summary button:hover { text-decoration: underline; }
 .mr-filter-summary button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mr-type-count-hint { margin: -3px 0 8px; color: var(--muted); font-size: 10px; line-height: 1.5; }
@@ -270,7 +270,7 @@
 .mr-layer-actions button {
   padding: 2px 8px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-chip);
   background: none;
   color: var(--muted);
   font-family: var(--mono);
@@ -303,7 +303,7 @@
   cursor: pointer;
 }
 .mr-map-variant b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
-.mr-map-variant span { flex: 0 0 auto; color: var(--muted); font-size: 9px; }
+.mr-map-variant span { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
 .mr-map-variant:hover { border-color: var(--accent); background: transparent; }
 .mr-map-variant.is-active { border-color: var(--mr-story); background: color-mix(in srgb, var(--mr-story) 12%, transparent); }
 .mr-map-variant.is-active:hover { background: transparent; }
@@ -335,7 +335,7 @@
 }
 
 .mr-surface-evidence > span {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -382,7 +382,7 @@
 .mr-inspector-column > h2 {
   margin: 0 0 7px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -419,7 +419,7 @@
 .mr-map-item b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mr-map-item.is-active b { font-weight: 700; }
 .mr-map-item span,
-.mr-map-transition span { flex: 0 0 auto; color: var(--muted); font-size: 9px; }
+.mr-map-transition span { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
 .mr-map-item:hover,
 .mr-map-transition:hover { border-color: var(--accent); background: transparent; }
 .mr-map-item.is-active {
@@ -451,9 +451,9 @@
 }
 .mr-mission-item > summary b { min-width: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mr-mission-item.is-active > summary b { font-weight: 700; }
-.mr-mission-item > summary span { flex: 0 0 auto; color: var(--muted); font-size: 9px; white-space: nowrap; }
+.mr-mission-item > summary span { flex: 0 0 auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .mr-mission-files { padding: 4px 7px 7px 14px; }
-.mr-mission-file-list > span { color: var(--muted); font-size: 9px; }
+.mr-mission-file-list > span { color: var(--muted); font-size: 10px; }
 .mr-mission-files small { color: var(--muted); }
 .mr-mission-files ul { margin: 5px 0 0; padding-left: 12px; }
 .mr-mission-files li { margin: 3px 0; overflow-wrap: anywhere; }
@@ -480,7 +480,7 @@
   gap: 5px;
   padding: 2px 8px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-chip);
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
@@ -718,7 +718,7 @@
 .mr-entity-tools > span:first-child {
   padding: 0 4px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -758,7 +758,7 @@
 }
 .mr-display-menu > summary::-webkit-details-marker { display: none; }
 .mr-display-menu > summary::after { content: "▴"; margin-left: 6px; color: var(--muted); font-size: 8px; }
-.mr-display-menu[open] > summary { border-color: var(--accent); color: var(--accent); }
+.mr-display-menu[open] > summary { border-color: var(--accent); color: var(--accent-text); }
 .mr-display-menu[open] > summary::after { content: "▾"; }
 .mr-display-menu-popover {
   position: absolute;
@@ -851,7 +851,7 @@
 .mr-region-tools > span:first-child {
   padding: 0 4px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -859,7 +859,7 @@
 .mr-region-tools button[aria-pressed="true"] {
   border-color: var(--accent);
   background: rgba(var(--accent-rgb), 0.14);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .mr-model-layer-row {
   display: grid;
@@ -1030,8 +1030,8 @@
 }
 
 .mr-file-pick b { font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
-.mr-file-pick small { color: var(--muted); font-size: 9.5px; overflow-wrap: anywhere; }
-.mr-file-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.mr-file-pick small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.mr-file-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--mr-radius-xs); }
 .mr-file-actions { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
 .mr-file-open { flex: 0 0 auto; text-decoration: none; white-space: nowrap; }
 .mr-file-open:hover { text-decoration: underline; }
@@ -1045,7 +1045,7 @@
   border-radius: 999px;
   background: rgba(var(--accent-2-rgb), 0.1);
   color: var(--accent-2-text);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
@@ -1086,7 +1086,7 @@
 }
 
 .mr-viewer-head b { flex: 1 1 auto; font-size: 11px; overflow-wrap: anywhere; }
-.mr-viewer-head span { flex: 0 0 auto; color: var(--muted); font-size: 9.5px; white-space: nowrap; }
+.mr-viewer-head span { flex: 0 0 auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .mr-viewer-body { max-height: 340px; overflow: auto; padding: 9px; }
 .mr-viewer-state { margin: 0; color: var(--muted); font-size: 11px; }
 .mr-viewer-state.is-error { color: var(--accent-text); }
@@ -1136,8 +1136,8 @@
 .mr-tokens li {
   padding: 1px 6px;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  background: #fff;
+  border-radius: var(--mr-radius-xs);
+  background: var(--bg-3);
   font: 10px/1.5 var(--mono);
   overflow-wrap: anywhere;
 }
@@ -1164,7 +1164,7 @@
   font: 10.5px/1.55 var(--mono);
   background: #fff8d8;
   border: 1px solid #e2bd54;
-  border-radius: 5px;
+  border-radius: var(--mr-radius-xs);
 }
 
 .mr-registry-line { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1217,11 +1217,11 @@
 .mr-encounter-toolbar input { flex: 1 1 180px; min-width: 0; }
 .mr-encounter-toolbar input, .mr-encounter-toolbar select,
 .mr-encounter-toolbar button, .mr-encounter-pages button,
-.mr-encounter-detail > button { padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); }
+.mr-encounter-detail > button { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--mr-radius-xs); background: var(--panel); color: var(--text); }
 .mr-encounter-browser { display: grid; grid-template-columns: minmax(170px, .75fr) minmax(0, 1.8fr); gap: 12px; margin-top: 10px; }
 .mr-encounter-list, .mr-encounter-detail { min-width: 0; max-height: 470px; overflow: auto; }
 .mr-encounter-detail { padding: 0 7px; overflow-wrap: anywhere; }
-.mr-encounter-pick { display: block; width: 100%; padding: 7px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.mr-encounter-pick { display: block; width: 100%; padding: 7px; border: 1px solid transparent; border-radius: var(--mr-radius-xs); background: transparent; color: var(--text); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .mr-encounter-pick b, .mr-encounter-pick small { display: block; }
 .mr-encounter-pick small { color: var(--muted); font-size: 10px; margin-top: 3px; }
 .mr-encounter-pick:hover, .mr-encounter-pick.is-active { background: var(--hover); border-color: var(--border); }
@@ -1246,3 +1246,6 @@
   .mr-encounter-browser { grid-template-columns: 1fr; }
   .mr-encounter-list { max-height: 200px; }
 }
+
+.mr-inspector-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mr-inspector-title-row h2 { margin: 0; }

@@ -1,12 +1,12 @@
-"""Authored sources behind Production, projected equally for both exports."""
+"""Authored sources behind Gameplay items, projected equally for both exports."""
 from __future__ import annotations
 
 from typing import Any
 
-from scripts.webui.production.build_production import build_catalog
+from scripts.webui.gameplay.items.build import build_catalog
 
 
-def production_source_records(tables: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def item_source_records(tables: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Collect exact displayed relationships, without a transitive recipe crawl.
 
     Use the catalog's joins and medal/limited-item display groups. Compare source

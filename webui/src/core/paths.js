@@ -43,6 +43,11 @@
 
     if (sourceRoot) {
       let normalizedRoot = normalizeRelPath(sourceRoot);
+      // Assets-owned decoded geometry is published with the WebUI, alongside
+      // its index. It is not a file in the canonical game export.
+      if (source === "Collision" && normalizedRoot.startsWith("webui/data/assets/collision/")) {
+        return `/${[normalizedRoot.slice("webui/".length), rest.join("/")].join("/").split("/").map(encodeURIComponent).join("/")}`;
+      }
       const rootPrefix = normalizeRelPath(exportRoot);
       if (rootPrefix && normalizedRoot.startsWith(`${rootPrefix}/`)) {
         normalizedRoot = normalizedRoot.slice(rootPrefix.length + 1);

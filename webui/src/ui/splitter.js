@@ -113,6 +113,11 @@
       if (commit) scheduleResize();
     };
 
+    ctrl.destroy = () => {
+      stopDragging();
+      window.removeEventListener("resize", ctrl.requestSync);
+    };
+
     ctrl.clear = ({ commit = true } = {}) => {
       clearSize();
       clearAria();
@@ -230,7 +235,7 @@
     if (!shell || !sidebar || !pane) return;
 
     let paneWasMobile = isMobileLayout();
-    setupSplitter({
+    const paneController = setupSplitter({
       handle: pane,
       storageKey: paneStorageKey,
       bodyDragClass: "is-resizing-pane",
@@ -257,7 +262,7 @@
         controller.set(width, { persist: false, commit: false });
       },
     });
-    if (!panel || !filter) return;
+    if (!panel || !filter) return { destroy: () => paneController.destroy() };
 
     const minPanelHeight = 56;
     const minListHeight = 160;
@@ -316,6 +321,11 @@
     });
     const observer = new MutationObserver(controller.requestSync);
     observer.observe(panel, { attributes: true, attributeFilter: ["hidden"], childList: true, subtree: true });
+    return { destroy: () => {
+      observer.disconnect();
+      paneController.destroy();
+      controller.destroy();
+    } };
   }
 
   window.WebUI.setupListShellSplitters = setupListShellSplitters;

@@ -1088,7 +1088,6 @@
     notesPromise: null,
     filterPanel: null,
     renderFrame: 0,
-    pager: null,
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -2161,14 +2160,17 @@
           <div id="audio-filter-splitter" class="filter-splitter" role="separator" aria-label="Resize audio filters" aria-orientation="horizontal" tabindex="0"></div>
           <div id="audio-list-meta"><span id="audio-shown">0</span> / <span id="audio-total">0</span> <span id="audio-shown-label"></span></div>
           <div id="audio-list-wrap"><div id="audio-list-spacer"></div><div id="audio-list"></div></div>
-          <footer id="audio-pager"></footer>
+
         </aside>
         <div id="audio-splitter" class="pane-splitter" role="separator" aria-label="Resize audio sidebar" aria-orientation="vertical" tabindex="0"></div>
         <main id="audio-right">
           <header class="audio-detail-header">
-            <div id="audio-detail-eyebrow" class="audio-detail-eyebrow"></div>
-            <h1 id="audio-detail-title"></h1>
-            <div id="audio-detail-subtitle"></div>
+            <div class="audio-detail-header-main">
+              <div id="audio-detail-eyebrow" class="audio-detail-eyebrow"></div>
+              <h1 id="audio-detail-title"></h1>
+              <div id="audio-detail-subtitle"></div>
+            </div>
+            <button id="audio-locate-current" class="locate-current-button" type="button" disabled></button>
           </header>
           <div id="audio-detail-body"></div>
         </main>
@@ -2208,11 +2210,22 @@
       event.preventDefault();
       selectRecord(state.filtered[Number(row.dataset.index)]);
     });
-    state.pager = window.WebUI.pagination?.createPager({
-      container: $("#audio-pager", state.container),
-      storageKey: "audio_browser_page_size",
-      onChange: () => applyFilters({ resetScroll: true, resetPage: false }),
-    });
+    window.WebUI.locateCurrent?.bind($("#audio-locate-current", state.container), locateSelected, () => $("#audio-left", state.container));
+  }
+
+  // The list is virtual: page to the selected record, then scroll the wrap so
+  // its row is drawn before handing it to the shared reveal.
+  function locateSelected() {
+    const selected = state.selected;
+    if (!selected || selected.kind !== state.mode) return null;
+    const index = state.filtered.findIndex((record) => record.key === selected.key);
+    if (index < 0) return null;
+    const row = state.rows.find((item) => item.index === index);
+    const wrap = $("#audio-list-wrap", state.container);
+    if (!row || !wrap) return null;
+    wrap.scrollTop = Math.max(0, row.top - wrap.clientHeight / 2 + ROW_HEIGHT / 2);
+    renderList();
+    return $("#audio-list .audio-row.is-selected", state.container);
   }
 
   function bindFilterSections() {
@@ -2373,8 +2386,7 @@
     audioFacets().render(state.datasets[state.mode] || []);
   }
 
-  function applyFilters({ resetScroll = false, resetPage = resetScroll } = {}) {
-    if (resetPage) state.pager?.reset();
+  function applyFilters({ resetScroll = false } = {}) {
     const records = state.datasets[state.mode] || [];
     const tokens = window.WebUI.parseQuery(state.query);
     const facets = audioFacets();
@@ -2400,10 +2412,7 @@
       }
       return a.title.localeCompare(b.title, undefined, { numeric: true }) || a.key.localeCompare(b.key, undefined, { numeric: true });
     }));
-    state.pager?.setTotal(state.filtered.length);
-    const pageRecords = state.pager ? state.pager.slice(state.filtered) : state.filtered;
-    const pageStart = state.pager ? state.pager.page * state.pager.pageSize : 0;
-    state.rows = pageRecords.map((record, offset) => ({ record, index: pageStart + offset, top: offset * ROW_HEIGHT }));
+    state.rows = state.filtered.map((record, index) => ({ record, index, top: index * ROW_HEIGHT }));
     const spacer = $("#audio-list-spacer", state.container);
     if (spacer) spacer.style.height = `${state.rows.length * ROW_HEIGHT}px`;
     const wrap = $("#audio-list-wrap", state.container);
@@ -2432,6 +2441,8 @@
     const list = $("#audio-list", state.container);
     if (!wrap || !list) return;
     if (!state.datasets[state.mode]) return;
+    window.WebUI.locateCurrent?.sync($("#audio-locate-current", state.container),
+      state.selected?.kind === state.mode && state.filtered.some((record) => record.key === state.selected.key));
     if (!state.rows.length) {
       list.innerHTML = `<div class="audio-empty-list">${esc((state.datasets[state.mode] || []).length ? t("noMatches") : t("noData"))}</div>`;
       return;

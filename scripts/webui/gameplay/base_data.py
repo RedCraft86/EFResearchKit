@@ -3414,6 +3414,31 @@ def build_usable_item_entries(
             "search": search.lower(),
         })
     by_id = {entry["id"]: entry for entry in entries}
+    # Trial overview rewards explicitly include the supply items. The equipment
+    # reward is shared by the trial; it does not prove the alpha/beta split.
+    for trial_id, trial in sorted((tables.get("ActivityCharTrial.json") or {}).items()):
+        if not isinstance(trial, dict) or not trial.get("equipRewardId"):
+            continue
+        reward = reward_payload(trial["equipRewardId"], tables, i18n, fallback_i18n)
+        overview = reward_payload(trial.get("showRewardId"), tables, i18n, fallback_i18n)
+        if not reward["items"] and not reward["probableItems"]:
+            continue
+        for item in overview["items"]:
+            item_id = item["id"]
+            if not item_id.startswith("item_char_equip_supply_") or item_id in by_id:
+                continue
+            base = common_item_payload(item_id, tables, i18n, fallback_i18n, story_wiki_titles)
+            entry = {
+                **base, "kind": "item", "useCategory": "chest",
+                "group": f"Item / {base.get('itemTypeLabel') or 'Chest'}",
+                "chestData": {"rewards": [reward], "sharedTrialEquipment": True},
+                "source": {"table": "ActivityCharTrial.json", "id": trial_id,
+                           "nameTable": "ItemTable.json", "showRewardId": trial.get("showRewardId")},
+                "search": " ".join([item_id, base["title"], base["description"],
+                                     *(value.get("name") or value["id"] for value in reward["items"])]).lower(),
+            }
+            entries.append(entry)
+            by_id[item_id] = entry
     for item_id, row in sorted((tables.get("RecoverApItemTable.json") or {}).items()):
         if not isinstance(row, dict):
             continue
@@ -3435,6 +3460,33 @@ def build_usable_item_entries(
             by_id[item_id] = entry
         entry["apSupplyData"] = {"apRecoverValue": row.get("apRecoverValue")}
     return entries
+
+def enemy_distribution_payload(
+    ids: list[str], tables: dict[str, Any], i18n: dict[str, Any], fallback_i18n: dict[str, Any],
+) -> list[dict[str, Any]]:
+    distributions = tables.get("DistributionInfoTable.json") or {}
+    jumps = tables.get("SystemJumpTable.json") or {}
+    result = []
+    for distribution_id in ids:
+        row = distributions.get(distribution_id) or {}
+        jump_id = normalize_id(row.get("jumpId"))
+        jump = jumps.get(jump_id) or {}
+        args = jump.get("phaseArgs")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except (ValueError, TypeError):
+                args = None
+        level_id = normalize_id(args.get("levelId")) if jump.get("phaseId") == "Map" and isinstance(args, dict) else ""
+        result.append({
+            "id": distribution_id,
+            "name": i18n_text(i18n, row.get("areaName"), fallback_i18n) or distribution_id,
+            "jumpId": jump_id,
+            "levelId": level_id,
+            "evidenceBoundary": "direct" if level_id else "unresolved",
+        })
+    return result
+
 
 def build_enemy_entries(
     tables: dict[str, Any],
@@ -3616,6 +3668,7 @@ def build_enemy_entries(
             "abilities": abilities,
             "tags": tags,
             "distributionIds": distribution_ids,
+            "distributions": enemy_distribution_payload(distribution_ids, tables, i18n, fallback_i18n),
             "dropItems": drops,
             "bornBuffs": born_buffs,
             "attrModifiers": attr_modifiers,
@@ -3831,6 +3884,7 @@ def build_language_payload(
         "ItemTypeTable.json",
         "UseItemTable.json",
         "UsableItemChestTable.json",
+        "ActivityCharTrial.json",
         "RecoverApItemTable.json",
         "RewardTable.json",
         "WeaponBasicTable.json",
@@ -3868,6 +3922,8 @@ def build_language_payload(
         "EnemyAttributeTemplateTable.json",
         "EnemyDisplayInfoTable.json",
         "EnemyTemplateDisplayInfoTable.json",
+        "DistributionInfoTable.json",
+        "SystemJumpTable.json",
         "DisplayEnemyTypeTable.json",
         "EnemyAbilityDescTable.json",
         "EnemyTagTable.json",

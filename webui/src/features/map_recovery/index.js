@@ -369,11 +369,9 @@
   KIND_LABELS.zh.script_target = "\u811a\u672c\u52a8\u4f5c\u76ee\u6807";
   const DEFAULT_HIDDEN_KINDS = new Set(["empty_slot", "script_target_candidate"]);
 
-  // Every level in LevelBasicInfoTable that owns a plottable node is published,
-  // which is far too many for a flat list to be readable. The options are
-  // grouped by the level family the builder assigns and annotated with the two
-  // numbers that decide whether a map is worth opening: how many nodes it plots
-  // and how many distinct story keys those nodes reach.
+  // Published levels include declared dungeon scenes with no recovered points.
+  // Group options by the builder's level family and show point/Story coverage;
+  // zero counts do not mean the scene has no map geometry.
   // A level id alone does not say which place the reader is looking at, so
   // every level carries the display name the builder recovered from the
   // level's own table rows (LevelDescTable + per-language I18nTextTable),
@@ -510,6 +508,15 @@
         </details>`;
       }).join("");
     return `<div class="mr-mission-list"><button type="button" class="mr-mission-all${state.mission ? "" : " is-active"}" data-map-mission="">${esc(`${t("missionAll")} (${missions.length})`)}</button>${rows}</div>`;
+  };
+
+  // `?mission=<id>` from the Story page selects that mission once on the
+  // linked map; later map switches use the map's own default mission.
+  let linkedMissionPending = new URL(location.href).searchParams.get("mission") || "";
+  const consumeLinkedMission = (map) => {
+    const id = linkedMissionPending;
+    linkedMissionPending = "";
+    return id && map?.facets?.missions?.[id] ? id : "";
   };
 
   const revealSelectedMap = (host) => {
@@ -2673,7 +2680,7 @@
             <section class="mr-task-column" aria-label="${esc(t("mission"))}"><h2>${esc(t("mission"))}</h2>${window.WebUI.updateBadges.html("map", mapUpdateIds())}${window.WebUI.updateBadges.panel("map", mapUpdateIds())}${variantControls}${missionControls}<div class="mr-task-map-status">${mapMetrics}${surfaceAccuracy}</div></section>
             ${objectFilters}
             <section class="mr-inspector-column" aria-label="${esc(t("inspector"))}">
-              <h2>${esc(t("inspector"))}</h2>
+              <div class="mr-inspector-title-row"><h2>${esc(t("inspector"))}</h2><button class="locate-current-button" type="button" data-map-locate>${esc(window.WebUI.locateCurrent?.label() || "Locate current file")}</button></div>
               <div class="mr-inspector-head"></div>
               <div class="mr-inspector-body"></div>
             </section>
@@ -2726,6 +2733,12 @@
       `;
     bindMap(host, hiddenFloorIds);
     revealSelectedMap(host);
+    host.querySelector("[data-map-locate]")?.addEventListener("click", () => {
+      const item = host.querySelector(".mr-map-item.is-active");
+      item?.closest("details")?.setAttribute("open", "");
+      revealSelectedMap(host);
+      item?.focus({ preventScroll: true });
+    });
     window.WebUI?.mapEncounters?.mount(host, selectEncounter);
     state.inspectorKey = "";
     renderInspector();
@@ -3431,11 +3444,13 @@
     resetPointHeightRange();
     state.storyOnly = false;
     state.mapMarkOnly = false;
-    state.mission = state.map.defaultMission || "";
+    const linkedMission = consumeLinkedMission(state.map);
+    state.mission = linkedMission || state.map.defaultMission || "";
     state.missionPhase = "";
     state.transform = { x: 0, y: 0, scale: 1 };
     state.pendingFit = true;
     state.pendingFitTarget = "map";
+    if (linkedMission) state.pendingFitTarget = "nodes";
     state.selectedId = "";
     state.previewId = "";
     state.filePath = "";
@@ -3504,7 +3519,10 @@
       if (request !== state.loadRequest) return null;
       // Payloads are fetched in parallel by loadMap. Keep the shared loader
       // indeterminate while those files are being decoded and merged.
-      const initialId = state.selected || state.index.defaultMap;
+      // `?map=<id>` (a map or variant id) opens that map once, for links from
+      // other pages; later navigation keeps the user's own selection.
+      const linked = state.selected ? "" : new URL(location.href).searchParams.get("map") || "";
+      const initialId = state.selected || linked || state.index.defaultMap;
       const loaded = await loadMap(initialId, { includeRegion: state.regionScope === "all" && stitchOnInitialOpen(initialId) });
       if (request !== state.loadRequest) return null;
       return loaded;

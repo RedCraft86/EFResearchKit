@@ -1,8 +1,8 @@
-# Data page (export stores and decoded datasets)
+# Decoded page (数据解码: export stores and decoded datasets)
 
 ## Purpose
 
-The Data page (`data-inspector`, after Assets in normal navigation) shows every
+The Decoded page (`data-inspector`, after Assets in normal navigation) shows every
 decodable export output that no other page shows. **Files** is one list and one
 viewer over five sources: the export's Unity object documents
 (`game/Unity.sqlite`), its packed game files (`game/GameFiles.sqlite`), the
@@ -16,7 +16,7 @@ Media the Assets and Audio pages show (videos, Texture2D, Sprite, Mesh, Animator
 FBX, decoded audio) are left out on both sides: `scripts/webui/pages.py`
 `PAGE_MEDIA` keeps them out of the page's extraction and
 `store_browser.PAGE_MEDIA_FOLDERS` out of its list, and a local test keeps the
-two equal. Sprite crop documents are Unity store rows, so the Data page lists
+two equal. Sprite crop documents are Unity store rows, so the Decoded page lists
 them while Assets shows the images. Assets lists no exported JSON: every such
 document is a store row here.
 

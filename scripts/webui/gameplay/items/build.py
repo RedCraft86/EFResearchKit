@@ -1,6 +1,6 @@
 """Publish item sources, production recipes and exact reverse table references.
 
-Run ``python -m scripts.webui.production.build_production --languages CN``.
+Run ``python -m scripts.webui.gameplay.build_gameplay --stage items --languages CN``.
 Tables provide the catalog; already exported images provide optional icons.
 No installed data, other page publication or native/runtime inference is
 required. The page registry owns freshness checks.
@@ -17,13 +17,13 @@ from typing import Any
 from scripts.common import require_export_layout, write_json
 from scripts.repo_paths import REPO_ROOT
 from scripts.source_paths import ExportLayout
-from scripts.webui.production.icons import load_icons
-from scripts.webui.production.limited_items import group_limited_items
-from scripts.webui.production.medals import group_medals
-from scripts.webui.production.recipes import group_recipes
+from scripts.webui.gameplay.items.icons import load_icons
+from scripts.webui.gameplay.items.limited_items import group_limited_items
+from scripts.webui.gameplay.items.medals import group_medals
+from scripts.webui.gameplay.items.recipes import group_recipes
 
 
-SCHEMA = "endfield.production.v1"
+SCHEMA = "endfield.gameplay-items.v1"
 TABLE_NAMES = (
     "ItemTable", "ItemTypeTable", "ItemShowingTypeTable", "FactoryItemTable", "TextTable",
     "FactoryMachineCraftTable", "FactoryMachineCraftGroupTable", "FactoryHubCraftTable",
@@ -34,6 +34,12 @@ TABLE_NAMES = (
     "AchievementTable", "AchievementTypeTable", "LTItemTable", "UserAvatarTable",
     "FullBottleTable", "FullGasJarTable", "FactoryEnvDisplayTable",
     "ActivityLimitedFormulaTable", "LimitedFormulaCraftIdReverseTable",
+    "PictureItemTable", "PictureTable", "BusinessCardTopicTable", "SnapshotStickerTable",
+    "SpaceshipMusicTable",
+    "SpaceshipShowcaseItemTable",
+    "FactoryItem2LogisticIdTable", "FactoryGridConnecterTable", "FactoryGridRouterTable",
+    "FactoryBoxValveTable", "FactoryLiquidConnectorTable", "FactoryLiquidRouterTable",
+    "FactoryFluidValveTable",
 )
 BOUNDARY = (
     "Stored table configuration and exact identifier joins. Recipe groups retain their "
@@ -47,7 +53,7 @@ BOUNDARY = (
 # Presentation icons for the four named gas environments. Name-based, not
 # table-derived: FactoryEnvDisplayTable stores effect-atlas tokens
 # (T_fx_icon_gas_*_UI), and the frontend maps those tokens to these icon ids
-# (webui/src/features/production/index.js). No table join establishes them.
+# (webui/src/features/gameplay/items.js). No table join establishes them.
 GAS_ENV_ICON_IDS = frozenset({
     "icon_gas_env_stable", "icon_gas_env_humidity",
     "icon_gas_env_acid", "icon_gas_env_xiranite",
@@ -162,6 +168,7 @@ def build_catalog(tables: dict[str, dict[str, Any]], texts: dict[str, Any]) -> d
             unresolved.append({"table": table_name, "row": row_id, "target": str(item_id), "field": field})
 
     for key, row in table("FactoryBuildingTable").items():
+        template = row.get("rendererTemplateMap", {}).get(row.get("defaultRendererTemplate"), {})
         machines[key] = {
             "id": key, "kind": "machines", "title": localized(row.get("name"), texts) or key,
             "description": localized(row.get("desc"), texts), "type": str(row.get("type", "")),
@@ -172,6 +179,9 @@ def build_catalog(tables: dict[str, dict[str, Any]], texts: dict[str, Any]) -> d
             "categories": [], "iconId": "",
             "rendererTemplateMap": row.get("rendererTemplateMap", {}), "tags": [],
             "sources": [source("FactoryBuildingTable", key)],
+            "factoryRenderResources": [{"id": template["machineRenderId"],
+                                        "source": source("FactoryBuildingTable", key, "rendererTemplateMap")}]
+                                       if template.get("machineRenderId") else [],
         }
     for key, row in table("FactoryBuildingItemTable").items():
         building_id, item_id = str(row.get("buildingId", "")), str(row.get("itemId", ""))
@@ -351,6 +361,7 @@ def build_catalog(tables: dict[str, dict[str, Any]], texts: dict[str, Any]) -> d
             append_item(currency_id, "upgrades", {
                 "type": "shop_currency", "title": listing["shopName"], "count": goods["price"],
                 "goodsId": key, "items": bundles, "hasRandomRewards": random,
+                "cnDiscount": goods.get("cnDiscount"),
                 "sources": listing["sources"],
             }, "ShopGoodsTable", key)
 
@@ -407,6 +418,73 @@ def build_catalog(tables: dict[str, dict[str, Any]], texts: dict[str, Any]) -> d
     source_recipe_count = len(recipes)
     recipe_types = dict(Counter(row["type"] for row in recipes.values()))
     recipe_aliases = group_recipes(recipes)
+    # Publish explicit current catalog joins, while retaining authored IDs as evidence.
+    def bind(value):
+        if isinstance(value, list):
+            for child in value:
+                bind(child)
+        elif isinstance(value, dict):
+            if "resolved" in value and "id" in value:
+                value["catalogId"] = aliases.get(value["id"], value["id"])
+            if value.get("targetKind") == "items":
+                value["targetCatalogId"] = aliases.get(value["targetId"], value["targetId"])
+            for child in list(value.values()):
+                bind(child)
+
+    for records in (items, recipes, machines):
+        bind(records)
+    for item in items.values():
+        for ref in item["producedBy"] + item["usedBy"]:
+            ref["groupId"] = recipe_aliases.get(ref["id"], ref["id"])
+    for item_id, picture_id in table("PictureItemTable").items():
+        picture = table("PictureTable").get(picture_id, {})
+        if item_id in items and picture.get("imgId"):
+            items[item_id].setdefault("mediaTokens", []).append(picture["imgId"])
+            items[item_id]["sources"].extend([
+                source("PictureItemTable", item_id), source("PictureTable", picture_id, "imgId")])
+    for name, field in (("BusinessCardTopicTable", "id"), ("SnapshotStickerTable", "icon"),
+                        ("UserAvatarTable", "icon")):
+        for key, row in table(name).items():
+            item_id = row.get("itemId")
+            if item_id in items and row.get(field):
+                items[item_id].setdefault("mediaTokens", []).append(str(row[field]).rsplit("/", 1)[-1])
+                items[item_id]["sources"].append(source(name, key, f"itemId, {field}"))
+    for item in items.values():
+        item["modelKey"] = table("ItemTable").get(item["id"], {}).get("modelKey", "")
+        resources = []
+        for building_id in item["buildingIds"]:
+            row = table("FactoryBuildingTable").get(building_id, {})
+            template = row.get("rendererTemplateMap", {}).get(row.get("defaultRendererTemplate"), {})
+            if template.get("machineRenderId"):
+                resources.append({"id": template["machineRenderId"],
+                                  "source": source("FactoryBuildingTable", building_id, "rendererTemplateMap")})
+        logistics = table("FactoryItem2LogisticIdTable").get(item["id"], {})
+        logistic_id = logistics.get("logisticId")
+        if logistic_id:
+            for name in ("FactoryGridConnecterTable", "FactoryGridRouterTable", "FactoryBoxValveTable",
+                         "FactoryLiquidConnectorTable", "FactoryLiquidRouterTable", "FactoryFluidValveTable"):
+                row = table(name).get(logistic_id, {})
+                template = row.get("rendererTemplateMap", {}).get(row.get("defaultRendererTemplate"), {})
+                if template.get("machineRenderId"):
+                    resources.append({"id": template["machineRenderId"], "source": source(name, logistic_id, "rendererTemplateMap")})
+            item["logisticId"] = logistic_id
+            item["sources"].append(source("FactoryItem2LogisticIdTable", item["id"], "logisticId"))
+        if resources:
+            item["factoryRenderResources"] = resources
+    for key, row in table("SpaceshipShowcaseItemTable").items():
+        if key in items and row.get("resPath"):
+            items[key]["showcaseResource"] = row["resPath"]
+            items[key]["sources"].append(source("SpaceshipShowcaseItemTable", key, "resPath"))
+    for key, row in table("SpaceshipMusicTable").items():
+        if key not in items:
+            continue
+        links = [{"eventId": row[field], "role": role, "evidenceBoundary": "direct",
+                  "source": source("SpaceshipMusicTable", key, field)}
+                 for field, role in (("musicEvent", "full"), ("musicEventSample", "sample"))
+                 if row.get(field)]
+        if links:
+            items[key]["musicLinks"] = links
+            items[key]["sources"].extend(link["source"] for link in links)
     return {
         "records": {"items": items, "recipes": recipes, "machines": machines},
         "itemAliases": aliases,
@@ -431,7 +509,7 @@ def read_table(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     raw = path.read_bytes()  # Missing or malformed inputs must not publish an empty catalog.
     payload = json.loads(raw)
     if not isinstance(payload, dict):
-        raise ValueError(f"Production table must be an object: {path}")
+        raise ValueError(f"Gameplay items table must be an object: {path}")
     return payload, {"file": path.name, "sha256": hashlib.sha256(raw).hexdigest(), "rows": len(payload)}
 
 
@@ -441,8 +519,6 @@ def publish(catalog: dict[str, Any], language: str, out_dir: Path, inputs: list[
         "stats": catalog["stats"], "inputs": inputs, "items": [], "recipes": [], "machines": [],
         "unresolvedReferences": catalog["unresolvedReferences"],
         "icons": catalog.get("icons", {}), "iconStatus": catalog.get("iconStatus", {}),
-        "itemAliases": catalog.get("itemAliases", {}),
-        "recipeAliases": catalog.get("recipeAliases", {}),
         "machineCategories": catalog.get("machineCategories", []),
         "labels": catalog.get("labels", {}),
     }
@@ -453,16 +529,18 @@ def publish(catalog: dict[str, Any], language: str, out_dir: Path, inputs: list[
             shard = f"{kind}/{bucket}.json"
             shards[shard][key] = row
             fields = ("id", "kind", "title", "type", "typeName", "typeGroup", "showingTypeName",
-                      "rarity", "tags", "sources", "iconId", "contentIconId", "categories", "aliases")
+                      "rarity", "tags", "sources", "iconId", "contentIconId", "categories", "aliases",
+                      "mediaTokens", "modelKey", "showcaseResource", "factoryRenderResources", "logisticId", "medalIconId")
             summary = {field: row[field] for field in fields if field in row}
             summary["detail"] = shard
             summary["description"] = row.get("description", "")
             if kind == "items":
+                summary["buildingIds"] = row["buildingIds"]
                 summary["counts"] = {field: len(row[field]) for field in ("producedBy", "usedBy", "shops", "upgrades")}
                 if row.get("medalLevels"):
                     summary["medalLevelCount"] = len({str(tier["level"]) for tier in row["medalLevels"]})
                     summary["medalIcons"] = [
-                        {"iconId": tier["item"].get("iconId", ""),
+                        {"iconId": tier["item"].get("medalIconId", ""),
                          "level": tier["level"], "plated": tier["plated"]}
                         for tier in row["medalLevels"]
                     ]
@@ -480,6 +558,7 @@ def publish(catalog: dict[str, Any], language: str, out_dir: Path, inputs: list[
                     ]
                 summary["variantCount"] = len(row.get("recipeVariants", [])) or 1
             else:
+                summary["items"] = row["items"]
                 summary["recipeCount"] = len(row["recipes"])
             index[kind].append(summary)
         for shard, rows in sorted(shards.items()):
@@ -530,9 +609,9 @@ def main(argv: list[str] | None = None) -> int:
     for language, (texts, receipt) in localizations.items():
         catalog = build_catalog(tables, texts)
         catalog.update(icons=icons, iconStatus=icon_status)
-        index = publish(catalog, language, args.out_dir / "lang" / language / "production", inputs + [receipt])
+        index = publish(catalog, language, args.out_dir / "lang" / language / "gameplay" / "items", inputs + [receipt])
         print(f"{language}: {json.dumps(index['stats'], ensure_ascii=False)}")
-    write_json(args.out_dir / "production" / "manifest.json", {
+    write_json(args.out_dir / "gameplay" / "items" / "manifest.json", {
         "schema": SCHEMA, "languages": languages, "defaultLanguage": default_language,
     })
     return 0

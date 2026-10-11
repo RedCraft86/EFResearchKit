@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="2385" viewBox="0 0 1360 2385" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="2354" viewBox="0 0 1360 2354" role="img" aria-labelledby="title desc">
 <title id="title">Endfield export and WebUI build workflow</title>
 <desc id="desc">Commands, page extraction scopes, build dependencies and the boundary of full supported coverage.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#94a3b8"/></marker></defs>
-<rect width="1360" height="2385" fill="#fff"/>
+<rect width="1360" height="2354" fill="#fff"/>
 <g font-family="Segoe UI, Arial, sans-serif">
 <text x="44" y="56" font-size="30" fill="#0f172a" font-weight="700" text-anchor="start">From installed Endfield data to the WebUI</text>
 <text x="44" y="87" font-size="16" fill="#334155" font-weight="400" text-anchor="start">export.bat selects page inputs; AnimeStudio extracts them; independent builders publish each page.</text>
@@ -41,10 +41,9 @@
 <text x="600" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Map</text>
 <text x="709" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Characters</text>
 <text x="818" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Gameplay</text>
-<text x="927" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Production</text>
-<text x="1036" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Audio</text>
-<text x="1145" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Assets</text>
-<text x="1254" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Data</text>
+<text x="927" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Audio</text>
+<text x="1036" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Assets</text>
+<text x="1145" y="528" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">Data</text>
 <rect x="45" y="543" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="564" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Table</text>
 <g><title>story — R: table</title>
@@ -62,17 +61,14 @@
 <g><title>gameplay — R: table; O: table</title>
 <text x="818" y="564" font-size="14" fill="#0f766e" font-weight="700" text-anchor="middle">R · O</text>
 </g>
-<g><title>production — R: table</title>
+<g><title>audio — R: table</title>
 <text x="927" y="564" font-size="14" fill="#0f766e" font-weight="700" text-anchor="middle">R</text>
 </g>
-<g><title>audio — R: table</title>
-<text x="1036" y="564" font-size="14" fill="#0f766e" font-weight="700" text-anchor="middle">R</text>
-</g>
 <g><title>assets — O: table</title>
-<text x="1145" y="564" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="1036" y="564" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
 <g><title>data — F: table</title>
-<text x="1254" y="564" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
+<text x="1145" y="564" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
 </g>
 <text x="62" y="594" font-size="14" fill="#334155" font-weight="400" text-anchor="start">JsonData</text>
 <g><title>story — R: json-data</title>
@@ -90,13 +86,12 @@
 <g><title>gameplay — O: json-data</title>
 <text x="818" y="594" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="927" y="594" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>audio — O: json-data</title>
-<text x="1036" y="594" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="927" y="594" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1145" y="594" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1036" y="594" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — O: json-data; F: json-data</title>
-<text x="1254" y="594" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
+<text x="1145" y="594" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
 </g>
 <rect x="45" y="603" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="624" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Video / AuditVideo</text>
@@ -110,11 +105,10 @@
 <text x="709" y="624" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="818" y="624" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="927" y="624" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1036" y="624" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>assets — O: audit-video, video</title>
-<text x="1145" y="624" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="1036" y="624" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1254" y="624" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1145" y="624" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="62" y="654" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Terrain: height grids / whole</text>
 <text x="382" y="654" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="491" y="654" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
@@ -125,9 +119,8 @@
 <text x="818" y="654" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="927" y="654" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="1036" y="654" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1145" y="654" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — F: terrain</title>
-<text x="1254" y="654" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
+<text x="1145" y="654" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
 </g>
 <rect x="45" y="663" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="684" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Lua</text>
@@ -138,9 +131,8 @@
 <text x="818" y="684" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="927" y="684" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="1036" y="684" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1145" y="684" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — F: lua</title>
-<text x="1254" y="684" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
+<text x="1145" y="684" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
 </g>
 <text x="62" y="714" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Raw payload families</text>
 <text x="382" y="714" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
@@ -150,9 +142,8 @@
 <text x="818" y="714" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="927" y="714" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="1036" y="714" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1145" y="714" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — O: dynamic-streaming; F: audit-dynamic-streaming, audit-iv, audit-streaming, bundle-manifest, dynamic-streaming, extend-data, i-fix-patch, initial-extend-data, iv, streaming</title>
-<text x="1254" y="714" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
+<text x="1145" y="714" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
 </g>
 <rect x="45" y="723" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="744" font-size="14" fill="#334155" font-weight="400" text-anchor="start">TextAsset JSON</text>
@@ -167,9 +158,8 @@
 <text x="818" y="744" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="927" y="744" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="1036" y="744" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1145" y="744" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — F: TextAsset</title>
-<text x="1254" y="744" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
+<text x="1145" y="744" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
 </g>
 <text x="62" y="774" font-size="14" fill="#334155" font-weight="400" text-anchor="start">MonoBehaviour / PlayableDirector</text>
 <g><title>story — R: MonoBehaviour, PlayableDirector</title>
@@ -183,13 +173,12 @@
 <g><title>gameplay — O: MonoBehaviour, PlayableDirector</title>
 <text x="818" y="774" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="927" y="774" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>audio — O: MonoBehaviour, PlayableDirector</title>
-<text x="1036" y="774" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="927" y="774" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1145" y="774" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1036" y="774" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — O: MonoBehaviour, PlayableDirector; F: MonoBehaviour, PlayableDirector</title>
-<text x="1254" y="774" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
+<text x="1145" y="774" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
 </g>
 <rect x="45" y="783" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="804" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Material JSON</text>
@@ -203,12 +192,11 @@
 <text x="818" y="804" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
 <text x="927" y="804" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1036" y="804" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>assets — O: Material</title>
-<text x="1145" y="804" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="1036" y="804" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
 <g><title>data — F: Material</title>
-<text x="1254" y="804" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
+<text x="1145" y="804" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
 </g>
 <text x="62" y="834" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Controllers and other JSON</text>
 <text x="382" y="834" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
@@ -218,13 +206,12 @@
 <g><title>gameplay — O: MonoScript</title>
 <text x="818" y="834" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="927" y="834" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>audio — O: AnimatorController, AnimatorOverrideController</title>
-<text x="1036" y="834" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="927" y="834" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1145" y="834" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1036" y="834" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — O: AnimatorController, AnimatorOverrideController; F: AnimatorController, AnimatorOverrideController, AssetBundle, AvatarMask, IndexObject, MonoScript, NapAssetBundleIndexAsset, PlayerSettings, PreloadData, ResourceManager, SpriteAtlas</title>
-<text x="1254" y="834" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
+<text x="1145" y="834" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O · F</text>
 </g>
 <rect x="45" y="843" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="864" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Texture2D images</text>
@@ -238,15 +225,14 @@
 <g><title>characters — O: Texture2D</title>
 <text x="709" y="864" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="818" y="864" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<g><title>production — U: Texture2D</title>
-<text x="927" y="864" font-size="14" fill="#64748b" font-weight="700" text-anchor="middle">U</text>
+<g><title>gameplay — U: Texture2D</title>
+<text x="818" y="864" font-size="14" fill="#64748b" font-weight="700" text-anchor="middle">U</text>
 </g>
-<text x="1036" y="864" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="927" y="864" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>assets — O: Texture2D</title>
-<text x="1145" y="864" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="1036" y="864" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1254" y="864" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1145" y="864" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="62" y="894" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Sprite crops</text>
 <text x="382" y="894" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>story-media — O: Sprite</title>
@@ -256,15 +242,14 @@
 <g><title>characters — O: Sprite</title>
 <text x="709" y="894" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="818" y="894" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<g><title>production — U: Sprite</title>
-<text x="927" y="894" font-size="14" fill="#64748b" font-weight="700" text-anchor="middle">U</text>
+<g><title>gameplay — U: Sprite</title>
+<text x="818" y="894" font-size="14" fill="#64748b" font-weight="700" text-anchor="middle">U</text>
 </g>
-<text x="1036" y="894" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="927" y="894" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>assets — O: Sprite</title>
-<text x="1145" y="894" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="1036" y="894" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1254" y="894" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1145" y="894" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <rect x="45" y="903" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="924" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Mesh / Animator FBX</text>
 <text x="382" y="924" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
@@ -277,24 +262,22 @@
 </g>
 <text x="818" y="924" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="927" y="924" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1036" y="924" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>assets — O: Animator, Mesh</title>
-<text x="1145" y="924" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="1036" y="924" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1254" y="924" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1145" y="924" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="62" y="954" font-size="14" fill="#334155" font-weight="400" text-anchor="start">AnimationClip documents</text>
 <text x="382" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="491" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="600" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="709" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="818" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="927" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>audio — O: AnimationClip</title>
-<text x="1036" y="954" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
+<text x="927" y="954" font-size="14" fill="#b45309" font-weight="700" text-anchor="middle">O</text>
 </g>
-<text x="1145" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
+<text x="1036" y="954" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — F: AnimationClip</title>
-<text x="1254" y="954" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
+<text x="1145" y="954" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
 </g>
 <rect x="45" y="963" width="1270" height="30" rx="0" fill="#f8fafc" stroke="none"/>
 <text x="62" y="984" font-size="14" fill="#334155" font-weight="400" text-anchor="start">Shader / Font / TextAsset Convert</text>
@@ -305,9 +288,8 @@
 <text x="818" y="984" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="927" y="984" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <text x="1036" y="984" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
-<text x="1145" y="984" font-size="13" fill="#cbd5e1" font-weight="400" text-anchor="middle">—</text>
 <g><title>data — F: Font, Shader, TextAsset</title>
-<text x="1254" y="984" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
+<text x="1145" y="984" font-size="14" fill="#0369a1" font-weight="700" text-anchor="middle">F</text>
 </g>
 <text x="62" y="1018" font-size="14" fill="#334155" font-weight="400" text-anchor="start">VFS metadata is always indexed during extraction; carrier JSON runs also publish the object index.</text>
 <text x="44" y="1061" font-size="16" fill="#0f766e" font-weight="700" text-anchor="start">R</text>
@@ -319,93 +301,92 @@
 <text x="1022" y="1061" font-size="16" fill="#0369a1" font-weight="700" text-anchor="start">F</text>
 <text x="1046" y="1061" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Files served by Data</text>
 <text x="44" y="1089" font-size="15" fill="#334155" font-weight="400" text-anchor="start">R / O / F enter the --from-game scope. U is extracted only when another selected page owns it.</text>
-<text x="44" y="1114" font-size="15" fill="#334155" font-weight="400" text-anchor="start">production builds the catalog shown inside Gameplay. Story media adds images/video; Audio publishes voice sidecars.</text>
+<text x="44" y="1114" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Gameplay builds its items, buildings and recipes. Story media adds images/video; Audio publishes voice sidecars.</text>
 <text x="44" y="1161" font-size="24" fill="#0f172a" font-weight="700" text-anchor="start">All-page build order</text>
 <text x="44" y="1186" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Earliest dependency depth; tasks start as their inputs succeed (default: 4 concurrent builders).</text>
-<rect x="44.0" y="1208" width="303.0" height="216" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="44.0" y="1208" width="303.0" height="185" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
 <text x="60.0" y="1238" font-size="18" fill="#0f766e" font-weight="600" text-anchor="start">Depth 0</text>
-<text x="60.0" y="1273" font-size="13" fill="#334155" font-weight="400" text-anchor="start">production</text>
-<text x="60.0" y="1304" font-size="13" fill="#334155" font-weight="400" text-anchor="start">story</text>
-<text x="60.0" y="1335" font-size="13" fill="#334155" font-weight="400" text-anchor="start">assets</text>
-<text x="60.0" y="1366" font-size="13" fill="#334155" font-weight="400" text-anchor="start">projectiles</text>
-<text x="60.0" y="1397" font-size="13" fill="#334155" font-weight="400" text-anchor="start">data_inspector</text>
-<rect x="367.0" y="1208" width="303.0" height="216" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="60.0" y="1273" font-size="13" fill="#334155" font-weight="400" text-anchor="start">story</text>
+<text x="60.0" y="1304" font-size="13" fill="#334155" font-weight="400" text-anchor="start">assets</text>
+<text x="60.0" y="1335" font-size="13" fill="#334155" font-weight="400" text-anchor="start">projectiles</text>
+<text x="60.0" y="1366" font-size="13" fill="#334155" font-weight="400" text-anchor="start">data_inspector</text>
+<rect x="367.0" y="1208" width="303.0" height="185" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
 <text x="383.0" y="1238" font-size="18" fill="#0f766e" font-weight="600" text-anchor="start">Depth 1</text>
 <text x="383.0" y="1273" font-size="13" fill="#334155" font-weight="400" text-anchor="start">map_recovery</text>
 <text x="383.0" y="1304" font-size="13" fill="#334155" font-weight="400" text-anchor="start">story_media</text>
 <text x="383.0" y="1335" font-size="13" fill="#334155" font-weight="400" text-anchor="start">characters</text>
 <text x="383.0" y="1366" font-size="13" fill="#334155" font-weight="400" text-anchor="start">gameplay</text>
-<rect x="690.0" y="1208" width="303.0" height="216" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="690.0" y="1208" width="303.0" height="185" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
 <text x="706.0" y="1238" font-size="18" fill="#0f766e" font-weight="600" text-anchor="start">Depth 2</text>
 <text x="706.0" y="1273" font-size="13" fill="#334155" font-weight="400" text-anchor="start">map_streaming_instances</text>
 <text x="706.0" y="1304" font-size="13" fill="#334155" font-weight="400" text-anchor="start">gameplay_skill_refs</text>
 <text x="706.0" y="1335" font-size="13" fill="#334155" font-weight="400" text-anchor="start">gameplay_asset_refs</text>
 <text x="706.0" y="1366" font-size="13" fill="#334155" font-weight="400" text-anchor="start">source_graph</text>
-<rect x="1013.0" y="1208" width="303.0" height="216" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1013.0" y="1208" width="303.0" height="185" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
 <text x="1029.0" y="1238" font-size="18" fill="#0f766e" font-weight="600" text-anchor="start">Depth 3</text>
 <text x="1029.0" y="1273" font-size="13" fill="#334155" font-weight="400" text-anchor="start">map_recovery_preview</text>
 <text x="1029.0" y="1304" font-size="13" fill="#334155" font-weight="400" text-anchor="start">gameplay_asset_refs_after_graph</text>
 <text x="1029.0" y="1335" font-size="13" fill="#334155" font-weight="400" text-anchor="start">combat_relationships</text>
 <text x="1029.0" y="1366" font-size="13" fill="#334155" font-weight="400" text-anchor="start">audio</text>
-<text x="44" y="1460" font-size="16" fill="#334155" font-weight="600" text-anchor="start">A standalone page builds its own tasks and reads other pages&#x27; last publications.</text>
-<text x="44" y="1496" font-size="24" fill="#0f172a" font-weight="700" text-anchor="start">Which pages read another page&#x27;s output</text>
-<text x="44" y="1522" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Arrows point from the publisher to the reader. Each page writes only its own publication.</text>
-<rect x="44" y="1546" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<rect x="474" y="1546" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<text x="174" y="1580" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Story + Text</text>
-<text x="619" y="1580" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Map / Audio / Gameplay</text>
-<path d="M310 1583H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
-<text x="387" y="1563" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Build-time read</text>
-<text x="788" y="1570" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Mission markers, conversations, Wiki titles and source graph</text>
-<rect x="44" y="1628" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<rect x="474" y="1628" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<text x="174" y="1662" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Assets</text>
-<text x="619" y="1662" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Characters / Map / Gameplay</text>
-<path d="M310 1665H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
-<text x="387" y="1645" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Build-time read</text>
-<text x="788" y="1652" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Media paths, material colours and asset references</text>
-<rect x="44" y="1710" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<rect x="474" y="1710" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<text x="174" y="1744" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Map + Gameplay</text>
-<text x="619" y="1744" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Audio</text>
-<path d="M310 1747H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
-<text x="387" y="1727" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Build-time read</text>
-<text x="788" y="1734" font-size="13" fill="#334155" font-weight="400" text-anchor="start">World placements, gameplay index and projectile references</text>
-<rect x="44" y="1792" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<rect x="474" y="1792" width="290" height="58" rx="12" fill="#f0fdfa" stroke="#e2e8f0"/>
-<text x="174" y="1826" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Audio</text>
-<text x="619" y="1826" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Story + Text</text>
-<path d="M310 1829H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
-<text x="387" y="1809" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Browser read</text>
-<text x="788" y="1816" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Voice and event sidecars: lang/&lt;LANG&gt;/audio/conv/</text>
-<rect x="44" y="1874" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<rect x="474" y="1874" width="290" height="58" rx="12" fill="#f0fdfa" stroke="#e2e8f0"/>
-<text x="174" y="1908" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Story + Text</text>
-<text x="619" y="1908" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Characters</text>
-<path d="M310 1911H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
-<text x="387" y="1891" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Browser read</text>
-<text x="788" y="1898" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Appearance navigation after exact source, speaker and text checks</text>
-<rect x="44" y="1956" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<rect x="474" y="1956" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<text x="174" y="1990" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Data</text>
-<text x="619" y="1990" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Map / Gameplay</text>
-<path d="M310 1993H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
-<text x="387" y="1973" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Optional build-time read</text>
-<text x="788" y="1980" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Last published encounter and skill datasets</text>
-<rect x="44" y="2038" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-<rect x="474" y="2038" width="290" height="58" rx="12" fill="#f0fdfa" stroke="#e2e8f0"/>
-<text x="174" y="2072" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Production + Gameplay</text>
-<text x="619" y="2072" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Gameplay browser</text>
-<path d="M310 2075H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
-<text x="387" y="2055" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Browser read</text>
-<text x="788" y="2062" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Combined Items, Recipes and Machines; independent publications</text>
-<text x="44" y="2138" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Missing optional publications reduce detail; they never cause a page to rebuild another page.</text>
-<rect x="44" y="2168" width="1272" height="172" rx="12" fill="#fff7ed" stroke="#fed7aa"/>
-<text x="63" y="2197" font-size="20" fill="#9a3412" font-weight="600" text-anchor="start">What “everything” means here</text>
-<text x="63" y="2227" font-size="15" fill="#334155" font-weight="400" text-anchor="start">All pages equal the supported full extraction scope. Debug adds broader asset indexing and Sprite image checks.</text>
-<text x="63" y="2252" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Decoded blocks → game/; packed small files → GameFiles.sqlite; exact Unity documents → Unity.sqlite; raw families → raw/.</text>
-<text x="63" y="2277" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Raw payloads and excluded Unity objects retain their evidence boundary; extraction does not recover every runtime meaning.</text>
-<text x="63" y="2302" font-size="15" fill="#334155" font-weight="400" text-anchor="start">The wrapper publishes CN and decodes CN audio. Changed-only compares complete exports with the last successful sync.</text>
-<text x="44" y="2369" font-size="13" fill="#64748b" font-weight="400" text-anchor="start">Generated from scripts/webui/pages.py and extraction/scope.py · python -m scripts.webui.export_diagram</text>
+<text x="44" y="1429" font-size="16" fill="#334155" font-weight="600" text-anchor="start">A standalone page builds its own tasks and reads other pages&#x27; last publications.</text>
+<text x="44" y="1465" font-size="24" fill="#0f172a" font-weight="700" text-anchor="start">Which pages read another page&#x27;s output</text>
+<text x="44" y="1491" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Arrows point from the publisher to the reader. Each page writes only its own publication.</text>
+<rect x="44" y="1515" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="474" y="1515" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="174" y="1549" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Story + Text</text>
+<text x="619" y="1549" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Map / Audio / Gameplay</text>
+<path d="M310 1552H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
+<text x="387" y="1532" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Build-time read</text>
+<text x="788" y="1539" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Mission markers, conversations, Wiki titles and source graph</text>
+<rect x="44" y="1597" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="474" y="1597" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="174" y="1631" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Assets</text>
+<text x="619" y="1631" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Characters / Map / Gameplay</text>
+<path d="M310 1634H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
+<text x="387" y="1614" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Build-time read</text>
+<text x="788" y="1621" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Media paths, material colours and asset references</text>
+<rect x="44" y="1679" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="474" y="1679" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="174" y="1713" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Map + Gameplay</text>
+<text x="619" y="1713" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Audio</text>
+<path d="M310 1716H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
+<text x="387" y="1696" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Build-time read</text>
+<text x="788" y="1703" font-size="13" fill="#334155" font-weight="400" text-anchor="start">World placements, gameplay index and projectile references</text>
+<rect x="44" y="1761" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="474" y="1761" width="290" height="58" rx="12" fill="#f0fdfa" stroke="#e2e8f0"/>
+<text x="174" y="1795" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Audio</text>
+<text x="619" y="1795" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Story + Text</text>
+<path d="M310 1798H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
+<text x="387" y="1778" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Browser read</text>
+<text x="788" y="1785" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Voice and event sidecars: lang/&lt;LANG&gt;/audio/conv/</text>
+<rect x="44" y="1843" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="474" y="1843" width="290" height="58" rx="12" fill="#f0fdfa" stroke="#e2e8f0"/>
+<text x="174" y="1877" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Story + Text</text>
+<text x="619" y="1877" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Characters</text>
+<path d="M310 1880H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
+<text x="387" y="1860" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Browser read</text>
+<text x="788" y="1867" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Appearance navigation after exact source, speaker and text checks</text>
+<rect x="44" y="1925" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="474" y="1925" width="290" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="174" y="1959" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Data</text>
+<text x="619" y="1959" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Map / Gameplay</text>
+<path d="M310 1962H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
+<text x="387" y="1942" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Optional build-time read</text>
+<text x="788" y="1949" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Last published encounter and skill datasets</text>
+<rect x="44" y="2007" width="260" height="58" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="474" y="2007" width="290" height="58" rx="12" fill="#f0fdfa" stroke="#e2e8f0"/>
+<text x="174" y="2041" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Gameplay</text>
+<text x="619" y="2041" font-size="16" fill="#334155" font-weight="600" text-anchor="middle">Gameplay browser</text>
+<path d="M310 2044H465" stroke="#94a3b8" fill="none" marker-end="url(#arrow)"/>
+<text x="387" y="2024" font-size="11" fill="#334155" font-weight="400" text-anchor="middle">Browser read</text>
+<text x="788" y="2031" font-size="13" fill="#334155" font-weight="400" text-anchor="start">Items, buildings and recipes; one Gameplay publication</text>
+<text x="44" y="2107" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Missing optional publications reduce detail; they never cause a page to rebuild another page.</text>
+<rect x="44" y="2137" width="1272" height="172" rx="12" fill="#fff7ed" stroke="#fed7aa"/>
+<text x="63" y="2166" font-size="20" fill="#9a3412" font-weight="600" text-anchor="start">What “everything” means here</text>
+<text x="63" y="2196" font-size="15" fill="#334155" font-weight="400" text-anchor="start">All pages equal the supported full extraction scope. Debug adds broader asset indexing and Sprite image checks.</text>
+<text x="63" y="2221" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Decoded blocks → game/; packed small files → GameFiles.sqlite; exact Unity documents → Unity.sqlite; raw families → raw/.</text>
+<text x="63" y="2246" font-size="15" fill="#334155" font-weight="400" text-anchor="start">Raw payloads and excluded Unity objects retain their evidence boundary; extraction does not recover every runtime meaning.</text>
+<text x="63" y="2271" font-size="15" fill="#334155" font-weight="400" text-anchor="start">The wrapper publishes CN and decodes CN audio. Changed-only compares complete exports with the last successful sync.</text>
+<text x="44" y="2338" font-size="13" fill="#64748b" font-weight="400" text-anchor="start">Generated from scripts/webui/pages.py and extraction/scope.py · python -m scripts.webui.export_diagram</text>
 </g>
 </svg>

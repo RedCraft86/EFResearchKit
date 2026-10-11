@@ -42,7 +42,7 @@ ownership are documented in [the extraction pipeline](../game_data/extraction_pi
    registry), and diff them as a Characters-page sidecar
    ([`characters`](../../scripts/webui/updates/characters.py)), without
    feeding the result back into character recovery or grouping.
-5. Compare linked authored Story, Gameplay, Map and Production source records with the
+5. Compare linked authored Story, Gameplay and Map source records with the
    same projection for both exports and publish their page sidecars
    ([`page_records`](../../scripts/webui/updates/page_records.py)).
 6. Publish the feed; scanner cache and history remain under
@@ -77,15 +77,28 @@ matching rules).
 
 ## Primary generated outputs
 
+Animator FBX resource snapshots include both loose files and rows in
+`game/Unity.sqlite` under the same logical `Unity/Animator/<name>` identity.
+Moving a model into the store is not a deletion. Loose files take precedence
+when both representations exist. Exact comparisons and PathID relocation
+checks normalize FBX export metadata with the maintained format reader, so
+SDK timestamps and generated identifiers do not become content changes.
+
+Wwise `unknown/<numeric-id>.flac` copies may disappear after classification
+while a classified Wwise copy of `<numeric-id>.flac` survives. Suppress that
+copy's add/delete churn only when both files have the exact same nonzero
+FLAC STREAMINFO PCM identity; a name or media ID alone is insufficient.
+This check includes classified copies already present in the previous export.
+
 `webui/data/updates/latest.json` and
-`webui/data/updates/{characters,story,map,gameplay,production}.json`.
+`webui/data/updates/{characters,story,map,gameplay}.json`.
 
 `page_records.py` compares the same export-only source projection on both
 sides: Story table conversations and available cutscene object documents;
 Map level definitions, per-level registry rows and authored level/config/script
 files; Gameplay primary rows and their exact string references to related
-tables and serialized files; Production catalog joins from raw item, recipe,
-building, shop, cost and achievement rows. Production reuses its catalog builder
+tables and serialized files; Gameplay item catalog joins from raw item, recipe,
+building, shop, cost and achievement rows. Gameplay items reuse their catalog builder
 on both exports, retaining grouped medal identities, each original tier's source,
 and matching limited-item records with their explicit `LTItemTable` mapping.
 It compares direct displayed relationships without recursively following
@@ -101,7 +114,7 @@ kind whose primary table exists on both sides and reports unavailable kinds
 in `skippedKinds`; this does not suppress changes in the other kinds. Entries are uncapped and
 independent of media flags. Deleted IDs are retained as comparison data,
 without inserting old content into current page datasets.
-Story/Map/Gameplay/Production sidecar schema 3 adds field-level `changes` and a bounded
+Story/Map/Gameplay sidecar schema 3 adds field-level `changes` and a bounded
 `file` comparison for changed linked export files; Characters schema 4 includes
 catalog field changes. One-sided records retain field paths so the frontend
 can select a common data language. Comparison values serialize integers beyond

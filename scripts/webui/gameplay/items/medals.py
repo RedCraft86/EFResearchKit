@@ -11,7 +11,7 @@ def _handle(value: Any) -> str:
 
 def group_medals(items: dict[str, dict[str, Any]], tables: dict[str, dict[str, Any]],
                  text: Callable[[Any], str]) -> dict[str, str]:
-    """Return old item-ID aliases; keep every tier's full item and conditions.
+    """Return authored item-to-display-group joins; retain every tier and condition.
 
     A tier joins only when its authored name and completion-text handles match
     the item's name and decorative description. Ambiguous matches additionally
@@ -53,7 +53,11 @@ def group_medals(items: dict[str, dict[str, Any]], tables: dict[str, dict[str, A
                     continue
                 plated = bool(row.get("canBePlated") and item_id == f"{expected}_plate")
                 conditions = row.get("plateConditions", []) if plated else info.get("conditions", [])
-                tier_item = {**items[item_id], "iconId": f"{key}_lv{int(level):02d}" + ("_plating" if plated else "")}
+                tier_item = dict(items[item_id])
+                # Keep the authored generic inventory icon as a source asset;
+                # achievement artwork is the requested medal presentation.
+                if str(level).isdigit():
+                    tier_item["medalIconId"] = f"{key}_lv{int(level):02d}" + ("_plating" if plated else "")
                 levels.append({"level": 1 if len(row.get("levelInfos", {})) == 1 else level,
                                "sourceLevel": level, "plated": plated, "item": tier_item,
                                "conditions": [{**condition, "description": text(condition.get("desc"))}

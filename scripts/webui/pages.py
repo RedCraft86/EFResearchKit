@@ -115,7 +115,6 @@ PAGES: dict[str, Page] = {
         Page("gameplay", "Gameplay", (
             "gameplay", "projectiles", "gameplay_skill_refs", "gameplay_asset_refs_after_graph", "combat_relationships",
         )),
-        Page("production", "Production", ("production",)),
         Page("audio", "Audio", ("audio",)),
         Page("assets", "Assets", ("assets",)),
         Page("data", "Data", ("data_inspector",), serves=DATA_FILES),
@@ -161,14 +160,6 @@ def build_tasks(options: BuildOptions) -> dict[str, TaskSpec]:
     jobs = str(options.jobs)
     of = ExtractionScope.of
     tasks: list[TaskSpec] = []
-
-    # Production's catalog needs only tables; icons reuse already exported media.
-    tasks.append(TaskSpec(
-        "production",
-        (module("scripts.webui.production.build_production", "--languages", "CN", "--default-language", "CN"),),
-        reads=of(("table",)),
-        uses=of(convert_types=("Texture2D", "Sprite")),
-    ))
 
     # ---- Story and Text Tables ---------------------------------------------
     # The guide audits the object index for Story consumer evidence, the
@@ -269,11 +260,12 @@ def build_tasks(options: BuildOptions) -> dict[str, TaskSpec]:
         "gameplay",
         (module(
             "scripts.webui.gameplay.build_gameplay",
-            "--stage", "base", "--stage", "audit", "--languages", "CN", "--default-language", "CN",
+            "--stage", "base", "--stage", "items", "--stage", "battle-stages", "--stage", "audit", "--languages", "CN", "--default-language", "CN",
         ),),
         after=("story",),
         reads=of(("table",)),
         optional=of(("json-data",), ("MonoScript", *CARRIERS)),
+        uses=of(convert_types=("Texture2D", "Sprite")),
     ))
     tasks.append(TaskSpec(
         "projectiles",
@@ -295,14 +287,15 @@ def build_tasks(options: BuildOptions) -> dict[str, TaskSpec]:
     ))
 
     def asset_refs(name: str, needs: tuple[str, ...]) -> TaskSpec:
-        # Joins lang/CN/gameplay/index.json with the Assets page's published
-        # webui/data/assets/index.json (skipped when there is none), adding
+        # Joins Gameplay entities and items with the last Assets publication
+        # (skipped when the Assets index is absent), adding
         # source-graph proof when the graph sqlite is current.
         return TaskSpec(
             name,
             (module("scripts.webui.gameplay.build_gameplay", "--stage", "asset-refs", "--default-language", "CN"),),
             needs=needs,
             after=("assets",),
+            optional=of(json_types=("MonoBehaviour", "PlayableDirector", "MonoScript")),
         )
 
     tasks.append(asset_refs("gameplay_asset_refs", ("gameplay",)))

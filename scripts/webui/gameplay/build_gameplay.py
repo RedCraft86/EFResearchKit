@@ -1,6 +1,6 @@
 """Build the behavior datasets behind the Gameplay WebUI page.
 
-The page reads the base index, ``projectiles.json``, the combat
+The page reads the base index, ``battle_stages.json``, ``projectiles.json``, the combat
 relationships and ``assets/gameplay_refs.json``. The Audio builder still
 publishes ``projectile_audio.json`` and ``sound_effects.json`` beside them,
 but the page does not load or render those sidecars while their ownership
@@ -17,7 +17,7 @@ has one command:
 Behavior stage implementations live in ``scripts/webui/gameplay/``. An empty
 projectile dataset points at the export, not at the projectiles stage (see
 ``scripts.webui.gameplay.projectiles``). The asset-ref stage calls
-``asset_builder.gameplay_refs`` directly so this command remains the sole
+``gameplay.gameplay_refs`` directly so this command remains the sole
 owner of its consumer-specific sidecar.
 """
 from __future__ import annotations
@@ -39,10 +39,12 @@ from scripts.repo_paths import REPO_ROOT
 ROOT = REPO_ROOT
 WEBUI_DATA_ROOT = ROOT / "webui" / "data"
 
-STAGES = ("base", "projectiles", "skill-refs", "asset-refs", "combat", "audit")
+STAGES = ("base", "items", "battle-stages", "projectiles", "skill-refs", "asset-refs", "combat", "audit")
 
 STAGE_HELP = {
+    "items": "Items, buildings and recipes (data/lang/<LANG>/gameplay/items/).",
     "base": "Gameplay base index (data/lang/<LANG>/gameplay/index.json).",
+    "battle-stages": "Authored combat stages, modes, enemies and rewards (data/lang/<LANG>/gameplay/battle_stages.json).",
     "projectiles": "Exact projectile behavior and event hashes (data/gameplay/projectiles.json).",
     "skill-refs": "Authored SkillData actions/references from the last current Data publication (data/gameplay/skill_refs/).",
     "asset-refs": "Compact Gameplay-to-Assets sidecar; needs a current Assets index.",
@@ -55,10 +57,11 @@ def build_asset_refs_stage(
     language: str,
     *,
     data_root: Path = WEBUI_DATA_ROOT,
+    export_root: Path | None = None,
 ) -> int:
     """Build the Gameplay-owned asset sidecar from explicit current inputs."""
 
-    from scripts.webui.assets.gameplay_refs import build_from_paths
+    from scripts.webui.gameplay.gameplay_refs import build_from_paths
 
     language = str(language or "CN").upper()
     gameplay_path = data_root / "lang" / language / "gameplay" / "index.json"
@@ -71,7 +74,9 @@ def build_asset_refs_stage(
     if missing is not None:
         print(f"{language}: Gameplay asset refs skipped (missing {missing})")
         return 0
-    payload = build_from_paths(gameplay_path, asset_index_path, output_path)
+    payload = build_from_paths(gameplay_path, asset_index_path, output_path,
+                               items_path=data_root / "lang" / language / "gameplay" / "items" / "index.json",
+                               export_root=export_root)
     counts = payload.get("counts") or {}
     display = output_path.relative_to(ROOT) if output_path.is_relative_to(ROOT) else output_path
     print(
@@ -124,23 +129,40 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--export-root",
         type=Path,
-        help="Export root for skill-refs or --audit-scope full.",
+        help="Export root for items, battle-stages, skill-refs or --audit-scope full.",
     )
-    parser.add_argument("--game-root", type=Path, help="Selected Endfield_Data directory for skill-refs native proof.")
+    parser.add_argument("--game-root", type=Path, help="Selected Endfield_Data directory for battle-stages/skill-refs native proof.")
+    parser.add_argument("--battle-stages-from-reference", action="store_true", help="Preview battle-stages from the last published Text/Gameplay data; no export reads.")
     args = parser.parse_args(argv)
     selected_stages = set(args.stage or STAGES)
-    if args.export_root is not None and "skill-refs" not in selected_stages and args.audit_scope != "full":
-        parser.error("--export-root requires skill-refs or --audit-scope full")
+    if args.battle_stages_from_reference and (selected_stages != {"battle-stages"} or args.export_root or args.game_root):
+        parser.error("--battle-stages-from-reference requires only --stage battle-stages and no export/native path overrides")
+    if args.export_root is not None and not selected_stages.intersection({"items", "skill-refs", "battle-stages", "asset-refs"}) and args.audit_scope != "full":
+        parser.error("--export-root requires items, battle-stages, skill-refs, asset-refs or --audit-scope full")
     if args.audit_scope != "active" and "audit" not in selected_stages:
         parser.error("--audit-scope requires the audit stage to be selected")
-    if args.game_root is not None and "skill-refs" not in selected_stages:
-        parser.error("--game-root requires the skill-refs stage to be selected")
+    if args.game_root is not None and not selected_stages.intersection({"skill-refs", "battle-stages"}):
+        parser.error("--game-root requires battle-stages or skill-refs")
     return args
 
 
 def run_stage(stage: str, args: argparse.Namespace) -> int:
     """Run one stage in-process and return its exit code."""
     languages = list(args.languages)
+    if stage == "items":
+        from scripts.webui.gameplay.items import build
+        argv = ["--languages", *languages, "--default-language", args.default_language]
+        if args.export_root:
+            argv.extend(("--export-root", str(args.export_root)))
+        return int(build.main(argv) or 0)
+    if stage == "battle-stages":
+        from scripts.webui.gameplay import battle_stages
+
+        if args.battle_stages_from_reference:
+            return battle_stages.build_from_reference(languages)
+        kwargs = {"export_root": args.export_root} if args.export_root else {}
+        if args.game_root: kwargs["game_root"] = args.game_root
+        return battle_stages.build(languages, **kwargs)
     if stage == "base":
         from scripts.webui.gameplay import base_data
 
@@ -161,7 +183,7 @@ def run_stage(stage: str, args: argparse.Namespace) -> int:
                 argv.extend((flag, str(value)))
         return int(skill_refs.main(argv) or 0)
     if stage == "asset-refs":
-        return build_asset_refs_stage(args.default_language)
+        return build_asset_refs_stage(args.default_language, export_root=args.export_root)
     if stage == "combat":
         from scripts.webui.gameplay import combat_relationships
 
@@ -194,7 +216,8 @@ def run_stage(stage: str, args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    require_export_layout(args.export_root)
+    if not args.battle_stages_from_reference:
+        require_export_layout(args.export_root)
     # Preserve dependency order regardless of the order flags were given.
     selected = [stage for stage in STAGES if not args.stage or stage in args.stage]
     for stage in selected:

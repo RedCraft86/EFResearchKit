@@ -20,6 +20,8 @@ from scripts.source_paths import (
     resolve_material_source_roots,
 )
 from scripts.game_data import sprite_crops
+from scripts.webui.assets.obj_geometry import obj_has_drawable_faces
+from scripts.game_data.extraction.unity_overlay import asset_map_containers
 from scripts.webui.assets.fbx_root import read_fbx_root_names, read_fbx_root_names_from_bytes
 from scripts.game_data.unity_store import open_store_if_present
 from scripts.common import (
@@ -310,6 +312,46 @@ def _extract_material_texture_refs(material_payload: dict) -> list[dict]:
             ref["pid"] = path_id
         out.append(ref)
     return out
+
+
+def _material_blend(material_payload: dict) -> dict | None:
+    """How the viewer should blend a material, or None for plain opaque.
+
+    ``q`` render queue, ``src``/``dst`` Unity ``BlendMode`` enum values
+    (1 One, 5 SrcAlpha, 10 OneMinusSrcAlpha...; ``dst`` 1 is additive, the
+    usual light effect), ``zw`` depth write, ``clip`` alpha-test threshold,
+    ``cull`` Unity ``CullMode`` and ``tint`` the effect colour (``_TintColor``
+    or ``_BaseColor``) as RGBA.
+    """
+    saved = material_payload.get("m_SavedProperties") or {}
+    floats = saved.get("m_Floats") or {}
+    colors = saved.get("m_Colors") or {}
+    if not isinstance(floats, dict) or not isinstance(colors, dict):
+        return None
+    queue = material_payload.get("m_CustomRenderQueue")
+    queue = queue if isinstance(queue, int) and queue >= 0 else None
+    transparent = (queue or 0) >= 2450 or floats.get("_SurfaceType", floats.get("_Surface")) == 1.0
+    clip = None
+    if floats.get("_AlphaClip") == 1.0 or floats.get("_AlphaTest") == 1.0:
+        clip = floats.get("_AlphaClipThreshold", floats.get("_Cutoff", 0.5))
+    elif queue is not None and 2450 <= queue < 2500:
+        clip = floats.get("_Cutoff", floats.get("_AlphaClipThreshold", 0.5))
+    if not transparent and clip is None:
+        return None
+    blend: dict = {"q": queue}
+    if clip is not None:
+        blend["clip"] = round(float(clip), 4)
+    if transparent:
+        blend["src"] = int(floats.get("_SrcBlend", 5))
+        blend["dst"] = int(floats.get("_DstBlend", 10))
+        blend["zw"] = int(floats.get("_ZWrite", 0))
+        tint = colors.get("_TintColor") or colors.get("_BaseColor")
+        if isinstance(tint, dict):
+            blend["tint"] = [round(float(tint.get(c, 1.0)), 4) for c in "rgba"]
+    cull = floats.get("_Cull", floats.get("_CullMode"))
+    if cull is not None:
+        blend["cull"] = int(cull)
+    return blend
 
 
 def _append_unique(items: list[dict], candidate: dict) -> None:
@@ -643,6 +685,9 @@ def scan_exported_media_assets(
         sprite_store.rows(STORED_MODEL_TYPE) if sprite_store is not None else []
     )
     stored_model_names = {row.name for row in pending_stored_models}
+    # Export names drop prefab paths. Keep each model's exact type/PathID
+    # container memberships, including shared Mesh objects.
+    model_containers = asset_map_containers(export_root, (STORED_MODEL_TYPE, "Mesh"))
     stored_sha_by_rel: dict[str, str] = {}
 
     def add_image_entry(entry: dict, asset_rel: str, stem: str, path_id: str, dimensions: tuple[int, int] | None) -> None:
@@ -738,6 +783,8 @@ def scan_exported_media_assets(
         asset_entries.append(entry)
 
         if kind == "model":
+            if suffix == ".obj":
+                entry["nd"] = not obj_has_drawable_faces(path)
             scene_root = _animator_fbx_scene_root(
                 asset_rel,
                 path,
@@ -746,6 +793,12 @@ def scan_exported_media_assets(
             )
             if scene_root:
                 entry["fr"] = scene_root
+            unity_type = "Mesh" if asset_rel.startswith("Unity/Mesh/") else STORED_MODEL_TYPE
+            containers = model_containers.get((unity_type, path_id.upper()), []) if path_id else []
+            if len(containers) == 1:
+                entry["c"] = containers[0]
+            elif containers:
+                entry["cs"] = containers
             model_base = _normalize_model_base(stem)
             source_family = _asset_source_family(source).lower()
             entry["_mb"] = model_base
@@ -883,6 +936,9 @@ def scan_exported_media_assets(
                     texture_link_count += 1
 
             material_relations = relations.setdefault(material_rel, {})
+            blend = _material_blend(material_payload)
+            if blend:
+                material_relations["blend"] = blend
             material_textures = material_relations.setdefault("textures", [])
             for texture_ref in resolved_texture_refs:
                 _append_unique(material_textures, texture_ref)

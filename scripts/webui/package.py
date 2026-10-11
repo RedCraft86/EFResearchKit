@@ -689,7 +689,11 @@ def resolve_exported_image(project_root: Path, export_root: Path, asset_payload:
         exported_rel = normalized_rel
         source_path = export_root / posix_to_path(normalized_rel)
 
-    archive_path = archive_name(posixpath.join(export_root.name, exported_rel))
+    archive_path = archive_name(
+        posixpath.join(source_root, rel_within_source)
+        if source == "Collision" and source_root.startswith("webui/data/assets/collision/")
+        else posixpath.join(export_root.name, exported_rel)
+    )
     return ExportedImage(rel=normalized_rel, source_path=source_path, archive_path=archive_path)
 
 

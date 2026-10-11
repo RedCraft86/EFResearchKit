@@ -1,24 +1,29 @@
 # WebUI page recovery
 
-Each active page has a maintenance guide. Read the page guide before changing
-its builder, generated contract, or frontend consumer.
+The main page guides follow the WebUI navigation order. Read the owning guide
+before changing a builder, generated contract, or frontend consumer.
 
 - [`story.md`](story.md): conversations, ordering, options, media, and evidence.
+- [`gameplay.md`](gameplay.md): Characters, Weapons, Essences, Equipment, Items,
+  Enemies, Combat stages, and Activities; skills, buffs, projectiles, item effects,
+  buildings, and recipes.
 - [`map.md`](map.md): level ownership, spatial evidence, render layers, and Story links.
 - [`characters.md`](characters.md): identity merging, localization, models, and overrides.
-- [`gameplay.md`](gameplay.md): playable/enemy data, skills, buffs, projectiles, shared catalog navigation, and item effects.
-- [`activities.md`](activities.md): activity catalog and supporting tables from the shared Text publication.
 - [`text.md`](text.md): localized table discovery and row rendering.
 - [`audio.md`](audio.md): Wwise identity, decoded media, semantics, and annotations.
-- [`assets.md`](assets.md): exported resource inventory and semantic references.
+- [`assets.md`](assets.md): visual assets, exported media, and semantic references.
+- [`data_inspector.md`](data_inspector.md): Decoded (数据解码), with Files and SQL
+  modes over export stores and a published decoded-dataset source.
 - [`updates.md`](updates.md): previous/current export comparison.
+
+Gameplay subpage and debug-page guides:
+
+- [`activities.md`](activities.md): Gameplay’s Activities tab and supporting
+  tables from the shared Text publication; no standalone page or builder.
 - [`recovery.md`](recovery.md): per-block volume and per-file-type L1–L4
   recovery state, and the measured-versus-declared boundary the page enforces.
-- [`data_inspector.md`](data_inspector.md): the Data page: export-store file viewer and SQL console, plus decoded-dataset publication.
 
 Supplementary publication and recovery guides:
-
-- [`production.md`](production.md): Gameplay's independently published item sources and uses, recipes, machines, and exact table references.
 
 - [`story_recovery.md`](story_recovery.md): the Story reconstruction model --
   evidence layers, ownership, branches, ordering, validation, and remaining

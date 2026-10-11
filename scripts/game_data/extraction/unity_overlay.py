@@ -264,6 +264,40 @@ def iter_asset_map_rows(path: Path) -> Iterator[dict]:
     raise OverlayError(f"{path}: asset map ended before AssetEntries closed")
 
 
+def asset_map_containers(export_root: Path, type_names: Iterable[str]) -> dict[tuple[str, str], list[str]]:
+    """Map each (Unity type, PathID) to every stored asset-map Container.
+
+    The Container is the addressable asset path the object was built from (an
+    Animator's prefab, for instance), which the exported file name drops.
+    Scans the layers' pretty-printed maps by raw line prefix: the full parse
+    in :func:`iter_asset_map_rows` takes minutes over ~900 MB, this ~10 s.
+    Shared objects retain all container memberships; a missing map yields no entries.
+    """
+    wanted = {b'"' + name.encode() + b'"': name for name in type_names}
+    containers: dict[tuple[str, str], list[str]] = {}
+    for layer in INSTALLED_LAYERS:
+        for path in sorted(ExportLayout(export_root).asset_map_dir(layer).glob("*.json")):
+            container = path_id = None
+            with path.open("rb") as handle:
+                for line in handle:
+                    text = line.lstrip()
+                    if text.startswith(b'"Container"'):
+                        container = text
+                    elif text.startswith(b'"PathID"'):
+                        path_id = text
+                    elif text.startswith(b'"Type"'):
+                        type_name = next((name for token, name in wanted.items() if token in text), None)
+                        if type_name and container is not None and path_id is not None:
+                            value = json.loads(container.split(b":", 1)[1].strip().rstrip(b","))
+                            key = path_id_hex(int(path_id.split(b":", 1)[1].strip().rstrip(b",")))
+                            if value:
+                                paths = containers.setdefault((type_name, key), [])
+                                if value not in paths:
+                                    paths.append(value)
+                        container = path_id = None
+    return containers
+
+
 def path_id_hex(path_id: int) -> str:
     return f"{int(path_id) & 0xFFFFFFFFFFFFFFFF:016X}"
 

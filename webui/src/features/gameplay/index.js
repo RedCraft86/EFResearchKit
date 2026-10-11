@@ -80,7 +80,7 @@
   const FILTER_PANEL_STORAGE_KEY = "gameplay_filters_collapsed";
   const COLLAPSED_KINDS_STORAGE_KEY = "gameplay_collapsed_kinds";
   const LEVEL_FRACTION_STORAGE_KEY = "gameplay_level_fraction";
-  const GAMEPLAY_DATA_VERSION = "20260924-gp14";
+  const GAMEPLAY_DATA_VERSION = "20261010-enemy-distributions";
   const GAMEPLAY_INTEGRATION_VERSION = "20260924-projectile-effect-enums1";
   const MOBILE_LAYOUT_QUERY = "(max-width: 760px)";
   const GAMEPLAY_INLINE_AUDIO_LIMIT = 20;
@@ -206,7 +206,6 @@
     showDebug: false,
     searchTokens: [],
     collapsedKinds: new Set(),
-    pager: null,
     levelFraction: 1,
     facets: null,
   };
@@ -346,17 +345,12 @@
     try { decoded = decodeURIComponent(raw); }
     catch (_) {}
     if (decoded.includes(":")) decoded = decoded.split(":").pop();
-    if (decoded.startsWith("wiki_chr_")) return `chr_${decoded.slice("wiki_chr_".length)}`;
-    if (decoded.startsWith("wiki_wpn_")) return `wpn_${decoded.slice("wiki_wpn_".length)}`;
-    if (decoded.startsWith("wiki_eny_")) return `eny_${decoded.slice("wiki_eny_".length)}`;
-    if (decoded.startsWith("wiki_item_")) return `item_${decoded.slice("wiki_item_".length)}`;
-    if (decoded.startsWith("wiki_")) return decoded.slice("wiki_".length);
     return decoded;
   }
 
   function requestedGameplaySelection() {
     const params = new URLSearchParams(window.location.search || "");
-    return normalizeGameplaySelection(params.get("gameplay") || params.get("gameplayId") || params.get("entry") || "");
+    return normalizeGameplaySelection(params.get("gameplay") || "");
   }
 
   function findGameplayEntry(value, entries = STATE.entries) {
@@ -370,6 +364,8 @@
     }
     const candidates = new Set([id]);
     if (!id.startsWith("wiki_")) candidates.add(`wiki_${id}`);
+    const variantOwners = entries.filter((entry) => entry?.kind === "enemy" && entry.variants?.some((variant) => variant.id === id));
+    if (variantOwners.length === 1) return variantOwners[0];
     return entries.find((entry) => entry && (
       candidates.has(entry.id)
       || candidates.has(`${entry.kind}:${entry.id}`)
@@ -446,19 +442,12 @@
   }
 
   function section(title, body, key = "") {
-    if (!body) return "";
-    const anchor = key ? ` id="gameplay-section-${escapeHtml(key)}" data-gameplay-section="${escapeHtml(title)}" tabindex="-1"` : "";
-    return `<section class="gameplay-section"${anchor}><h3 class="gameplay-section-title">${escapeHtml(title)}</h3><div class="gameplay-section-body">${body}</div></section>`;
+    return window.WebUI.gameplayDetail.section(title, body, { id: key ? `gameplay-section-${key}` : "", focusable: Boolean(key) });
   }
 
   function disclosure(title, body, hint = "") {
     if (!body) return "";
     return `<details class="gameplay-disclosure"><summary><span>${escapeHtml(title)}</span>${hint ? `<small>${escapeHtml(hint)}</small>` : ""}</summary><div class="gameplay-disclosure-body">${body}</div></details>`;
-  }
-
-  function renderOverview(facts) {
-    const rows = dedupeDetailTags(facts.filter(Boolean));
-    return rows.length ? `<dl class="gameplay-overview">${rows.map((row) => `<div><dt>${escapeHtml(row.label)}</dt><dd>${escapeHtml(row.value)}</dd></div>`).join("")}</dl>` : "";
   }
 
   function bindDetailContents(root) {
@@ -527,7 +516,7 @@
     return keys.map((key) => {
       const href = storyWikiHrefForKey(key, language);
       if (!href) return "";
-      return `<a class="gameplay-detail-tag gameplay-detail-wiki-link gameplay-wiki-link" href="${escapeHtml(href)}"><span>${escapeHtml(text("storyWiki"))}</span></a>`;
+      return window.WebUI.gameplayDetail.storyWikiLink(href, text("storyWiki"));
     }).filter(Boolean).join("");
   }
   function renderDescription(value) {
@@ -754,12 +743,17 @@
       .filter((item) => item && (item.name || item.id))
       .map((item) => {
         const label = item.name || item.id;
-        const count = item.count !== undefined && item.count !== null && item.count !== "" ? formatValue(item.count) : "";
+        const count = window.WebUI.gameplayDetail.knownQuantity(item.count, item.quantityDataUnavailable)
+          ? formatValue(item.count) : "";
         const target = gameplayTargetForItem(item, entries);
         const icon = renderGameplayItemIcon(item, label, { static: Boolean(target) });
         if (target) {
           const targetKey = `${target.kind}:${target.id}`;
           return `<button type="button" class="gameplay-value-chip gameplay-item-chip gameplay-related-link gameplay-item-chip-link" data-gameplay-related-key="${escapeHtml(targetKey)}" title="${escapeHtml(target.id)}" aria-label="${escapeHtml(label)}">${icon}<b>${escapeHtml(label)}</b>${escapeHtml(count)}</button>`;
+        }
+        if (item.id && (!item.kind || item.kind === 'item')) {
+          const href = window.WebUI.gameplayTabs.pageUrl('item', String(item.id));
+          return `<a class="gameplay-value-chip gameplay-item-chip gameplay-item-chip-link" href="${escapeHtml(href)}">${icon}<b>${escapeHtml(label)}</b>${escapeHtml(count)}</a>`;
         }
         return `<span class="gameplay-value-chip gameplay-item-chip">${icon}<b>${escapeHtml(label)}</b>${escapeHtml(count)}</span>`;
       })
@@ -940,10 +934,10 @@
     const brk = stage >= 1 ? costIndex.cumulativeBreakByStage.get(stage) : null;
     if (brk && ((brk.items || []).length || Number(brk.gold) > 0)) {
       const chips = [
-        Number(brk.gold) > 0 ? renderChipPairs([goldCostPair(brk.gold)]) : "",
-        renderMaterialChips(brk.items || []),
+        Number(brk.gold) > 0 ? renderValueChip(goldCostPair(brk.gold)) : "",
+        materialChipRows(brk.items || []),
       ].filter(Boolean).join("");
-      if (chips) parts.push(`<div class="gameplay-subheading">${escapeHtml(costIndex.breakLabel)}</div>${chips}`);
+      if (chips) parts.push(`<div class="gameplay-subheading">${escapeHtml(costIndex.breakLabel)}</div><div class="gameplay-blackboard">${chips}</div>`);
     }
     // Cumulative level-up cost up to this exact level (falls back to the nearest
     // checkpoint when a per-level curve isn't available), plus the stage's EXP items.
@@ -957,22 +951,22 @@
     }
     const expItems = visibleCharacterLevelUpCostItems(costIndex.levelUpItemsByStage.get(stage));
     const upChips = [
-      cumulativeExpItems ? renderMaterialChips(cumulativeExpItems) : "",
-      upPairs ? renderChipPairs(upPairs) : "",
-      expItems.length ? renderMaterialChips(expItems) : "",
+      cumulativeExpItems ? materialChipRows(cumulativeExpItems) : "",
+      upPairs ? upPairs.map((pair) => renderValueChip(pair)).join("") : "",
+      expItems.length ? materialChipRows(expItems) : "",
     ].filter(Boolean).join("");
-    if (upChips) parts.push(`<div class="gameplay-subheading">${escapeHtml(text("levelUpCosts"))}</div>${upChips}`);
+    if (upChips) parts.push(`<div class="gameplay-subheading">${escapeHtml(text("levelUpCosts"))}</div><div class="gameplay-blackboard">${upChips}</div>`);
     return parts.length ? `<div class="gameplay-level-cost">${parts.join("")}</div>` : "";
   }
 
-  function renderStatPane(row, active, costIndex) {
+  function renderStatPane(row, active, costIndex, textOnly) {
     return `<div class="gameplay-level-pane gameplay-stat-pane" data-level-label="${escapeHtml(statLevelLabel(row))}"${active ? "" : " hidden"}>
-      <div class="gameplay-level-effect">${renderStatAttrs(row) || `<span class="muted">-</span>`}</div>
+      <div class="gameplay-level-effect">${renderStatAttrs(row, textOnly) || `<span class="muted">-</span>`}</div>
       ${renderStatCost(row, costIndex)}
     </div>`;
   }
 
-  function renderStats(stats, costIndex, { showSource = true } = {}) {
+  function renderStats(stats, costIndex, { showSource = true, textOnly = false } = {}) {
     const rows = ((stats && (stats.rows || stats.checkpoints)) || []).filter((row) => row && (row.attrs || []).length);
     if (!rows.length) return "";
     const body = rows.length > 1
@@ -982,20 +976,15 @@
           <input class="gameplay-level-slider" type="range" min="0" max="${rows.length - 1}" step="1" value="0" aria-label="${escapeHtml(text("selectedLevel"))}">
           <output class="gameplay-level-slider-output">${escapeHtml(statLevelLabel(rows[0]))}</output>
         </div>
-        <div class="gameplay-level-panes">${rows.map((row, index) => renderStatPane(row, index === 0, costIndex)).join("")}</div>
+        <div class="gameplay-level-panes">${rows.map((row, index) => renderStatPane(row, index === 0, costIndex, textOnly)).join("")}</div>
       </div>`
       : `<div class="gameplay-level-table">${rows.map((row) => `<div class="gameplay-level-row gameplay-stat-row">
         <div class="gameplay-level-num">${escapeHtml(statLevelLabel(row))}</div>
-        <div class="gameplay-level-effect">${renderStatAttrs(row) || `<span class="muted">-</span>`}${renderStatCost(row, costIndex)}</div>
+        <div class="gameplay-level-effect">${renderStatAttrs(row, textOnly) || `<span class="muted">-</span>`}${renderStatCost(row, costIndex)}</div>
         <div class="gameplay-level-values"></div>
       </div>`).join("")}</div>`;
-    return `<article class="gameplay-skill-card gameplay-stat-card">
-      <header>
-        <div class="gameplay-skill-title">${escapeHtml(text("statCheckpoints"))}</div>
-        <div class="gameplay-skill-meta">${escapeHtml(statCurveMeta(stats, showSource))}</div>
-      </header>
-      ${body}
-    </article>`;
+    return window.WebUI.gameplayDetail.propertyCard({ title: text("statCheckpoints"), bodyHtml: body,
+      className: "gameplay-stat-card", metaHtml: `<div class="gameplay-skill-meta">${escapeHtml(statCurveMeta(stats, showSource))}</div>` });
   }
 
   function skillLevelDescription(level) {
@@ -1252,8 +1241,13 @@
 
   function renderValueChip(item, opts = {}) {
     const cls = opts.className || "";
-    const icon = item?.iconItem ? renderGameplayItemIcon(item.iconItem, item.iconLabel || item.label) : "";
-    return `<span class="gameplay-value-chip${cls ? ` ${escapeHtml(cls)}` : ""}">${icon}<b>${escapeHtml(item.label)}</b>${escapeHtml(formatValue(item.value))}</span>`;
+    const itemId = item?.iconItem?.id;
+    const icon = item?.iconItem ? renderGameplayItemIcon(item.iconItem, item.iconLabel || item.label, { static: Boolean(itemId) }) : "";
+    const content = `${icon}<b>${escapeHtml(item.label)}</b>${escapeHtml(formatValue(item.value))}`;
+    const className = `gameplay-value-chip${cls ? ` ${escapeHtml(cls)}` : ""}`;
+    return itemId
+      ? `<a class="${className} gameplay-item-chip gameplay-item-chip-link" href="${escapeHtml(window.WebUI.gameplayTabs.pageUrl("item", String(itemId)))}">${content}</a>`
+      : `<span class="${className}">${content}</span>`;
   }
 
   function renderChipPairs(pairs, opts = {}) {
@@ -1319,8 +1313,11 @@
     return formatValue(value);
   }
 
-  function renderStatAttrs(rowOrAttrs) {
+  function renderStatAttrs(rowOrAttrs, textOnly = false) {
     const attrs = Array.isArray(rowOrAttrs) ? rowOrAttrs : (rowOrAttrs && rowOrAttrs.attrs || []);
+    if (textOnly) return attrs
+      .filter((item) => item && item.value !== undefined && item.value !== null && item.value !== "")
+      .map((item) => `<p class="gameplay-description">${escapeHtml(statAttrLabel(item))}+<span class="gameplay-desc-value">${escapeHtml(formatStatValue(item.value))}</span></p>`).join("");
     const rows = attrs
       .filter((item) => item && item.value !== undefined && item.value !== null && item.value !== "")
       .map((item) => `<span class="gameplay-value-chip"><b>${escapeHtml(statAttrLabel(item))}</b>${escapeHtml(formatStatValue(item.value))}</span>`);
@@ -1817,9 +1814,9 @@
     return rows ? `<div class="gameplay-card-grid">${rows}</div>` : "";
   }
 
-  function renderCharacterAssetStrip(entry) {
+  function renderGameplayAssetStrip(entry, assetRefs) {
     const key = `${entry?.kind || ""}:${entry?.id || ""}`;
-    const refs = STATE.integration.assets?.entries?.[key];
+    const refs = assetRefs || STATE.integration.assets?.entries?.[key];
     if (!refs) return "";
     // The sidecar ranks character portraits by semantic category and image
     // size: complete illustrations/poses first, then tighter crops. Keep the
@@ -1827,21 +1824,21 @@
     // character instead of being re-sorted by the browser. The Administrator
     // sidecar carries both concrete portrait identities; only the persisted
     // active gender variant belongs in the visible strip.
-    const images = filterEndministratorVariant(refs.images, entry, (item) => item?.rel).slice(0, 4);
+    const images = filterEndministratorVariant(refs.images, entry, (item) => item?.rel);
     const models = filterEndministratorVariant(refs.models, entry, (item) => item?.rel);
-    const imageCards = images.map((asset, index) => {
-      const portraitName = `${entry.title || entry.id || asset.rel} #${index + 1}`;
-      return renderGameplayImageButton(asset, {
-        className: "gameplay-character-asset-thumb",
-        alt: entry.title || entry.id || "",
-        imageId: entry.id || asset.rel,
-        imageName: portraitName,
+    const imageCards = images.map((asset) => {
+      const fileName = asset.rel.split(/[\\/]/).pop();
+      const preview = renderGameplayImageButton(asset, {
+        className: "gameplay-asset-image-preview",
+        alt: fileName,
+        imageId: asset.rel,
+        imageName: fileName,
       });
+      return `<div class="gameplay-character-asset-thumb"><figure>${preview}<figcaption>${escapeHtml(fileName)}</figcaption></figure></div>`;
     }).join("");
-    const model = models[0];
-    const modelLink = model
-      ? `<a class="gameplay-character-asset-model" href="${escapeHtml(gameplayAssetPageHref(model.rel))}" title="${escapeHtml(text("openAsset"))}"><span>${escapeHtml(text("assetModels"))}</span><code>${escapeHtml(model.rel)}</code></a>`
-      : "";
+    const modelLink = (entry.kind === "character" ? models.slice(0, 1) : models).map((model) =>
+      `<a class="gameplay-character-asset-model" href="${escapeHtml(gameplayAssetPageHref(model.rel))}" title="${escapeHtml(text("openAsset"))}"><span>${escapeHtml(text(model.temporaryAssociation ? "assetModelsTemporary" : model.association === "factory-render-config-mesh-pathid" && model.evidenceBoundary === "conditional" ? "assetModelCandidates" : "assetModels"))}</span><code>${escapeHtml(model.rel)}</code></a>`
+    ).join("");
     if (!imageCards && !modelLink) return "";
     return `<div class="gameplay-character-asset-strip"><div class="gameplay-character-asset-images">${imageCards}</div>${modelLink}</div>`;
   }
@@ -2069,8 +2066,6 @@
   function gameplayAudioEventHref(eventId) {
     const url = new URL(window.location.href);
     url.searchParams.delete("gameplay");
-    url.searchParams.delete("gameplayId");
-    url.searchParams.delete("entry");
     url.searchParams.set("audio", String(eventId || ""));
     url.searchParams.set("audioKind", "events");
     url.hash = "#audio";
@@ -2694,21 +2689,15 @@
 
   function renderWeaponDetail(entry) {
     const facts = [
-      fact(text("id"), entry.id, { mono: true }),
       fact(text("fileName"), entry.fileName || entry.title),
-      fact(text("internalName"), entry.internalName),
       fact(text("rarity"), entry.rarity),
       fact(text("weaponType"), entry.weaponTypeLabel || entry.weaponType),
-      fact(text("maxLevel"), entry.maxLv),
-      fact(text("baseAtkMax"), entry.upgrade && entry.upgrade.baseAtkAtMax),
-      fact(text("modelPath"), entry.modelPath, { mono: true }),
-      fact(text("source"), `${entry.source && entry.source.table || ""} / ${entry.source && entry.source.id || ""}`, { mono: true }),
     ].filter(Boolean);
     const skills = (entry.skills || []).map((skill) => renderSkillCard(skill, { slider: true })).join("");
     return {
       facts,
       body: [
-        section(text("weaponStats"), renderStats(entry.stats, statCostIndex(entry, "weapon"))),
+        section(text("weaponStats"), renderStats(entry.stats, statCostIndex(entry, "weapon"), { textOnly: true })),
         section(text("weaponSkills"), skills ? `<div class="gameplay-card-grid">${skills}</div>` : ""),
         section(text("gemSources"), renderGemLinks(entry.gemSources, "gem") + `<p>${escapeHtml(text("gemPoolBoundary"))}</p>`),
       ].join(""),
@@ -2719,34 +2708,44 @@
       const key = `${kind}:${row.id}`;
       const target = findGameplayEntry(key) || { id: row.id, kind };
       const icon = renderGameplayItemIcon(target, row.title, { static: true });
-      return `<button type="button" class="gameplay-value-chip gameplay-item-chip gameplay-related-link" data-gameplay-related-key="${escapeHtml(key)}">${icon}<span>${escapeHtml(row.title)}</span></button>`;
+      return window.WebUI.gameplayDetail.relatedLink(row.title, { iconHtml: icon, relatedKey: key });
     }).join(" ") : `<p>${escapeHtml(text("gemNoMatch"))}</p>`;
   }
 
+  function renderGameplayMapLink(levelId, label, title = levelId) {
+    const url = new URL(location.href);
+    url.searchParams.set("map", levelId);
+    url.searchParams.delete("mission");
+    url.hash = "map-recovery";
+    return `<a class="gameplay-value-chip" href="${escapeHtml(url.href)}" title="${escapeHtml(title)}">${escapeHtml(label)}</a>`;
+  }
+
   function renderGemDetail(entry) {
+    const maps = [...new Map((entry.stages || []).filter((stage) => stage.levelId)
+      .map((stage) => [stage.levelId, stage])).values()]
+      .map((stage) => renderGameplayMapLink(stage.levelId, stage.location || stage.levelId)).join(" ");
     const poolLabels = ["weaponAttributeFilter", "weaponBonusFilter", "weaponPassiveFilter"];
-    const pools = (entry.termPools || []).map((pool, index) => section(text(poolLabels[index]),
-      `<div class="chips">${pool.map((term) => `<span class="gameplay-value-chip" title="${escapeHtml(term.id)}">${escapeHtml(gemTermLabel(term, index))}</span>`).join(" ")}</div>`)).join("");
-    const rows = (entry.stages || []).map((row) => `<tr><td>${escapeHtml(row.worldLevel)}</td><td>${escapeHtml(row.location)}</td><td>${escapeHtml(row.recommendLv ?? "—")}</td><td>${escapeHtml(row.costStamina ?? "—")}</td></tr>`).join("");
+    const pools = poolLabels.map((label, index) => {
+      const terms = [...new Map((entry.termPools?.[index] || []).map((term) => [term.id, term])).values()];
+      return `<div class="gameplay-talent-level gameplay-gem-term-column"><div class="gameplay-talent-level-title">${escapeHtml(text(label))}</div><div class="chips">${terms.map((term) => `<span class="gameplay-value-chip" title="${escapeHtml(term.id)}">${escapeHtml(gemTermLabel(term, index))}</span>`).join(" ") || `<span class="muted">—</span>`}</div></div>`;
+    }).join("");
     return {
       facts: [fact(text("gemRegion"), entry.domain?.name), fact(text("gemLocation"), entry.location)],
-      body: `<p>${escapeHtml(text("gemPoolBoundary"))}</p>${pools}`
-        + section(text("gemCompatibleWeapons"), renderGemLinks(entry.compatibleWeapons, "weapon"))
-        + section(text("gemStages"), `<div class="gameplay-table-scroll"><table class="gameplay-skill-table"><thead><tr>${["gemWorldLevel", "gemLocation", "recommendLevel", "gemStamina"].map((key) => `<th>${escapeHtml(text(key))}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`),
+      body: section(text("gemTerms"), `<div class="gameplay-talent-levels gameplay-gem-term-columns">${pools}</div><p class="gameplay-integration-note">${escapeHtml(text("gemPoolBoundary"))}</p>`)
+        + section(text("gemMaps"), maps)
+        + section(text("gemCompatibleWeapons"), renderGemLinks(entry.compatibleWeapons, "weapon")),
     };
   }
 
   function renderCharacterDetail(entry) {
     const variantEntry = endministratorVariantEntry(entry);
     const facts = [
-      fact(text("id"), entry.id, { mono: true }),
       fact(text("rarity"), entry.rarity),
       fact(text("profession"), entry.professionLabel || entry.profession),
       fact(text("element"), entry.elementLabel || entry.element),
       fact(text("weaponType"), entry.weaponTypeLabel || entry.weaponType),
-      fact(text("characterPropertyFilter"), entry.mainAttrType != null ? statAttrLabel({ type: entry.mainAttrType }) : ""),
       fact(text("defaultWeapon"), entry.defaultWeaponName || entry.defaultWeaponId),
-      fact(text("source"), `${entry.source && entry.source.table || ""} / ${entry.source && entry.source.id || ""}`, { mono: true }),
+      fact(text("characterPropertyFilter"), entry.mainAttrType != null ? statAttrLabel({ type: entry.mainAttrType }) : ""),
     ].filter(Boolean);
     const skillRows = (variantEntry.skillGroups || []).map((group) => renderActiveSkillRow(group, variantEntry)).join("");
     const unresolvedProjectiles = renderUnassignedCharacterProjectiles(variantEntry);
@@ -2755,7 +2754,7 @@
     const talentGroups = renderTalentGroups(talents.filter((group) => group.kind !== "factory"), skillNames);
     const factoryGroups = renderTalentGroups(talents.filter((group) => group.kind === "factory"), skillNames);
     const talentCards = (entry.talents || []).map(renderTalentCard).join("");
-    const characterAssets = renderCharacterAssetStrip(entry);
+    const characterAssets = renderGameplayAssetStrip(entry);
     const variantControl = renderEndministratorVariantControl(entry);
     return {
       facts,
@@ -2780,7 +2779,7 @@
       ].filter(Boolean).join(" / ");
       return `<article class="gameplay-skill-card">
         <header>
-          <div class="gameplay-skill-title">${escapeHtml(skill.name || suit.name || text("equipmentSuit"))}</div>
+          <div class="gameplay-skill-title">${escapeHtml((skill.name && skill.name !== skill.id ? skill.name : suit.name) || text("equipmentSuit"))}</div>
           <div class="gameplay-skill-meta">${escapeHtml(meta)}</div>
         </header>
         ${renderLevelRows(skill, { slider: true })}
@@ -2791,7 +2790,7 @@
 
   function renderEquipmentPropertyStats(stats) {
     const curves = (stats && stats.propertyCurves || []).filter((curve) => curve && (curve.rows || []).length);
-    if (!curves.length) return renderStats(stats);
+    if (!curves.length) return renderStats(stats, undefined, { textOnly: true });
     const cards = curves.map((curve) => {
       const rows = (curve.rows || []).filter((row) => row && (row.attrs || []).length);
       if (!rows.length) return "";
@@ -2802,32 +2801,21 @@
             <input class="gameplay-level-slider" type="range" min="0" max="${rows.length - 1}" step="1" value="0" aria-label="${escapeHtml(text("selectedLevel"))}">
             <output class="gameplay-level-slider-output">${escapeHtml(statLevelLabel(rows[0]))}</output>
           </div>
-          <div class="gameplay-level-panes">${rows.map((row, index) => renderStatPane(row, index === 0)).join("")}</div>
+          <div class="gameplay-level-panes">${rows.map((row, index) => renderStatPane(row, index === 0, undefined, true)).join("")}</div>
         </div>`
-        : `<div class="gameplay-level-table"><div class="gameplay-level-row gameplay-stat-row">
-          <div class="gameplay-level-num">${escapeHtml(statLevelLabel(rows[0]))}</div>
-          <div class="gameplay-level-effect">${renderStatAttrs(rows[0]) || `<span class="muted">-</span>`}</div>
-          <div class="gameplay-level-values"></div>
-        </div></div>`;
-      return `<article class="gameplay-skill-card gameplay-stat-card">
-        <header>
-          <div class="gameplay-skill-title">${escapeHtml(statAttrLabel(curve))}</div>
-          <div class="gameplay-skill-meta">${escapeHtml(stats.source || "")}</div>
-        </header>
-        ${body}
-      </article>`;
-    }).filter(Boolean).join("");
-    return cards ? `<div class="gameplay-equipment-property-grid">${cards}</div>` : "";
+        : renderStatPane(rows[0], true, undefined, true);
+      return window.WebUI.gameplayDetail.propertyCard({ title: statAttrLabel(curve), bodyHtml: body,
+        className: "gameplay-stat-card", metaHtml: STATE.showDebug ? `<div class="gameplay-skill-meta">${escapeHtml(stats.source || "")}</div>` : "" });
+    }).filter(Boolean);
+    return window.WebUI.gameplayDetail.propertyGrid(cards);
   }
   function renderEquipmentDetail(entry) {
     const facts = [
-      fact(text("id"), entry.id, { mono: true }),
       fact(text("rarity"), entry.rarity),
       fact(text("partType"), entry.showingTypeLabel || entry.partTypeLabel || entry.partType),
       fact(text("minWearLevel"), entry.minWearLv),
       fact(text("domain"), entry.domainName || (entry.domain && entry.domain.name) || entry.domainId),
       fact(text("suit"), entry.suit && (entry.suit.name || entry.suit.id)),
-      fact(text("source"), `${entry.source && entry.source.table || ""} / ${entry.source && entry.source.id || ""}`, { mono: true }),
     ].filter(Boolean);
     return {
       facts,
@@ -2842,18 +2830,16 @@
     const rows = (entry.abilities || []).map((ability, index) => {
       if (!ability) return "";
       const name = ability.name && ability.name !== ability.id ? ability.name : `${text("enemyTrait")} ${index + 1}`;
-      return `<article class="gameplay-skill-card gameplay-trait-card">
-        <header>
-          <div class="gameplay-skill-title">${escapeHtml(name)}</div>
-          ${STATE.showDebug ? `<div class="gameplay-skill-meta">${escapeHtml(ability.id || "")}</div>` : ""}
-        </header>
-        <span class="gameplay-caption">${escapeHtml(text("authoredDescription"))}</span>${renderDescription(ability.description)}
-      </article>`;
-    }).filter(Boolean).join("");
-    if (!rows) return "";
+      return window.WebUI.gameplayDetail.propertyCard({
+        title: name,
+        metaHtml: STATE.showDebug ? `<div class="gameplay-skill-meta">${escapeHtml(ability.id || "")}</div>` : "",
+        bodyHtml: renderDescription(ability.description),
+      });
+    }).filter(Boolean);
+    if (!rows.length) return "";
     const mechanics = window.WebUI.gameplayMechanics;
     const checks = mechanics.descriptionAudit({ description: (entry.abilities || []).map((ability) => ability.description || "").join("\n") }, null, { index: STATE.index, text });
-    return `<div class="gameplay-card-grid">${rows}</div>${mechanics.auditMarkup(checks)}`;
+    return window.WebUI.gameplayDetail.propertyGrid(rows) + mechanics.auditMarkup(checks);
   }
 
   const BUFF_STACKING_LABEL_KEYS = {
@@ -2870,6 +2856,8 @@
     EnhanceAndRefresh: "buffStackEnhanceAndRefresh",
     EnhanceAndOverwriteDuration: "buffStackEnhanceAndOverwriteDuration",
   };
+
+  const buffStackingLabel = (name) => text(BUFF_STACKING_LABEL_KEYS[name] || "buffStackUnknown");
 
   const MODIFIER_LABEL_KEYS = {
     Addition: "modifierAddition",
@@ -3368,7 +3356,7 @@
       return `<article class="gameplay-buff-card${diffClass}"><header class="gameplay-buff-card-head"><code>${escapeHtml(id)}</code>${renderEvidenceBadge("recoveryUnavailable", "buffDecodeUnavailable", "unresolved")}</header><p class="muted">${escapeHtml(text("buffDecodeUnavailable"))}</p></article>`;
     }
     const stacking = record.stacking || {};
-    const stackingLabel = text(BUFF_STACKING_LABEL_KEYS[stacking.stackingTypeName] || "buffStackUnknown");
+    const stackingLabel = buffStackingLabel(stacking.stackingTypeName);
     const trigger = record.triggerInterval || {};
     const maxTriggers = record.maxTriggerCnt || {};
     const duration = record.duration || null;
@@ -3405,7 +3393,7 @@
     if (!STATE.showDebug) {
       const mechanics = window.WebUI.gameplayMechanics;
       const rows = mechanics.buffRows(record, {
-        text, statAttrLabel,
+        text, statAttrLabel, stackingLabel: buffStackingLabel,
         decodedActions: mechanics.decodedBuffActions,
       });
       return `<article class="gameplay-buff-card gameplay-effect-summary${diffClass}"><header class="gameplay-buff-card-head"><strong>${escapeHtml(text("attachedEffects"))} ${index + 1}</strong>${renderEvidenceBadge(summaryStatusKey, summaryStatusDetail, summaryStatusTone)}</header>${mechanics.markup(rows)}</article>`;
@@ -3539,7 +3527,11 @@
     if (tags) blocks.push(`<div class="gameplay-subheading">${escapeHtml(text("tags"))}</div>${tags}`);
     const drops = renderMaterialChips(entry.dropItems || []);
     if (drops) blocks.push(`<div class="gameplay-subheading">${escapeHtml(text("dropItems"))}</div>${drops}`);
-    const distributions = renderIdChips(entry.distributionIds || []);
+    const distributions = (entry.distributions || []).map((row) => {
+      const label = escapeHtml(row.name || row.id);
+      if (!row.levelId || row.evidenceBoundary !== "direct") return `<span class="gameplay-value-chip" title="${escapeHtml(row.id)}">${label}</span>`;
+      return renderGameplayMapLink(row.levelId, row.name || row.id, `${row.id} → ${row.levelId}`);
+    }).join(" ");
     if (distributions) blocks.push(`<div class="gameplay-subheading">${escapeHtml(text("distribution"))}</div>${distributions}`);
     return blocks.join("");
   }
@@ -3709,7 +3701,6 @@
 
   function renderEnemyDetail(entry) {
     const facts = [
-      fact(text("id"), entry.id, { mono: true }),
       fact(text("templateId"), entry.templateId, { mono: true }),
       fact(text("attrTemplateId"), entry.attrTemplateId, { mono: true }),
       fact(text("displayType"), entry.displayTypeLabel || entry.displayType),
@@ -3718,7 +3709,6 @@
       fact(text("modelId"), entry.modelId, { mono: true }),
       fact(text("aiTemplateId"), entry.aiTemplateId, { mono: true }),
       fact(text("dangerous"), entry.isDangerous ? text("dangerous") : ""),
-      fact(text("source"), `${entry.source && entry.source.table || ""} / ${entry.source && entry.source.id || ""}`, { mono: true }),
     ].filter(Boolean);
     return {
       facts,
@@ -3799,18 +3789,22 @@
 
   function renderItemRewardCards(entry, entries = STATE.entries) {
     const chest = entry.chestData || {};
+    const quantities = (items, unavailable = false) => unavailable
+      ? (items || []).map((item) => ({ ...item, quantityDataUnavailable: true })) : items || [];
     const blocks = [];
+    if (chest.sharedTrialEquipment) blocks.push(`<div class="gameplay-integration-note is-warning" role="status">${escapeHtml(STATE.uiLocale === "zh" ? "以下为关联角色试用的装备奖励。现有数据未明确各防具箱分别包含哪些装备；列表不代表单箱可获得全部装备。" : "Equipment rewards from the linked operator trial. The available data does not identify each supply box's contents; this list is not the contents of a single box.")}</div>`);
     const chestDetails = renderChipPairs([
       { label: text("chestType"), value: chest.type },
       { label: text("selectedCount"), value: chest.selectedCount },
     ]);
     if (chestDetails) blocks.push(chestDetails);
-    const randomItems = renderMaterialChips(chest.randomItems || [], entries);
+    const randomItems = renderMaterialChips(quantities(chest.randomItems, chest.sharedTrialEquipment), entries);
     if (randomItems) blocks.push(`<div class="gameplay-subheading">${escapeHtml(text("randomItems"))}</div>${randomItems}`);
     const rewardCards = (chest.rewards || []).map((reward) => {
       if (!reward) return "";
-      const fixed = renderMaterialChips(reward.items || [], entries);
-      const probable = renderMaterialChips(reward.probableItems || [], entries);
+      const unavailable = chest.sharedTrialEquipment || reward.quantityDataUnavailable;
+      const fixed = renderMaterialChips(quantities(reward.items, unavailable), entries);
+      const probable = renderMaterialChips(quantities(reward.probableItems, unavailable), entries);
       const quantityNote = reward.quantityDataUnavailable
         ? `<div class="gameplay-integration-note is-warning" role="status">${escapeHtml(text("rewardQuantityUnavailable"))}</div>`
         : "";
@@ -3830,7 +3824,6 @@
 
   function renderItemDetail(entry) {
     const facts = [
-      fact(text("id"), entry.id, { mono: true }),
       fact(text("rarity"), entry.rarity),
       fact(text("itemType"), entry.itemTypeLabel || entry.itemType),
       fact(text("showingType"), entry.showingTypeLabel || entry.showingType),
@@ -3839,7 +3832,6 @@
       fact(text("iconId"), entry.iconId || entry.iconCompositeId, { mono: true }),
       fact(text("maxStack"), entry.maxStackCount),
       fact(text("backpackStack"), entry.maxBackpackStackCount),
-      fact(text("source"), `${entry.source && entry.source.table || ""} / ${entry.source && entry.source.id || ""}`, { mono: true }),
     ].filter(Boolean);
     const description = [renderDescription(entry.description), renderDescription(entry.decoDescription)].filter(Boolean).join("");
     return {
@@ -3885,23 +3877,31 @@
     ].join("");
   }
 
+  async function catalogAssets(language) {
+    return await (itemAssets ||= fetchIntegrationJson(integrationPath("assets", language),
+      (payload) => payload?.schemaVersion === "gameplayAssetRefs.v11" && typeof payload.entries === "object").catch(() => null));
+  }
+
+  async function itemImages(language) {
+    const assets = await catalogAssets(language);
+    return Object.fromEntries(Object.entries(assets?.entries || {}).filter(([key]) => key.startsWith("item:"))
+      .map(([key, refs]) => [key.slice(5), refs.images || []]));
+  }
+
   async function itemGallery(id, language, opts = {}) {
-    const { entry } = await catalogItem(id, language);
+    const entry = opts.entry ? { ...opts.entry, kind: opts.entry.kind === "items" ? "item" : opts.entry.kind }
+      : (await catalogItem(id, language)).entry;
     if (!entry) return "";
-    const assets = await (itemAssets ||= fetchIntegrationJson(integrationPath("assets", language),
-      (payload) => payload && payload.entries && typeof payload.entries === "object").catch(() => null));
-    if (opts.picture) {
-      if (!/^item_pic_/i.test(id)) return "";
-      const refs = assets?.tokens?.[id] || assets?.tokens?.[id.replace(/^item_pic_/i, "pic_")];
-      const asset = refs?.images?.find((candidate) => candidate?.rel);
-      return asset ? `<div class="gameplay-token-image-row">${renderGameplayImageButton(asset, {
-        className: "gameplay-item-picture",
-        alt: entry.title || id,
-        imageName: entry.title || id,
-        imageId: `${id}:picture`,
-      })}</div>` : "";
-    }
-    return renderGameplayAssetGallery(entry, assets);
+    const assets = await catalogAssets(language);
+    const refs = assets?.entries?.[`${entry.kind}:${entry.id}`] || {};
+      const models = [...(refs.models || [])];
+    const images = [...(refs.images || []), ...(String(entry.type) === "13" ? [] : opts.images || [])];
+    const seen = new Set();
+    const displayEntry = opts.assetKind ? { ...entry, kind: opts.assetKind } : entry;
+    return renderGameplayAssetGallery(displayEntry, { entries: { [`${displayEntry.kind}:${entry.id}`]: {
+      ...refs, models: [...new Map(models.map((model) => [model.rel, model])).values()],
+      images: images.filter((asset) => asset?.rel && !seen.has(asset.rel) && seen.add(asset.rel)),
+    } } });
   }
 
   function integrationPath(kind, language) {
@@ -4046,7 +4046,7 @@
     const title = opts.title || `${text("previewImage")}: ${imageName}`;
     const image = `<img src="${escapeHtml(src)}" alt="${escapeHtml(opts.alt || imageName)}" loading="lazy" onerror="this.closest('.gameplay-image-preview')?.classList.add('is-missing')">`;
     const content = opts.content || image;
-    return `<button type="button" class="${escapeHtml(className)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" data-inline-image-id="${escapeHtml(imageId)}" data-inline-image-name="${escapeHtml(imageName)}" data-inline-image-src="${escapeHtml(src)}"${token ? ` data-gameplay-token="${escapeHtml(token)}"` : ""}>${content}</button>`;
+    return `<button type="button" class="${escapeHtml(className)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" data-inline-image-id="${escapeHtml(imageId)}" data-inline-image-name="${escapeHtml(imageName)}" data-inline-image-src="${escapeHtml(src)}" data-inline-image-href="${escapeHtml(gameplayAssetPageHref(rel))}"${token ? ` data-gameplay-token="${escapeHtml(token)}"` : ""}>${content}</button>`;
   }
 
   function sourceCoordinate(source) {
@@ -4159,22 +4159,37 @@
 
   function renderGameplayAssetGallery(entry, assets = STATE.integration.assets) {
     const key = `${entry?.kind || ""}:${entry?.id || ""}`;
-    const refs = assets?.entries?.[key];
+    const refs = assets?.entries?.[key] || (entry?.kind === "gem" ? assets?.entries?.[`enemy:${entry.iconId}`] : null)
+      || assets?.tokens?.[entry?.iconId] || assets?.tokens?.[entry?.id];
     if (!refs) return "";
     const kind = String(entry?.kind || "");
+    if (["weapon", "equipment", "enemy", "item", "items", "machines", "activity", "stage"].includes(kind)) return section(text("assetMaterials"), renderGameplayAssetStrip(entry, refs));
+    if (kind === "gem") {
+      // One preview per named icon family; Texture/Sprite crops and resolutions
+      // remain distinct source assets. Keep the largest representation for display.
+      const images = new Map();
+      for (const asset of refs.images || []) {
+        if (!asset?.rel) continue;
+        const family = asset.rel.split("/").pop().replace(/_p[0-9a-f]+(?=\.[^.]+$)/i, "").toLowerCase();
+        const previous = images.get(family);
+        if (!previous || Number(asset.width) * Number(asset.height) > Number(previous.width) * Number(previous.height)) images.set(family, asset);
+      }
+      const models = [...new Map((refs.models || []).filter((asset) => asset?.rel).map((asset) => [asset.rel, asset])).values()];
+      return section(text("assetMaterials"), renderGameplayAssetStrip(entry, { images: [...images.values()], models }));
+    }
     const iconLike = ["weapon", "equipment", "item"].includes(kind);
     const allImages = Array.isArray(refs.images) ? refs.images.filter((item) => item?.rel) : [];
-    const images = kind === "weapon" ? allImages : (iconLike || kind === "enemy") ? allImages.slice(0, 1) : allImages;
+    const images = allImages;
     const models = Array.isArray(refs.models) ? refs.models.filter((item) => item?.rel) : [];
-    const imageCards = images.map((asset, index) => {
-      const caption = asset.category || (index === 0 ? text("assetImages") : "");
-      return renderGameplayImageButton(asset, {
-        className: `gameplay-asset-thumb${kind === "weapon" ? " gameplay-weapon-asset-thumb" : iconLike ? " gameplay-item-weapon-thumb" : ""}`,
+    const imageCards = images.map((asset) => {
+      const caption = asset.rel.split(/[\\/]/).pop();
+      const preview = renderGameplayImageButton(asset, {
+        className: "gameplay-asset-image-preview",
         alt: entry.title || entry.id || "",
         imageId: `${entry.id || "entry"}:${asset.rel}`,
-        imageName: [entry.title || entry.id || "", caption].filter(Boolean).join(" / "),
-        content: `<figure><img src="${escapeHtml(gameplayAssetHref(asset.rel))}" alt="${escapeHtml(entry.title || entry.id || "")}" loading="lazy" onerror="this.closest('.gameplay-image-preview')?.classList.add('is-missing')"><figcaption>${escapeHtml(caption)}</figcaption></figure>`,
+        imageName: caption,
       });
+      return `<div class="gameplay-asset-thumb${iconLike ? " gameplay-item-weapon-thumb" : ""}"><figure>${preview}<figcaption>${escapeHtml(caption)}</figcaption></figure></div>`;
     }).join("");
     const modelLinks = models.map((asset) => renderGameplayAssetLink(asset, asset.category || text("assetModels"))).join("");
     if (!imageCards && !modelLinks) return "";
@@ -4494,10 +4509,11 @@
 
   function renderIntegratedSections(entry) {
     if (entry?.kind === "character") return "";
-    const blocks = [renderGameplayAssetGallery(entry)];
+    const blocks = [];
     if (STATE.showDebug) {
       blocks.push(renderCombatIntegration(entry), renderProjectileIntegration(entry));
     }
+    blocks.push(renderGameplayAssetGallery(entry));
     const visibleBlocks = blocks.filter(Boolean);
     if (visibleBlocks.length) return visibleBlocks.join("");
     if (!STATE.showDebug) return "";
@@ -4540,45 +4556,38 @@
   function renderEquipmentFormula(entry) {
     const formula = entry.formula || {};
     if (!formula.formulaName && !(formula.costs || []).length) return "";
-    const details = renderChipPairs([
-      { label: text("formula"), value: formula.formulaName || formula.name },
-      { label: text("pack"), value: formula.packName },
-      { label: text("unlock"), value: formula.unlockName || formula.unlockValue || formula.unlockType },
-    ]);
-    const costs = renderMaterialChips(formula.costs || []);
-    const variants = (formula.variants || []).map((variant) => {
-      const materials = (variant.costs || []).filter((cost) => cost.id?.startsWith("item_equip_script_"));
-      return `<article class="gameplay-skill-card"><header><div class="gameplay-skill-title">${escapeHtml(materials.map((cost) => cost.name || cost.id).join(" / ") || text("materials"))}</div></header>
-        ${renderEquipmentCostChips(variant.costs || [])}
-      </article>`;
-    }).join("");
-    return `<article class="gameplay-skill-card">
+    const formulaLink = formula.formulaId ? `<a class="gameplay-value-chip gameplay-item-chip gameplay-item-chip-link" href="${escapeHtml(window.WebUI.gameplayTabs.pageUrl('item', formula.formulaId))}"><b>${escapeHtml(text('formula'))}</b>${escapeHtml(formula.formulaName || formula.name || formula.formulaId)}</a>` : '';
+    const methods = [formula, ...(formula.variants || [])].filter((method) => (method.costs || []).length);
+    const variants = methods.map((method, index) => window.WebUI.gameplayItems.renderCraftingRecipe({
+      id: `${formula.formulaId || entry.id}:${method.chainId ?? index}`,
+      ingredients: [method.costs],
+      outcomes: [[{ id: formula.outcomeEquipId || entry.id, name: formula.outcomeEquipName || entry.title, count: 1 }]],
+    }, renderEquipmentCostItem)).join("");
+    return `<article class="gameplay-skill-card gameplay-equipment-formula">
       <header>
-        <div class="gameplay-skill-title">${escapeHtml(formula.formulaName || formula.name || text("equipmentFormula"))}</div>
-        <div class="gameplay-skill-meta">${escapeHtml([formula.packName, formula.unlockName].filter(Boolean).join(" / "))}</div>
+        ${formulaLink || `<div class="gameplay-skill-title">${escapeHtml(formula.formulaName || formula.name || text("equipmentFormula"))}</div>`}
       </header>
-      ${details}
-      ${costs ? `<div class="gameplay-subheading">${escapeHtml(text("materials"))}</div>${costs}` : ""}
-    </article>${variants ? `<div class="gameplay-card-grid">${variants}</div>` : ""}`;
+      <div class="gameplay-items-references">${variants}</div>
+    </article>`;
   }
 
-  function renderEquipmentCostChips(costs) {
-    return `<div class="gameplay-blackboard">${costs.map((cost) => `<span class="gameplay-value-chip gameplay-item-chip"><span class="gameplay-item-chip-icon gameplay-item-chip-icon-static" data-equipment-cost-icon="${escapeHtml(cost.id)}"></span><b>${escapeHtml(cost.name || cost.id)}</b> × ${escapeHtml(formatValue(cost.count))}</span>`).join("")}</div>`;
+  function renderEquipmentCostItem(cost) {
+    return `<a class="gameplay-value-chip gameplay-item-chip gameplay-item-chip-link" href="${escapeHtml(window.WebUI.gameplayTabs.pageUrl('item', cost.id))}"><span class="gameplay-item-chip-icon gameplay-item-chip-icon-static" data-equipment-cost-icon="${escapeHtml(cost.id)}"></span><b>${escapeHtml(cost.name || cost.id)}</b> × ${escapeHtml(formatValue(cost.count))}</a>`;
   }
 
-  const equipmentProductionIndexes = new Map();
+  const equipmentItemIndexes = new Map();
   async function mountEquipmentCostIcons(root, language) {
     const slots = [...root.querySelectorAll("[data-equipment-cost-icon]")];
     if (!slots.length) return;
     try {
-      if (!equipmentProductionIndexes.has(language)) {
-        equipmentProductionIndexes.set(language, (async () => {
-          const response = await fetchWithProgress(`data/lang/${encodeURIComponent(language)}/production/index.json`);
+      if (!equipmentItemIndexes.has(language)) {
+        equipmentItemIndexes.set(language, (async () => {
+          const response = await fetchWithProgress(`data/lang/${encodeURIComponent(language)}/gameplay/items/index.json`);
           if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
           return response.json();
-        })().catch((error) => { equipmentProductionIndexes.delete(language); throw error; }));
+        })().catch((error) => { equipmentItemIndexes.delete(language); throw error; }));
       }
-      const data = await equipmentProductionIndexes.get(language);
+      const data = await equipmentItemIndexes.get(language);
       const items = new Map((data.items || []).map((item) => [item.id, item]));
       for (const slot of slots) {
         if (!slot.isConnected) continue;
@@ -4633,16 +4642,7 @@
     if (!STATE.selected) return false;
     const list = gp$("#gameplay-list");
     if (!list) return false;
-    const selectedIndex = STATE.filtered.indexOf(STATE.selected);
-    if (STATE.pager?.showIndex(selectedIndex)) renderList();
-    // Expand the selected entry's group if the user had collapsed it.
-    if (STATE.collapsedKinds.has(STATE.selected.kind)) {
-      STATE.collapsedKinds.delete(STATE.selected.kind);
-      persistCollapsedKinds();
-      renderList();
-    }
-    const key = `${STATE.selected.kind}:${STATE.selected.id}`;
-    const row = [...list.querySelectorAll(".gameplay-row")].find((candidate) => candidate.dataset.key === key);
+    const row = listGroups.locate(list, STATE.selected);
     if (!row) return false;
     listGroups.reveal(row);
     if (isMobileLayout()) {
@@ -4697,39 +4697,46 @@
     if (empty) empty.hidden = true;
     detail.hidden = false;
     const title = entry.title || entry.id || "";
-    gp$("#gameplay-detail-title").innerHTML = highlightText(title) + window.WebUI.updateBadges.html("gameplay", gameplayUpdateIds(entry));
+    const isCharacter = entry.kind === "character" && (entry.attributeRows || []).length > 0;
+    const view = isCharacter && STATE.characterView === "loadout" ? "loadout" : "info";
+    const titleNode = gp$("#gameplay-detail-title");
+    titleNode.classList.toggle("has-view-switch", isCharacter);
+    titleNode.innerHTML = `<span>${highlightText(title)}${window.WebUI.updateBadges.html("gameplay", gameplayUpdateIds(entry))}</span>`
+      + (isCharacter ? renderCharacterViewSwitch(view) : "");
     const rendered = entry.kind === "gem" ? renderGemDetail(entry) : entry.kind === "weapon" ? renderWeaponDetail(entry) : entry.kind === "equipment" ? renderEquipmentDetail(entry) : entry.kind === "enemy" ? renderEnemyDetail(entry) : entry.kind === "item" ? renderItemDetail(entry) : renderCharacterDetail(entry);
     // The header already shows the title; drop any fact that merely repeats it
     // (e.g. file/internal name equal to the title) to avoid duplicated info.
     const detailTags = dedupeDetailTags([
       fact(text("kind"), kindLabel(entry.kind), { kind: entry.kind }),
+      fact(text("id"), entry.id),
       ...(rendered.facts || []),
     ].filter((tag) => tag && String(tag.value) !== title));
     // Facts render as a conv-meta-style "label=value | ..." text line.
-    const readingView = ["character", "enemy"].includes(entry.kind);
+    const readingView = true;
     const meta = gp$("#gameplay-detail-meta");
-    if (readingView) {
-      meta.innerHTML = renderOverview(detailTags.filter((tag) => !tag.mono))
-        + (STATE.showDebug ? `<p class="gameplay-source-meta">${escapeHtml(detailTags.filter((tag) => tag.mono).map((tag) => `${tag.label}: ${tag.value}`).join(" · "))}</p>` : "");
-    } else {
-      meta.textContent = detailTags.map((tag) => `${tag.label}=${formatValue(tag.value)}`).join(" | ");
-    }
+    const visibleTags = detailTags.filter((tag) => !["character", "enemy"].includes(entry.kind) || !tag.mono || STATE.showDebug);
+    meta.textContent = window.WebUI.gameplayDetail.metadata(visibleTags.map((tag) => ({ label: tag.label, value: formatValue(tag.value) })));
+    const refs = STATE.integration.assets?.entries?.[`${entry.kind}:${entry.id}`] || gameplayAssetRefsForItem(entry);
+    const images = filterEndministratorVariant(refs?.images, entry, (image) => image?.rel) || [];
+    window.WebUI.gameplayDetail.mount(gp$("#gameplay-detail-header"), gp$("#gameplay-detail-header-main"), titleNode, meta,
+      window.WebUI.gameplayDetail.image(images.find((image) => image?.rel), gameplayAssetHref));
     // The story-wiki link sits in its own slot, mirroring the story page's
     // gameplay link under the header meta.
     const wikiSlot = gp$("#gameplay-detail-wiki");
     if (wikiSlot) {
-      const wiki = renderStoryWikiLink(entry);
+      const itemLink = ["weapon", "equipment"].includes(entry.kind) && window.WebUI.gameplayItems.hasItem(entry.id, STATE.language)
+        ? window.WebUI.gameplayDetail.datasetLink("item", `items:${entry.id}`, text("itemDetails")) : "";
+      const wiki = renderStoryWikiLink(entry) + itemLink;
       wikiSlot.innerHTML = wiki;
       wikiSlot.hidden = !wiki;
     }
+    window.WebUI.gameplayDetail.bindDatasetLinks(gp$("#gameplay-detail-header"));
     // Playable characters switch between their data and the loadout
     // calculator; other kinds have only the data view.
-    const isCharacter = entry.kind === "character" && (entry.attributeRows || []).length > 0;
-    const view = isCharacter && STATE.characterView === "loadout" ? "loadout" : "info";
     const body = view === "loadout"
       ? window.WebUI.gameplayLoadout.render(entry, loadoutHelpers())
       : `${rendered.body || ""}${STATE.showDebug && ["character", "enemy"].includes(entry.kind) ? window.WebUI.gameplaySkillRefs?.markup() || "" : ""}${renderIntegratedSections(entry)}`;
-    gp$("#gameplay-detail-body").innerHTML = `${isCharacter ? renderCharacterViewSwitch(view) : ""}${readingView && view === "info" ? `<div class="gameplay-reading-view">${body}</div>` : body}`;
+    gp$("#gameplay-detail-body").innerHTML = readingView && view === "info" ? `<div class="gameplay-reading-view${["weapon", "gem", "equipment", "enemy"].includes(entry.kind) ? " gameplay-catalog-reading-view" : ""}">${body}</div>` : body;
     if (entry.kind === "equipment") void mountEquipmentCostIcons(gp$("#gameplay-detail-body"), STATE.language);
     if (readingView && view === "info") bindDetailContents(detail);
     const updateIds = gameplayUpdateIds(entry);
@@ -4853,6 +4860,8 @@
     const key = `${entry.kind}:${entry.id}`;
     const selected = key === selectedId ? " is-selected" : "";
     const badgeClass = KIND_BADGE_CLASS[entry.kind] || "";
+    const kindBadge = ["character", "weapon", "gem", "equipment"].includes(entry.kind)
+      ? "" : `<span class="badge ${badgeClass}">${escapeHtml(kindLabel(entry.kind))}</span>`;
     const refs = STATE.integration.assets?.entries?.[key] || gameplayAssetRefsForItem(entry);
     const images = filterEndministratorVariant(refs?.images, entry, (image) => image?.rel);
     // Use the gallery's horizontal face banner for characters. Missing banners
@@ -4867,12 +4876,11 @@
     }).filter(Boolean).join(" · ") : equipmentAttributeLabels(entry).map((label) => `<span>${highlightText(label)}</span>`).join(" · ");
     return `<button class="gameplay-row${selected}" type="button" data-key="${escapeHtml(key)}">
       ${thumbnail}<span class="gameplay-row-text"><span class="gameplay-row-line1">
-        <span class="badge ${badgeClass}">${escapeHtml(kindLabel(entry.kind))}</span>
+        ${kindBadge}
         ${window.WebUI.updateBadges.html("gameplay", gameplayUpdateIds(entry))}
         <span class="gameplay-row-name">${highlightText(entry.title || entry.id || "")}</span>
       </span>
-      <span class="gameplay-row-meta">${highlightText(entrySubtitle(entry) || rowPathText(entry) || "")}</span>
-      ${weaponEffects ? `<span class="gameplay-row-effects">${weaponEffects}</span>` : ""}</span>
+      <span class="gameplay-row-meta">${highlightText(entrySubtitle(entry) || rowPathText(entry) || "")}${weaponEffects ? ` / ${weaponEffects}` : ""}</span></span>
     </button>`;
   }
 
@@ -4891,35 +4899,22 @@
     if (!list) return;
     gp$("#gameplay-shown").textContent = formatNumber(STATE.filtered.length);
     gp$("#gameplay-total").textContent = formatNumber(STATE.entries.filter((entry) => STATE.facets.active("kinds").has(entry.kind)).length);
-    STATE.pager?.setTotal(STATE.filtered.length);
     if (!STATE.filtered.length) {
       renderListNote(text(STATE.entries.length ? "noResults" : "noData"));
       return;
     }
 
     const selectedId = STATE.selected && `${STATE.selected.kind}:${STATE.selected.id}`;
-    const pageEntries = STATE.pager ? STATE.pager.slice(STATE.filtered) : STATE.filtered;
-    const groups = new Map();
-    for (const entry of pageEntries) {
-      const group = gameplayListGroupKey(entry);
-      if (!groups.has(group)) groups.set(group, []);
-      groups.get(group).push(entry);
-    }
-    const counts = window.WebUI.listGroups.counts(STATE.filtered, gameplayListGroupKey);
-    list.innerHTML = [...groups].map(([group, entries]) => listGroups.section({
-      id: group, title: gameplayListGroup(entries[0]), count: counts.get(group) || 0, className: "gameplay-list-section",
-      body: entries.map((entry) => renderRow(entry, selectedId)).join(""),
-    })).join("");
-    listGroups.bind(list);
-
-    list.querySelectorAll(".gameplay-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        const key = row.dataset.key || "";
-        STATE.selected = STATE.filtered.find((entry) => `${entry.kind}:${entry.id}` === key) || null;
-        renderList();
-        renderDetail(STATE.selected);
-      });
+    listGroups.render(list, STATE.filtered, {
+      keyOf: gameplayListGroupKey, title: gameplayListGroup,
+      renderRow: (entry) => renderRow(entry, selectedId), estimateHeight: 90,
     });
+    list.onclick = (event) => {
+      const row = event.target.closest('.gameplay-row');
+      if (!row) return;
+      STATE.selected = STATE.filtered.find((entry) => `${entry.kind}:${entry.id}` === row.dataset.key) || null;
+      renderList(); renderDetail(STATE.selected);
+    };
 
     if (!STATE.selected || !STATE.filtered.includes(STATE.selected)) {
       STATE.selected = STATE.filtered[0] || null;
@@ -4946,6 +4941,7 @@
   }
 
   function rarityFilterKey(entry) {
+    if (entry?.kind === "enemy") return "";
     return entry && entry.rarity !== undefined && entry.rarity !== null && entry.rarity !== "" ? String(entry.rarity) : "";
   }
 
@@ -5010,13 +5006,22 @@
     const domain = gp$('[data-filter-section="gameplay-gem-domain"]');
     if (domain) domain.hidden = active !== "gem";
     const rarity = gp$('[data-filter-section="gameplay-rarity"]');
-    if (rarity) rarity.hidden = active === "gem";
+    if (rarity) rarity.hidden = ["gem", "enemy"].includes(active);
+    const sort = gp$("#gameplay-sort");
+    if (sort) {
+      for (const option of sort.options) {
+        if (option.value.startsWith("rarity-")) option.hidden = option.disabled = active === "enemy";
+      }
+      if (active === "enemy" && sort.value.startsWith("rarity-")) sort.value = "default";
+      window.WebUI.sorting.refresh();
+    }
     const equipmentAttributes = gp$('[data-filter-section="gameplay-equipment-attribute"]');
     if (equipmentAttributes) equipmentAttributes.hidden = active !== "equipment";
   }
 
   function selectKind(kind) {
     const requested = findGameplayEntry(requestedGameplaySelection());
+    restoreRequestedEnemyVariant(requested);
     if (!STATE.facets.active("kinds").has(kind) || (requested && !STATE.filtered.includes(requested))) {
       STATE.facets.reset({ silent: true });
       STATE.facets.set("kinds", [kind], { silent: true });
@@ -5025,6 +5030,13 @@
     if (requested?.kind === kind) STATE.selected = requested;
     applyFilters();
     if (requested?.kind === kind) revealSelectedInList();
+  }
+
+  function restoreRequestedEnemyVariant(entry) {
+    const id = requestedGameplaySelection();
+    if (entry?.kind === "enemy" && entry.variants?.some((variant) => variant.id === id)) {
+      STATE.enemyVariantIds.set(entry.id, id);
+    }
   }
 
   function listTypeLabel(entry) {
@@ -5177,7 +5189,7 @@
       STATE.facets.set("rarities", validRarities, { silent: true });
       STATE.facets.render(STATE.entries);
     }
-    STATE.pager?.reset();
+    window.WebUI.continuousList.reset(gp$("#gameplay-list"));
     const tokens = parseQuery(gp$("#gameplay-q") && gp$("#gameplay-q").value);
     const scores = new Map();
     STATE.searchTokens = tokens;
@@ -5295,15 +5307,6 @@
     if (STATE.entries.length) renderList();
   }
 
-  function validSoundEffectsPayload(payload) {
-    return Boolean(
-      payload
-      && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(payload.schemaVersion)
-      && payload.characters
-      && payload.enemies
-    );
-  }
-
   function loadGameplayIntegration(language = currentLanguage(), force = false) {
     const nextLanguage = String(language || "CN").toUpperCase();
     const integration = STATE.integration;
@@ -5324,7 +5327,7 @@
     const requests = [
       ["combat", integrationPath("combat", nextLanguage), (payload) => payload && Array.isArray(payload.nodes) && Array.isArray(payload.edges)],
       ["projectiles", integrationPath("projectiles", nextLanguage), (payload) => payload && Array.isArray(payload.entries)],
-      ["assets", integrationPath("assets", nextLanguage), (payload) => payload && payload.entries && typeof payload.entries === "object"],
+      ["assets", integrationPath("assets", nextLanguage), (payload) => payload?.schemaVersion === "gameplayAssetRefs.v11" && typeof payload.entries === "object"],
     ];
     const promise = Promise.all(requests.map(async ([kind, path, validator]) => {
       try {
@@ -5399,6 +5402,7 @@
         STATE.entries = Array.isArray(data.entries) ? data.entries : [];
         refreshGameplayFileSearch();
         STATE.selected = findGameplayEntry(requestedGameplaySelection());
+        restoreRequestedEnemyVariant(STATE.selected);
         if (STATE.selected) STATE.facets.set("kinds", [STATE.selected.kind], { silent: true });
         gp$("#gameplay-count").textContent = formatNumber(STATE.entries.length);
         buildFilterChips();
@@ -5448,6 +5452,12 @@
 
   function init() {
     if (!gp$("#gameplay-app")) return;
+    const sidebarHeader = gp$("#gameplay-left > header");
+    sidebarHeader.classList.add("gameplay-sidebar-header");
+    sidebarHeader.innerHTML = window.WebUI.gameplayDetail.sidebarHeader({
+      statsHtml: '<div id="gameplay-stats"><span id="gameplay-count">?</span> <span id="gameplay-count-label">entries</span></div>',
+      toggleId: "gameplay-filter-toggle", panelId: "gameplay-filter-panel", resetId: "gameplay-reset",
+    });
     STATE.uiLocale = resolveInitialUiLocale();
     STATE.language = currentLanguage();
     STATE.showDebug = document.body.classList.contains("show-debug")
@@ -5456,20 +5466,20 @@
     STATE.levelFraction = loadLevelFraction();
     ensurePanelToggle();
     STATE.facets = createFacets();
-    STATE.pager = window.WebUI.pagination?.createPager({
-      container: "#gameplay-pager",
-      storageKey: "gameplay_browser_page_size",
-      onChange: renderList,
-    });
     bindEvents();
     applyUiStrings();
   }
 
   window.WebUI.gameplay = {
-    load: loadGameplay, selectKind, itemContent, itemGallery,
-    count: (kind) => STATE.index ? STATE.entries.filter((entry) => entry.kind === kind).length : null,
-    resolveKind: (value) => findGameplayEntry(value)?.kind || "",
-    normalizeSelection: normalizeGameplaySelection,
+    hasEntry: (kind, id, language) => !!STATE.index && STATE.language === language && STATE.entries.some((entry) => entry.kind === kind && entry.id === id),
+    load: loadGameplay, selectKind, itemContent, itemGallery, itemImages, assetGallery: renderGameplayAssetGallery,
+    count: (kind) => STATE.index && STATE.language === currentLanguage() ? STATE.entries.filter((entry) => entry.kind === kind).length : null,
+    statLabel: statAttrLabel,
+    // Pure presentation reuse for independently published battle-stage Buffs.
+    // ``values`` carries the applier's blackboard overrides (a Map).
+    buffRows: (record, values) => window.WebUI.gameplayMechanics.buffRows(record, {
+      text, statAttrLabel, stackingLabel: buffStackingLabel, decodedActions: window.WebUI.gameplayMechanics.decodedBuffActions, values,
+    }),
     invalidateItems: () => { itemIndexes.clear(); itemAssets = null; },
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

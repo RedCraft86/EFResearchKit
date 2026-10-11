@@ -46,7 +46,7 @@ any ambiguity keeps the original add/delete entry visible.
 Every comparison also writes ``webui/data/updates/characters.json`` through
 ``scripts.webui.updates.characters``, independently of the asset flags and
 also under ``--text-only``. ``scripts.webui.updates.page_records`` publishes
-``story.json``, ``map.json``, ``gameplay.json`` and ``production.json`` beside the feed, with the
+``story.json``, ``map.json``, ``gameplay.json`` beside the feed, with the
 same flag independence and export-only source-record evidence boundary.
 
 Run from the repo root:
@@ -102,6 +102,8 @@ from scripts.webui.updates.scanner import ScanConfig, is_export_store_relative_p
 from scripts.webui.updates.characters import build_character_updates, comparison_character_catalog_dir
 from scripts.webui.updates.page_records import build_page_updates
 from scripts.webui.game_tables import is_activity_table
+from scripts.game_data.unity_store import open_store_if_present
+from scripts.game_data.fbx_normalize import normalize_fbx
 
 DEFAULT_STATE_DIR = ROOT / ".game-data-tracker"
 DEFAULT_EXPORT_ROOT = EXPORT_ROOT
@@ -561,8 +563,10 @@ def build_asset_snapshot(
                         or not digest
                         or int(old_asset.get("size") or -1) != stat.st_size
                         or int(old_asset.get("mtime_ns") or -1) != stat.st_mtime_ns
+                        or (suffix == ".fbx" and not old_asset.get("normalizedFbx"))
                     ):
-                        digest = hash_file(path)
+                        digest = (hashlib.blake2b(normalize_fbx(path.read_bytes()), digest_size=16).hexdigest()
+                                  if suffix == ".fbx" else hash_file(path))
                 else:
                     digest = f"size:{stat.st_size}"
                 if not digest:
@@ -577,7 +581,29 @@ def build_asset_snapshot(
                     "mtime_ns": stat.st_mtime_ns,
                     "digest": digest,
                     "fingerprintMode": fingerprint_mode,
+                    **({"normalizedFbx": True} if hash_contents and suffix == ".fbx" else {}),
                 }
+    # Packed Unity media retain the same logical paths as loose exports.
+    store = open_store_if_present(export_root)
+    if store is not None:
+        for row in store.iter_rows("Animator"):
+            suffix = PurePosixPath(row.name).suffix.lower()
+            kind = asset_kind_for_suffix(suffix)
+            if not kind:
+                continue
+            rel_path = f"Unity/Animator/{row.name}"
+            if rel_path in assets:
+                continue  # Loose files take precedence, as in the media resolver.
+            digest = f"size:{row.size}"
+            if hash_contents:
+                digest = hashlib.blake2b(normalize_fbx(store.read_bytes(row.type, row.name)), digest_size=16).hexdigest()
+            assets[rel_path] = {
+                "kind": kind, "source": ASSET_SOURCE_UNITY, "path": rel_path,
+                "export_rel": f"game/{rel_path}", "extension": suffix,
+                "size": row.size, "mtime_ns": row.mtime_ns, "digest": digest,
+                "fingerprintMode": ASSET_HASH_FINGERPRINT_MODE if hash_contents else ASSET_DEFAULT_FINGERPRINT_MODE,
+                **({"normalizedFbx": True} if hash_contents and suffix == ".fbx" else {}),
+            }
     if preserve_missing_prior_assets:
         for rel_path, old_asset in prior_assets.items():
             if rel_path in assets or not isinstance(old_asset, dict) or rel_path.startswith(SPRITE_ASSET_PREFIX):
@@ -897,6 +923,19 @@ def asset_file_path(export_root: Path, asset: dict[str, Any]) -> Path | None:
     except ValueError:
         return None
     return path if path.is_file() else None
+
+
+def model_content(export_root: Path, asset: dict[str, Any]) -> bytes | None:
+    """Read a model through its logical identity, across store migrations."""
+    path = asset_file_path(export_root, asset)
+    if path is not None:
+        return normalize_fbx(path.read_bytes())
+    parts = PurePosixPath(str(asset.get("export_rel") or "")).parts
+    if len(parts) == 4 and parts[:2] == ("game", "Unity"):
+        store = open_store_if_present(export_root)
+        if store is not None and store.exists(parts[2], parts[3]):
+            return normalize_fbx(store.read_bytes(parts[2], parts[3]))
+    return None
 
 
 def flac_pcm_identity(path: Path) -> tuple[int, int, int, int, str] | None:
@@ -1235,6 +1274,7 @@ def build_asset_diff(
     deleted_paths = old_paths - new_paths
     ignored_deleted_paths: set[str] = set()
     ignored_added_paths: set[str] = set()
+    classified_audio_copies = 0
     if previous_export_root is not None and current_export_root is not None:
         ignored_deleted_paths, ignored_added_paths = redundant_audio_dialog_copies(
             old_assets,
@@ -1244,6 +1284,36 @@ def build_asset_diff(
             previous_export_root=previous_export_root,
             current_export_root=current_export_root,
         )
+        # Wwise classification can replace an unknown copy with the same media
+        # ID under a classified category, even when that copy already existed
+        # before. Require the same numeric ID and exact lossless PCM identity.
+        classified_by_name: dict[str, list[str]] = {}
+        for target in sorted(new_assets):
+            parts = PurePosixPath(target).parts
+            if (len(parts) == 5 and parts[0] == AUDIO_SOURCE_LABEL
+                    and parts[2] == "wwise" and parts[3] != "unknown"
+                    and PurePosixPath(parts[4]).stem.isdecimal()
+                    and PurePosixPath(parts[4]).suffix.lower() == ".flac"):
+                classified_by_name.setdefault(parts[4], []).append(target)
+        for old_path in sorted(deleted_paths - ignored_deleted_paths):
+            parts = PurePosixPath(old_path).parts
+            if (len(parts) != 5 or parts[0] != AUDIO_SOURCE_LABEL
+                    or parts[2:4] != ("wwise", "unknown")
+                    or not PurePosixPath(parts[4]).stem.isdecimal()
+                    or PurePosixPath(parts[4]).suffix.lower() != ".flac"):
+                continue
+            old_file = asset_file_path(previous_export_root, old_assets[old_path])
+            old_pcm = flac_pcm_identity(old_file) if old_file is not None else None
+            matches = []
+            for target in classified_by_name.get(parts[4], []):
+                new_file = asset_file_path(current_export_root, new_assets[target])
+                new_pcm = flac_pcm_identity(new_file) if new_file is not None else None
+                if old_pcm is not None and old_pcm == new_pcm:
+                    matches.append(target)
+            if matches:
+                classified_audio_copies += 1
+                ignored_deleted_paths.add(old_path)
+                ignored_added_paths.update(target for target in matches if target in added_paths)
     effective_added_paths = added_paths - ignored_added_paths
     effective_deleted_paths = deleted_paths - ignored_deleted_paths
     relocation_matches = unique_path_id_relocations(
@@ -1257,6 +1327,14 @@ def build_asset_diff(
         path_id_matches = relocation_matches
         relocation_matches = {}
         for new_path, (old_path, match_method) in path_id_matches.items():
+            if old_assets[old_path].get("extension") == ".fbx":
+                old_content = model_content(previous_export_root, old_assets[old_path])
+                new_content = model_content(current_export_root, new_assets[new_path])
+                if old_content is not None and old_content == new_content:
+                    ignored_path_only_relocations[new_path] = (old_path, match_method)
+                else:
+                    relocation_matches[new_path] = (old_path, match_method)
+                continue
             old_file = asset_file_path(previous_export_root, old_assets[old_path])
             new_file = asset_file_path(current_export_root, new_assets[new_path])
             if (
@@ -1354,7 +1432,8 @@ def build_asset_diff(
             "total": len(ignored_deleted_paths) + len(ignored_added_paths),
             "added": len(ignored_added_paths),
             "deleted": len(ignored_deleted_paths),
-            "matchMethod": "exactAudioDialogExternalPathHashAndContent",
+            "matchMethod": "exactAudioDialogExternalPathHashAndContentOrSameWwiseIdAndFlacPcm",
+            "classifiedUnknownCopies": classified_audio_copies,
         },
     }
 
