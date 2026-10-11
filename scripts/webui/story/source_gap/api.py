@@ -103,6 +103,12 @@ def build_source_gap_queue(
     quest_index, quest_status = build_quest_attachment_diagnostic_index(
         mission_payloads
     )
+    # Receipt for the actual source-bound rows, before independently validated
+    # generic boundaries are merged. A stale source contract contributes none.
+    offline_exhaustion_status["sourceBoundEvidenceRowCount"] = len(
+        offline_exhaustion_index
+    )
+    quest_status["sourceBoundEvidenceRowCount"] = len(quest_index)
     general_index, general_status = (
         build_general_quest_attachment_boundary_index(
             partial_report,

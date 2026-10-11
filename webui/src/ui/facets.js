@@ -114,6 +114,21 @@
       active: new Set(),
       counts: new Map(),
     }));
+    // Container IDs separate pages that use the same logical facet names.
+    for (const group of groups) {
+      const container = group.spec.container;
+      group.storageKey = typeof container === "string" && container.startsWith("#")
+        ? `endfield.facet.v1:${container}` : null;
+      if (!group.storageKey || WebUI.linkedState || options.persist === false) continue;
+      try {
+        const saved = JSON.parse(WebUI.storageGet?.(group.storageKey) || "null");
+        if (Array.isArray(saved)) for (const value of saved) {
+          if (["string", "number"].includes(typeof value)) group.active.add(value);
+          if (group.spec.single && group.active.size) break;
+        }
+        group.restoredLocally = group.active.size > 0;
+      } catch (_) { /* Invalid local state uses the page defaults. */ }
+    }
     const byId = new Map(groups.map((group) => [group.id, group]));
     let lastItems = [];
     let cache = null; // { items, values: Array<Array<values>|null per group> }
@@ -336,11 +351,20 @@
         group.chipsFor = cache?.totals ? cache : null;
       });
       syncBadges();
+      if (options.persist !== false) for (const group of groups) {
+        if (group.storageKey) WebUI.storageSet?.(group.storageKey, JSON.stringify([...group.active]));
+      }
       return api;
     }
 
     function render(items) {
       if (items) lastItems = items;
+      if (lastItems.length) for (const group of groups) {
+        if (!group.restoredLocally || !group.spec.values) continue;
+        const available = new Set(lastItems.flatMap((item) => itemValues(group, item) || []));
+        for (const value of group.active) if (!available.has(value)) group.active.delete(value);
+        group.restoredLocally = false;
+      }
       return draw(true);
     }
 

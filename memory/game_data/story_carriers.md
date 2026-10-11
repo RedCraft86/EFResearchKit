@@ -30,6 +30,77 @@ covers the carriers Story reads, not the whole LevelScript family.
 - Native evidence is locked to exact `GameAssembly.dll` and metadata hashes.
   Registration order and code addresses never imply Story order.
 
+CallServer's hash-shaped event name can repeat its own action UID. That is a
+local correlation label, not an additional Story node or a resolved server
+handler. Resolve the reviewed action envelope by type name through
+`levelscript_union_tags`; a client update can renumber the tag without changing
+this identity rule. Keep the callback-output UID list separate from that event
+name. `waitForCallback` with a null output list supplies no named callback
+header; an explicit output requires its own exact same-file header/action join.
+
+An exact callback can stop at `LsmEncounterSendOperaSignal` rather than another
+Story playback. Its reviewed stored route retains a typed `Param<LsmPtr>` and
+`Param<string>` signal, not a Story target. A same-file module dictionary key
+and the module's stored `id` can resolve a constant operand to an EncounterData
+configuration; matching a neighboring script filename cannot. A matching
+`battlePart.completeDelayStrParam` describes a configured signal relationship,
+not delivery or completion. A signal named `finish` is therefore not a Story
+completion or chronology edge. Joining that configuration to the encounter's
+pending runtime state and post-completion actions remains unresolved.
+The portable `encounterOperaSignalBoundary` claims in
+`scripts/game_data/contracts/story_native_consumers.json` re-prove the named
+signal operand reads and comparison path. The V2 battle-delay completion body
+loads `CompleteBattlePart` and calls `LevelScriptModule.TriggerServerEvent`.
+That is a server handoff boundary, not a local quest-success or Story edge.
+Stored `WaitOperaSignal` configuration alone does not prove which pending mode
+accepted the signal, that the V2 completion body ran, or how the server response
+activates a later callback.
+The next named consumers to join are the module event prefix/sender and the
+V2 `get_battleTaskCompleted`, `BattlePartDoRegisterEvent`,
+`_IsBattleTaskCompletedOnChanged`, and `_OnBattleTaskCompleted` paths. Treat
+saved-property origin, value, receiver identity, selected generic context, and
+patch selection as separate open checks. Even a validated client transport
+chain cannot supply a server quest decision or order for an unvisited branch.
+The adjacent `LevelEvent.OnSpawnerWaveComplete` family has separate spawner and
+wave-key filters and typed output destinations; those outputs are not observed
+wave values or evidence that the event fired.
+
+DialogTree UI continuation has two independent native maps: named outgoing
+port labels and configured default indexes. The initializer can call shared
+`Dictionary.Add` bodies for both, so the exact MethodSpec passed at each call
+must supply the closed key/value types. The reusable integer-map and lookup
+return programs live in `scripts/game_data/il2cpp/static_dictionary.py`; the
+Story family reader binds them to the declared static field, owned method
+bodies, and current IFix exclusion. Do not substitute an Object instantiation
+sharing a code address for the supplied closed MethodSpec.
+
+The native panel-name getter parses the selected UI enum, then reads the
+default-index dictionary. Failed parsing or a missing dictionary key returns
+zero. The shipped Lua router uses that getter when no nonnegative temporary UI
+result was supplied, and forwards the resulting index to the native dialogue
+continuation. Configured defaults and explicit result-message producers remain
+separate. Port names and default indexes prove conditional local alternatives;
+they do not observe a selected UI outcome, mission activation, or cross-Story
+chronology. The family reader validates the complete shipped Lua producer
+census as well as the native consumers.
+
+AirWall state predicates distinguish mission IDs from quest IDs with the
+serialized `isQuest` flag. A quest predicate is admitted only when its ID is
+both a `questDic` key and that row's stored `questId` in the named target
+MissionRuntimeAsset. A matching name prefix supplies no membership evidence.
+Valid predicates describe wall configuration and its later pushback radio
+callback; they do not establish a mission transition or relative Story order.
+
+Reviewed quest attachment diagnostic declarations live in
+`scripts/game_data/contracts/quest_attachment_diagnostics.json`. Their source
+hashes and exact generated-field predicates close diagnostic co-membership;
+they do not add ownership or chronology. Source drift empties the pinned index
+and reopens its gaps. The source-gap API records that index's row count before
+merging separately validated generic boundaries. Mission publication accepts
+the two source-pinned catalogs' inactive status only with an explicit empty-row
+receipt and no independent validation failure. It still withholds their stale
+classifications; parser, shape, and nonempty-index failures stop publication.
+
 ## Native claims across a client update
 
 - A contract records its build in its own `nativeInputs`/`sources`; no module
@@ -126,6 +197,223 @@ flow. The typed chains below also rely on reviewed instruction and metadata
 evidence. All behavior describes native default paths: live IFix selection,
 server policy and unvisited runtime execution remain unresolved.
 
+The working model separates authored eligibility and action graphs, delivered
+quest/mission state, locally selected condition evaluation, objective
+presentation, and playback requests. A mission timeline records their explicit
+identity-bearing entries within one admitted interval. Stored dependencies
+explain candidate handoffs; received state records observed progress; local
+conditions are one selected evaluation lane; UI counts are presentation. None
+of these carriers alone establishes the server's decision or playback owner.
+The retained marker and photo paths corroborate this separation: a non-client
+marker objective advances without the selected local leaf callbacks, while a
+photo payload reaches several explicitly owned conditions with different
+authored group operands. Quest IDs and source membership select the mission;
+shared names, reused condition IDs and clock proximity do not.
+
+The reusable
+[`mission_mechanism_audit`](../../scripts/webui/story_recovery/mission_mechanism_audit.py)
+sweeps named-schema-validated objective condition trees in a selected export.
+`ConditionSelectors` in `mission_shared_native.py` follows concrete metadata
+inheritance and registered generic parent contexts to the nearest declared
+`get_conditionType`. Only a unique instance virtual getter in the base
+condition's slot can join a reviewed, authenticated enum-return claim. A nearer
+unreviewed override withholds the inherited selection. This establishes
+conditional applicability of a default selector, not a specific `Check` body,
+live subtype, IFix choice or server rule. Generic parent binding supplies no
+closed field layout or instantiated body by itself.
+
+The reviewed `commonConditionSelectors` claims cover named getter overrides
+through the selected objective census, using complete typed enum-return
+paths after `IsPatched` returns false, rather than accepting a nearby EAX
+literal. Server placeholders return the declared `None` sentinel; arrival,
+quest-state, mission-state and interactive-integer families return their own
+named non-`ClientOnly` enum members. The default Mission objective leaf lane
+therefore excludes them. This does not prohibit their condition classes from
+having local methods or being used by another subsystem. Combined objectives
+return `Combined` and recurse into children; a container is not a failed or
+server-only leaf. These distinctions explain missing selected local callbacks
+without inventing a missing progression event or a server predicate.
+An export whose families all join these getters has closed default-selector
+coverage only. The census does not prove the specific predicate bodies, actual
+activation, server evaluation, or a fully observed timeline; a future family or
+nearer getter still remains unreviewed until its own claim is checked.
+
+The audit separately counts entries associated with a quest containing a
+condition family and entries naming one uniquely owned condition. Association
+requires explicit quest identity, matching selected-native profile hashes and
+identical retained/current mission-definition bytes. A condition referenced by
+an operand does not become the condition's owning quest. This is a selected
+export census and retained-interval coverage, not installed VFS completeness.
+Main-path lists are subsets of the authored dependency graph; branches,
+multiple predecessors and off-path quests cannot be flattened into one total
+timeline merely because a source array has an order.
+The audit retains quest/mission-state operands with their owning objective,
+comparator and requested state. The reviewed `questMissionStatePredicates` and
+`combinedConditionAst` groups join selected native enum names and checked
+consumer flow to these operands. A referenced quest or mission remains a
+constraint target, separate from the objective's owner. Dynamic operands remain
+unresolved. The generated Boolean model distinguishes a condition required to
+be true, one required to be false, and an alternative. Its conclusions assume
+live parameter initialization, successful native helper/context behavior, stable
+child results and coherent nested combined caches. A separately authenticated
+parser review enables the bounded ASCII native caller model, including mixed
+binary operators; without that review the earlier unambiguous model remains
+the fallback. Objectives are modeled individually; the audit supplies no
+quest-level combination rule or accepted timeline edge.
+
+[`mission_expression_native.json`](../../scripts/game_data/contracts/mission_expression_native.json)
+records the reviewed parser/resolver bodies and typed state-publication joins;
+[`mission_expression_native.py`](../../scripts/game_data/mission_expression_native.py)
+authenticates their owned bytes, declarations, literals and actual usage cells
+against selected native inputs before and after evaluation. Its caller review
+is distinct from the small symbolic instruction proofs below and from live
+source-to-object parity. The reusable
+[`mission_expression.py`](../../scripts/game_data/mission_expression.py) model
+implements these reviewed ASCII rules:
+
+- The lexer lowercases the string, skips only space and tab, scans `not`, `and`
+  and `or` without requiring word boundaries, and accepts braced ASCII digits
+  through Int32 parsing. Culture-dependent Unicode behavior is withheld.
+- Immediate stack reduction gives AND and OR equal precedence and left
+  associativity: `A or B and C` means `(A or B) and C`. NOT reduces on its next
+  completed subtree; an incomplete parenthesis blocks reduction until closed,
+  and pruning removes the grouping node.
+- Parsing requires exactly one completed root and a contiguous distinct index
+  set starting at zero. Repeated indices are allowed. Parsing receives only
+  the expression; reviewed activation does not require every supplied child
+  to appear in it. The bounded source model additionally refuses child indices
+  outside the supplied array. The outer evaluator still waits for unused
+  children; the audit records decision-wait inputs separately from expression
+  inputs.
+- State activation passes each typed Param, the type's default value, and the
+  true option into `GetValue`, caching the resulting ID, comparator and state.
+  The source-zero `TryGetValue` path copies its typed constant and succeeds
+  before getter/blackboard dispatch. Getter sources with the sentinel ID return
+  the passed default. Actual caller MethodSpecs establish string/comparator/
+  state types; a generic shared reference or enum body alone cannot do so.
+  Generated named wrapper setters establish concrete Param cells without
+  importing open generic field offsets.
+- Selected ordinary value constructors explicitly store source zero, a null
+  path, the sentinel ID and the supplied constant. The reference barrier is a
+  returning helper assumption. Typed MemoryPack wrappers allocate and install
+  a Param, then a full deserialize reads constant, reference ID, source selector
+  and path in that order. A null header clears the wrapper; a nonnull header
+  must contain all four properties. Fresh and reused objects therefore receive
+  an explicit serialized source, rather than a partial-header omission default.
+  Buffered reader/refill effects remain conditional.
+- Mission resource loading includes TextAsset JSON and ResourceManager paths.
+  Formatter availability selects a MemoryPack or JSON reader, and the
+  MemoryPack caller also contains a JSON fallback. Default JSON settings do
+  not identify the Param creator or the result of setting an omitted member.
+  These paths and constructors cannot identify which live instance a source
+  constant created. Source-to-object ownership, effective patches and the
+  source actually consumed remain runtime joins.
+- Uncached quest ownership uses the prefix before the first ordinal `_q#`
+  delimiter, or an empty string when absent; a quest-ID cache wins first.
+  Agreement with exported ownership can be audited, but this lookup contains
+  no chronological or server-admission rule.
+
+[`mission_condition_flow.py`](../../scripts/game_data/il2cpp/mission_condition_flow.py)
+checks complete admitted instruction programs for the following default paths,
+binding named fields, enum members, call signatures, branch targets and
+unwind-owned regions. Collection/getter bodies, general closed event-packet
+layout, actual objects and live IFix choices remain separate obligations.
+
+- Quest and mission callbacks filter the incoming packet's identifier lane by
+  the cached configured ID. Only the matching path passes its incoming state
+  lane, cached comparator and target to the Int32 comparator, then passes a
+  normalized `False` or `True` to the result setter. They do not re-query current
+  state. The selected comparator supports equality, inequality and signed
+  ordered comparisons. State integers form a comparison domain, not a
+  chronological order of mission events.
+- Activation resolves parameters and checks existing client state as well as
+  binding a state-change callback. Quest activation binds before its query;
+  mission activation compares existing mission data (or `None` when absent),
+  sets the result, then binds. A bounded walk of every completing default
+  control path verifies these critical call sequences after the false patch
+  guard, including the quest predicate's result-setter tail return. It follows
+  branches rather than native address order. Callees are returning opaque
+  boundaries; actual
+  parameter initialization, subscriptions and delivery remain open. The
+  condition classes retain their non-`ClientOnly`
+  selectors, so this does not establish execution in the default Mission
+  objective leaf lane.
+- A new useful capture must distinguish the activation-time query/result from
+  a subsequent matching event, and bind receiver, owning quest/mission, live
+  operands and nested callbacks to one invocation. Entry timestamps alone
+  cannot establish subscription success, a completed result update or parent
+  quiescence. The concrete requirements live in
+  [the shared runtime backlog](../runtime_capture_requirements.md#mission-timeline).
+  Further collection/allocator review may refine conditional value transfers;
+  it cannot supply an omitted event interval or authoritative server admission.
+- The focused
+  [state/AST capture recipe](../../scripts/game_data/contracts/mission_state_trace_capture.json)
+  now prepares live typed Param cell snapshots at state activation entry/return
+  and cached resolved operands separately. Its EventData argument witness
+  proves sequential string/Int32-enum layout and checks the complete indirect
+  callback consumer. Unique GP-only void/Boolean observers retain explicit
+  same-thread invocation/parent identity through recursive AST calls, result
+  setters and selected callbacks. Native collection and decoded replay reject
+  incomplete/crossing pairs, exceptions, loss and stopping within an invocation.
+  These are prepared observations, not live evidence. They do not sample each
+  resolver instruction, enumerate unused children, establish JSON initialization,
+  authenticate a subscription handle or make nested cache updates atomic.
+- `GetQuestState` first returns a nonnull current quest record's state. When
+  that record is absent, its normal caller uses `GetMissionIdByQuestId` and a
+  mission dictionary lookup: a completed owning mission yields quest
+  `Completed`; an absent/empty owner ID, missing mission or another mission
+  state yields `None`. The existing quest record takes precedence over this
+  fallback. The returned owner ID and dictionary results are successful-callee
+  assumptions, and expanded patched paths remain excluded. This explains how
+  a state predicate can match restored state or a completed mission without a
+  new quest-state event inside the recording; it supplies no missing handoff.
+- The valid-node `_EvaluateNode` path with `useProgress=false` compares a leaf
+  result exactly with `True`, flips Boolean values for `Not`, and short circuits
+  `And` and `Or`. Its leaf projection treats `Undecided` as false. The outer
+  `Evaluate` loop first waits on every null or `Undecided` child before invoking
+  that AST path, including children the expression does not use. Consequently
+  an OR alternative cannot bypass the outer waiting gate, and the inner NOT
+  projection alone does not establish a resolved combined result. An undecided
+  combined cache forces a setter call after evaluation; an unchanged decided
+  Boolean result skips it.
+- The normal result setter accepts updates only while active, rejects incoming
+  `Undecided`, and skips unchanged values. A changed decided result is cached
+  before the callback helper, then a nonnull parent is evaluated. The callback
+  helper is assumed to return; its purity is not proved. Reentrant callbacks or
+  child/parent mutation prevent promoting this local propagation rule into
+  atomic nested-cache coherence.
+
+The reviewed state producers add local publication relationships. Normal quest
+updates create/add or overwrite the current quest record before their state-case
+`StartQuest`/`SucceedQuest` calls and global state-change send. Normal mission
+updates build and publish their new mission record before the availability,
+start or completion branch. Completion show-data, processing-membership and
+property helpers can run earlier, so these relationships do not describe whole
+handlers as atomic operations.
+
+Producer calls select a string ID plus the appropriate state enum; condition
+subscriptions select the matching closed event type and named event key. The
+selected compiled sender writes reference/Int32 packet lanes and passes the
+packet address through the dispatcher and binding into synchronous delegate
+calls. Its compiler helper includes a specialized quest-state callback branch.
+These are compiled representation and caller/context joins, not a general open
+generic layout proof. Dispatch follows runtime registration/list state, and
+callbacks may reenter or alter it. Actual subscriptions, runtime generic context
+resolution, helpers, exceptions and patches remain conditional. A later state
+query can consequently see published data without proving that all listeners
+or combined caches have been refreshed.
+
+These constraints explain eligibility and delayed evaluation, while explicit
+received state and owned runtime entries establish observed handoffs. Positive
+completion predicates may already hold when an interval begins; negated checks
+and OR alternatives need not impose a positive predecessor. Main-path membership
+and a satisfied state check therefore cannot fill an unrecorded transition or
+flatten the authored dependency graph into a complete timeline. Current offline
+inputs cannot recover an event outside their retained intervals, identify an
+unobserved effective patch/receiver/subscription, or reveal authoritative server
+admission. Further collection/allocator/helper analysis can refine conditional
+native semantics but cannot manufacture these missing chronological facts.
+
 - Mission quest state, objective progress, and LevelScript task state use
   separate message paths. `MissionSystem.Handle_QuestStateUpdate` reaches
   `StartQuest`/`SucceedQuest`; `Handle_MissionStateUpdate` reaches
@@ -198,8 +486,19 @@ server policy and unvisited runtime execution remain unresolved.
   comparison. Missing or changed proof rejects preparation. An earlier inline
   read failed in a live photo callback; its failed journal remains diagnostic
   evidence and cannot be admitted as a complete collection. Together, layout
-  and passing proofs enable a payload-to-condition entry association; the bound group parameter, actual comparison/result,
-  IFix selection and progression remain unobserved.
+  and passing proofs enable a payload-to-condition entry association. A clean
+  retained photo run now observes the supplied group at several explicitly
+  owned `GetResult` entries: the `m1m32` group also enters the active `m1m70`,
+  `m1m71` and `m1m31` conditions, whose stored groups differ. The later `m1m31`
+  group likewise enters other active photo conditions. Only the quests whose
+  archived group matches have retained progress-one callbacks and completion
+  entries in that run. This admits the repaired payload read and demonstrates
+  why neither the reused condition ID nor entry occurrence selects the
+  completed quest. The match compares stored constants; the live bound group
+  parameter, actual `GetResult` return, IFix selection and event nesting remain
+  unobserved. Base deactivation retains `True` with progress one before a later
+  specialized deactivation retains `Undecided` with the same progress. Keep
+  those separate cache snapshots; neither is an earlier callback return.
   `InteractiveCheckInt` is a server-condition family, with no declared local
   event-check lifecycle. Named interactive state requests, integer property
   callbacks and incoming packet identities provide separate carriers for its
@@ -229,6 +528,13 @@ server policy and unvisited runtime execution remain unresolved.
   is conditional and precedes blackboard setter calls; observed ordering alone
   cannot establish nesting or causal ownership. Incoming Mission objective
   dictionaries remain a separate carrier from both property blackboards.
+  The clean marker/photo run now admits both retained-data and navigation
+  entries. The consumer's stored ID and level agree with its supplied packet
+  within each observed entry, and marker-related entries retain the authored
+  script as their parent. Navigation supplies old state zero and new state one
+  for those runtime entities. That parent-script association does not map a
+  dynamic server ID to an authored local interactive key or a particular marker
+  Boolean property, and the supplied states still prove no applied write.
 - `StartQuest` distinguishes restoration from a newly entered quest. The
   world-ready restore path passes `isNewQuest=false`; the quest-state update
   path derives the flag from the prior state. A method entry alone cannot
@@ -257,9 +563,10 @@ server policy and unvisited runtime execution remain unresolved.
   `ObjectiveData.GetValue` supplies its stored condition ID and values
   dictionary to `CollectionExtensions.GetValueOrDefault`. The reviewed
   `Copy` body clears and repopulates a destination dictionary from the incoming
-  objective map; named calls and field reads do not authenticate every loop
-  key/value transfer. Preserve the incoming map, the copied completion flag
-  and the displayed count as separate carriers.
+  objective map. Its complete normal caller grammar now checks source aliases,
+  selected fields, argument lanes and loop control; collection/helper semantics
+  and live map members remain separate. Preserve the incoming map, the copied
+  completion flag and the displayed count as separate carriers.
   `CombineCondition` presentation getters sum each child's numeric presentation
   value or target. For an `Objective` displaying a multiple combined condition,
   the default progress getter instead counts children whose
@@ -272,6 +579,45 @@ server policy and unvisited runtime execution remain unresolved.
   explain how partial counts can appear without a per-child Mission callback;
   they do not identify the numeric values delivered in a retained session or
   establish the live IFix branch.
+  The reviewed `ObjectiveData.Copy` claim now checks a packed argument transfer
+  beside a named `Dictionary.Add` call. The exact passed MethodSpec selects
+  String/Int32; a shared Object specialization is insufficient. The complete
+  vector program passes its low pointer-sized component as the key and the
+  next Int32 component as the value. This closes the argument-split question
+  that the subset disassembler left unread. The separate
+  [`packed_pair_current`](../../scripts/game_data/il2cpp/packed_pair_current.py)
+  claim checks the complete owned producer helper and adjacent caller window.
+  Reciprocal generic-parameter ownership joins a selected closed
+  `IEnumerator<KeyValuePair<K,V>>` to its slot-zero `get_Current` return. This
+  type join is independent of field layout and argument passing. Complete owned
+  helper grammars cover String/Int32, String/`Proto.QUEST_OBJECTIVE_DETAIL` and
+  UInt64/Boolean contexts, including their post-return fast-path tails and the
+  caller-supplied TypeInfo variant. On matching-interface dispatch each helper
+  invokes the getter with its supplied receiver and copies a 16-byte return
+  window. The separate String/Int32 window proves its components reach the
+  selected `Dictionary.Add`. The complete
+  [`mission_objective_copy`](../../scripts/game_data/il2cpp/mission_objective_copy.py)
+  grammar now binds all normal Copy loops: values are cleared and enumerated,
+  the root completion flag is copied, then extra details are cleared and each
+  incoming detail supplies a newly allocated `ConditionDetail`. Its nested
+  hash loop finishes before the outer detail is added. Typed fields and passed
+  MethodSpecs bind each source map and destination; complete interface searches,
+  current helpers, backedges, false exits and normal cleanup control are checked.
+  The nested hash loop passes unchanged low-64-bit return-window arguments from
+  its UInt64 context to a signed Int64 Add context without caller arithmetic or
+  a range check. This is a bit-transfer proof, not a recovered wire value or a
+  closed generic pair field-layout proof.
+  The caller grammar also checks its usage-initialization instruction stream,
+  incoming nonvolatile aliases and matching stack restoration. Its claims
+  require unpatched dispatch, normal usage/class resolution and Win64 ABI,
+  valid objects/interface tables/current returns, successful allocation,
+  collection and cleanup calls, and no external alias mutation. Initializer,
+  fallback, enumerator, collection and cleanup helper semantics, exceptional
+  paths, actual delivered entries, live IFix choice and quest ownership remain
+  open. Neither this proof nor capture enumerates a runtime dictionary. A
+  completed objective flag copied here is not a quest-state update or proof
+  that a quest handoff occurred. A Copy entry alone proves neither successful
+  completion of these loops nor atomic replacement of the destination.
 - `CheckTalkOptionFinish` belongs to `GameConditionBoth`. Activation resolves
   and caches its dialog/finish operands, checks existing finish history
   immediately, and binds `Check` to `ON_SYNC_ALL_DIALOG` and `ON_FINISH_DIALOG`;
@@ -340,6 +686,19 @@ server policy and unvisited runtime execution remain unresolved.
   Its authored actions contain marker property readers but no Boolean setter.
   These stored defaults and the native sync path establish a possible writer
   carrier, not an observed property update or the server rule producing it.
+  A clean `m1m15` variant now records packet and runtime property-sync entries
+  whose explicit script and level match the combined objective's authored
+  operands, together with quest-owned objective refresh entries and the
+  same-thread predecessor handoff. Its selected local Boolean-condition hooks
+  remain unhit, and no per-child Mission progress callback is retained for
+  that quest. The screen separately shows partial counts and completion.
+  Anonymous root-copy entries remain unassigned despite their matching reused
+  condition ID; their false/false/true completion flags cannot reveal child
+  values. This closes the observed script-delivery identity gap for that
+  variant, while property-map contents, numeric child values, successful
+  writes and the server rule remain unresolved. Its brief-data property IDs
+  come from the selected LevelData owner, not the MissionRuntimeAsset's
+  separate property map or an assumed common numeric ordering.
 - The retained `m1m43` gathering daily exercises the same distinction through
   an `InteractiveCheckInt` combined objective. Its archived MissionRuntimeAsset
   reuses `m1m41` display-text keys but supplies its own objective and entity
@@ -405,6 +764,49 @@ Interpret their observations with the session's retained profile and explicit
 source identities; entry snapshots do not prove successful returns or message
 causality. Capture inventories and sequence-level corroboration remain under
 `reports/runtime_capture/`.
+
+The reusable `mission_trace_replay` reader reuses a passing inspection while
+binding every decoded row to the retained journal, profile and complete receipt.
+It compares JSON value types as well as values, keeps scalar widths and enum
+names from the retained profile, and refuses altered clocks, arguments, fields,
+failure markers or loss accounting. Inventory consistency authenticates the
+retained package's bytes, not its external origin or a newly executed native
+branch. Native preparation and live collection are not repeated by replay.
+
+The offline `mission_capture_timeline` projection associates entries through
+their explicit mission ID or quest/parent-quest ID plus archived `questDic`
+membership. Conflicting carriers, repeated membership and missing quests remain
+unassigned. A condition ID supplies stored candidates only, even if only one
+candidate remains; an objective-copy root does not identify the live quest or
+reveal individual incoming numeric values. A configured predecessor is
+corroborated only by a same-thread success entry preceding a canonical
+`isNewQuest=true` start entry. Restoration entries, cross-thread observations
+and a thread clock reversal withhold that corroboration. This proves the
+observed entry order beside the configured dependency, not a successful return,
+server prerequisite evaluation, asynchronous parentage or Story order. Optional
+current reuse checks the selected native hashes and each observed mission
+definition's bytes; that targeted match is not whole-export freshness.
+The explicit `mainPathQuests` list is retained as authored structure. Its
+ordering can differ from numeric suffix order: the retained `a1m15` path and
+source-bound quest entries agree on the `q#6` to `q#8` to `q#7` route and the
+`q#11d1` continuation. A stored main-path list does not fill a recording gap or
+establish the server's branch-selection rule.
+
+The stored `m1m9` definition also shows why a main-path list is not the entire
+quest dependency graph. Its `mainPathQuests` contains `q#1` and `q#2`, while
+explicit predecessor lists form `q#3` → `q#6` → `q#4` → `q#1` → `q#2` → `q#5`.
+Some of these quest rows have no objective records; that representation does
+not prove that they execute no effects. A recording begun at the three-marker
+objective can preserve its restoration and remaining handoff, but cannot
+reconstruct the earlier SNS or acceptance stages. Keep those stored
+dependencies separate from newly observed transitions. The marker condition
+cohort and the photo condition's reused ID likewise require explicit source
+membership; another available variant is useful only for a still-unobserved
+carrier or branch, not to repeat the admitted Boolean-to-progress bridge.
+`m1m15` shares the `m1m9` display-name key and radio names while storing its own
+quest IDs, script operand and shorter quest graph. Retained runtime entries
+select that variant directly. A visible `日常·寻机启事` label or an `m1m9` radio
+prefix cannot transfer the original mission's SNS stages or later quests to it.
 
 Use the named MissionRuntimeAsset schema reader for corpus comparisons;
 its reviewed baseline count is not a current denominator. Export freshness and

@@ -153,6 +153,7 @@ const STATE = {
   inlineImageLookupLoaded: false,
   inlineImageLookupPromise: null,
   inlineImageAssetByStem: new Map(),
+  wikiItemIcons: {},
   inlineImageAssetByNumber: new Map(),
   inlineImageSourceRoots: {},
   inlineImageExportRoot: "export_full",
@@ -2694,6 +2695,7 @@ function ensureInlineImageAssetLookup() {
     .then((payload) => {
       const byStem = new Map();
       const byNumber = new Map();
+      STATE.wikiItemIcons = payload?.wikiItemIcons || {};
       STATE.inlineImageSourceRoots = payload && payload.sourceRoots ? payload.sourceRoots : {};
       STATE.inlineImageExportRoot = String(payload && payload.root ? payload.root : "export_full");
 
@@ -2914,6 +2916,8 @@ function resolveExactImageAsset(imageId) {
 function wikiMediaCandidateIds(value) {
   const normalized = normalizeInlineImageId(value);
   if (!normalized) return [];
+  const authoredIcon = STATE.wikiItemIcons[normalized] || STATE.wikiItemIcons[`wiki_${normalized}`];
+  if (authoredIcon) return [authoredIcon];
 
   const ids = [];
   const push = (id) => {

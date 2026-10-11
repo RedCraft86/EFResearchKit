@@ -28,7 +28,7 @@
   //     line with one value at every step is fixed). Cost and final
   //     attributes come from attributeCalculation with per-source breakdowns;
   //     without a validated formula it shows the gate status and computes
-  //     nothing, and attributes whose native hooks are not modelled are hidden.
+  //     nothing. Unmodelled hooks display explicitly partial configuration values.
   //   * A descriptionTemplate (skill groups, weapon/equipment skill levels,
   //     talents, potentials, item use) renders in the browser from the
   //     selected level, highlighting substituted values; value chips the text
@@ -183,6 +183,7 @@
   const STATE = {
     uiLocale: "zh",
     language: "CN",
+    characterView: storageGet("endfield.characterView") === "loadout" ? "loadout" : "info",
     index: null,
     entries: [],
     filtered: [],
@@ -2745,7 +2746,8 @@
       fact(text("element"), entry.elementLabel || entry.element),
       fact(text("weaponType"), entry.weaponTypeLabel || entry.weaponType),
       fact(text("defaultWeapon"), entry.defaultWeaponName || entry.defaultWeaponId),
-      fact(text("characterPropertyFilter"), entry.mainAttrType != null ? statAttrLabel({ type: entry.mainAttrType }) : ""),
+      fact(text("stat_main_attr"), entry.mainAttrType != null ? statAttrLabel({ type: entry.mainAttrType }) : ""),
+      fact(text("stat_sub_attr"), entry.subAttrType != null ? statAttrLabel({ type: entry.subAttrType }) : ""),
     ].filter(Boolean);
     const skillRows = (variantEntry.skillGroups || []).map((group) => renderActiveSkillRow(group, variantEntry)).join("");
     const unresolvedProjectiles = renderUnassignedCharacterProjectiles(variantEntry);
@@ -3996,7 +3998,7 @@
       const iconRefs = integrationAssetRefsForToken(item.iconId);
       if (iconRefs?.images?.some((asset) => asset?.rel)) return iconRefs;
     }
-    const tokenRefs = integrationAssetRefsForToken(itemId);
+    const tokenRefs = integrationAssetRefsForToken(item?.iconId || itemId);
     if (tokenRefs?.images?.some((asset) => asset?.rel)) return tokenRefs;
     const refsByKey = STATE.integration.assets?.entries || {};
     const entry = findGameplayEntry(itemId);
@@ -4760,6 +4762,7 @@
       button.addEventListener("click", () => {
         if (STATE.characterView === button.dataset.characterView) return;
         STATE.characterView = button.dataset.characterView;
+        storageSet("endfield.characterView", STATE.characterView);
         renderDetail(entry);
       });
     });
@@ -4784,6 +4787,7 @@
       formatDescriptionValue,
       renderMaterialChips,
       renderEvidenceBadge,
+      renderItemIcon: renderGameplayItemIcon,
       goldItem: goldCurrencyItem,
     };
   }
@@ -4940,6 +4944,14 @@
     return entry && (entry.elementLabel || entry.element || "");
   }
 
+  function abilityFilterKey(entry, field) {
+    return entry?.kind === "character" && Number(entry[field]) > 0 ? String(entry[field]) : "";
+  }
+
+  function abilityFilterLabel(entry, field) {
+    return abilityFilterKey(entry, field) ? statAttrLabel({ type: Number(entry[field]) }) : "";
+  }
+
   function rarityFilterKey(entry) {
     if (entry?.kind === "enemy") return "";
     return entry && entry.rarity !== undefined && entry.rarity !== null && entry.rarity !== "" ? String(entry.rarity) : "";
@@ -5081,6 +5093,8 @@
   const ENTRY_FACET_GROUPS = [
     ["jobs", "job", jobFilterKey, jobFilterLabel],
     ["characterProperties", "character-property", characterPropertyFilterKey, characterPropertyFilterLabel, "character"],
+    ["mainAbilities", "main-ability", (entry) => abilityFilterKey(entry, "mainAttrType"), (entry) => abilityFilterLabel(entry, "mainAttrType"), "character"],
+    ["subAbilities", "sub-ability", (entry) => abilityFilterKey(entry, "subAttrType"), (entry) => abilityFilterLabel(entry, "subAttrType"), "character"],
     ["weaponTypes", "weapon-type", weaponTypeFilterKey, weaponTypeFilterLabel, "weapon"],
     ["equipmentTypes", "equipment-type", equipmentTypeFilterKey, equipmentTypeFilterLabel, "equipment"],
     ["enemyTypes", "enemy-type", enemyTypeFilterKey, enemyTypeFilterLabel, "enemy"],
@@ -5280,7 +5294,9 @@
       ["#gameplay-sort-id", "sortId"],
       ["#gameplay-kind-label", "kind"],
       ["#gameplay-job-label", "job"],
-      ["#gameplay-character-property-label", "characterPropertyFilter"],
+      ["#gameplay-character-property-label", "element"],
+      ["#gameplay-main-ability-label", "stat_main_attr"],
+      ["#gameplay-sub-ability-label", "stat_sub_attr"],
       ["#gameplay-weapon-type-label", "weaponTypeFilter"],
       ...WEAPON_EFFECT_FACET_GROUPS.map(([, suffix, label]) => [`#gameplay-${suffix}-label`, label]),
       ["#gameplay-gem-domain-label", "gemRegion"],

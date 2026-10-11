@@ -159,3 +159,17 @@
 /* Entity and catalog sidebars use the same header component. */
 .gameplay-sidebar-header { padding: 14px 16px 8px; border-bottom: 1px solid var(--border); }
 .gameplay-sidebar-stats { color: var(--muted); font-size: 12px; }
+
+/* Image choices stay in flow so an open picker also works on narrow screens. */
+.gameplay-loadout-picker { border: 1px solid var(--border); border-radius: 6px; min-width: 0; }
+.gameplay-loadout-picker summary { cursor: pointer; padding: 8px; display: flex; align-items: center; gap: 8px; }
+.gameplay-loadout-picker summary::after { content: "▾"; margin-left: auto; }
+.gameplay-loadout-search { display: grid; gap: 4px; padding: 8px; font-size: 12px; }
+.gameplay-loadout-search input { width: 100%; box-sizing: border-box; }
+.gameplay-loadout-choices { max-height: 260px; overflow-y: auto; padding: 4px; }
+.gameplay-loadout-choice { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px; color: inherit; background: transparent; border: 1px solid transparent; cursor: pointer; }
+.gameplay-loadout-choice[hidden] { display: none; }
+.gameplay-loadout-choice:hover, .gameplay-loadout-choice:focus-visible, .gameplay-loadout-choice[aria-pressed="true"] { border-color: var(--border); background: var(--panel); }
+.gameplay-loadout-picker .gameplay-item-chip-icon { width: 44px; height: 44px; flex: 0 0 44px; }
+.gameplay-loadout-picker .gameplay-item-chip-icon img { width: 100%; height: 100%; object-fit: contain; }
+.gameplay-loadout-picker > p { padding: 0 8px; }

@@ -7,6 +7,10 @@ This file is the entry point; per-family evidence lives in
 [`game_data/`](game_data/README.md), and the mechanics of each reader, gate and
 validator live in its module docstring and reviewed contract under `scripts/`.
 
+Required runtime observations are collected in
+[`runtime_capture_requirements.md`](runtime_capture_requirements.md). Append
+future capture needs there, with links back to their owning evidence topics.
+
 ## Why this topic remains
 
 Many evidence contracts are shared by several pages or exist before any page
@@ -314,6 +318,63 @@ Current position of the families with active recovery:
   implicit stack writes avoid the saved homes; unknown aliases and child
   writes still prevent pointed-slot or fresh post-child pointer equality.
   Normal AL zero/one does not prove initialization success or runtime identity.
+  The [named class-fields contract](../scripts/game_data/contracts/buff_formatter_class_fields_native.json)
+  additionally joins closed type-flags/blittable entries and the complete
+  has-references, field-iterator, preparation-bridge and recursive preparation
+  programs to the same input-helper callee. Its bit replacement matches the
+  named blittable bit; the fields base/count/stride have a direct named
+  iterator consumer. Iterator writes followed by receiver reloads and
+  post-child context loads stay fresh. Field storage construction, pointed
+  slot effects, alias/noninterference, actual receiver identity, initialized
+  capacity and recursion still require evidence.
+  The [generic field-construction contract](../scripts/game_data/contracts/buff_formatter_field_construction_native.json)
+  proves the complete generic child, named record getters, inline reservation,
+  full explicit record coverage and the actual shared-clear return/zero-fill
+  join under its stated conditions. Source name/offset/trailing-word reads
+  are fresh after the type child; the saved original receiver becomes the
+  record parent. Its saved source count does not directly assign the receiver
+  count consumed by field iteration. That count join, trailing-word meaning,
+  complete typed ordinary/auxiliary construction, child alias/slot effects, valid capacity
+  and actual type/receiver identity remain open.
+  The [ordinary/auxiliary field-setup contract](../scripts/game_data/contracts/buff_formatter_field_setup_native.json)
+  checks both complete owned control/store/frame programs and selected
+  count/home/reference/ready projections. Allocation and post-allocation
+  loop counts remain separate fresh reads. Reusing a child's own RDX home
+  as a DWORD counter does not describe its passed pointer's target. The
+  auxiliary named reference bit joins parent/receiver reads conditionally;
+  its ready write precedes later layout children and cannot prove their
+  completion. Remaining typed effects, coherence, capacity and runtime
+  joins stay open despite complete decoding.
+  The [metadata creation count-flow contract](../scripts/game_data/contracts/buff_formatter_class_creation_native.json)
+  checks a complete owned creation candidate and current named metadata
+  count words. Signed source-address arithmetic, saved allocation/result
+  registers, a fresh source-word copy into the named count offset and the
+  normal allocated-result return are proved under their conditions. The
+  allocation and copy dominate normal local returns. Runtime source-table
+  pointers, valid index/storage, live class/cache/preparation identity and
+  later count coherence remain unresolved; direct store coverage does not
+  exclude child or alias mutation.
+  The [generic creation count/cache contract](../scripts/game_data/contracts/buff_formatter_generic_creation_native.json)
+  checks the complete code/table partition, guarded targets, stores, frames
+  and selected register origins across the possible graph. The shared getter's
+  fresh count word reaches the saved allocation, which also stores the incoming
+  receiver in its generic link. Cache exchange overwrites the saved pointer;
+  the non-null return uses a fresh cache reload whose equality with the
+  allocation/publication is unproved. Existing-cache and null-source returns
+  bypass creation. Live preparation identity, later count coherence, child
+  aliases, synchronization/capacity and recursive termination stay open.
+  The [source receiver resolution contract](../scripts/game_data/contracts/buff_formatter_receiver_resolution_native.json)
+  joins closed nullable/pointer-index leaves to the complete owned cache
+  resolver and actual metadata constructor. Valid selected record offsets
+  round-trip through the signed reciprocal index calculation under matching,
+  stable header/base reads. The same signed index and normal constructor
+  result reach a fresh cache array; return uses another fresh array/element.
+  Cache-view/count equality, live pointer/class identity, index validity and
+  synchronization remain open, and leaf instruction closure does not infer
+  unwind ownership or original-receiver null handling.
+  The [metadata initialization owner](../scripts/game_data/memorypack/buff_formatter_metadata_initialization.py) joins the loader result to those header/base cells and the conditional section-size allocation result to the resolver cache cell; loaded-file identity, allocator outcome/capacity and later global stability remain unresolved.
+  The [metadata loader owner](../scripts/game_data/memorypack/buff_formatter_metadata_loader.py) checks complete loader/path-helper control, literal descriptor arguments, close/error import declarations and conditional zero-or-saved-mapping-child returns; closed dependency transfers infer no ownership, and final path/file identity and live child effects remain open.
+  The [metadata mapping owner](../scripts/game_data/memorypack/buff_formatter_metadata_mapping.py) checks that actual tail target's complete control and registration-slot flow: normal return is zero or a fresh post-registration slot value, after subtraction and mutable-slot forwarding. A nonnull view-child result does not prove final-return equality or validity; aliases, mapped-file identity, synchronization outcomes and retry termination remain open.
   Actual virtual callback/class/provider selection, positive union/child cursor
   composition and global effects remain open; static registration does not
   select a runtime object.
@@ -429,6 +490,14 @@ Current position of the families with active recovery:
   This inventory supports corpus-wide byte and naming joins without another
   playback capture. See
   [`game_data/audio_overview.md`](game_data/audio_overview.md).
+  The reviewed native bank loader now joins External Source IDs to descriptor
+  cookies, and selected complete external rows have exact offline WEM/FLAC PCM
+  comparisons across Vorbis and Opus. Native Event registry/queue transport
+  and Play Action target lookup also have checked identity edges, and selected
+  direct ordinary Event/Sound rows have exact package-to-FLAC PCM witnesses.
+  Event-to-path eligibility remains
+  conditional on the posted descriptor; managed queue lifetime, the live file
+  handle and actual Event selection remain separate gaps.
 - **ExtendData catalogs.** Both StringPathHash catalogs have current
   cross-format hash joins to VFS filename hashes and BundleManifest asset
   paths; the catalog writer and runtime lookup remain open
@@ -680,8 +749,14 @@ runtime question may improve understanding without decoding another file.
    against the Wwise SDK and bank corpus. The current AKPK inventory and BKHD
    identity joins support broad offline recovery; preserve full external keys,
    package-qualified bank variants and ordered Event actions. Complete the
-   decode pipeline's typed-entry/encoded-byte/decoded-byte provenance before
-   asking for more single-sound comparisons. Existing combined recordings
+   decode pipeline's typed-entry/encoded-byte/decoded-byte provenance. Native
+   authored Action/Event registration now joins the conditional post/drain and
+   Sound-source route. Selected codec registration, RIFF-prefix parsing and
+   sample-buffer consumers are authenticated, and original Opus code computes
+   samples that its media wrapper returns with independently corroborated
+   geometry and bounded quantization error. Native Vorbis output differs from
+   the external reference despite matching frame geometry; close that
+   context/setup or reconstruction gap next. Existing combined recordings
    already supply managed paths, local provider/descriptor entries, successful
    read completions and sparse pre-transform words; selected offline entries
    also have equal decoded PCM. These do not identify every live backing file,

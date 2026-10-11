@@ -3548,6 +3548,29 @@ def _closed_exact_connected_context_isolated_scenes(
             })
     return closed
 
+@lru_cache(maxsize=None)
+def _airwall_transition_mission_source(mission_id: str) -> dict[str, Any]:
+    """Read only the named MissionRuntime owner for an authored quest predicate."""
+    if not mission_id or Path(mission_id).name != mission_id:
+        return {}
+    path = EXPORT_LAYOUT.json_dir / "MissionRuntimeAsset" / f"{mission_id}.json"
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        return {"sourceFile": export_rel_path(path), "status": "missing_or_invalid"}
+    quests = payload.get("questDic")
+    valid = payload.get("missionId") == mission_id and isinstance(quests, dict)
+    return {
+        "status": "validated" if valid else "owner_mismatch",
+        "missionId": payload.get("missionId"),
+        "questIds": sorted(
+            key for key, quest in (quests.items() if isinstance(quests, dict) else [])
+            if isinstance(quest, dict) and quest.get("questId") == key
+        ),
+        "sourceFile": export_rel_path(path),
+        "sourceSha256": _sha256_file(path),
+    }
+
+
 def _exact_typed_mission_state_transition_checks(
     story_key: str,
     mission_state_id: str,
@@ -3555,11 +3578,19 @@ def _exact_typed_mission_state_transition_checks(
 ) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | None]:
     """Validate authored AirWall mission-state transition predicates."""
     checks = value if isinstance(value, list) else []
+    has_quest = any(isinstance(check, dict) and check.get("isQuest") is True
+                    for check in checks)
+    quest_source = _airwall_transition_mission_source(mission_state_id) if has_quest else {}
+    quest_ids = set(quest_source.get("questIds") or [])
     shape_valid = (
         bool(checks)
+        and bool(mission_state_id)
+        and (not has_quest or quest_source.get("status") == "validated")
         and all(
             isinstance(check, dict)
-            and safe_key(check.get("id")) == mission_state_id
+            and (safe_key(check.get("id")) in quest_ids
+                 if check.get("isQuest") is True
+                 else safe_key(check.get("id")) == mission_state_id)
             and safe_key(check.get("targetMissionId")) == mission_state_id
             and safe_key(check.get("transition")) in {"rise", "down"}
             and safe_key(check.get("comparison")) in {"equal", "not_equal"}
@@ -3579,11 +3610,14 @@ def _exact_typed_mission_state_transition_checks(
                 "nonempty": True,
                 "transitions": ["rise", "down"],
                 "comparisons": ["equal", "not_equal"],
-                "idAndTargetMissionId": mission_state_id,
+                "targetMissionId": mission_state_id,
+                "missionPredicateId": mission_state_id,
+                "questPredicateId": "exact questDic key and questId in the target MissionRuntimeAsset",
                 "booleanIsQuest": True,
                 "integerDetailState": True,
             },
             "actual": value,
+            "missionRuntimeSource": quest_source,
         }
     return list(checks), None
 
@@ -4570,6 +4604,10 @@ def _closed_exact_runtime_config_isolated_scenes(
         ):
             failure = dict(target_check_failure)
             failure["sourceFiles"] = _string_list(row.get("sourceFiles"))
+            failure["missionId"] = owner_mission
+            failure["sourceFile"] = safe_key(row.get("sourcePath"))
+            if failure["sourceFile"]:
+                failure["sourceSha256"] = _sha256_file(ROOT / failure["sourceFile"])
             validation_failures.append(failure)
         if (
             scene_key not in isolated_scene_keys

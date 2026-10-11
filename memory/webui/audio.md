@@ -266,6 +266,20 @@ Inspect `--help` for non-CN or targeted maintenance options. Focused audits
   prefix guess.
 - Close more authored consumer-to-Event and Event-to-media ownership paths, and
   recover selector/parameter meaning without conflating control with playback.
+  The native Event registry/queue pair and Play Action target lookup now join
+  the posted ID, retained descriptor and selected target conditionally. The
+  bank-source cookie and descriptor-selection rule are also checked, and
+  representative external and direct numeric sound rows match playable FLAC
+  PCM offline. Authored registration and conditional Action-list order now
+  have native proofs, with existing-ID reuse and shared-link mutation explicit.
+  Selected codec factories, native RIFF/format reads and sample-buffer
+  interfaces are also checked. Original Opus code produces corroborated PCM
+  offline; native Vorbis parity and live provider/mixer/device output remain
+  open.
+  These static/offline facts do not add runtime bindings to the
+  rendered Event/media rows. External files still need an observed posted
+  descriptor/source chain; a shared cookie or file key alone cannot supply
+  that owner.
 - Keep unsupported codecs, missing chunks and unobserved runtime branches
   visible.
 - The native callsite catalog (`contracts/audio_native.json`) was reviewed on a

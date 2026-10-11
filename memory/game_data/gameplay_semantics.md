@@ -286,10 +286,24 @@ structure on the installed build.
 - Sources: weapons add `(Atk, BaseAddition, baseAtk)` from the upgrade curve;
   weapon, set and passive skills carry `SkillData.cardAttributeModifier`
   (`formulaItem` is the ModifierType); equipment reads `equipAttrModifiers`.
-- Call structure is `direct`; arithmetic order is a reviewed capstone reading
-  (`conditional`, the stdlib decoder skips some SSE forms). Resistance, healing
-  and move/cooldown hooks are unmodelled; combat buffs, gems and team effects
-  are outside the inputs.
+- Healing base additions are `floor(Will)` times the corresponding
+  `healerEfficiencyOfWILL` / `recoverEfficiencyOfWILL` table coefficient.
+  Physical resistance gains `100 * (1 - 1 / (1 + floor(Agi) * efficiencyOfAGI))`;
+  Natural/Cryst/Pulse/Fire use Wisd and `efficiencyOfWISD`. Ether has no
+  ability conversion in the default base-add dispatcher. These additions enter
+  before base multipliers, rather than being added to the final display value.
+- MoveSpeedScalar's armed-stage conversion multiplies by
+  `1 - final(SlowActionSpeedScalar)`. ComboSkillCooldownScalar's final-stage
+  conversion multiplies by `final(ComboSkillCooldownDecrease)`; it does not
+  derive directly from Agi. The recovery scalar is a separate attribute.
+- Call structure is `direct`; general arithmetic order remains a reviewed
+  disassembly reading (`conditional`, the stdlib decoder skips some SSE forms).
+  The conversion dispatchers and healing/resistance normal paths additionally
+  authenticate reviewed native code windows, external float literals and enum
+  IDs from the v2 contract. Byte/literal/enum drift produces `pendingReview`
+  instead of publishing an old formula. This covers default paths without
+  IFix replacements; combat buffs, gems, team effects and exceptional paths
+  remain outside the loadout inputs.
 
 Projectile behavior is immutable authored data; skill/projectile ownership,
 event hashes, decoded media and asset references keep separate provenance.

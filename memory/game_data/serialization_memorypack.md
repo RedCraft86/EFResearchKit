@@ -218,6 +218,16 @@ no Story playback, mission trigger/order or runtime property claims. Source-span
 replay still requires the complete current JsonData gate before whole-owner
 EOF or corpus counts are published.
 
+Property/proxy getters and entity-event headers use the same typed admission
+in `levelscript_stored_routes_native.json`. A Vector3 property getter stores
+its property path and target script reference, with no serialized result;
+saved-property and proxy getters likewise retain only authored operands.
+The water-drone header's `targetEntityListOutput` is independently proved as
+`ParamOutput<EntityPtr>` despite its list-shaped name. Output destinations
+never stand in for delivered values. Each complete reader and source span is
+checked before shared-codec reuse; later owner refusals and the full corpus
+gate remain separate obligations.
+
 ## LevelScript route-specific conclusions
 
 - The three EnvTalk action variants share a bounded
@@ -1713,6 +1723,14 @@ overlapping completed-action cohorts do not predict complete root closures.
 It counts authenticated per-file exact flags and cross-checks total, exact and
 residual counts against the canonical registry. A family summary may omit the
 aggregate exact counter; when present it must agree with the per-file count.
+Only a unique candidate explicitly accepted through EOF supplies named
+obligations and owned unions. Rejected embedded-marker probes remain a
+separate inventory: an absent receipt on a rejected probe is not another root
+composition gap. Missing or competing accepted frames retain an explicit
+root-frame obligation. Acceptance flags and declared accepted counts are
+checked, and the named receipt's `physicalEof` must match the original logical
+length. Another parser projection's `readerEndOffset` is not substituted for
+this root coordinate.
 
 The census's `--replay-shared-events` mode distinguishes that recorded baseline
 from the newer shared event-map reader. It rereads only unresolved eligible
@@ -2286,6 +2304,230 @@ ownership and root admission still come from the full family and canonical
 original-owner replay gates. Stored gait limits and event operands do not
 prove movement changes, event dispatch or spell attachment.
 
+CheckSkillCastId is another independently named leaf in
+[`buff_leaf_actions_native.json`](../../scripts/game_data/contracts/buff_leaf_actions_native.json).
+Its current source in
+[`buff_73_native.json`](../../scripts/game_data/contracts/buff_73_native.json)
+ends after the four inherited operands: `isEnable`, `priorityLevel`,
+`priorityOffset` and `serverActionIndex`. There is no additional serialized
+skill or cast ID field. Historical schema-pack tag numbers cannot select this
+reader: current dispatcher/type identity and source windows must agree first.
+[`inherited_action_sources.py`](../../scripts/game_data/memorypack/inherited_action_sources.py)
+proves the selected reader/ref-wrapper argument flow, buffered Boolean
+normalization, DWORD reads and cursor accounting, and each inherited setter's
+load of the metadata-owned base Data reference followed by its typed field
+store. The stored Boolean byte remains raw in the receipt even though the
+selected native helper normalizes a nonzero operand. These are conditional
+ordinary paths, with Win64 nonvolatile preservation across returning children;
+refill/error callees, acquired runtime cast identities, comparison result and
+condition execution remain unresolved. A successful original leaf or selected
+parent replay still requires the full current family and canonical root gates
+before any whole-root gain is published.
+Original-parent replay also demonstrates that passing this leaf can expose a
+later unsupported action in the same sequence. The exact leaf boundary must
+therefore stay separate from the enclosing sequence and root classification.
+
+SkillAffixAction has a separate current reader and dispatcher identity in
+[`buff_leaf_actions_native.json`](../../scripts/game_data/contracts/buff_leaf_actions_native.json),
+with its source and inherited-helper windows in
+[`buff_164_native.json`](../../scripts/game_data/contracts/buff_164_native.json).
+Its complete stored leaf also ends after the four common inherited operands;
+there is no additional serialized affix identifier. The shared inherited-source
+validator checks this parent's own argument and return bridges, buffered
+primitive cursor programs, and typed base-Data setter destinations. A matching
+member count or another leaf's helper identity is not the admission evidence.
+Skill-affix lookup, handler selection and resulting effects remain unresolved.
+
+CheckTargetContains has a maintained Buff recursive owner in
+[`buff_check_target_contains_action.py`](../../scripts/game_data/memorypack/buff_check_target_contains_action.py),
+reviewed by
+[`buff_check_target_contains_action_native.json`](../../scripts/game_data/contracts/buff_check_target_contains_action_native.json)
+and the current source windows in `buff_7e_native.json`. After the common
+inherited prefix, `childTargetSettings` and `parentTargetSettings` each have
+their own typed source context, read-return bridge and generated setter. Equal
+TargetSettings types do not merge the two stored objects: each nonnull child
+must independently compose the existing recursive target owner at its original
+absolute endpoints. A null action wrapper, a null child setting and a null
+parent setting stay distinct. Passing the first setting cannot finish the
+condition, and unsupported children refuse it. Stored configuration does not
+establish acquired target sets, containment results or condition execution.
+
+The current CheckSkillCastId consumer's object-filter call also joins the
+complete reference-filter program already owned by
+[`buff_effect_line_center_consumer_native.py`](../../scripts/game_data/buff_effect_line_center_consumer_native.py)
+and its
+[`consumer contract`](../../scripts/game_data/contracts/buff_effect_line_center_consumer_native.json).
+This helper's normal return selects the saved incoming reference or null;
+its actual child target joins `il2cpp_class_has_parent` and the complete
+[`class ancestry proof`](../../scripts/game_data/contracts/buff_formatter_class_ancestry_native.json).
+The ancestry interpretation retains the coherent initialized-class, positive
+prepared depth, valid storage and ordinary-return conditions. Reusing this
+same body avoids a second filter implementation. It does not identify the
+consumer's live object/class, prove type-cell initialization, establish the full condition CFG,
+or prove the skill-cast comparison result.
+
+The context-adapter investigation must distinguish a stored selector from a
+metadata type-definition index. The selected creation body in
+[`buff_formatter_class_creation_native.json`](../../scripts/game_data/contracts/buff_formatter_class_creation_native.json)
+copies the dialect's inserted anonymous DWORD from its saved metadata-record
+source into the allocated class object. A separate saved-register, adjacent
+read/store and normal-return dominance check connects that copy to the
+adapter's DWORD load; the column's semantic field name remains unresolved.
+The adapter's distinct cases have unique current stored-column rows for
+Ability, Buff, SkillHighlightEnvironment, ComboSkillEnvironment and GlobalBuff.
+Their receiver-relative QWORD loads agree with each type's instance `context`
+backing field and its registered getter's closed load/return entry. Field
+ownership uses the same explicit static/value-type checks as
+[`NativeReferenceContext`](../../scripts/game_data/il2cpp/reference_layouts.py).
+
+This is a conditional named-field connection: the actual compatible metadata
+source/index must remain stable, the adapter receiver's class must be that
+allocation, children must obey ordinary returning Win64 register behavior, and
+no child or alias may change the selector before the adapter reads it. The
+adapter's fallback receives the original input in RCX and R8 and forwards a
+fresh normal child RAX result. The complete adapter, creation-selector copy,
+named Context fields/getters and fallback are maintained by
+[`buff_condition_context_adapter.py`](../../scripts/game_data/memorypack/buff_condition_context_adapter.py)
+and its
+[`reviewed contract`](../../scripts/game_data/contracts/buff_condition_context_adapter_native.json).
+This owner authenticates explicit GameAssembly/metadata/Unity inputs and its
+source closure before and after proof; missing or mismatched inputs emit no
+program summary. The reusable control/column readers live under `il2cpp/`.
+
+The fallback captures its comparison pointer before its preparation call,
+then freshly loads an unsigned WORD limit and record-array pointer. Its guarded
+scan selects the first matching record and cannot wrap its WORD index on a
+reached continuing iteration. On a match, it adds the selected method slot to
+the record DWORD at DWORD width, sign-extends that result, applies the checked
+pair bias/stride and adds the saved class pointer. The miss path obtains a
+fresh pair from its actual resolver call. Both paths load the pair's target
+and method-info QWORDs, restore the normal Win64 frame/nonvolatile state and
+tail-transfer the original object with the fresh method-info argument.
+The captured on-disk type-usage encoding joins the current `IActionEnvironment`
+interface declaration; the physical resolver and inline-pair slot joins its
+unique declared `get_context` method. This is a stored declaration join,
+conditional on proper runtime cell initialization and coherent class/pair
+storage. It does not identify a live pair or prove index capacity, preparation
+or resolver effects/termination, the actual indirect target, the full
+CheckSkillCastId CFG, live context identity or comparison result.
+
+The further source join is maintained by
+[`buff_condition_context_dispatch.py`](../../scripts/game_data/memorypack/buff_condition_context_dispatch.py)
+and its
+[`reviewed dispatch contract`](../../scripts/game_data/contracts/buff_condition_context_dispatch_native.json).
+The creation body stores the fresh allocator return into its own QWORD self
+field and copies the saved metadata record's named `interface_offsets_count`
+WORD into the later record-scan count. Both direct stores dominate every normal
+local creation return. The metadata count columns are checked against the
+original bytes for every type; the allocator size expression uses the distinct
+named `vtable_count` WORD. Each selected Context type has a unique static
+`IActionEnvironment` interface-offset record whose effective method slot points
+to that type's previously checked getter. These static pairs fit the recorded
+allocation-request geometry. An allocator request does not prove allocation
+capacity, nor does a static interface record prove the prepared runtime array.
+
+The context caller's actual preparation/resolver entries join the existing
+[`dispatch fallback proof`](../../scripts/game_data/contracts/buff_formatter_dispatch_fallback_native.json)
+and its direct child's complete
+[`resolver scan proof`](../../scripts/game_data/contracts/buff_formatter_resolver_scan_native.json).
+The entry first loads the self pointer; its preparation tail has stored-byte
+guards and passes a caller slot initialized with a global address by reference.
+The subsequent child reloads that slot, which the intervening child may change.
+The resolver reloads a fresh class QWORD from the original object: equality with
+the outer caller's earlier saved class still requires stable object-header and
+alias/child behavior. Its direct search returns zero on a null query parameter
+context or scan exhaustion. A nonzero result is forwarded; otherwise a guarded
+alternate result may be forwarded after its continuation, while failure calls
+the actual failure helper with `INT3` as its normal-call continuation. That failure is not a safe
+normal null result. Full local control and normal-transfer/source joins do not
+prove initialization, external child effects or termination, class/pair
+identity, the full condition CFG or actual condition evaluation.
+
+The selected preparation writers are now maintained by
+[`buff_context_publication.py`](../../scripts/game_data/memorypack/buff_context_publication.py),
+its
+[`reviewed publication contract`](../../scripts/game_data/contracts/buff_context_publication_native.json)
+and
+[`context_publication_sources.py`](../../scripts/game_data/il2cpp/context_publication_sources.py).
+The creation program also stores its saved metadata-record pointer and copies
+the named `vtable_count` WORD into the later method-pair loop count. These
+unique direct stores dominate every normal local creation return; child,
+alias and concurrent mutations remain separate conditions. The stored range
+starts, WORD counts and interface-offset/vtable header sections are checked
+against the original metadata bytes and bounded table ranges for every type.
+This does not establish the identity of live metadata/header/base cells.
+
+Both selected interface-array branches have complete original-byte grammars
+within the authenticated second preparation CFG. They publish a fresh normal
+allocation-like return, then fill distinct DWORD offset and QWORD lookup-return
+parts of each record. The linked branch obtains a fresh source receiver and
+uses a separately reloaded linked pointer for its inflation argument; equality
+with the earlier input is not assumed. Its early zero-count/already-present
+skip avoids the saved-address reload, while the path that uses the WORD loop
+counter reloads that address afterward. The ordinary branch keeps its original
+receiver. Both loops use unsigned WORD continuation guards, so a continuing
+iteration cannot wrap the counter. Counts and array pointers are loaded again
+after children: an initial allocation request does not prove that subsequent
+indexed writes fit its actual capacity.
+
+Every instruction in that second preparation body now belongs to exactly one
+checked semantic fragment, including its linked-method, special, restoration
+and common completion paths. Actual branch targets join fragment labels;
+the linked-method fragment additionally admits the array-skip entry that
+retains the original incoming address instead of reloading its saved home.
+Complete physical coverage still depends on normal child returns and compatible
+storage; it does not prove the callees' meanings or termination.
+
+The ordinary method-pair branch is selected only with the initial linked
+pointer and special byte clear, in addition to the initial ready/blocked
+guards. It reads the stored encoded vtable DWORD and stores the fresh normal method
+lookup return into the pair's second QWORD before selecting its first QWORD.
+A null lookup return substitutes a stored address for the second word. A null
+return or null direct-target field selects the fallback target address;
+otherwise the actual flag and global-pointer guards select the direct or
+alternate target field. Completion freshly ORs the ready byte and blocked
+mask. These are physical source/write and local-control proofs, not the
+identities of lookup returns or callable targets. Publishing the array pointer
+before its separate record writes does not prove that other readers observe
+a complete array or pair.
+
+The linked method-pair branch recursively prepares its captured source, then
+copies a freshly read source count into the original receiver. Its lookup
+candidate may be rewritten by a carrier/inflation path or a separate stack
+tuple containing the candidate, a freshly read linked-context pointer and a
+zero word. The former clears the full integer flag argument; the tuple path
+sets only its low byte, leaving the upper register value unproved. The actual
+false-flag branch repeats the candidate's class-pointer guard. The rewritten
+candidate is stored into the pair before the guarded helper and target
+selection. Direct, alternate, helper-return and fallback targets have distinct
+checked source paths; the helper-return path preserves its fresh return while
+computing the pair index. These are candidate and target byte flows, without
+runtime method or callable identity.
+
+The linked branch also has an actual conditional post-creation write to the
+anonymous selector DWORD read by the Context adapter. With the sentinel still
+present, it follows two guarded helper returns and a fresh nested pointer,
+then copies that nested receiver's selector DWORD into the original receiver.
+The first helper's result must be nonnull and differ from its saved input.
+This proves a possible native selector mutation; its value's meaning, nested
+class identity and equality across later fresh reads remain open.
+
+The special branch passes the original incoming address to its helper, then
+reloads the source pointer before its lookup. Equality with the pre-call source
+is not assumed. It stores the fresh lookup result and chooses a flag bit using
+the actual kind branches and a selected query result's high bit. Unknown kinds,
+the null-address branch and the selected high-bit path copy the freshly read
+source flag bit; they do not unconditionally clear it. The final masked merge
+replaces that bit and preserves the other receiver bits. Both subsequent
+children receive the original receiver. All outgoing incoming-address handoffs,
+including the recursive and linked-method calls, have checked register/home
+origins; the pointed slot's contents and child mutations are not proved.
+
+Lookup/inflation/special child effects and termination, runtime interface/class
+binding, recursion, allocator capacity, concurrent visibility and whole
+condition execution remain open. Native, metadata, Unity and source drift
+fail closed, independently of the unchanged complete Buff root reader.
+
 PlayAnimation and JumpTo now have a maintained recursive composition in
 [`buff_animation_sequence_actions.py`](../../scripts/game_data/memorypack/buff_animation_sequence_actions.py),
 declared by
@@ -2303,6 +2545,1761 @@ the sequence endpoint cannot finish the action. Complete root admissions pass
 both the full Buff family gate and independent canonical original-owner replay
 through every root field, source ID and physical EOF. Animation playback,
 callback execution, condition results and actual frame jumps remain unresolved.
+
+MergeTargetAction has its own maintained
+[`stored-action reader`](../../scripts/game_data/memorypack/buff_merge_target_action.py)
+and
+[`reviewed native contract`](../../scripts/game_data/contracts/buff_merge_target_action_native.json).
+The historical schema identifies the older action but cannot select the current
+union route or field count: the current source includes `mergeHittableTargets`
+between the inherited operands and `targetGroupKey`. Its separate `targets`
+field has a current closed `List<TargetSettings>` source context. Each reached
+nonnull element requires an independent recursive target receipt on its own
+original span; one element's receipt cannot close a different element. Null
+wrapper, null/empty UTF-8 key, null/empty list and null target elements stay
+distinct, and stored Boolean and integer bits are preserved. The actual string
+source is joined to the existing UTF-8 helper proof. Bounded original action
+replays validate this composition; integrating it changes the recursive reader
+and requires a fresh full-family gate plus independent gained-root replay
+before admitting new complete roots. Provider choice, inherited/owned setter
+execution, evaluated flag/key, selected entities and merge or replacement
+effects remain open.
+
+The historical schema also guides remaining action work when a current generated
+wrapper still has the same named field order. Its union membership must still be
+recovered independently. The current reviewed source windows for
+`ChangeSkillAction`, `CheckWeaponTypeCondition`, `SaveBuffLifeTime`, `SetWeaknessAction`,
+`TeleportAction`, `CheckEnemyRank`, `AddDynamicCcsAction` and
+`TriggerSpellBurstEventAction` can be joined to generated setter destinations
+with the maintained
+[`named-source checker`](../../scripts/game_data/memorypack/named_native_records.py).
+These are direct stored-name joins pending separate child, provider, original
+action and complete-root admission, except for the maintained Teleport, MoveTo,
+SpellBurst, target/mask and skill/lifetime/weakness compositions described here.
+
+Fresh selected native/source checks also join `AddDynamicCcsAction`,
+`RefrainObtainUsp` and `CheckSkillDamageType` to their ordered reads, generated
+setter declarations and current union routes. Their reviewed source owners are
+[`the dynamic-camera windows`](../../scripts/game_data/contracts/buff_08_native.json),
+[`the USP windows`](../../scripts/game_data/contracts/buff_12a_native.json) and
+[`the skill-damage-type windows`](../../scripts/game_data/contracts/buff_74_native.json).
+Historical union numbers are not aliases for these installed types: even when
+the runtime type and ordered names agree, membership must be independently
+joined to the installed dispatcher. Original first-stop action spans are
+rejoined separately and remain staged, without changing complete-root coverage.
+
+The camera parent has separate `enterConditionsOr` and `leaveConditionsOr`
+lists of `CameraControlState.TransitionConditionAnd`. Each group's `and` member
+is a separate nullable list of `CameraControlState.TransitionCondition`.
+Current child reader calls and generated destinations name its five operands
+as `boolValue`, `buffValue`, `comparator`, `conditionType` and `floatValue`;
+their stored forms are a byte, signed-length byte payload, two DWORDs and raw
+float bits. The two parent-list contexts and the group's inner-list context
+independently resolve the same runtime element owners as those child readers.
+Closed list types alone do not establish provider selection or collection
+cursor behavior. The first-stop originals and the larger set of camera action
+intervals owned by accepted residual root fields currently show empty outer
+condition lists. This bounded observation supplies no positive-element replay
+and does not prove that other unparsed fields or client data lack conditions.
+
+`RefrainObtainUsp` reads `clearUspOnEnd`, a `GameplayTagList` wrapper and a
+required terminal `TargetSettings`, after the inherited action operands.
+The tag-list object header, its own nullable list and each tag wrapper remain
+separate from a direct DWORD array. `CheckSkillDamageType.damageTypeList` is
+instead a concrete `List<DamageType>` whose element context joins the
+independently reviewed DWORD source; enum metadata size alone is not a wire
+width proof.
+
+The reached camera scalar, vector and curve fields now join their closed source
+contexts to the independent
+[`BlackboardDouble`](../../scripts/game_data/memorypack/buff_adding_cooldown.py),
+[`BlackboardVector3`](../../scripts/game_data/memorypack/buff_effect_vector_child_receipt.py)
+and [`AnimationCurve`](../../scripts/game_data/memorypack/animation_curve.py)
+owners. Original field intervals close independently, preserve raw operands and
+reencode the original bytes. Non-curve stored trees also require complete named
+source-receipt coverage; metadata plans alone do not admit their interiors.
+The USP tag and target fields separately join the independently owned tag and
+recursive target readers on their original intervals. The
+[`tag owner`](../../scripts/game_data/memorypack/buff_aura_heal_actions.py)
+provides a standalone GameplayTagList reader shared with HealAction, preserving
+the object header, nullable list count and each nullable tag wrapper. Its parser
+fixtures exercise positive entries without treating them as installed samples.
+These child receipts remain staged below parent and complete-root admission;
+the camera condition collections and damage-type collection still need their
+independent element/loop compositions before dispatcher integration.
+
+The ordinary `CheckDamageType.damageType` reader supplies a separate physical
+DWORD-source proof for the same concrete element type used by the skill-damage
+list. Its authenticated closed source context, actual CALL and generated setter
+join to the complete
+[`buffered DWORD transfer`](../../scripts/game_data/memorypack/buffered_dword_sources.py),
+using the reviewed helper window in
+[`its existing window owner`](../../scripts/game_data/contracts/buff_0c_native.json).
+Under coherent readable reader storage and a signed available length of at
+least four, that program reads four source bytes, updates the pointer, remaining
+length and both counters, and returns those bits. Cold refill/error targets
+remain outside this proof. The independently compiled `ReadUnmanaged<DamageType>`
+registration is absent; the physical source transfer does not invent that
+identity or establish the skill-damage list's selected element formatter.
+Complete-family and independent original-root replay remain subsequent
+admission gates. These stored names and transfers do not prove camera transition
+evaluation, USP suppression or a damage predicate.
+
+The reviewed
+[`camera, USP and damage source contract`](../../scripts/game_data/contracts/buff_camera_usp_damage_actions_native.json)
+collects the current named parent/condition readers and the independent scalar
+damage-type source. Its
+[`source validator`](../../scripts/game_data/memorypack/buff_camera_usp_damage_source.py)
+also checks the generated formatter-registration programs. Both outer camera
+fields pass the same concrete list key to `Register`; the group's inner list
+registers its own concrete condition element. The skill-damage action registers
+`ListFormatter<DamageType>` for its list and `UnmanagedFormatter<DamageType>`
+for the scalar key independently observed in `CheckDamageType`. These joins
+compare actual generic type pointers, rather than matching names or nearby
+addresses, and have been independently replayed from the current source
+contexts.
+
+The shared
+[`registration-flow checker`](../../scripts/game_data/il2cpp/formatter_registration_flow.py)
+owns the complete selected allocation/constructor/Register argument program,
+including both an ordinary call and a restored-frame tail transfer. Under
+non-null typed allocation, normal constructor return and the native calling
+convention, it preserves that allocated reference through both calls. This is
+static argument-flow evidence: constructor effects, registration/cache mutation
+and the actual formatter-provider result remain unresolved. It does not select
+a compiled collection body or establish serialized element grammar. In
+particular, the independently compiled integer unmanaged reader is not a
+substitute for a missing damage-type entry, and output-slot size does not prove
+wire width. Positive camera condition replay, the damage list's element/loop
+composition and recursive parent/root admission remain separate gates.
+
+An independent integer-list witness now has its own
+[`reviewed control contract`](../../scripts/game_data/contracts/buff_value_list_control_native.json)
+and [`native owner`](../../scripts/game_data/memorypack/buff_value_list_control.py).
+Complete parent triples in the declared PE exception directory establish its
+primary and chained code ranges; adjacency is not used as ownership. The
+selected buffered paths cover the null sentinel, an existing empty list and a
+positive spare-capacity loop, including an identical repeated iteration. The
+header reads a signed DWORD and checks total-minus-consumed against the count,
+without multiplying that count by a presumed element width. The null sentinel
+clears the output pointer on the selected unset-barrier path. Reuse increments
+the list version and clears its count before the signed positive-count guard;
+that route does not establish universal rejection of other negative counts.
+Each positive iteration zeros a DWORD output slot, passes the original reader
+and that output to the element formatter, appends the returned word, then
+compares its loop index with the separately saved header count. A child output
+overwrite therefore does not replace the loop bound.
+
+The independent `UnmanagedFormatter<int>` entry separately proves a buffered
+DWORD source load, by-reference DWORD output, all cursor updates and normal
+return. The
+[`value-list source checker`](../../scripts/game_data/memorypack/value_list_sources.py)
+keeps that source proof distinct from the list's runtime output/array stride.
+Native type flags are retained while checking primitive kind and the byref bit;
+an unrelated set flag is not evidence of a byref argument. Current damage-type
+list and scalar registration keys still join the same concrete source element,
+but the independent compiled damage-type list and unmanaged entries remain
+absent. The integer witness does not fill those gaps or supply a live formatter
+selection. Allocation, growth, refill, barriers and helper effects remain
+outside the selected normal programs, and positive stored damage/camera
+composition and complete-root admission still need their own proofs.
+
+The anonymous method-carrier bridge has a separate
+[`reviewed control contract`](../../scripts/game_data/contracts/buff_method_carrier_control_native.json),
+[`native owner`](../../scripts/game_data/memorypack/buff_method_carrier_control.py)
+and [`complete program checker`](../../scripts/game_data/il2cpp/method_carrier_control.py).
+The encoded method input splits into high kind bits and a shifted, masked
+index, with its low bit discarded. The complete program distinguishes the
+plain-index tail, indexed-carrier lookup with a cleared flag, the single
+anonymous static-address case and zero returns. These physical cases do not
+name metadata usage kinds or prove child table bounds.
+
+Carrier inflation sends its two child pointers and the same incoming context
+to a child helper, then retains the returned QWORDs separately. Its complete
+recursive probe writes neither RDX nor R8 nor any alias and calls only itself.
+Induction over finite normal returns therefore proves full register
+preservation, rather than assuming volatile Win64 registers survive a call.
+This preserves the second child result through the first probe and the freshly
+loaded DWORD limit through the second. A nonzero QWORD gate bypasses the
+probes; otherwise signed DWORD comparisons reject a result above that same
+limit. The surviving composition tail receives the original carrier's current
+first QWORD and both opaque child results. Child identities, termination and
+composition effects remain separate obligations.
+
+Full parent triples establish the three complete programs' physical ownership.
+Their incoming publication calls are joined by actual current bytes and owned
+ranges. Source drift in the older full publication receipt prevents reusing
+that receipt as a current semantic proof; this narrower control proof does not
+repair it. Cache-miss table meanings, concrete reference/value sharing, current MethodInfo
+and provider identity, positive stored elements and root admission remain open.
+
+Cache-miss resolution now has its own
+[`reviewed pointer-transfer contract`](../../scripts/game_data/contracts/buff_method_carrier_resolution_native.json),
+[`native owner`](../../scripts/game_data/memorypack/buff_method_carrier_resolution.py)
+and [`complete-control and selected-flow checker`](../../scripts/game_data/il2cpp/method_carrier_resolution.py).
+The complete miss, selector and registration-projection bodies have strong
+exception-family ownership, checked local edges and fixed normal frames.
+Selected normalization slices pass the two context pointers separately, save
+their opaque results, and freshly read the lookup bounds. This does not yet
+prove the whole table-search semantics or the normalized argument identities.
+
+The projection checks primary and invoker indices unsigned against DWORD
+counts, then sign-extends them for addressing. Nonnegative accepted indices
+require counts below the signed boundary. The adjustor sentinel reuses the
+primary pointer; any other adjustor index has no local bounds check and needs
+independent registration-row validation. Both projection outcomes return the
+original output address. They write three QWORDs and one flag byte, leaving
+seven padding bytes untouched; the selector's all-miss path instead clears the
+entire four-QWORD output. The runtime registration cell's startup binding is
+still a separate obligation.
+
+The caller reads the whole output aggregate but tests only its flag byte.
+Vector shifting and the low-byte test therefore do not make the padding part
+of the flag predicate. Initial pointer stores, the zero-primary static
+fallback, the conditional opaque adapter result, and the saved tail vector's
+reload across that adapter call are checked directly. The destination's
+`0x08` flag bit depends on the aggregate flag and an opaque predicate's low byte;
+the `0x10` bit uses that newly formed bit plus fresh source-flag and primary
+pointer reads. A conditional extended pointer write and a locked QWORD
+counter increment are also present. Opaque children may mutate destination
+fields, so later reads are not treated as preserved earlier values. These are
+conditional static transfers, not evidence of execution, concrete generic
+sharing, a live provider, whole method creation or Buff root admission.
+
+The two normalization helpers and their shared stack probe now have a
+[`reviewed normalization contract`](../../scripts/game_data/contracts/buff_generic_normalization_native.json),
+[`native owner`](../../scripts/game_data/memorypack/buff_generic_normalization.py)
+and [`full program checker`](../../scripts/game_data/il2cpp/normalization_control.py).
+The bytes after the first helper's terminal return form a guarded DWORD jump
+table, not extra instructions. Exact code/data partitioning, all table targets
+and guard dominance are checked within the complete exception-owned ranges.
+
+The stack probe reads a QWORD through the runtime GS base, masks only a WORD
+of its working address and conditionally touches pages. That WORD operation
+preserves the upper register bits. Its complete body calls no other helper and
+writes no alias of RAX, RCX, RDX or R8, so these full registers survive finite
+normal returns. This explicit preservation is needed because the callers use
+RCX or R8 as allocation size and reuse RDX after the probe. The zero-extended
+DWORD count, pointer stride and rounding establish an aligned size; null and
+allocated frame paths join through RBP restoration. Stable input counts and
+valid disjoint storage remain conditions, and allocation success is not observed.
+
+The first normalization reads the two-level kind and descriptor representation,
+collapses selected reference-shaped kinds, and gates the underlying-kind
+projection on the first byte of a freshly loaded configuration pointer. Its
+guarded table selects anonymous class cells before the recursive generic-kind
+path and opaque argument interning. A matching scalar width therefore does
+not establish concrete enum sharing. The second normalization reads the
+original argument count but not its argument array: descriptor start plus
+ordinal selects a metadata record or a sentinel, and an opaque DWORD
+classification chooses among three fresh cells. Non-sentinel metadata indices
+have no local bounds check. Runtime configuration values, class-cell identities,
+constraint meaning, concrete DamageType sharing and provider selection are
+separate joins; the original root-admission scope is retained.
+
+The selected initialization writer inputs now have a
+[`reviewed producer-input contract`](../../scripts/game_data/contracts/buff_normalization_producer_inputs_native.json),
+[`native owner`](../../scripts/game_data/memorypack/buff_normalization_producer_inputs.py)
+and [`physical block checker`](../../scripts/game_data/il2cpp/normalization_producer_inputs.py).
+The complete owned instruction inventory authenticates the selected contiguous
+configuration-pointer and class-request blocks. Local direct branches cannot
+enter their interiors; indirect or external entry is not excluded. The writer
+uses a static configuration image whose first byte is nonzero. This is an image
+input, not an observed live configuration value or successful initialization.
+
+The underlying-kind table's signed and unsigned integer cases correspond to
+requests for the `System.*Enum` placeholder classes. In particular, the
+kind associated with Int32 selects the cell whose initializer requests
+`System.Int32Enum`; matching scalar width alone would miss this distinction.
+Name and namespace literals reach the same lookup helper before its return is
+stored into the selected cell. Most image arguments are fresh cell reads; the
+Object request retains an earlier RCX image input, whose origin remains a
+separate condition. Request names do not establish the returned class identity
+or unchanged runtime cell contents.
+
+Current metadata and independent compiled registrations contain
+`ListFormatter<System.Int32Enum>` and `UnmanagedFormatter<System.Int32Enum>`
+candidates. Their complete exception-owned bodies are captured, including cold
+ranges. These candidates guide the remaining DamageType composition; they do
+not select its live formatter. The fully shared class/struct request names have
+no exact matching metadata TypeDef in this build, so their producer results
+require another proof rather than a name-based join. Class lookup returns,
+underlying-enum projection, cache/provider selection, positive stored elements
+and parent-reader integration remain open.
+
+For the maintained SpellBurst and target/mask actions, fresh source/read-order,
+generated setter and current route checks distinguish these parents:
+`TriggerSpellBurstEventAction` adds a scalar `spellBurstType`, whereas
+`CheckWeaponTypeCondition.checkTarget` and `CheckEnemyRank.target` are recursive
+`TargetSettings` members. The latter two cannot be admitted as primitive-only
+leaf actions. The maintained
+[`target/mask reader`](../../scripts/game_data/memorypack/buff_target_mask_conditions.py)
+and its
+[`reviewed contract`](../../scripts/game_data/contracts/buff_target_mask_conditions_native.json)
+join both parents'
+actual closed source contexts to an independently selected TargetSettings
+wrapper and its runtime instance type. Fresh TargetSettings, DirectionSettings,
+SelectorData and direction-to-target validators use the explicit selected
+native inputs. Every reached nonnull target, direction and selector object
+must match its independent complete ordered-field receipt and original bytes;
+the stored-plan tree alone cannot name a descendant. The reached directions
+contain null nested targets, and the reached selectors have a null finder and
+empty validator/postprocessor lists. These selected spans do not extend
+admission to other finder, validator or processor branches. Complete parent
+reencoding preserves scalar bits on either side of the target and requires the
+final field. Missing, incomplete, shifted or differently named child evidence
+refuses the parent. CheckWeaponType reads `checkTarget` before the `weaponTypes`
+DWORD; CheckEnemyRank reads the `enemyRankSet` DWORD before `target`. The
+independently named `spellBurstType` DWORD follows the inherited prefix in
+TriggerSpellBurst, so that action belongs to the maintained leaf reader.
+All three compose through the recursive action dispatcher. Fresh selected
+native validators and original-span replay authenticate those maintained
+routes; a complete current VFS family gate and each gained root's thirty fields,
+source ID and physical EOF remain necessary before increasing complete coverage.
+Stored masks and SpellBurst fields do not establish an evaluated predicate,
+selected target, emitted event or gameplay effect.
+
+A frozen source epoch containing these three maintained routes has passed the
+complete installed Buff corpus gate. Its original path set and logical hashes
+match the prior admitted family, with no complete-root regressions. Each gained
+root is independently replayed from byte zero through all thirty named fields,
+the source ID and physical EOF; the full receipt must equal the family result.
+The replay uses the actual returned native audits from that completed gate,
+with only the executable registry restored, and authenticates the selected
+native files, frozen source closure and contract reads before and after.
+This admission belongs to that captured epoch. It predates the later AI,
+skill/lifetime/weakness and curve additions, so it does not validate those newer
+routes or the current working tree as a complete family. The missing original
+Skill capture receipt still blocks cross-family JsonData publication. Complete
+stored roots do not prove the corresponding predicates or gameplay effects.
+
+A later independently captured epoch containing the AI, skill/lifetime/weakness
+and AnimationCurve stored readers has also completed the original installed
+Buff family sweep. Every source retains the same logical identity, and no
+previously admitted complete root regresses. Each newly complete root then
+replays its original logical bytes separately through all named root fields,
+source-ID equality and physical EOF, with complete receipt equality. The
+replay authenticates the actual typed native return objects emitted by that
+family run; restoring the executable registry does not synthesize a validator
+return. The residual frontier is recomputed from this same family, with
+changing counts and per-source inventories confined to reports.
+
+This later admission belongs to its frozen stored-reader scope. Subsequent
+AI caller, getter, flag-helper and named ancestry proofs have their own
+explicit scopes, and neither a whole-current-working-tree pass nor observed
+gameplay execution is inferred. The absent original Skill capture receipt
+still blocks canonical cross-family publication. Unchanged passing format
+checks can be reused under their authenticated source/native gates; unrelated
+consumer or documentation edits do not require another corpus sweep.
+
+The maintained source-bound parents `ChangeSkillAction`, `SaveBuffLifeTime` and
+`SetWeaknessAction` compose through the
+[`skill/lifetime/weakness reader`](../../scripts/game_data/memorypack/buff_skill_lifetime_weakness_actions.py)
+and its
+[`reviewed current contract`](../../scripts/game_data/contracts/buff_skill_lifetime_weakness_actions_native.json).
+Their current formatter windows are reviewed separately in
+[`ChangeSkill source`](../../scripts/game_data/contracts/buff_2c_native.json),
+[`SaveBuffLifeTime source`](../../scripts/game_data/contracts/buff_133_native.json)
+and
+[`SetWeakness source`](../../scripts/game_data/contracts/buff_15b_native.json).
+Native read-order audits, generated setter declarations and independent current
+union routes must agree before using the historical toolkit's names as a recipe.
+Historical union tags cannot select a current reader. The current Weakness
+source includes `canConvertToInterruptibleWeakness`; the older toolkit's merged
+layout omits it, so replaying that layout would shift every following member.
+
+After the inherited action prefix, ChangeSkill stores `cacheTime`, `duration`,
+`inheritOriginSkillCdProgress`, `lifeTimeType`, `overrideCacheTime`,
+`revertedSkillId`, `skillSlot`, `skillSource`, `specificRevertedSkillId` and
+`targetSkillId` in that source order. SaveBuffLifeTime stores `buffOwner`,
+`buffSettings` and `key`. Weakness stores `alertEffectDurationBB`,
+`alertEffectScaleBB`, `canConvertToInterruptibleWeakness`, `triggerActions`,
+`triggerWeaknessCountBB`, `useWeakerTriggerEffect` and
+`whiteAlertEffectDurationBB`. The scalar children are independently owned
+BlackboardDouble or BlackboardInt readers; their matching three-member wire
+shape does not make their runtime types interchangeable. The maintained
+[`BlackboardDouble owner`](../../scripts/game_data/memorypack/buff_adding_cooldown.py),
+[`BlackboardInt owner`](../../scripts/game_data/memorypack/buff_pick_target_action.py)
+and
+[`BuffFindSettings reader`](../../scripts/game_data/memorypack/buff_find_settings_child_receipt.py)
+provide independent child evidence. Preserve null versus empty payloads,
+noncanonical flag bytes and all scalar bits. Byte-payload framing does not prove
+native string-decoder parity or evaluated blackboard values.
+
+The selected ChangeSkill and SaveBuffLifeTime spans now have maintained complete
+recursive stored-value receipts. Their TargetSettings descendants close through
+the independent DirectionSettings, direction-to-target and SelectorData
+validators: every reached nonnull object matches source-named ordered fields
+and exact spans. Reached directions have null nested targets; reached selectors
+have a null finder and empty processor/validator lists. This proves only those
+reached branches. Complete field-value reencoding requires every final member
+and does not substitute an opaque child blob for a named receipt. The maintained
+dispatcher also closes selected Weakness sequences whose reached CreateBuff
+actions have independently proved icon-duration, input-list, BlackboardDouble
+and target descendants. The sequence's terminal flags remain raw. Each parent
+field's closed source context must match the independently owned runtime type
+and stored wrapper; BlackboardInt and BlackboardDouble keep separate owners.
+Missing owner gates, incomplete or shifted child spans, unknown action tags and
+trailing bytes refuse the parent. A fresh isolated source epoch authenticates
+these maintained routes; shared changes outside the owning files do not make an
+older broad publication current. A passing complete current VFS family gate and
+independent full-root replay remain necessary before changing complete coverage.
+Stored skill IDs, lifetime fields and weakness flags do not prove a skill
+replacement, saved duration or gameplay weakness effect.
+
+The remaining selected mine Weakness sequences reach `AddAIMarkerAction` and
+`SaveValueFromAIBlackboard`. Fresh native read-order, setter-destination and
+current union checks name their members from the reviewed
+[`AddAIMarker source`](../../scripts/game_data/contracts/buff_07_native.json)
+and
+[`SaveValueFromAIBlackboard source`](../../scripts/game_data/contracts/buff_142_native.json).
+After the inherited prefix, AddAIMarker reads `duration`, `marker`, `markerOwner`
+and `removeByAction`; SaveValueFromAIBlackboard reads `aiBBKey`, `bbOwner`,
+`skillBBKey`, `skillXKey`, `skillYKey`, `skillZKey` and `valueType`. Its independent
+nullable strings and final DWORD remain required after the target.
+
+The marker is a GameplayTag value class. Its name or unmanaged size alone cannot
+supply a primitive wire read. The named checker requires the parent's actual
+closed source context, the source-call destination, the reviewed DWORD-return
+and four-byte cursor-update program, and the separate registered reader's
+normal path. The existing
+[`GameplayTag source proof`](../../scripts/game_data/contracts/buff_cost_action_native.json)
+and its
+[`helper window`](../../scripts/game_data/contracts/buff_fe_native.json)
+are independently reauthenticated for this parent; the checker does not accept
+a name-only width override. Refill/error behavior stays outside the proved
+normal paths. The maintained
+[`AI action reader`](../../scripts/game_data/memorypack/buff_ai_marker_blackboard_actions.py)
+and its [reviewed declaration](../../scripts/game_data/contracts/buff_ai_marker_blackboard_actions_native.json)
+compose independent Double/Target owners and preserve legal short/wide marker
+tags in field-value reencoding; fresh selected-native and original-span checks
+authenticate these maintained AI routes. Selected mine Weakness parents now
+close through actual RandomPointFinder evidence, the returned
+ModifyDynamicBlackboard parent packet and the explicit
+[`AnimationCurve profile owner`](../../scripts/game_data/memorypack/animation_curve.py).
+Every reached nonnull object and headerless Keyframe matches complete
+source-named fields and raw values through the
+[`record binder`](../../scripts/game_data/memorypack/source_bound_stored_tree.py).
+Parent reencoding preserves all sequence descendants and terminal fields.
+Full-family and whole-root admission remain separate requirements.
+Stored keys and value-type words do not
+establish a selected AI/skill blackboard, conversion result, marker lifetime or
+gameplay side effect.
+
+The separate
+[`AI consumer validator`](../../scripts/game_data/buff_ai_consumers_native.py)
+reproves the
+[`named consumer claims`](../../scripts/game_data/contracts/buff_ai_consumer_claims.json)
+against explicitly selected native inputs. These claims contain no build
+addresses. A guard must be selected by its owning assembly as well as its type
+and method: the installed metadata has identically named IFix managers in
+different assemblies. The conversion caller uses the `Gameplay.Beyond.dll`
+definition. The checker refuses ambiguous type owners, static field slots,
+incompatible overloads and a callee whose class definition differs from the
+destination field's actual generic definition.
+
+On the false patch-check branch of
+`SaveValueFromAIBlackboard.Data.ConvertToServerDataInternal`, the incoming Data
+receiver supplies `skillBBKey`, `skillXKey`, `skillYKey` and `skillZKey` in that
+order. Each declared String reference is skipped when null or when its
+`System.String._stringLength` DWORD is zero; the guarded call otherwise receives
+that unchanged reference. The constructor receiver's declared
+`BATTLE_ACTION_MULTI_MODIFY_BB_ACTION_DATA.keys_` field supplies the collection
+argument. Every key and collection receiver is reloaded after earlier calls,
+so this is not a snapshot of their initial values. Complete owned instruction
+boundaries, preserved receiver aliases and skip destinations establish this
+conditional field-to-argument flow under coherent instances and ordinary
+returning Win64 calls. Runtime patch selection, live generic MethodInfo,
+callee mutation, AI source lookup, value conversion and gameplay effects remain
+open.
+
+The separate
+[`AI lookup caller checker`](../../scripts/game_data/il2cpp/ai_blackboard_selection.py)
+now proves the selected normal `ExecuteInternal` prefix and lookup blocks. It
+derives `m_data` from the actual closed `AbilityAction<SaveValueFromAIBlackboard.Data>`
+reference layout; an open generic's placeholder offset cannot supply this join.
+The declared `bbOwner` and incoming target-handle representation reach
+`GetFirstTarget`. Its returned AbilitySystem supplies the inherited
+`BaseComponent.entity` reference; that Entity supplies `enemyAICom`. The
+EnemyAIComponent ancestry must match the declaring AIComponent receiver before
+calling `GetParentBlackboard` with its Boolean initialization argument false.
+A null AI component joins a null blackboard reference before the Unity Object
+null comparison. A null target or true blackboard-null comparison reaches the
+false return leaf. A null Data or Entity read instead reaches the separately
+recorded failure-helper path, whose effect is not inferred from proximity.
+
+The separate
+[`guarded reference getter checker`](../../scripts/game_data/il2cpp/guarded_reference_getter.py)
+proves the complete owned primary `AIComponent.GetParentBlackboard` program
+under a false patch-guard result and a false incoming initialization byte. Its
+assembly-owned method signature and declared instance field bind the reference
+read to `AIComponent.m_parentBlackboard`, with declared type `AssetBlackboard`.
+The false byte skips the complete optional-helper block; the subsequent field
+read reaches the plain RET through matching stack and nonvolatile-register
+restores without changing RAX. The saved-register slot must lie in caller
+shadow space without overlapping the return address. An independent actual
+CALL-byte join connects the already proved caller's false argument to this
+same exact getter entry. This proves the current field reference read after
+the guard, not preservation of its pre-call value. The guard's side effects,
+the skipped helper's behavior, the owned cold patch path and actual runtime
+branch selection remain unresolved.
+
+The current enum declarations and the actual DWORD selector distinguish Float,
+String and Vector3. Each selected call reloads the current `aiBBKey` from Data
+and passes the selected blackboard reference. Float mode tries float, then int,
+then bool, advancing only after a null variable return; an earlier nonnull
+result skips the later lookup blocks. These are repeated field reads, not a
+guarantee that helper calls preserve the key's initial value. Unsupported
+selector words or a final null lookup reach a separate true return leaf. Both
+leaves are proved through their matching saved-register restores and RET.
+The returned Boolean alone does not establish that a destination was assigned
+or that preceding helpers had no side effects.
+
+The lookup's generic parameter count selects its actual overload independently
+of the nongeneric method with the same name. All five callsites have exact
+static MethodSpec argument evidence. Vector3, float, int and bool also have
+independent compiled-instantiation registration joins to the physical entry.
+The String call has its own static MethodSpec and the same exact caller target,
+but its direct compiled registration is absent in the selected table. This
+remains a generic-sharing obligation; an object instantiation cannot substitute
+for it. No live MethodInfo selection is observed. Getter, conversion and write
+regions contain instructions outside this checker's selected program profile;
+the checker does not promote them to complete caller or gameplay-effect proof.
+
+Exact PE-owned lookup-helper windows now expose a distinct nongeneric
+`GetVariable(IBlackboard, String, Type)` definition, a dictionary `TryGetValue`
+call, recursive calls to that same lookup and a `Variable.GetGetConverter`
+call. The generic lookup's final direct tail target also has an independently
+owned complete byte window. These are algorithm candidates, not a proof that
+the dictionary call returns a requested value, that the converter executes,
+or that the tail helper performs a particular cast. Another generic helper
+call lacks an exact primary PE extent; neighboring entry addresses cannot
+supply its boundary. Generic MethodInfo context-slot meaning,
+lookup/type-conversion algorithms, value getters and destination writes remain
+separate obligations.
+
+The
+[`generic lookup forwarding checker`](../../scripts/game_data/il2cpp/generic_lookup_forwarding.py)
+now proves the complete registered generic wrapper and its direct tail program.
+The return type must use the selected method container's own parameter, and
+each selected value-type instantiation must independently join the compiled
+entry. The actual `RuntimeTypeHandle` value layout establishes its one-word
+call ABI rather than assuming that a value class is passed by reference.
+The wrapper preserves the incoming blackboard and String-key references,
+passes an anonymous context word to the named `Type.GetTypeFromHandle` entry,
+and passes that returned Type reference to the separate nongeneric lookup.
+Metadata/context/class helpers remain opaque; their ordinary-return and valid
+read conditions are explicit. In particular, the pointer region is reloaded
+after the nongeneric lookup, so its subsequent word is not assumed to come
+from the same pre-call context contents. These observed operands do not name
+a native MethodInfo member or prove that the returned Type identifies T.
+
+The nongeneric lookup's opaque Variable return is preserved for the exact
+tail target. A null reference reaches a zero return and skips both tail
+helper calls. A nonnull reference supplies its first word and the wrapper's
+separate helper result to an opaque predicate; only a nonzero predicate AL
+result reaches a return of the same Variable reference through matching
+nonvolatile and stack restores. A zero predicate result instead reaches a
+separate helper call followed by INT3. That helper's behavior and the
+predicate's actual type-compatibility or cast rule remain unproved. This
+conditional same-reference result does not prove a typed value getter,
+requested runtime type identity or a destination assignment.
+
+Actual CALL-byte joins connect the AI caller's selected lookup sites to the
+complete wrapper program. Value-type sites retain their own registration
+joins; the String site retains only its own static MethodSpec and exact
+physical target, with its absent direct compiled registration still explicit.
+The wrapper proof does not manufacture a String registration or observe its
+live context. Nongeneric dictionary/recursive lookup, GetGetConverter and
+Type-helper algorithms remain open beside the value/conversion/write and
+runtime-effect obligations.
+
+For that missing-unwind context helper, the already reviewed
+[`EnvTalk native byte contract`](../../scripts/game_data/contracts/levelscript_envtalk_native.json)
+contains a selected callee window. Its own native-input pins and the actual
+window bytes match the selected Buff investigation build. This supplies an
+authenticated raw-byte capture while retaining the absence of a PE primary
+extent. The legacy decoder does not recognize the initial byte TEST form and
+can subsequently decode its operand bytes as a misleading separate CMP.
+Those rows therefore cannot establish complete instruction boundaries or a
+field read. The maintained
+[`raw flag-leaf checker`](../../scripts/game_data/il2cpp/flag_guarded_reference_leaf.py)
+now independently authenticates and parses the complete reviewed bytes,
+including both exact local branch targets and the external signed tail jump.
+Actual caller bytes connect this leaf to the generic lookup's second
+anonymous context-slot helper. A nonzero masked byte returns the unchanged
+incoming reference without executing an external helper. A zero mask result
+preserves the argument registers, stack and return address while tail-jumping
+to a separate owned program. The byte field's name and context-slot type
+remain anonymous; the raw grammar does not invent a missing PE extent.
+
+That external program has an exact primary PE extent and a separately owned
+cold fragment. Both are captured and their complete control is checked by
+the same maintained lane. It preserves the incoming reference, passes it to
+an opaque preparation helper, then compares an anonymous DWORD read after
+that call. Only a zero comparison reaches the matched normal return of the
+same reference. The other branch rereads the same DWORD location into a
+zero-extended argument, calls an opaque carrier helper, forwards its returned
+word to another helper with a zero second argument, and reaches INT3 if both
+return. No throwing behavior or cold return value is assigned. Neither the
+initial DWORD value nor the compared value is claimed to survive helper
+effects or concurrent mutation. The earlier failed single-fragment capture
+and its frozen source remain separate from this complete ownership proof.
+
+These conditional programs remove an instruction-boundary and ordinary-return
+gap, while preparation and cold-helper algorithms, requested runtime type,
+context-slot meaning and live context selection remain open. Full owned
+windows for the preparation/cold children and the named Type helper remain
+inventories; unsupported legacy instruction rows do not establish their
+algorithms. The nongeneric query, value getters, conversions and destination
+writes still require their own complete consumer proofs.
+
+A separate fresh join now connects the tail's actual predicate CALL to the
+selected GameAssembly export `il2cpp_class_has_parent`. This uses the already
+maintained
+[`named class ancestry validator`](../../scripts/game_data/memorypack/buff_formatter_class_ancestry.py),
+its
+[`reviewed declaration`](../../scripts/game_data/contracts/buff_formatter_class_ancestry_native.json)
+and
+[`complete control checker`](../../scripts/game_data/il2cpp/class_ancestry_control.py),
+including the export name/ordinal/EAT bytes, complete owned body, named field
+getters and its context/import parents. Under valid coherent storage and
+normally returning initialization/synchronization helpers, normal AL is one
+exactly when the unsigned first depth is at least the freshly loaded second
+depth and the first ancestry array's entry at second depth minus one equals
+the original second argument. The body has no extra zero-second-depth guard;
+valid backing storage remains a condition.
+
+The lookup tail passes the first QWORD read from the opaque nonnull Variable
+reference as the first argument and the separately resolved anonymous context
+word as the second. This identifies the checked ancestry predicate used by
+the same-reference return; it does not independently bind the anonymous
+context operands to the method's T and Variable<T> runtime types, select a
+live object-header/class/context, or prove generic cast or typed-value
+semantics. The legacy inventory's unsupported rows remain a
+historical decoder limitation; the separate complete ancestry decoder is the
+proof source. Initialization/synchronization outcome and all subsequent value
+getter, conversion and write effects remain separate obligations.
+
+`TeleportAction` has a
+maintained
+[`stored reader`](../../scripts/game_data/memorypack/buff_teleport_action.py)
+and
+[`reviewed current declaration`](../../scripts/game_data/contracts/buff_teleport_action_native.json).
+Its current union route, fourteen generated members, source call contexts,
+named setter transfers and primitive float helper are independently rejoined
+against the selected native inputs. The historical layout lacks the current
+`actionOnTargetPointInvalid` sequence and cannot supply the current header or
+union tag. Missing or mismatched inputs provide no current parent names.
+
+The Teleport stored composition binds that sequence, the BlackboardDouble
+`radius` and `teleportTo` TargetSettings to their independent native child
+owners. Primitive flags, signed words and floating bits remain raw; the final
+`throughWall` byte is required after the target. Each child and the complete
+parent must reencode to its original logical span. The current full-family
+gate and independent gained-root replay now establish this maintained
+composition on the accepted originals: byte-zero reads cover every named root
+field, verify the stored source ID and end at physical EOF, with complete
+receipt equality. Fresh unchanged typed native return objects are reused only
+under the completed family, original implementation/consumed-contract pins and
+selected native inputs; restoring the executable registry does not replace a
+validator. This is stored-root admission, leaving actual target choice and
+teleport effects unresolved. The shared
+[`stored-tree binder`](../../scripts/game_data/memorypack/source_bound_stored_tree.py)
+requires every nonnull object to have a separate exact named-field receipt
+with the same ordered names and boundaries, and compares recorded raw wire
+values where supplied. A metadata tree or a parent's span cannot close an
+unproved child. Null wrappers, null versus empty collections, null versus
+empty strings and noncanonical Boolean bytes retain distinct representations.
+Selected original spans pass this composition and its recursive dispatcher;
+new complete Buff roots still require the fresh full-family gate and original
+root replay to physical EOF. Fallback execution, resolved radius, selected
+destination, navigation checks and teleport effects remain unresolved.
+
+The selected `_TryFindStraightLineDest` normal path binds the inherited
+`m_data` reference through a concrete closed
+[`reference witness`](../../scripts/game_data/il2cpp/reference_layouts.py) and
+reciprocal [`VAR owner`](../../scripts/game_data/il2cpp/context.py). Saved incoming
+aliases bind `startPos`, `expectPos`, raw `navmeshArea` and the Vector3 out
+parameter to the navigation call's corresponding arguments. These
+[`buffer programs`](../../scripts/game_data/il2cpp/vector3_distance_flow.py)
+require valid Win64 preservation and normal completion; navigation algorithms
+and actual writes are separate obligations.
+
+After navigation succeeds, the caller saves its output before the complete
+[`subtraction leaf`](../../scripts/game_data/il2cpp/vector_arithmetic.py)
+overwrites that buffer with output minus `startPos` read after navigation. The
+[`square/sum leaf`](../../scripts/game_data/il2cpp/vector3_squared_magnitude.py)
+returns ordered Single `(x*x+y*y)+z*z`. Both complete leaves preserve the saved
+volatile XMM4/R9 lanes by their actual instructions. The
+[`limit program`](../../scripts/game_data/il2cpp/single_squared_limit.py) reads
+`maxDistance` twice, multiplies, then uses COMISS/JA: ordered greater fails;
+equality and unordered fall through after normal comparison. One squared
+limit requires stable field reads, with floating exceptions/MXCSR explicit.
+Success copies the saved navigation bytes, rather than the overwritten
+buffer, and returns true. Navigation false and ordered-greater share the
+[`failure program`](../../scripts/game_data/il2cpp/vector3_failure_flow.py): the
+complete [`zero leaf`](../../scripts/game_data/il2cpp/vector3_zero_value.py)
+writes twelve zero bytes; the caller reads its return pointer before clearing
+AL, copies the zeros and enters the common
+[`saved-frame return`](../../scripts/game_data/il2cpp/win64_rbp_frame.py).
+Frame/home/output validity and absence of corrupting indirect writes remain
+conditions; folded entry names do not establish live MethodInfo selection.
+
+Outer Teleport ranges are owned by complete
+[`exception-table parent chains`](../../scripts/game_data/il2cpp/unwind_chains.py),
+including split and noncontiguous cold code. Full triples, frame bytes and
+terminating chains establish membership without adjacency or a hop fallback.
+Common version-one/two framing does not certify unwind operations, fixed-stack
+consistency, language handler data or whole managed CFG. Raw decoder/call
+inventories remain candidates where their instruction or identity proof is
+incomplete.
+
+`_GetRealLandPos` declares the selected closed `Nullable<Vector3>` return.
+Its complete [`canonical interface programs`](../../scripts/game_data/il2cpp/nullable_vector3_programs.py)
+bind the reciprocal static Vector3 argument: construction writes a one-byte
+value tag and twelve payload bytes; `get_HasValue`, guarded `get_Value` and
+both `GetValueOrDefault` overloads establish the corresponding reads/branches.
+The exact MethodSpec is selected before canonical-pointer projection; a
+fourth registration word is retained without interpreting its adjustor table.
+Interface footprint is not a proof of total closed size or private field
+layout. Same-qualified-name IFix owners occur in different assemblies, so
+callee identity additionally requires the selected image/declaration and exact
+registered pointer; a name-keyed dictionary alone is insufficient.
+
+The complete [`ordinary path return`](../../scripts/game_data/il2cpp/nullable_vector3_path_return.py)
+binds the hidden output pointer, instance and source/expected-position aliases,
+frame and path argument, typed `m_Corners` array and `m_data.checkMaxDistance`
+read, tagged payload copy and ordinary return. It initializes the full result
+buffer, so copied padding stays zero. The indexed copy uses a sign-extended
+dword count, **32-bit** `DEC EAX`, an unsigned bound comparison and a twelve-byte
+stride; the earlier subset inventory's `DEC RAX` text is not its byte semantics.
+Last-corner meaning requires stable positive signed counts and the external
+array-header schema. On the initialized IFix-false path with distance checking
+disabled, the output agrees with the selected nullable interfaces. Actual
+corner calculation/writes, IFix/initialization, array header and total closed
+value size, provider/target selection, whole caller control flow and actual
+teleport effects remain unresolved. Complete
+root gains still require current family-source admission and original replay
+to physical EOF; an internal corpus result cannot override a rejected outer
+source freeze.
+
+The complete [`ordinary distance continuation`](../../scripts/game_data/il2cpp/nullable_vector3_distance_path.py)
+rejoins that hot frame, zero accumulator and nonzero output tag. Its fixed
+loop limit is signed low-DWORD count-provider result minus one; each segment
+reloads corners after separate calculations and calls the independently
+checked [`array element program`](../../scripts/game_data/il2cpp/vector3_array_element.py).
+The helper compares the unsigned low index DWORD but addresses using the full
+R8 index. Independent extended-SIB decoding proves R8 plus twice R8; the
+candidate decoder's different index register was not accepted. Count/payload
+coordinates and the twelve-byte copy establish observed array operations,
+without certifying the full header or allocation. A bounded element
+interpretation requires the full index to agree with its nonnegative low
+DWORD and valid nonwrapping memory.
+
+The complete anonymous [`distance program`](../../scripts/game_data/il2cpp/vector3_distance_program.py)
+subtracts vector components, performs ordered Single `(dy*dy+dx*dx)+dz*dz`,
+converts the sum and a zero lane to Double, applies **packed** `SQRTPD`, then
+converts back with `CVTPD2PS`. Memory-source MOVSS clears the other Single
+lanes. Its initialization and negative-result helper calls remain conditional
+opaque edges; this body is not joined to a named Unity Distance entry.
+The caller adds successive results as Singles and directly compares
+`maxDistance` against the accumulated value. After normal COMISS, ordered
+greater-or-equal recalculates and copies the current last corner; ordered
+less or unordered calls the selected straight-line checker with the original
+source/expected positions, saved area and independent output buffer. False
+clears the entire tagged result; true copies twelve output bytes and preserves
+the hot tag and padding. The straight-line checker retains its separately
+proved squared-limit behavior and valid-memory/normal-call conditions.
+
+The original count-call static context selects `SafeCount<Vector3>`. The
+reciprocal MVAR/container join and exact registered Vector3 argument close its
+static parameter declaration to `IList<Vector3>`; runtime context remains
+separate. The actual anonymous entry differs from the canonical registration.
+Both complete [`count programs`](../../scripts/game_data/il2cpp/null_safe_count_programs.py)
+initialize a zero context slot before checking the list, return zero for a
+null list after normal initialization, and pass the same zero slot, opaque
+context-helper result and original list to the selected dispatch entry. Their
+tail jump and call/return frames are checked independently. Matching arguments
+do not establish identical physical entries or behavior for arbitrary dispatch
+state. Static RGCTX definitions and getter-pointer candidates remain distinct
+from emitted runtime slots, interface selection and the returned count.
+
+The same reciprocal method variable also binds the static RGCTX type and
+method references to `ICollection<T>.get_Count` and its declared interface slot.
+The independently selected named `System.Array` getter has a complete
+[`split count program`](../../scripts/game_data/il2cpp/array_collection_count.py):
+its owned main, class-error and dimension-loop ranges are joined through exact
+branches, without using adjacency to own the distant ranges. It reads the first
+length as a QWORD through either the direct array coordinate or the nonnull
+bounds pointer; the bounds path rejoins the dereference rather than returning
+pointer bits. The normal result is the low DWORD. Additional dimensions multiply
+DWORD results, increment a DWORD counter, reload the unsigned rank byte after
+each opaque dimension helper, and continue on a signed counter comparison.
+A fixed-dimensional product requires a stable rank and valid normal helper
+results. Class/rank error producers and the shared raise helper remain opaque.
+
+The selected `Array.get_Rank` independently reads that same class byte and
+zero-extends its result. Its complete leaf return program is authenticated
+without claiming an exception-table-owned extent. For rank one and a zero
+bounds pointer, the Count program's low-DWORD result matches the element
+helper's DWORD count coordinate, conditional on actual getter selection and
+valid readable array memory. These programs do not prove runtime interface
+selection, the complete array header or allocation, or a live returned count.
+
+The selected `NavMeshPath.CalculateCorners` is a complete
+[`reference-cache program`](../../scripts/game_data/il2cpp/lazy_reference_cache.py).
+An already nonnull `m_Corners` returns without a call or explicit object-field
+write. A null field calls the selected `CalculateCornersInternal`, whose
+declaration returns `Vector3[]`, stores its returned reference, then tail-calls
+an opaque notification with the slot address. Actual producer output and
+notification effects remain open. Repeated calls on the cache-hit path therefore
+do not themselves recalculate or replace that reference; this supplies no
+synchronization or proof that other helpers, aliases or threads leave the
+field and array contents unchanged.
+
+Calling the accumulation a single path length additionally requires count
+equality to the array length and stable arrays/contents across every
+calculation. The patched wrapper is outside the proved ordinary continuation.
+Static byte programs remain distinct from observed destination values or
+teleport effects. Negative instruction-mutation checks must alter the intended
+decoded instruction; changing an adjacent operand cannot isolate the claimed
+register-width distinction.
+
+The [`contract-read observer`](../../scripts/game_data/il2cpp/contract_read_scope.py)
+authenticates CPython-audited JSON opens in a fresh process. Freeze ordinary
+contracts before importing consumers, install the hook and observe its probe;
+every watched read checks its original pin and completion rechecks the consumed
+set. New, writable, linked or changed inputs fail with the offending path.
+Every input error stays latched even when a consumer catches its exception;
+later successful reads cannot make completion succeed. A separate failure
+lock preserves this rule while another thread holds the verifier's pin lock.
+Verifier hash reads are excluded only in the verifier's thread. A write through
+an already-open descriptor can escape open observation, so the final consumed
+pin check remains necessary. Native files, Python imports, external helpers and
+VFS inputs retain their own before/after gates. An unopened contract is outside
+this process's audited read set; this establishes neither universal nonuse nor
+coverage of unaudited native I/O. The hook observes provenance rather than
+providing a security boundary. A rejected older directory-wide freeze remains
+rejected; changing the measured input scope requires a new actual full-family
+run, followed by original-root replay before admitting coverage.
+
+The shared `action_dispatcher.reviewed_switch_table` reads every JSON contract
+before selecting AbilityActionData switch identities and reviewed tag blocks.
+`buff_damage_check_decorate_mask_condition_receipt` reaches it through
+`load_action_routes`, and actual fresh-process observation confirms the full
+directory read. A contract with another domain's filename therefore cannot be
+assumed outside Buff's measured dependencies. The scanner catches parsing and
+read errors to continue catalog discovery, which is why observer exceptions
+must remain latched independently of the consumer. Narrowing this dependency
+requires a reviewed change to catalog selection and fresh native/corpus proof;
+it cannot be achieved by exempting files from the current read gate.
+
+`MoveToAction` now has a maintained
+[`parent source validator`](../../scripts/game_data/memorypack/buff_move_to_source.py)
+and
+[`reviewed source declaration`](../../scripts/game_data/contracts/buff_move_to_source_native.json).
+The validator independently rejoins the current union route, generated field
+order and declared types; selected missing or mismatched native inputs publish
+no names. Supplementary primitive and unmanaged source windows, the mapper and
+metadata helper, and the complete source closure are authenticated before and
+after the check. This is parent source evidence, without recursive action or
+complete-root admission. `MoveToAction` has an explicit direct-store
+path in its
+[`reviewed source window`](../../scripts/game_data/contracts/buff_f6_native.json):
+the four common operands load the inherited wrapper's declared base-Data
+instance and store the actual primitive helper result into the corresponding
+base fields, after both reference checks. They do not require a generated
+setter call. The maintained
+[`inherited direct-store checker`](../../scripts/game_data/memorypack/inherited_direct_action_sources.py)
+checks the complete prefix through the fourth common store, exact source
+arguments, declared instance/field slots and both reference guards. A later
+wrapper dereference deliberately changes the alias role, so this prefix does
+not establish aliases through the complete action. Its `fixAngle` instead passes a hidden result slot to the current
+closed `Vector3` reader, then transfers the complete eight-plus-four stored
+bytes into the instance returned by the actual getter. The maintained
+[`struct-output checker`](../../scripts/game_data/memorypack/struct_output_sources.py)
+checks that raw source, cursor, argument and destination program; this does not
+establish the getter's runtime result or refill/failure parity.
+
+`MoveToAction.ignoreCollisionLayer` is a declared `LayerMask` value. The current
+compiled source and its independently resolved closed registered reader have
+different entry points: each loads the stored DWORD, calls the actual shared
+reader-advance helper for four bytes and returns the same bits. The complete
+helper program updates the pointer and counters under the buffered normal-call
+conditions. Its caller preserves the reader/wrapper aliases and passes the raw
+DWORD to the declared setter. The source bytes are covered by
+[`validator_02_native.json`](../../scripts/game_data/contracts/validator_02_native.json),
+with the independently checked registered-reader/cursor program declared in
+[`buff_cost_action_native.json`](../../scripts/game_data/contracts/buff_cost_action_native.json).
+The named-source checker now selects the explicit `dword-with-cursor-call`
+program in
+[`unmanaged_cursor_sources.py`](../../scripts/game_data/memorypack/unmanaged_cursor_sources.py).
+It retains the separate inline DWORD profile when no mode is declared and
+rejects unknown modes. A value-type name or size cannot select either grammar.
+The cursor-call algorithm also checks the sole method-generic return signature,
+freshly derives the value-reader field slots and covers the complete direct,
+registered and cursor programs. Shared helper identity uses its actual span
+and native bytes; descriptive boundary text is not code identity. Type-size and
+closed-registration caches initialize independently: a preceding raw-struct
+read cannot leave a following unmanaged value without its selected entry
+resolver. This proof does
+not establish provider selection, actual setter execution, collision behavior
+or a complete action. Integrating the checker changes the implementation
+snapshot: retain earlier full-family counts under their completed source scope
+until a coherent recursive-action batch passes a new full-family gate and
+independent gained-root replay. Original MoveTo structural spans preserve the candidate
+field order and bytes. Independent scalar, curve, string, vector and target
+child proofs compose on selected original ranges. The complete selected
+setter transfers now validate separately; constructor/header correspondence,
+recursive SubSpeed and provider selection still precede named action and
+complete-root admission.
+
+MoveTo's declared `fixPosAngle` joins the existing
+[`BlackboardVector3 reader`](../../scripts/game_data/memorypack/buff_effect_vector_child_receipt.py):
+its stored `x`, `y` and `z` each close through the independently selected
+BlackboardDouble grammar. Its declared `target` joins the existing
+[`recursive TargetSettings reader`](../../scripts/game_data/memorypack/buff_recursive_actions.py)
+through named DirectionSettings and SelectorData children. Selected enemy
+teleport originals reach the maintained
+[`FixedPointFinder reader`](../../scripts/game_data/memorypack/buff_selector_fixed_point_finder.py),
+with raw position/rotation offsets, a BlackboardDouble sampling radius and
+the stored navigation-mesh flag. These are existing named recursive formats,
+not a new anonymous target variant. Current native direction-to-target and
+fixed-point joins validate separately, and every selected original child
+ends at its independently reparsed parent field boundary. Old full-validator
+caches may be reused only for child owners whose source and contract closure
+still matches; revalidate affected joins after a shared checker changes.
+The historical candidate contributes original ranges only: reparse the
+current typed parent order rather than asserting its old producer is current.
+This proves selected stored child composition, not a live target, physical
+generic provider, complete parent transfer, SubSpeed admission or Buff root.
+
+The separate maintained
+[`MoveTo setter-transfer validator`](../../scripts/game_data/memorypack/buff_move_to_setter_transfers.py),
+[`selected caller/setter algorithm`](../../scripts/game_data/memorypack/selected_wrapper_setter_sources.py)
+and
+[`reviewed transfer declaration`](../../scripts/game_data/contracts/buff_move_to_setter_transfers_native.json)
+join every generated setter to its actual caller return and metadata-owned
+Data field. The complete caller prefix preserves the incoming Reader and
+wrapper-reference aliases, reloads each selected wrapper, and deliberately
+dereferences the final wrapper alias. Independent reader/context loads may
+appear in either observed order; their exact register destinations, contiguous
+arguments and source call remain checked. The common getter's initialized,
+nonnull and equal-cache branch returns the same base/derived referent.
+Boolean normalization, DWORD bits, raw Single bits and reference transfers
+remain distinct, including larger field displacements. LayerMask retains its
+separate unmanaged cursor/registered-reader proof instead of borrowing the
+primitive DWORD template. Each selected setter restores its complete frame;
+a reference store then reaches the independently checked common helper.
+
+That helper has a complete return with no calls or memory writes when its
+barrier flag is disabled. This connects the reference setter tails and the
+SubSpeed post-store calls under the stated flag condition. The shared physical
+reference-read entry also joins the existing complete outer-return program:
+it initializes a local original output, forwards the same Reader/output to
+selected dispatch, then returns that local reference. Current typed call
+contexts share the owned generic declaration, but the full declared-method
+registration scan still does not identify that actual physical entry. An
+independently registered Object instantiation cannot substitute for it.
+These are conditional static transfers, not a final accumulated parent state:
+runtime MethodInfo/formatter choice, enabled barriers, runtime-constructor
+effects, failure/refill and indirect allocation/global effects remain open.
+Child grammar and whole-action/root admission are separate obligations. The
+validator authenticates the explicit native pair, Unity input, reviewed
+dependencies and source closure before and after checking, and a skipped
+native build leaves its published report untouched.
+
+The maintained
+[`MoveTo lifecycle validator`](../../scripts/game_data/memorypack/buff_move_to_lifecycle.py),
+[`buffered wrapper lifecycle algorithms`](../../scripts/game_data/memorypack/buffered_wrapper_lifecycle_sources.py)
+and
+[`reviewed lifecycle declaration`](../../scripts/game_data/contracts/buff_move_to_lifecycle_native.json)
+close the selected buffered header and wrapper-return paths. A single header
+byte updates the pointer and three counters with their native arithmetic
+widths; `FF` clears the outer wrapper reference and reaches the same restored
+frame as the normal return. Non-null MoveTo and SubSpeed require their exact
+generated member counts. New-wrapper and reused-wrapper branches join the
+current field owners' complete caller programs rather than inferring a field
+grammar from the header. MoveTo's existing-wrapper preparation calls
+`OnDeserialized`; its ready callback paths are composed by the separate
+runtime-default owner below.
+
+The wrapper constructors forward the statically authenticated runtime type
+to allocation, call that runtime type's constructor, and preserve the same
+allocation alias through the observed stores. The shared physical store writes
+both the base and derived-cache slots; its many folded method aliases do not
+identify a unique named constructor. The warm getter compares those slots.
+Both missing-cache and unequal-cache branches refresh the cache from the base
+through the actual cast callee, preserve the saved register, and rejoin the
+cache return load. The cast returns the original pointer under the checked
+class-flag and hierarchy conditions; its null-input path returns null. The
+selected class-ready paths contain no heap/global writes, and the disabled
+post-store helper does not disturb the saved reference aliases. Cold fragments
+must be selected by actual control-flow edges: a primary unwind extent may
+contain only the first instruction, while adjoining extents can belong to
+other callers.
+
+These complete selected paths still require ready usage/class flags, a
+buffered byte, normal typed allocation and runtime-constructor returns, the
+stated hierarchy comparisons and a disabled barrier. The lifecycle owner
+alone does not prove nested constructor defaults or effects, initialization
+slow paths, the live provider/MethodInfo, final accumulated object state,
+recursive SubSpeed admission or a complete Buff root. It authenticates its
+selected native inputs and source closure before and after checking; unchanged
+field-owner and original-child receipts are reused only within their current
+authenticated scopes.
+
+The maintained
+[`runtime-default validator`](../../scripts/game_data/memorypack/buff_move_to_runtime_defaults.py),
+[`constructor transfer algorithms`](../../scripts/game_data/memorypack/runtime_constructor_sources.py)
+and
+[`reviewed default declaration`](../../scripts/game_data/contracts/buff_move_to_runtime_defaults_native.json)
+prove the explicit stores on the complete selected MoveTo and SubSpeed
+constructor paths, including their nested Blackboard, target, vector and
+curve construction. The BlackboardDouble cell is joined to the existing
+closed `float, double` carrier and its generated value setter; its stored
+default is Float32 even though the public consumer returns Double. No open
+generic layout or presumed allocator clearing supplies a field default.
+The parameterless scalar constructor stores zero, the scalar overload
+preserves its Float32 parameter bits, and the vector constructor forwards
+its three Float32 parameters to three distinct scalar children while
+restoring the full frame and saved SIMD registers.
+
+The MoveTo constructor explicitly sets selected scalar defaults, including
+the move-back distance, interaction radius and root-motion scale; it also
+sets the enable, navmesh-ignore and cliff-stop flags. Each axis SubSpeed
+creates separate fixed-speed and root-motion-scale children with zero and
+one respectively. Target construction stores the selector-owner ordinal and
+sets the nested direction's `clampToXZ` flag. The reviewed declaration owns
+the exact fields and raw bits. Fields without an observed store retain an
+explicit gap; they are not classified as zero, null or false merely because
+the constructor allocates an object.
+
+The curve constructor and the inlined SubSpeed curve creation load the same
+cached function cell, pass a null keyframe-array argument, and store the
+opaque returned pointer. The actual cold resolver input names
+`UnityEngine.AnimationCurve::Internal_Create(UnityEngine.Keyframe[])`.
+That string does not identify the live cached target, prove a concrete curve
+handle or establish engine/allocation effects. The vector's selected nested
+class-initializer call has a complete early return with no heap/global writes
+under the checked nonzero class word; its slow paths remain open. The
+profiling-byte test and address-only load are verified as such, rather than
+allowing anonymous instructions to introduce an unaccounted field write.
+
+The ready `OnDeserialized` callback has complete returns for a nonnull cache,
+a null cache with a null base, and a null cache with a nonnull base. Only the
+last path casts the base and writes the cache, followed by the disabled
+barrier return. A nonnull cache remains unchanged without checking equality with
+the base; the ordinary getter's unequal-cache refresh is a separate path.
+The callback's initialization slow path and live invocation remain unproved.
+All these constructor and callback claims require the stated class/usage
+flags, normal typed allocation returns, warm curve function cache and
+disabled barriers. They do not establish the final state after constructor,
+preparation and deserialization are accumulated, select the anonymous
+formatter's MethodInfo/provider, admit recursive SubSpeed or a whole action,
+or prove execution in the game. The owner gates the selected native pair,
+Unity input, reviewed dependencies and source closure before and after
+validation and preserves the last report when native inputs differ.
+
+The maintained
+[`generated formatter route validator`](../../scripts/game_data/memorypack/buff_move_to_formatter_routes.py),
+[`argument and tail algorithms`](../../scripts/game_data/memorypack/generated_formatter_routes.py)
+and
+[`reviewed route declaration`](../../scripts/game_data/contracts/buff_move_to_formatter_routes_native.json)
+join the current MoveTo and SubSpeed **wrapper** formatter routes. Each
+wrapper's static initializer tails to its actual `RegisterFormatter` method
+with a null companion and no frame change. The selected registrar entry path
+allocates the exact nested formatter type, calls its named constructor and
+passes the same saved reference to the actual shared `Register` entry with a
+closed MethodSpec for that wrapper. The Register declaration's sole method
+parameter owns `MemoryPackFormatter<T>`; the actual physical Register entry
+joins a unique registered method definition. Its independently registered
+`object` instantiation does not replace the wrapper MethodInfo actually passed
+by the caller.
+
+The formatter metadata has a closed `MemoryPackFormatter<Wrapper>` base and
+an instance Deserialize method at the required virtual slot with the same
+reader/output byrefs as the existing static wrapper reader. Its ready
+constructor has a complete return without heap/global writes. The ready
+Deserialize caller preserves the incoming reader and output references,
+restores its full nonvolatile/stack frame, supplies a null static-reader
+companion and tails to the current reader's exact module pointer. This proves
+the caller transfer; the selected reader behavior and return obligations stay
+with the existing reader owners.
+
+Registration of a generated wrapper is distinct from selecting an adapter for
+the original runtime Data or SubSpeed type requested by a shared `ReadValue`.
+The new proof stops at the registrar's first wrapper Register call; its
+remaining array/enum registrations and Register's dictionary effects are
+still open. The shared ReadValue entry has neither a module pointer for its
+supplied declaration nor a matching slot anywhere in the current generic
+method pointer array, so the independent `ReadValue<object>` registration
+still cannot identify it. Warm metadata/class flags, typed normal allocation,
+ordinary returning calls and the selected ABI remain conditions. These routes
+do not observe provider/vtable selection, resolve the runtime-original
+adapter, establish accumulated object state or admit an action or Buff root.
+The new owner authenticates the explicit selected native pair, Unity input,
+dependencies and source closure before and after validation, and preserves
+its report on native-input drift.
+
+The maintained
+[`original-adapter validator`](../../scripts/game_data/memorypack/buff_move_to_original_adapters.py),
+[`getter and interface-loop algorithms`](../../scripts/game_data/memorypack/original_adapter_sources.py)
+and
+[`reviewed adapter declaration`](../../scripts/game_data/contracts/buff_move_to_original_adapters_native.json)
+locate the separate current `InitEager` registrations for original MoveTo Data
+and SubSpeed. Each selected block allocates its exact
+`GenericMemoryPackFormatter<Original, Wrapper>`, preserves that adapter across
+the closed constructor thunk, resolves the original type handle and supplies
+the same adapter and returned type key to `RegisterWrap`. The thunk reloads
+that identical concrete constructor context before reaching the independently
+registered shared physical constructor. Its Object/Object registration
+identifies code; it does not replace the concrete ordered type arguments.
+This is a complete local registration block, conditional on reaching it and
+normal returning calls, rather than proof that the whole eager initializer ran.
+
+Reciprocal generic owners join the adapter's original output parameter to its
+formatter parent and virtual Deserialize declaration, while its distinct
+wrapper parameter owns the nested provider and wrapper formatter. The two
+parent SubSpeed child calls supply closed ReadValue arguments with the exact
+same original type pointer as their eager registration key. The independently
+registered shared adapter Deserialize pointer matches the actual dispatcher's
+first optimized-case operand; that static relationship does not identify an
+inflated concrete MethodInfo or prove runtime receiver selection. The shared
+ReadValue clone's named-body identity remains unresolved.
+
+Concrete conversion differs between the wrappers. SubSpeed `GetValue` returns
+its metadata-owned original instance field directly. MoveTo `GetValue` keeps
+the same receiver, clears the companion and tails to the existing cached
+instance getter; its cache effects remain owned by the lifecycle proof. The
+typed original conversion interface occurs after the first nonmatching pair
+for SubSpeed and after four nonmatching pairs for MoveTo. The new algorithm
+authenticates every repeated native lookup probe, its ordinal increments,
+the actual metadata pair and the complete ordinary-call suffix and epilogue.
+Both concrete getter and nested formatter pointers differ from the helper's
+optimized alternatives, so their selected fallbacks apply. The formatter
+return route joins the existing current wrapper reader with the same byrefs.
+
+These joins close the static original/wrapper adapter relationship and
+selected conversion callers. Compatible initialized runtime interface/class
+tables, inflated contexts, provider results and typed normal callee returns
+remain explicit conditions. They do not prove dictionary mutation or
+retrieval, actual eager/provider/vtable selection, allocation/constructor
+effects, final accumulated instance state, a complete recursive action or a
+Buff root. The new owner gates the selected native pair, Unity input,
+dependencies and source closure before and after validation; build drift
+returns no proved summary and preserves the last report.
+
+The current SubSpeed reader in the same reviewed source family has the generated
+order `fixedSpeed`, `rootMotionAnimKey`, `rootMotionScale`, `speedCurve`,
+`speedType`: two BlackboardDouble references, a string, a curve and a trailing
+DWORD enum. Its own source writes directly into the declared Data fields;
+reference writes are followed by a separate helper call. The maintained
+[`SubSpeed source validator`](../../scripts/game_data/memorypack/buff_move_to_subspeed_source.py)
+and its
+[`reviewed declaration`](../../scripts/game_data/contracts/buff_move_to_subspeed_source_native.json)
+now join the complete conditional operand program through the last store.
+The separate
+[`direct Data profile`](../../scripts/game_data/memorypack/direct_data_sources.py)
+checks both incoming pointer aliases, the deliberate final wrapper dereference,
+all null guards, actual RAX/EAX stores and each following slot-address helper
+call. The final DWORD helper separately proves the buffered read and cursor
+accounting. This is conditional on coherent declared references and ordinary
+Win64 returning calls. A typed MethodSpec proves its owned generic declaration
+and supplied argument; it does not identify the physical generic callee.
+Exact closed registrations for these selected contexts remain unresolved;
+do not substitute a nearby or independently registered entry. Disabled
+post-store helper returns now compose through the separate transfer validator;
+enabled helper effects, runtime provider/MethodInfo selection and failure/refill parity remain
+open, and the validator admits no child grammar, action or root. Its source
+closure, dynamic native helpers and explicitly selected native inputs are
+authenticated before and after validation. The declared runtime field order differs from the generated member order
+and cannot replace it. Original MoveTo scalar and curve spans can reuse their
+independently native-gated child readers, including each distinct SubSpeed
+interior range. Those independent scalar/curve spans and the earlier byte-exact
+SubSpeed candidate alone did not establish a complete recursive SubSpeed
+schema, barrier effects, selected provider or a complete MoveTo record. The
+parent and SubSpeed root-motion keys separately join the maintained UTF-8
+source helper on each original range.
+
+The separate
+[`complete SubSpeed stored codec`](../../scripts/game_data/memorypack/buff_move_to_subspeed.py)
+now composes that source order, the complete null/new/reused wrapper returns,
+the static original/wrapper conversion route and the current independently
+proved BlackboardDouble, UTF-8 and animation-curve child grammars. It admits
+exactly the single-byte null record or the five-member record, requires the
+complete supplied child span, and reconstructs it from named nested values.
+Raw wire Boolean bytes, Float32 words, curve/keyframe words and the final enum
+DWORD remain bit-exact; null and empty strings, nullable key arrays and null
+objects remain distinct. Missing/mismatched native inputs, incomplete route
+bindings, unsupported member headers, invalid UTF-8/counts and truncation fail
+closed. Current original spans join all named field boundaries and wire values
+to their independently established child ranges before exact reencoding.
+Selected native inputs and both source closures are authenticated before and
+after replay; changing inventories stay in the generated reports.
+
+This closes the recursive stored SubSpeed schema for the declared null/member-
+five format under compatible initialized contexts and default formatter
+bindings. It does not observe actual callback cursor equality, provider/vtable
+selection, reference-barrier or allocation/engine effects, or accumulated
+runtime object state. Other header variants and Buff root admission require
+their own evidence. The codec reuses the existing
+reviewed SubSpeed source contract rather than duplicating native declarations.
+
+The owning
+[`complete MoveTo stored codec`](../../scripts/game_data/memorypack/buff_move_to.py)
+composes the entire declared parent order with independently proved
+BlackboardDouble, BlackboardVector3, TargetSettings, UTF-8, curve and SubSpeed
+children. It accepts only the declared null or complete parent header, consumes
+the entire supplied action span and reconstructs every named field. The
+[`stored-plan value helper`](../../scripts/game_data/memorypack/stored_plan_values.py)
+preserves raw scalar words, Boolean bytes, nullable collections, null versus
+empty strings and the original short or wide union encoding. Its metadata
+trees remain `structuralOnly`: each recursive vector/target object must also
+match the source-proved child receipt's complete named member boundaries and
+raw wire values. A metadata name match or successful round trip alone cannot
+admit a child.
+
+The recursive action dispatcher includes this current source-declared union
+route only with validated matching parent and child native inputs. The parent
+composition keeps only its owned child dependencies; retaining the caller's
+entire registry would make the returned native evidence cyclic when the caller
+publishes the parent back into that registry. A complete root still requires
+the current full-family gate and independent replay of any gained original
+roots through every following root field and physical EOF. Historical family
+classifications cannot be promoted by a successful selected action replay.
+
+This is an `exact` stored representation under the `conditional` compatible
+initialized-context/default-formatter route. Actual provider/MethodInfo and
+callback cursor correspondence, accumulated instance state, enabled barriers,
+allocation/engine effects and refill/failure paths remain `unresolved`. Exact
+named reencoding is not a measurement of movement or of the runtime instance.
+
+Consumer argument proofs have a separate owner in the
+[`named instance-region copy checker`](../../scripts/game_data/il2cpp/instance_region_copy_arguments.py).
+It authenticates a nongeneric incoming reference instance, selected named
+field bounds, complete original branch/call instructions, a false Boolean
+guard and a nonzero raw field byte before accepting a stack-copy receiver.
+The
+[`fixed vector-copy proof`](../../scripts/game_data/il2cpp/fixed_vector_copy.py)
+derives literal loop counts, affine addresses and every transferred byte from
+the selected complete instruction span. Its input address identities,
+disjoint storage and nonwrapping arithmetic remain explicit conditions.
+Unknown instructions, mismatched stored byte identities, incomplete coverage
+or unsupported receiver signatures fail closed.
+
+For the selected MoveTo `OnEnd` path, the named bounds are
+`m_moveRequestHandle` through `m_circleCenter`, and the selected value-instance
+callee is `MoveRequestHandle.StopMoveRequest`. This proves an owned field
+region copied to a local receiver under the checked conditions; it does not
+identify the closed Nullable's internal flag/value members or equate the
+copied region with a fully proved managed value layout. A type-size record's
+native-size entry is not substituted for this independently proved copy
+coverage. Copied object pointers, the stop method's selected field arguments,
+downstream writes and the final movement state retain separate obligations.
+The generated named-copy and consumer inventories own the current byte counts
+and branch details; the consumer claims registry still requires its own review.
+
+The separate
+[`value receiver bridge checker`](../../scripts/game_data/il2cpp/value_receiver_bridge.py)
+checks complete full-width RCX-relative address-return and receiver-tail-jump
+programs. The selected on-disk `il2cpp_object_unbox` export returns the
+displaced incoming address through a plain RET; an independently selected
+short program applies the same displacement and directly jumps to the unique
+named `MoveRequestHandle.StopMoveRequest` body. Original instruction bytes,
+export name/ordinal/function joins, current value-owner and instance-method
+declarations, both address widths, the complete terminal transfers and equal
+displacements are checked. ADD and LEA retain their different flag effects.
+
+This is `exact` program evidence under the `conditional` selected-entry and
+valid nonwrapping-address assumptions. The bridge's token/padding/pointer
+registration-table candidate remains `structuralOnly`; a plausible row or an
+equal bias does not authenticate that table's schema, actual registration
+selection, boxed field-offset coordinates or closed Nullable/ObjectPtr
+members. Those field-ownership joins and the stop method's writes and movement
+effects remain `unresolved`. The named export improves the bias evidence
+without promoting the copied region to a complete managed-value layout.
+
+Static generic call evidence has a separate owner in the
+[`canonical entry and call-block checker`](../../scripts/game_data/il2cpp/generic_call_projection.py).
+The selected MethodSpec's exact registration row joins its canonical pointer
+to the original direct call. A positive fourth registration word stays
+uninterpreted; this projection proves neither an adjustor entry nor the full
+generic registration. An absent exact row fails closed. The selected
+`ObjectPtr<Entity>` usages in `StopMoveRequest` have no exact registered row;
+their shared `Object` entries retain a separate runtime canonicalization gap.
+
+The two selected `Nullable.get_Value` contexts declare
+`MoveCommand.RootMotionMoveData` and `uint`. The return VAR joins its owning
+type container and ordinal reciprocally through the maintained context
+reader, then selects the corresponding static class argument. Complete
+original call blocks load the hidden context and form the receiver address.
+The uint block also reads a qword into RSI from an RAX-relative address; its
+explicit mode checks the complete read and preserves RCX/RDX call arguments,
+with valid readable source storage as a condition. That read supplies no
+object-field identity.
+
+The [`guarded Nullable getter checker`](../../scripts/game_data/il2cpp/nullable_value_getter.py)
+checks each entire getter, its raw flag-byte branch, payload width, balanced
+normal return and terminal failure call/trap. The selected nonzero paths
+return the raw RootMotionMoveData word and uint word, with EAX zero-extension
+on the latter. The zero paths call the uniquely named
+`System.ThrowHelper.ThrowInvalidOperationException_InvalidOperation_NoValue`;
+its body effects remain a separate obligation. This is `exact` static byte
+and declaration evidence under `conditional` selected-entry/readable-address
+assumptions. Live MethodInfo resolution, receiver ownership, boxed field
+coordinates, full closed Nullable member layouts, returned payload member
+identity and subsequent stop effects remain `unresolved`. Static argument
+types and complete getter programs do not admit another complete Buff root.
+
+BlackboardDouble keys now have their own
+[`inline source and original-span reader`](../../scripts/game_data/memorypack/buff_blackboard_double_key.py)
+and
+[`reviewed source declaration`](../../scripts/game_data/contracts/memorypack_blackboard_double_key_native.json).
+The reusable
+[`inline UTF-8 source profile`](../../scripts/game_data/memorypack/inline_utf8_sources.py)
+proves the incoming reader alias, buffered signed DWORD length and cursor,
+remaining-total bound check, distinct null/empty/positive branches, exact
+`ReadUtf8(int)` method identity and result join. Original child ranges retain
+their independent scalar framing and required tail; valid UTF-8 keys decode
+and reencode exactly without evaluating a blackboard lookup. A null child,
+present null key and present empty key are distinct. Invalid bytes are rejected;
+native replacement behavior and failure/refill paths remain unproved.
+
+This key proof ends at the joined result register. The current concrete
+BlackboardDouble runtime type inherits the instantiated generic
+BlackboardParamBase; its absent own field-offset row cannot be replaced with
+the open generic template's offsets. The separate maintained
+[`closed scalar Data owner`](../../scripts/game_data/memorypack/buff_blackboard_double_data.py),
+[`program profile`](../../scripts/game_data/memorypack/closed_scalar_wrapper_fields.py)
+and
+[`reviewed declaration`](../../scripts/game_data/contracts/memorypack_blackboard_double_data_native.json)
+now join that result and the following Boolean/Single sources to the cells
+written by the actual named generated setters. The runtime parent and the
+wrapper's base-instance field carry the same closed generic instantiation.
+Reciprocal metadata ownership places the stored `value` VAR at the first
+argument, `float`; the second argument, `double`, does not change the stored
+width. The emitted setter programs establish the concrete destination cells,
+without using the generic definition's offset table as an instance layout.
+
+The buffered reader normalizes the stored selector byte with a nonzero test
+and copies the Float32 bits directly. Original-span receipts therefore retain
+both the raw wire byte and the conditional normalized Boolean state; exact
+wire reencoding does not substitute the normalized byte. Float32 negative
+zero, infinity and NaN bit patterns also remain raw bits. The key setter and
+reader use the same independently checked barrier flag; the selected disabled
+path does not establish the enabled bitmap loop or observe the runtime flag.
+These field flows remain conditional on coherent declared wrapper/base-instance
+references and ordinary Win64 returning calls. Constructor/base-instance
+correspondence, public GetValue composition, actual provider selection,
+lookup results and failure/refill behavior remain separate
+obligations. Other Blackboard scalar kinds and the vector's interior joins
+require their own source and original-range proofs. Typed MethodSpec
+declarations still do not identify the physical generic reference helper, and
+these scalar receipts admit no complete action or Buff root.
+
+The separate maintained
+[`concrete consumer owner`](../../scripts/game_data/memorypack/buff_blackboard_double_consumers.py),
+[`complete selected-program profile`](../../scripts/game_data/memorypack/closed_scalar_consumers.py)
+and
+[`reviewed declaration`](../../scripts/game_data/contracts/memorypack_blackboard_double_consumers_native.json)
+now prove selected reads from these independently established cells through
+the return instructions. The key getter returns the key reference. The cast
+method loads the stored Single and applies legacy `CVTPS2PD`; its lower result
+lane is Double. Both selections require the actual named patch check to return
+false. The
+[Intel instruction description](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2a-manual.pdf)
+supplies that lower-lane conversion meaning; concrete CPU/MXCSR state,
+denormal handling, exception completion and actual numeric results are not
+observed or admitted by the source checker.
+
+The concrete `TryGetValueInternal` proof covers the selected normal class,
+reference and signed-DWORD guards, a nonnull incoming Blackboard and a writable
+original Double output reference. A zero selector loads the stored Single,
+converts it and writes eight output bytes with a true Boolean return. A nonzero
+selector passes the stored key reference and incoming Blackboard to the actual
+registered `_TryGetNumber(string, ref double)` overload. Its distinct temporary
+Double slot is initialized to zero; the caller copies that slot into the
+original output and preserves the lookup's actual Boolean return. This consumer component proves
+delegated arguments and the caller's output/return flow, without proving the
+lookup body, found value or guard-owner semantics. The original stored receipts
+join these source/destination cells under the additional condition that their
+proved field state survives until this consumer selection. Actual instance
+correspondence, intervening writes and runtime branch selection remain open.
+
+The separate public/default composition proofs are documented below. The
+number-lookup discovery establishes that the current Blackboard
+inherits `List<DataPair>` and separates its registered entry range from its
+exact unwind-owned fragments. A single `.pdata` range need not contain a
+complete managed method; fragment ownership must follow the unwind chain,
+never adjacency. That discovery's subset-decoded call candidates alone do not
+prove the complete lookup field flow. The separately maintained
+[`managed key-comparison owner`](../../scripts/game_data/memorypack/buff_blackboard_key_comparison.py),
+[`word-comparison CFG profile`](../../scripts/game_data/il2cpp/utf16_ascii_comparison.py)
+and
+[`reviewed callback declaration`](../../scripts/game_data/contracts/memorypack_blackboard_key_comparison_native.json)
+prove the actual `_EqualsIgnoreCase$BurstManaged(short*, short*, int)` leaf,
+including its loop and both Boolean returns. Its word arithmetic and unsigned
+conditional moves fold only ASCII uppercase `A` through `Z` by adding the
+lowercase delta. Every other 16-bit unit stays unchanged; this is not Unicode
+case folding. The
+[Intel conditional-move definition](https://cdrdv2-public.intel.com/812383/253666-sdm-vol-2a.pdf)
+supplies the unsigned above condition and word operand meaning. Different
+folded units return false; equal units advance by one word until the signed
+Int32 length is exhausted. A nonpositive length returns true without reading
+either input span. The leaf contains no calls or memory writes; readable,
+unchanged input spans and normal instruction completion remain conditions.
+
+The owner also checks the actual Burst getter call, its false-return branch
+into the lookup's exact unwind-owned managed callback, and the fragment that
+forwards the current aliases to this comparison entry. This component alone
+does not observe the getter result or prove the preceding aliases' input
+origins. The Burst enabled callback, actual key objects, matched lookup values
+and all-dispatch lookup CFG remain separate obligations. The separately maintained
+[`pair/list owner`](../../scripts/game_data/memorypack/buff_blackboard_pair_list.py),
+[`value-cell profile`](../../scripts/game_data/memorypack/blackboard_pair_cells.py)
+and
+[`reviewed pair/list declaration`](../../scripts/game_data/contracts/memorypack_blackboard_pair_list_native.json)
+now connect all four nongeneric DataPair field declarations to the actual
+numeric, string and copy constructors. Each complete constructor reaches
+its return. Actual stores establish the unboxed cells; their common boxing
+bias agrees with the current field table, registered type-size record and
+closed list's value extent. The pair contains two managed string references,
+a Double bit cell and a raw dynamic byte. The remaining padding stays opaque;
+the value extent is not a serialized wire schema.
+
+Constructor aliases survive the helper calls only under the actual shared
+barrier's disabled DWORD guard. Its complete selected path compares the
+flag, copies the address into R8 and returns, with no memory writes or calls.
+That program establishes preservation of the other volatile aliases and XMM
+inputs. The ordinary
+[Microsoft x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170)
+alone cannot establish that preservation. The physical barrier is a leaf
+without a `.pdata` extent; its authenticated entry, selected branch and return
+CFG suffice for this path, without claiming an enabled-path or unwind proof.
+The numeric constructor stores the incoming Double bits and clears the string
+cell. The string constructor stores the incoming string and clears the Double
+bits. The copy constructor transfers the four named fields, leaving padding
+unwritten. The dynamic byte is copied without a Boolean normalization claim.
+
+The complete selected normal `get_isNumericValue` paths return true for a null
+string cell or an empty managed String, and false for a nonempty String.
+The length read is joined to System.String's owned instance Int32 field;
+the predicate reads neither the Double cell nor the dynamic byte. Thus a
+string constructor supplied null or an empty String can classify as numeric
+under these getter guards if its fields survive unchanged. This is a
+conditional composition, not an observed game lookup or result. The raw
+class/dispatch guards, normal completion and coherent readable value/String
+state remain explicit conditions; initialization and alternate dispatch are
+outside the proof.
+
+The actual closed `List<DataPair>.get_Item` registration, reciprocal return
+VAR owner/ordinal and selected DataPair value argument establish the returned
+type. Its complete success path takes an output address, list receiver and
+Int32 index, checks two unsigned bounds and a nonnull array reference, loads
+two complete chunks before writing the output, and returns the original
+output address. The emitted address arithmetic establishes the value stride
+and array-cell relation. These are observed operand cells; the open generic
+List offset table is not used to name instantiated `_items` or `_size` fields.
+Coherent nonnegative index/list state and readable source/writable output
+remain conditions. No bounds/error behavior, runtime closed receiver,
+whole lookup loop or found value follows from this component.
+
+The separately maintained
+[`number-lookup owner`](../../scripts/game_data/memorypack/buff_blackboard_number_lookup.py),
+[`whole selected CFG profile`](../../scripts/game_data/memorypack/blackboard_number_lookup.py)
+and
+[`reviewed lookup declaration`](../../scripts/game_data/contracts/memorypack_blackboard_number_lookup_native.json)
+compose these dependencies through the complete managed-fallback loop and
+both output returns. Every selected block belongs to the actual lookup's
+entry or chained unwind extent. Incoming receiver, key and Double-output
+aliases are preserved through the prefix. The selected element's key is
+loaded into the low quadword of a saved XMM register and moved to the candidate
+pointer; the
+[Intel MOVQ definition](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf)
+establishes this complete prefixed instruction's quadword transfer. Candidate
+and original key lengths are compared before their owned String first-character
+addresses and candidate length reach the actual managed comparison. No
+global subset-decoder change or proximity-based fragment ownership is used.
+
+The index starts at zero. Unequal lengths, unequal folded key units and
+matching nonnumeric pairs all reach one increment and count comparison.
+After the managed call, the volatile comparison-context source is reloaded
+before this join. The signed continuation jumps to the existing unsigned
+boundary branch, reusing the immediately preceding comparison's flags.
+For stable coherent count and nonnegative Int32 index, the increment cannot
+overflow before exhaustion; count minus index strictly decreases on every
+rejection. This proves the arbitrary loop, rather than a fixed unrolled trace.
+The unsigned list/array bounds and nonnull array guard are checked again
+before full pair selection and before the found Double load.
+
+The selected result is the first matching numeric candidate. A matching
+pair whose string value is nonempty is skipped, so it does not hide a later
+numeric pair with the same key. Found return copies the selected `valueDouble`
+bits into the original caller output and returns true. Empty list or complete
+exhaustion writes eight zero bits to that same output and returns false.
+This selected lookup performs no numeric conversion and does not read the
+pair's dynamic flag; these facts do not describe dynamic resolution elsewhere.
+The output write reaches the original address before the common epilogue
+restores the saved registers and frame.
+
+This whole selected CFG proof requires normal dispatch guards, a false Burst
+getter for every reached comparison, its ordinary returning-call preservation,
+coherent stable list/String/dispatch state, readable inputs, a valid writable
+output and normal completion. The pure comparison's preservation follows its
+own checked program. The Burst getter's actual state and side effects are not
+observed or promoted: stable referents across that call remain a condition.
+Null/error/out-of-range, initialization/patch and enabled-Burst paths remain
+outside the proof. Actual runtime objects or found values, public GetValue and
+generic-provider composition, and complete action/root admission still need
+their own evidence.
+
+The separate maintained
+[`keyed consumer/lookup owner`](../../scripts/game_data/memorypack/buff_blackboard_double_lookup.py)
+and
+[`call-boundary composition`](../../scripts/game_data/memorypack/closed_scalar_lookup.py)
+now join the concrete nonzero-selector `TryGetValueInternal` to this complete
+selected managed relation. Both existing owners authenticate their programs
+against the same explicitly selected native inputs. The lookup declaration,
+caller declaration and physical relative call must identify the same actual
+registered method; a matching method name is insufficient. No duplicate native
+catalog or invented live receiver is introduced by this composition.
+
+The original incoming Blackboard and scalar's key become the lookup arguments.
+The Double output argument addresses a separately initialized caller temporary,
+and the companion argument is null. Derived stack regions place that temporary
+outside the callee's shadow area and private frame. The lookup's explicit
+stack stores and saved-register cells cannot overwrite it. The lookup saves
+the caller's output-address alias before using that register for its key and
+restores it on both selected returns. Ordinary called getters must preserve
+the active frames and coherent referents; their unproved memory effects remain
+conditions, rather than an assertion of complete memory-write coverage.
+
+After the lookup returns, the caller loads the same temporary's Double bits,
+copies them into its original output and restores its saved registers/frame.
+These post-call instructions preserve `AL`. Thus, under both selected program
+conditions, a found result writes the first matching numeric pair's Double
+bits and returns true; exhaustion writes zero Double bits and returns false.
+The keyed caller does not read its stored Single, perform a numeric conversion
+or use that Single as a missing-key fallback. The zero-selector path's separate
+Single-to-Double conversion remains subject to its own CPU/completion boundary.
+
+The original keyed child receipts join their independently proved stored key
+and normalized selector to this relation. Their Float32 bits are retained as
+stored evidence even though the selected keyed program does not read them.
+These joins require the same scalar instance and unchanged fields at consumer
+entry, stable coherent lookup inputs, normal guards, every reached Burst getter
+returning false, isolated valid Win64 frames and a writable final output that
+does not alias those active frames. They do not supply the actual Blackboard
+list or a concrete found value. Constructor/base-instance correspondence,
+public GetValue/default behavior, physical generic helper/provider selection,
+other dispatch and failure effects, runtime execution and complete action/root
+admission remain separate obligations.
+
+The maintained
+[`normal default-chain owner`](../../scripts/game_data/memorypack/buff_blackboard_double_default.py),
+[`complete default-program profile`](../../scripts/game_data/memorypack/blackboard_double_default.py)
+and
+[`reviewed default declaration`](../../scripts/game_data/contracts/memorypack_blackboard_double_default_native.json)
+now prove the selected chain from concrete `GetValueOrDefaultInternal` through
+Blackboard's `GetDoubleOrDefault` and `TryGetDouble`. These are distinct actual
+method definitions. The named `TryGetDouble` body inlines the same independently
+proved scalar cells: it keeps the Blackboard, scalar input and Double output
+in separate saved aliases, then chooses the direct conversion or actual keyed
+lookup. The complete direct and keyed returns preserve the chosen Boolean and
+write the caller's eight output bytes. Its class/reference/dispatch guards are
+authenticated as stored representation without inventing guard-owner meaning.
+
+`GetDoubleOrDefault` captures the incoming Double default in a saved XMM
+register before the named patch check. Under its false result and ordinary
+returning calls, a true `TryGetDouble` result loads the same initialized output
+temporary into the lower Double return lane. A false result copies the original
+saved default bits into that lane. This choice performs no default-value
+conversion or arithmetic; the Double default bits survive nonvolatile register
+and frame restoration. The warning parameter is captured for the alternate
+patch path and is not read beyond that capture in this selected normal program.
+Its behavior outside that selection is not inferred from the parameter name.
+
+The scalar default method similarly preserves its original Double default,
+forwards the same scalar and nonnull Blackboard to the actual default callee,
+passes a false warning Boolean and a null companion, and returns the callee's
+Double lane through its complete epilogue. Its normal null-Blackboard edge
+instead enters an authenticated helper-call followed by `INT3`, rather than
+the selected default-return program. This proves the edge and instruction
+sequence, not an exception kind, helper side effect or observed trap. Other
+patch/null/error paths remain outside the normal default relation.
+
+The original scalar child receipts now join these selected default paths under
+the same-instance/unchanged-field condition. Direct fields select their
+completed Single-to-Double result; keyed fields select the first matching
+numeric Double or the caller-supplied default if lookup returns false. Original
+stored bytes do not supply that API default argument. Stable lookup inputs,
+normal guards, false patch/Burst selections, isolated valid frames and normal
+instruction completion remain conditions. These proofs supply neither live
+objects nor actual default or found values and admit no complete action/root.
+
+Public `GetValue` retains a separate virtual-dispatch obligation. Current
+owned-helper discovery locates its nonnull-Blackboard delegate's virtual entry
+comparison against the concrete `TryGetValueInternal` entry; the matching arm
+contains inlined scalar reads, while the other arm calls the selected virtual
+entry. These helpers are not interchangeable with the named default methods.
+The null-Blackboard delegate's on-disk tagged usage joins the closed
+`BlackboardParamBase<float,double>.GetDirectValue` MethodSpec and its registered
+physical call target. That stored usage does not establish a live MethodInfo
+after lazy initialization; the maintained
+[`registered MethodSpec join`](../../scripts/game_data/il2cpp/generic_entries.py)
+and
+[`static typed-usage validator`](../../scripts/game_data/il2cpp/formatter_composition.py)
+keep those evidence layers separate. The public helper's unequal virtual-function
+selection, initializer/context mutation and alternate dispatches still require
+their own composition. The initialized null-Blackboard selection has a separate
+complete return proof, described below.
+
+The maintained
+[`null-Blackboard public-return owner`](../../scripts/game_data/memorypack/buff_blackboard_null_getvalue.py),
+[`selected return/tail profile`](../../scripts/game_data/memorypack/blackboard_null_getvalue.py)
+and
+[`reviewed null-return declaration`](../../scripts/game_data/contracts/memorypack_blackboard_null_getvalue_native.json)
+authenticate the actual public entry, closed direct registration, concrete
+metadata cast slot and all entry/chained-unwind windows of the three reached
+bodies. Four complete selected programs cover public entry through its return,
+both direct-delegate selector branches and the shared cast fallback through
+its indirect tail. Tail programs have their own terminal checks; the shared
+entry-to-RET validator is not weakened to accept unfinished delegates.
+
+Under already-initialized public/direct flags and the public patch check
+returning false, a null incoming Blackboard delegates the same scalar to the
+closed direct entry. A zero selector forwards the actual metadata cast slot
+and scalar to the shared helper after restoring the direct frame. The helper
+computes the function/companion pair from the scalar's class and slot. Its
+three special comparison targets belong to other current method bodies and
+are distinct from the proved concrete scalar cast. If the computed function
+equals that concrete cast entry, all three comparisons take their fallback
+edges. The helper restores its saved registers/frame and tail-delegates the
+same scalar with the companion in the context register. The independently
+proved unpatched concrete cast completes its stored Single-to-Double lower
+lane, which survives the public epilogue as the Double result.
+
+A nonzero selector takes the direct entry's actual static string `LogError`
+overload with its stored global message and null companion. After the logger
+returns ordinarily, the direct program explicitly zeros the Double return
+lane and returns through the public epilogue. This chosen branch neither
+attempts Blackboard lookup nor reads the stored key or Single. The proved
+logger identity and argument program do not establish actual log emission,
+helper side effects or exception behavior.
+
+The initialized direct programs overwrite their incoming context register
+before reading it, and the chosen concrete cast does the same. Consequently,
+their selected return instructions do not need a supplied live MethodInfo.
+This does not prove usage initialization or context mutation: the stored
+MethodSpec still establishes only the selected closed registration and actual
+physical target. Likewise, the metadata slot and raw class-pair address
+calculation do not supply the actual runtime class slot value; equality with
+the concrete cast entry remains an explicit condition.
+
+Unchanged original scalar receipts join these null-Blackboard choices under
+the same-instance/field-state condition. Stable valid scalar/class/global
+storage, isolated Win64 frames, ordinary helper returns, false reached patch
+checks and completed SIMD conversion remain conditions. Actual runtime
+selection and numeric values, unequal public virtual selection, other dispatch and
+failure effects, provider selection and the remaining recursive action/root
+joins retain their separate evidence obligations.
+
+The maintained
+[`nonnull public-return owner`](../../scripts/game_data/memorypack/buff_blackboard_nonnull_getvalue.py),
+[`matching-Try return profile`](../../scripts/game_data/memorypack/blackboard_nonnull_getvalue.py)
+and
+[`reviewed nonnull declaration`](../../scripts/game_data/contracts/memorypack_blackboard_nonnull_getvalue_native.json)
+now compose the initialized, unpatched public method with the helper arm whose
+raw class function equals the current concrete `TryGetValueInternal` entry.
+The metadata Try slot is authenticated independently of the helper's actual
+function/companion loads and pointer comparison. All entry/chained-unwind
+windows remain required even though the chosen complete programs exclude the
+other dispatch and cold paths. No supplied runtime class slot follows from
+the metadata declaration or this conditional equality.
+
+The matching arm preserves separate scalar, Blackboard and public output
+aliases. Under its normal stored class/reference guards, a zero selector
+converts the same stored Single, writes the public Double output and returns
+true. The public method then loads those exact output bytes into its Double
+return lane. A nonzero selector passes the stored key and original Blackboard
+to the independently proved managed lookup. Its complete arbitrary-length
+loop supplies the first matching numeric Double and true, or exhausted-list
+zero and false. The helper copies the same temporary into the public output
+and restores its saved registers/frame without changing the lookup Boolean.
+The public success arm returns those Double output bits.
+
+The helper's temporary uses an unused part of its incoming Win64 home space,
+between distinct saved-register cells. This differs from the earlier concrete
+consumer's private temporary allocation. The independently authenticated
+lookup non-output write ledger remains in its private frame or the helper's
+provided shadow space, away from that temporary. The helper's frame, saved
+cells and temporary are also separate from the public method's output cell.
+The ordinary called helpers must preserve those active frames and coherent
+referents; their unproved memory effects are not replaced by an assumption
+that the named method has no other writes.
+
+On the selected false lookup result, the public method loads the key from the
+same scalar, calls the actual `DumpToString` on the original Blackboard and
+preserves that returned string across its class helper. Its complete logger
+argument program forwards the channel byte, format reference, key reference,
+dump reference and reloaded context companion in their actual ABI positions.
+After the actual logger returns ordinarily, the public method explicitly zeros
+the Double return lane and restores its frame/registers. This path does not
+read the stored Single or use it as a missing-key fallback. The dump/logger
+identities and arguments do not prove their emitted text or other effects.
+
+The logger join keeps a newly established static distinction: the calling
+usage cell describes `LogError<string,string>` and has no AOT registration row
+in the selected build, whereas the actual call target has an unambiguous
+`LogError<object,object>` registration under the same method definition. Both
+generic parameters have reciprocal current method ownership and ordinal.
+These facts establish the two static identities and physical callee; they do
+not equate the MethodSpecs, supply a live MethodInfo or prove the initializer
+and generic context behavior. The generic-entry resolver's folded-definition
+rejection remains intact.
+
+Original scalar field receipts now join the selected nonnull public returns:
+direct fields choose the completed conversion, while keyed fields retain both
+conditional found and missing outcomes. Actual instances and lookup contents
+are unsupplied. Initialized public usage state, false patch, matching concrete
+Try function, normal stored guards/managed-loop selections, stable compatible
+storage, valid isolated private frames/home spaces, ordinary dump/logger calls
+with compatible context and completed SIMD remain explicit conditions. The
+unequal virtual-function arm, other initialization/patch/failure effects,
+actual provider/runtime selection and complete recursive action/root admission
+still require their own evidence.
+
+The `get_Count` pointer is folded with
+other method definitions, so it remains an ambiguous witness rather than an
+exclusive method or a missing registration. Alternate dispatch,
+refill/failure parity, provider selection,
+actual runtime effects and complete action/root admission remain unresolved.
+
+For `TriggerSpellBurstEventAction`, the
+[`reviewed source window`](../../scripts/game_data/contracts/buff_18b_native.json)
+has a required terminal DWORD, now joined to the stored `spellBurstType` enum.
+Original spans preserve these bits without an enum-range restriction. The
+current `ExecuteInternal` candidate has a checkable `readsClosedDataField` claim
+for that field through the immediate `AbilityAction<Data>::m_data` parent.
+The maintained
+[`closed-field proof`](../../scripts/game_data/il2cpp/closed_data_fields.py)
+uses the concrete witness and occupied base layout, without taking a generic
+definition's field offset as an instantiated offset. Its separate source and
+owner paths check `NeedTriggerEvent` before the compiled `TriggerEvent` calls
+for `OnCharBeforeOutputSpellBurst` and `OnEnemyBeforeTakeSpellBurst`.
+The local DWORD transfer names the destination `SpellInflictionContext.inflictionType`
+only conditionally on that context layout and the reloaded output-slot identity.
+The actual static allocation usage names that context, while the
+[`generic entry checker`](../../scripts/game_data/il2cpp/generic_entries.py)
+finds no exact registered entry for the selected closed allocation instance.
+The physical shared code still joins to the `Allocate` method definition.
+Keep that closed-instance registration gap explicit: the candidate does not
+establish allocation outcome, slot stability across delegated calls, selected
+MethodInfo, IFix branch, event delivery, damage, or live execution. Consumer
+claims and named action admission remain staged while the earlier complete
+family gate freezes the maintained implementation.
 
 The maintained
 [`buff_custom_ability_event_condition.py`](../../scripts/game_data/memorypack/buff_custom_ability_event_condition.py)
@@ -3205,6 +5202,80 @@ reader, and each fails closed through the selected native/source gates.
   frame/home geometry and finite register origins. Native/source drift
   yields no summary; unknown aliases, child effects and runtime identity
   remain open.
+- **Named class bits, field iterator and preparation chain** --
+  [`buff_formatter_class_fields`](../../scripts/game_data/memorypack/buff_formatter_class_fields.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_class_fields_native.json),
+  lane [`il2cpp/class_field_control`](../../scripts/game_data/il2cpp/class_field_control.py)).
+  Joins actual named exports to closed flag/bit entries, the complete
+  has-references consumer, field iterator, preparation bridge and recursive
+  preparation program. The input helper reaches the same preparation entry
+  and its checked bit replacement matches the named blittable consumer.
+  Native/source drift yields no summary; class storage, child effects,
+  capacity, aliases and runtime identity retain their conditions or gaps.
+- **Named field records and generic construction** --
+  [`buff_formatter_field_construction`](../../scripts/game_data/memorypack/buff_formatter_field_construction.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_field_construction_native.json),
+  lane [`il2cpp/field_construction_control`](../../scripts/game_data/il2cpp/field_construction_control.py)).
+  Checks the complete owned generic child of the preparation program,
+  selected name/type/parent/offset getter entries, the closed receiver wrapper,
+  inline reservation and every record store. It rechecks the actual parent
+  call and complete shared clear body. Selected native/source drift yields
+  no summary; receiver count coherence, child effects, valid capacity and
+  actual class/type identity remain open.
+- **Ordinary and auxiliary field setup** --
+  [`buff_formatter_field_setup`](../../scripts/game_data/memorypack/buff_formatter_field_setup.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_field_setup_native.json),
+  lane [`il2cpp/field_setup_control`](../../scripts/game_data/il2cpp/field_setup_control.py)).
+  Checks both actual sibling children completely for owned bytes, control,
+  explicit stores and normal frame geometry, then proves selected count/home,
+  parent-reference and early-ready projections. Native/source drift yields
+  no summary. The remaining typed computations, count coherence, pointed
+  slot and child effects, capacity and runtime identity remain open.
+- **Metadata-record creation count flow** --
+  [`buff_formatter_class_creation`](../../scripts/game_data/memorypack/buff_formatter_class_creation.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_class_creation_native.json),
+  lanes [`il2cpp/class_creation_control`](../../scripts/game_data/il2cpp/class_creation_control.py)
+  and [`il2cpp/class_creation_instructions`](../../scripts/game_data/il2cpp/class_creation_instructions.py)).
+  Checks the complete creation candidate's owned control/stores/normal frame,
+  selected source-address and allocation/result/count/return origins, plus
+  the current metadata reader's named count words. It requires explicit
+  native and metadata paths and rechecks the named count/allocator parent.
+  Actual source/class/cache/preparation identity, count coherence, child
+  alias effects, capacity and the remaining typed computations stay open.
+- Generic creation code/data and selected count/cache flow owner:
+  [`buff_formatter_generic_creation`](../../scripts/game_data/memorypack/buff_formatter_generic_creation.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_generic_creation_native.json),
+  lanes [`il2cpp/generic_creation_control`](../../scripts/game_data/il2cpp/generic_creation_control.py)
+  and [`il2cpp/generic_creation_instructions`](../../scripts/game_data/il2cpp/generic_creation_instructions.py)).
+  Checks the complete owned code/table partition, guarded image-RVA targets,
+  stores, normal frames and selected register origins across branches and
+  backedges. The actual shared getter supplies a fresh source-count word;
+  creation copies it into the allocation result's named count offset and
+  stores the original incoming receiver in its named generic link. Cache
+  publication uses an implicit memory exchange that overwrites the saved
+  result register with the old cache value; the selected non-null return
+  subsequently uses a fresh cache read. Existing-cache and null-source paths
+  bypass creation/count copying. Fresh cache equality, live class/preparation
+  identity, later count coherence, child aliases, synchronization, capacity,
+  recursive termination and other typed effects remain unresolved.
+- Source receiver resolution owner:
+  [`buff_formatter_receiver_resolution`](../../scripts/game_data/memorypack/buff_formatter_receiver_resolution.py)
+  ([contract](../../scripts/game_data/contracts/buff_formatter_receiver_resolution_native.json),
+  [`il2cpp/receiver_resolution_control`](../../scripts/game_data/il2cpp/receiver_resolution_control.py)
+  and [`il2cpp/record_index_geometry`](../../scripts/game_data/il2cpp/record_index_geometry.py)).
+  Checks closed nullable/pointer-index leaf programs separately from the
+  complete owned indexed-cache resolver. The signed high-multiply/add/shift
+  bound converts every valid selected record offset to its index; matching,
+  stable header/base reads conditionally round-trip to the constructor's
+  source record. The actual metadata constructor result reaches a freshly
+  loaded cache array with the same signed index. The resolver checks a null
+  sentinel and two fresh cache views, then returns another fresh array/element
+  view. Those views, live pointer/class/preparation identity and returned count
+  equality remain unresolved; the nested nullable leaf does not establish
+  null handling of the original receiver. No leaf unwind ownership is inferred.
+- [`Metadata initialization owner`](../../scripts/game_data/memorypack/buff_formatter_metadata_initialization.py) ([contract](../../scripts/game_data/contracts/buff_formatter_metadata_initialization_native.json)) checks complete owned initialization control, actual loader-result/header/base and allocator-result/resolver-cache stores, and the conditional record-size quotient. The fresh header must match selected metadata; loaded-file identity, allocator target/outcome, capacity, global stability and child aliases remain open.
+- [`Metadata loader owner`](../../scripts/game_data/memorypack/buff_formatter_metadata_loader.py) ([contract](../../scripts/game_data/contracts/buff_formatter_metadata_loader_native.json)) checks complete owned loader/path-helper control, literal descriptor/argument programs, close/error import declarations and conditional zero-or-saved-child-result returns; mapping/default-allocator transfers are closed programs without inferred ownership. Reserve/append/open/map effects, constructed path, live bindings and file identity remain open.
+- [`Metadata mapping owner`](../../scripts/game_data/memorypack/buff_formatter_metadata_mapping.py) ([contract](../../scripts/game_data/contracts/buff_formatter_metadata_mapping_native.json)) checks the actual loader tail target's complete owned control, arguments, registration writes, normal frames and release-counter program. Status-error and zero-view edges select zero; the other path subtracts fresh slot contents, passes both mutable slot addresses to registration children and reloads the return slot afterwards. One registration stores the saved first child result, while the other stores a fresh view of the incoming offset home. A nonnull view-child result therefore does not establish final-return equality, nonnullness, pointer validity or mapped-file identity. Slot/alias noninterference, child registry effects, live bindings, synchronization and retry termination remain open.
 
 Under normal Win64 calls, the thread-ID body zero-extends the DWORD result
 before returning it to the caller's QWORD owner comparison. Acquire preserves
@@ -3357,6 +5428,160 @@ stores can alias the incoming pointed slot, and child effects are still
 open. The caller's post-child context pointer therefore stays fresh;
 pointed-slot preservation, complete class-field meaning, actual receiver
 identity, capacity and recursive termination are not admitted by this proof.
+
+The named class-bit and field-preparation owner now gives the input helper
+an additional direct interpretation. The closed `il2cpp_class_is_blittable`
+entry extracts one bit from the field-state byte. In the actual input helper,
+the checked XOR/mask/XOR sequence replaces precisely that bit of the original
+receiver byte with the bit freshly read from another receiver. All other
+bits of the loaded original byte are preserved. The preceding helper result
+and recursive call are checked as actual register/call flows; the returned
+object's live class identity and the original receiver's runtime identity
+remain unproved. The generic receiver is therefore not selected by a layout
+or getter-name match.
+
+The complete `il2cpp_class_has_references` target first checks the separate
+fields-ready bit, invokes the preparation bridge when it is clear, and
+checks readiness again after that call. Its normal result is the selected
+bit from a fresh state-flags byte; a still-clear ready bit reaches the
+failure helper and INT3 if that helper returns normally. Closed
+`il2cpp_class_get_flags` separately anchors the DWORD type-flags field.
+These named consumers distinguish physical fields and bits without claiming
+that preparation or an actual class initialization succeeded.
+
+The complete named field iterator directly reads an unsigned word count and
+the fields base, advances a nonzero iterator by the checked record stride,
+and compares the resulting pointer against the fresh base plus scaled count
+with an unsigned end guard. A null iterator address returns zero. For a
+zero iterator value, it calls the preparation bridge and checks the count;
+the nonempty path loads the fields base, writes the pointed iterator slot,
+then reloads the receiver's fields base for its return. That second load is
+fresh: the stored pointer and returned pointer are not proved equal without
+noninterference. Valid coherent field storage and nonwrapping endpoints are
+required to interpret the guard as capacity or iteration correctness.
+
+The complete bridge passes the original receiver and a computed address of
+its own stack context slot to the same preparation entry that the input
+helper calls. It reloads the context pointer after the child and checks the
+complete release/counter program against that fresh pointer. A computed
+stack address is an origin fact, not proof that it differs numerically from
+the original iterator or another pointer. The complete preparation program
+checks readiness, sets a preparing bit, recursively prepares the parent or
+generic receiver under its guards, calls the ordinary/generic and auxiliary
+children, then clears preparing and sets fields-ready on its normal finish.
+There is no additional preparing-bit guard before parent recursion. The
+ordinary/auxiliary storage construction, mutations of the passed pointed slot, compatible
+initialization/synchronization and recursive termination remain open.
+
+The complete generic field child first obtains a candidate source receiver
+through the checked closed wrapper and saves its unsigned word field count.
+A zero saved count stores a null fields pointer and skips the inline
+allocation path; the preceding receiver helper's effects remain unknown.
+The nonzero path scales the saved count by the same record stride that the
+named iterator uses, reserves a cursor range and calls the actual shared
+clear entry with a zero fill word and that scaled byte length. Its normal
+return is the old cursor under the clear proof's writable-storage, CPU/DF,
+nonwrapping and payload/control/stack noninterference conditions. The two
+global allocator-function loads are fresh, and neither they nor the
+remaining-space guard prove allocation success or usable capacity.
+
+Each generic loop iteration freshly reloads the source fields base and the
+receiver's generic link. A child receives the fresh source type, an address
+within that generic-link record and a zero third word; its return is stored
+in the destination type slot. After the call, the source name, offset and
+trailing DWORD are freshly loaded and copied, and the saved original
+receiver is stored as the destination parent. Named getters directly anchor
+the name/type/parent/offset slots; the offset getter sign-extends its DWORD
+to a full GP register. The trailing DWORD remains anonymous. The explicit
+record stores tile the entire stride once per iteration, and the saved
+count controls the loop under normal ABI returns. This does not prove a
+live class, successful type substitution, alias-safe child effects or that
+other writes never touch the destination records.
+
+The generic program publishes the clear-return pointer into the receiver's
+fields slot but does not directly assign that receiver's field count. The
+saved source count and the receiver count later read by the named iterator
+are therefore a separate unresolved join. Setting fields-ready in the
+parent cannot supply the missing count assignment, storage capacity or
+initialization result.
+
+The ordinary and auxiliary siblings now have complete owned instruction,
+control, call/store and normal frame checks through their dedicated owner.
+Its optional integer/Single decoder corrects previously split instructions;
+apparent calls and pushes produced by the old unknown-byte splits are not
+real control edges. Complete control coverage still leaves the remaining
+metadata, hash-map, layout, static-storage and global allocation effects
+structural only. Signed integer/Single conversions record their physical
+lanes and rounding/exception conditions without evaluating a runtime result.
+
+The ordinary prefix reads the receiver's unsigned word count for allocation
+with the named record stride, then freshly reloads that count after the
+allocator call for its loop. These are separate values unless their
+coherence and child/alias noninterference are proved. The allocator entry
+matches the reviewed allocator, but the older byte-count caller's numeric
+domain cannot be transferred to this word-count caller. The ordinary child's
+own saved RDX home is overwritten by DWORD loop-counter stores. This reuse
+of a callee's incoming home is distinct from the pointer argument's target;
+it proves neither preservation nor modification of the passed pointed slot.
+
+The auxiliary parent-reference prefix first combines the parent byte with
+a fresh receiver byte, then uses XOR/mask/XOR to replace the named
+has-references bit in a second fresh receiver byte. The unselected bits
+equal that second load; equality of the receiver loads is not assumed.
+Under coherent state the selected bit inherits parent OR receiver. A later
+actual named has-references call conditionally sets the same bit. The local
+fields-ready write dominates two subsequent layout calls, so it occurs
+before those children have completed. Readiness alone therefore establishes
+neither completed layout effects nor successful initialization.
+
+Count provenance also requires the creation path before preparation. The
+maintained selected-dialect
+[`metadata reader`](../../tools/endfield-il2cpp/catalog_option_flow_metadata.py)
+exposes the type-definition `field_count` word; its reference-prefix and
+layout-tail interpretation is distinct from the historical schema bundle's
+helper. Matching a candidate native load to that count's stored position
+does not prove the source table pointer, destination class, cache identity
+or coherence with the later generic/ordinary preparation reads. Those joins
+remain explicit prerequisites, and a displacement search cannot exclude
+wider, indirect, aliased or child writes.
+
+The metadata-record creation candidate now has a complete owned control,
+call/store and normal-frame proof. Its source address scales the signed
+incoming DWORD index by the selected record stride, then adds a signed
+table offset from a fresh header-pointer load and a separately fresh global
+metadata base. The stored source pointer and allocation-result register
+remain preserved until the fresh count-word read under normal Win64 calls.
+A source vtable-count word contributes to the allocator's stride argument,
+with a unit count argument; the older allocator caller's numeric domain
+does not transfer to this caller or prove capacity.
+
+The source count word is copied into the allocation's same physical offset
+that the named class field-count consumer reads. The actual allocation call
+and this copy dominate every normal local return. The return projection
+moves the saved allocation result into the result register and restores the
+checked frame. The complete direct, unindexed destination-register store
+inventory has no second write overlapping this count. This narrow store
+fact does not exclude wider/indirect aliases or child changes, including
+changes after the copy.
+
+The current metadata file's field-count and vtable-count words agree with
+the maintained named reader and selected record layout. That file evidence
+does not authenticate the runtime global header/base pointers or establish
+an in-range source index. The allocation has not been joined to a live
+class/cache object or the later field-preparation receiver. Its copied
+quantity therefore remains distinct from the later generic saved source
+count and ordinary pre/post-allocation reads. Other metadata/cache/flag/type
+creation computations remain structural only. The optional bit-set and
+byte shift/add/not reader repairs the former fake immediate-return split;
+only the complete authenticated program supports the return/dominance facts.
+
+The optional [`integer_byte_shifts`](../../scripts/game_data/il2cpp/integer_byte_shifts.py)
+reader supplies exact immediate logical byte-register shifts for these bit
+consumers. It preserves high-byte/REX distinctions and the other parent bits;
+it does not infer flags or CPU execution. Earlier bounded linear candidates
+could split that opcode into unrelated byte/call rows. Only the authenticated
+closed entries and complete owned programs support the interpretations above;
+neighbouring bytes in a bounded prefix supply no function ownership.
 
 The first body's direct copy target joins the same owned bulk entry used by
 the maintained [EffectLineCenter copy dispatch proof](../../scripts/game_data/buff_effect_line_center_copy_dispatch_native.py)

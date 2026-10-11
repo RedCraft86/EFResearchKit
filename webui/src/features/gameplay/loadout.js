@@ -10,8 +10,10 @@
 //
 // otherBaseAdd gives MaxHp floor(Str)·efficiencyOfSTR and the four
 // AtkIncreaseFactorFrom* attributes their main/sub rates; otherFinalScalar
-// gives Atk 1 + Σ floor(X)·AtkIncreaseFactorFromX. Attributes whose hooks the
-// contract does not model are not displayed. The page never computes without
+// gives Atk 1 + Σ floor(X)·AtkIncreaseFactorFromX. Reviewed v2 publications also
+// include Will healing, Agi/Wisd resistance and movement/cooldown scalars.
+// Attributes whose hooks the
+// contract does not model are labelled as partial configuration values. The page never computes without
 // a validated formula.
 (() => {
   const WebUI = window.WebUI;
@@ -22,10 +24,14 @@
   const STR = 39, MAX_HP = 1, ATK = 2;
   const FOUR_ATTRS = [39, 40, 41, 42];
   const FACTOR_OF = { 39: 76, 40: 77, 41: 78, 42: 79 };
-  // Attributes whose other-attribute hook the contract does not model; their
-  // computed value would be incomplete, so they are never shown.
-  const UNMODELLED = new Set([13, 29, 30, 47, 94, 95, 96, 97, 98]);
-  const HEADLINE = [1, 2, 3, 39, 40, 41, 42, 9, 10];
+  // Keep unmodelled derived hooks visible, but label their configuration-only
+  // result rather than claiming the general modifier formula is complete.
+  const CONVERSION_ATTRS = new Set([13, 29, 30, 47, 94, 95, 96, 97, 98, 99]);
+  const DISPLAY_ORDER = [39, 40, 41, 42, 1, 2, 3, 9, 10, 87,
+    94, 98, 97, 96, 95, 99, 29, 30, 47, 44, 26, 50, 51, 52, 53, 54];
+  // Resistance scalars are another representation of the resistance family;
+  // avoid presenting two identically named rows as independent player stats.
+  const INTERNAL_ATTRS = new Set([...Object.values(FACTOR_OF), 80, 81, 82, 83, 84, 85]);
   const SLOTS = [
     { key: "body", partType: 0 },
     { key: "hand", partType: 1 },
@@ -52,6 +58,7 @@
   function createCalculator(calc, character, row, modifiers) {
     const meta = calc.attributes || {};
     const k = calc.coefficients || {};
+    const conversionsReviewed = !!calc.formula?.otherBaseFinalScalar;
     const buckets = new Map();
     for (const modifier of modifiers) {
       const value = Number(modifier.value);
@@ -82,6 +89,12 @@
     const memo = new Map();
     const otherBaseAdd = (attr) => {
       if (attr === MAX_HP) return Math.floor(final(STR)) * Number(k.efficiencyOfSTR || 0);
+      if (conversionsReviewed && (attr === 29 || attr === 30)) return Math.floor(final(42)) * Number(k[attr === 29 ? 'healerEfficiencyOfWILL' : 'recoverEfficiencyOfWILL'] || 0);
+      if (conversionsReviewed && attr >= 94 && attr <= 98) {
+        const ability = attr === 94 ? 40 : 41;
+        const efficiency = Number(k[attr === 94 ? 'efficiencyOfAGI' : 'efficiencyOfWISD'] || 0);
+        return 100 * (1 - 1 / (1 + Math.floor(final(ability)) * efficiency));
+      }
       const source = Object.keys(FACTOR_OF).find((key) => FACTOR_OF[key] === attr);
       if (source) {
         const id = Number(source);
@@ -91,6 +104,7 @@
       return 0;
     };
     const otherFinalScalar = (attr) => {
+      if (conversionsReviewed && attr === 47) return final(100);
       if (attr !== ATK) return 1;
       return 1 + FOUR_ATTRS.reduce((total, id) => total + Math.floor(final(id)) * final(FACTOR_OF[id]), 0);
     };
@@ -99,7 +113,8 @@
     }
     function armed(attr) {
       const factor = Math.max(1 + sum(attr, MODIFIER.BaseMultiplier), 0);
-      return clamp(attr, (base(attr) * factor + sum(attr, MODIFIER.BaseFinalAddition)) * product(attr, MODIFIER.BaseFinalMultiplier));
+      const otherScalar = conversionsReviewed && attr === 13 ? 1 - final(86) : 1;
+      return clamp(attr, (base(attr) * factor + sum(attr, MODIFIER.BaseFinalAddition)) * product(attr, MODIFIER.BaseFinalMultiplier) * otherScalar);
     }
     function final(attr) {
       if (memo.has(attr)) return memo.get(attr);
@@ -120,6 +135,7 @@
     return {
       pos: Math.max(0, rows.length - 1),
       potential: 0,
+      favorTalent: null,
       weaponId: weapon?.id || "",
       weaponPos: null,
       weaponPotential: 0,
@@ -128,6 +144,38 @@
       // Enhancement step per equipment attribute line: slot -> attrIndex -> step.
       enhance: { body: {}, hand: {}, acc1: {}, acc2: {} },
     };
+  }
+
+  const LOADOUT_STORAGE_PREFIX = "endfield.loadout.v1:";
+  function restoreState(entry, h) {
+    const state = defaultState(entry, h);
+    let saved;
+    try { saved = JSON.parse(WebUI.storageGet(LOADOUT_STORAGE_PREFIX + entry.id) || "null"); } catch (_) { return state; }
+    if (!saved || typeof saved !== "object") return state;
+    const integer = (value, fallback, max = Number.MAX_SAFE_INTEGER) => Number.isInteger(value) && value >= 0 ? Math.min(value, max) : fallback;
+    state.pos = integer(saved.pos, state.pos, Math.max(0, entry.attributeRows.length - 1));
+    state.potential = integer(saved.potential, state.potential, (entry.potentials?.levels || []).length);
+    state.favorTalent = saved.favorTalent === null ? null : integer(saved.favorTalent, null);
+    const weapon = h.entries.find((item) => item.kind === "weapon" && item.id === saved.weaponId && Number(item.weaponType) === Number(entry.weaponType));
+    state.weaponId = saved.weaponId === "" ? "" : weapon?.id || state.weaponId;
+    state.weaponPos = integer(saved.weaponPos, null, weapon ? Math.max(0, weaponPositions(weapon).length - 1) : 0);
+    state.weaponPotential = integer(saved.weaponPotential, 0, weapon?.talentTemplate?.rows?.length || 0);
+    for (const [key, value] of Object.entries(saved.skillLevels || {})) {
+      if (key !== "__proto__" && Number.isInteger(value) && value >= 1) state.skillLevels[key] = value;
+    }
+    for (const slot of SLOTS) {
+      const item = h.entries.find((candidate) => candidate.kind === "equipment" && candidate.id === saved.slots?.[slot.key] && Number(candidate.partType) === slot.partType);
+      state.slots[slot.key] = item?.id || "";
+      for (const line of item?.attributeModifiers || []) {
+        const value = saved.enhance?.[slot.key]?.[String(line.attrIndex)];
+        if (Number.isInteger(value) && value >= 1) state.enhance[slot.key][String(line.attrIndex)] = Math.min(value, (line.values || []).length || 1);
+      }
+    }
+    return state;
+  }
+
+  function saveState(entry, state) {
+    WebUI.storageSet(LOADOUT_STORAGE_PREFIX + entry.id, JSON.stringify(state));
   }
 
   function weaponPositions(weapon) {
@@ -172,11 +220,28 @@
     return { modifiers, unknown: false };
   }
 
+  function favorTalentInfo(entry, state, row) {
+    const levels = (entry.talentGroups || []).filter((group) => group.kind === "attribute")
+      .flatMap((group) => group.levels || []).sort((a, b) => Number(a.sortIndex || a.level) - Number(b.sortIndex || b.level));
+    const available = levels.filter((level) => Number(level.breakStage || 0) <= Number(row.breakStage || 0));
+    const count = Math.max(0, Math.min(available.length, state.favorTalent ?? available.length));
+    return { levels: available, count };
+  }
+
   function gatherInputs(entry, state, h) {
     const rows = entry.attributeRows || [];
     const row = rows[state.pos] || rows[rows.length - 1] || { attrs: {} };
     const modifiers = [];
     const notes = [];
+    const favor = favorTalentInfo(entry, state, row);
+    for (const talent of favor.levels.slice(0, favor.count)) {
+      const effects = talent.attributeModifier?.attributeModifiers || [];
+      if (!effects.length) notes.push(`${talent.title}: ${h.text("loadoutSkillUnknown")}`);
+      for (const effect of effects) {
+        if (!Number.isFinite(Number(effect.attrValue))) continue;
+        modifiers.push({ ...effect, value: Number(effect.attrValue), source: `${h.text("loadoutFavorTalent")} · ${talent.title} ${talent.level}` });
+      }
+    }
     // Potential attribute effects up to the selected potential.
     for (const potential of entry.potentials?.levels || []) {
       if (Number(potential.level) > state.potential) continue;
@@ -237,8 +302,12 @@
 
   function formatAttr(calc, attr, value, h) {
     const meta = calc.attributes?.[String(attr)] || {};
-    const spec = (String(meta.valueFormat || "").match(/\{value(?::([^}]+))?\}/) || [])[1] || "";
-    if (spec) return h.formatDescriptionValue(value, spec);
+    const format = String(meta.valueFormat || "");
+    const match = /^\{(value|1-value|value-1|100-100\*value)(?::([^}]+))?\}$/.exec(format);
+    if (match) {
+      const displayed = { value, "1-value": 1 - value, "value-1": value - 1, "100-100*value": 100 - 100 * value }[match[1]];
+      return h.formatDescriptionValue(displayed, match[2] || "");
+    }
     return h.formatValue(Number(value.toFixed(2)));
   }
 
@@ -272,6 +341,7 @@
     const perLevel = (entry.levelCurve?.perLevel || []).find((item) => Number(item.level) === Number(row.level)) || {};
     const breakItems = (entry.breakthroughs || []).filter((item) => Number(item.stage) <= Number(row.breakStage)).flatMap((item) => item.requiredItem || []);
     const potentials = (entry.potentials?.levels || []).length;
+    const favor = favorTalentInfo(entry, state, row);
     const cost = [
       Number(perLevel.expSum) ? { id: "loadout-exp", name: h.text("loadoutExp"), count: perLevel.expSum } : null,
       Number(perLevel.goldSum) ? { ...(h.goldItem() || { id: "item_gold", name: h.text("gold") }), count: perLevel.goldSum } : null,
@@ -280,16 +350,53 @@
       <div class="gameplay-loadout-block-title">${h.escapeHtml(entry.title)}</div>
       ${renderSlider("pos", Math.max(0, rows.length - 1), state.pos, `${h.escapeHtml(h.text("loadoutLevel"))} <b>${h.escapeHtml(String(row.level))}</b> · ${h.escapeHtml(h.text("loadoutBreakStage"))} ${h.escapeHtml(String(row.breakStage ?? 0))}`)}
       ${potentials ? renderSlider("potential", potentials, state.potential, `${h.escapeHtml(h.text("loadoutPotential"))} <b>${state.potential}</b>`) : ""}
+      ${favor.levels.length ? renderSlider("favorTalent", favor.levels.length, favor.count, `${h.escapeHtml(h.text("loadoutFavorTalent"))} <b>${favor.count}/${favor.levels.length}</b> · ${h.escapeHtml(favor.count ? h.text("loadoutFavorRequirement", { value: favor.levels[favor.count - 1].favorability || 0 }) : h.text("loadoutFavorNone"))}`) : ""}
       <div class="gameplay-subheading">${h.escapeHtml(h.text("loadoutLevelCost"))}</div>
       ${h.renderMaterialChips(sumCost([...cost, ...breakItems])) || `<span class="muted">-</span>`}
     </div>`;
+  }
+
+  // Pinyin collation boundaries provide initials without a network dependency.
+  // Polyphonic names may supply explicit aliases in the published record.
+  const pinyinCollator = new Intl.Collator("zh-Hans-u-co-pinyin");
+  const initialBoundaries = [..."阿八嚓搭蛾发噶哈击喀垃妈拿哦啪期然撒塌挖昔压匝"];
+  const initialLetters = "abcdefghjklmnopqrstwxyz";
+  const initialCache = new Map();
+  function initials(value) {
+    return [...String(value || "")].map((char) => {
+      if (!/[\u3400-\u9fff]/.test(char)) return /[a-z0-9]/i.test(char) ? char.toLowerCase() : "";
+      if (!initialCache.has(char)) {
+        let result = "";
+        for (let i = 0; i < initialBoundaries.length; i += 1) {
+          if (pinyinCollator.compare(char, initialBoundaries[i]) < 0) break;
+          result = initialLetters[i];
+        }
+        initialCache.set(char, result);
+      }
+      return initialCache.get(char);
+    }).join("");
+  }
+
+  function pickerSearchText(item) {
+    const names = [item.title, item.name, item.suit?.name, ...(item.aliases || [])].filter(Boolean);
+    return [...names, ...names.map(initials), item.id].join("\n");
+  }
+
+  function renderPicker(options, value, kind, slot, h) {
+    const chosen = options.find((item) => item.id === value);
+    const label = (item) => kind === "weaponId"
+      ? `${"★".repeat(Number(item.rarity || 0))} ${item.title}`
+      : `Lv${item.minWearLv || "?"} · ${item.title}${item.suit?.name ? ` · ${item.suit.name}` : ""}`;
+    const image = (item) => item ? h.renderItemIcon(item, item.title, { static: true }) : "";
+    const row = (item) => `<button type="button" class="gameplay-loadout-choice" data-picker-value="${h.escapeHtml(item?.id || "")}" aria-pressed="${(item?.id || "") === value}" data-picker-search="${h.escapeHtml(item ? pickerSearchText(item) : "")}">${image(item)}<span>${h.escapeHtml(item ? label(item) : h.text("loadoutNone"))}</span></button>`;
+    return `<details class="gameplay-loadout-picker" data-picker-kind="${kind}" data-picker-slot="${slot || ""}"><summary>${image(chosen)}<span>${h.escapeHtml(chosen ? label(chosen) : h.text("loadoutNone"))}</span></summary><label class="gameplay-loadout-search"><span>${h.escapeHtml(h.text("loadoutSearch"))}</span><input type="search" autocomplete="off" placeholder="${h.escapeHtml(h.text("loadoutSearch"))}"></label><div class="gameplay-loadout-choices">${row(null)}${options.map(row).join("")}</div><p class="muted" data-picker-empty hidden>${h.escapeHtml(h.text("loadoutSearchEmpty"))}</p></details>`;
   }
 
   function renderWeaponControls(entry, state, inputs, h) {
     const options = h.entries
       .filter((item) => item.kind === "weapon" && Number(item.weaponType) === Number(entry.weaponType))
       .sort((a, b) => Number(b.rarity || 0) - Number(a.rarity || 0) || String(a.title).localeCompare(String(b.title)));
-    const select = `<select data-loadout="weaponId"><option value="">${h.escapeHtml(h.text("loadoutNone"))}</option>${options.map((item) => `<option value="${h.escapeHtml(item.id)}"${item.id === state.weaponId ? " selected" : ""}>${h.escapeHtml(`${"★".repeat(Number(item.rarity || 0))} ${item.title}`)}</option>`).join("")}</select>`;
+    const select = renderPicker(options, state.weaponId, "weaponId", "", h);
     const info = inputs.weaponInfo;
     let body = "";
     if (info) {
@@ -336,7 +443,10 @@
       const step = Math.min(lineStep(state, slotKey, lines[0]), steps);
       const label = lines.map((line) => {
         const targets = resolveTargets(line, entry);
-        const name = targets.length === 4 ? h.text("loadoutAllAttributes") : targets.map((attr) => attrName(calc, attr)).join(" / ");
+        const resolvedName = targets.length === 4 ? h.text("loadoutAllAttributes") : targets.map((attr) => attrName(calc, attr)).join(" / ");
+        const targetType = Number(line.modifyAttributeType || 0);
+        const originalName = targetType === 1 ? h.text("stat_main_attr") : targetType === 2 ? h.text("stat_sub_attr") : "";
+        const name = originalName ? `${originalName}${resolvedName ? `（${resolvedName}）` : ""}` : resolvedName;
         const value = Number((line.values || [])[Math.min(step, (line.values || []).length) - 1]);
         const shown = Number.isFinite(value) ? formatAttr(calc, targets[0] ?? line.attrType, value, h) : "-";
         // Multiplier lines are fractions of the attribute; show them as percent.
@@ -361,8 +471,9 @@
       const warn = chosen && Number(chosen.minWearLv || 0) > level
         ? `<small class="gameplay-loadout-warn">${h.escapeHtml(h.text("loadoutMinWear", { level: chosen.minWearLv }))}</small>` : "";
       return `<div class="gameplay-loadout-slot">
-        <span class="gameplay-loadout-slot-label">${h.escapeHtml(slot.partType === 2 ? `${label} ${slot.key === "acc1" ? 1 : 2}` : label)}</span>
-        <select data-loadout="slot" data-slot="${slot.key}"><option value="">${h.escapeHtml(h.text("loadoutNone"))}</option>${options.map((item) => `<option value="${h.escapeHtml(item.id)}"${item.id === state.slots[slot.key] ? " selected" : ""}>${h.escapeHtml(`Lv${item.minWearLv || "?"} · ${item.title}${item.suit?.name ? ` · ${item.suit.name}` : ""}`)}</option>`).join("")}</select>
+        <div class="gameplay-loadout-slot-heading"><span class="gameplay-loadout-slot-label">${h.escapeHtml(slot.partType === 2 ? `${label} ${slot.key === "acc1" ? 1 : 2}` : label)}</span>
+        ${slot.partType === 2 ? `<button type="button" data-copy-accessory="${slot.key}"${state.slots[slot.key === "acc1" ? "acc2" : "acc1"] ? "" : " disabled"}>${h.escapeHtml(h.text("loadoutCopyAccessory", { slot: slot.key === "acc1" ? 2 : 1 }))}</button>` : ""}</div>
+        ${renderPicker(options, state.slots[slot.key], "slot", slot.key, h)}
         ${chosen ? `<div class="gameplay-loadout-lines">${renderLineSliders(entry, state, slot.key, chosen, h)}</div>` : ""}
         ${warn}
       </div>`;
@@ -378,19 +489,28 @@
 
   function renderStats(entry, calc, inputs, h) {
     const calculator = createCalculator(calc, entry, inputs.row, inputs.modifiers);
-    const shown = new Set(HEADLINE);
+    const shown = new Set(DISPLAY_ORDER);
+    for (const [key, meta] of Object.entries(calc.attributes || {})) if (meta.name) shown.add(Number(key));
     for (const attr of calculator.buckets.keys()) if (calc.attributes?.[String(attr)]?.name) shown.add(attr);
-    const attrs = [...shown].filter((attr) => !UNMODELLED.has(attr) && !Object.values(FACTOR_OF).includes(attr))
-      .sort((a, b) => (HEADLINE.indexOf(a) + 1 || 999) - (HEADLINE.indexOf(b) + 1 || 999)
-        || Number(calc.attributes?.[String(a)]?.sortIndex ?? 999) - Number(calc.attributes?.[String(b)]?.sortIndex ?? 999));
+    const attrs = [...shown].filter((attr) => !INTERNAL_ATTRS.has(attr))
+      .sort((a, b) => (DISPLAY_ORDER.indexOf(a) + 1 || 999) - (DISPLAY_ORDER.indexOf(b) + 1 || 999)
+        || Number(calc.attributes?.[String(a)]?.sortIndex ?? 999) - Number(calc.attributes?.[String(b)]?.sortIndex ?? 999)
+        || a - b);
     const rows = attrs.map((attr) => {
       const raw = calculator.raw(attr);
       const value = calculator.final(attr);
       const sources = (calculator.buckets.get(attr)?.sources || []).map((item) => `${item.source}: ${MODIFIER_NAMES[item.modifierType] || item.modifierType} ${h.formatValue(Number(item.value.toFixed(4)))}`);
       if (attr === MAX_HP) sources.push(`${attrName(calc, STR)} → +${h.formatValue(Number(calculator.otherBaseAdd(MAX_HP).toFixed(2)))}`);
       if (attr === ATK) sources.push(`${h.text("loadoutAtkScalar")} ×${calculator.otherFinalScalar(ATK).toFixed(4)}`);
+      if (attr === 29 || attr === 30 || (attr >= 94 && attr <= 98)) {
+        const ability = attr === 29 || attr === 30 ? 42 : attr === 94 ? 40 : 41;
+        sources.push(`${attrName(calc, ability)} → +${h.formatValue(Number(calculator.otherBaseAdd(attr).toFixed(4)))}`);
+      }
+      if (attr === 47) sources.push(`${h.text("loadoutCooldownScalar")} ×${calculator.otherFinalScalar(attr).toFixed(4)}`);
+      const partial = !calc.formula?.otherBaseFinalScalar && CONVERSION_ATTRS.has(attr);
+      const boundary = partial ? `<small class="gameplay-loadout-partial" title="${h.escapeHtml(h.text("loadoutPartialNote"))}">${h.escapeHtml(h.text("loadoutPartial"))}</small>` : "";
       const changed = Math.abs(value - raw) > 1e-9;
-      return `<tr${changed ? ' class="is-changed"' : ""}><th>${h.escapeHtml(attrName(calc, attr))}</th><td>${h.escapeHtml(formatAttr(calc, attr, raw, h))}</td><td><b>${h.escapeHtml(formatAttr(calc, attr, value, h))}</b></td><td>${sources.map((line) => `<div>${h.escapeHtml(line)}</div>`).join("") || `<span class="muted">-</span>`}</td></tr>`;
+      return `<tr${changed ? ' class="is-changed"' : ""}><th>${h.escapeHtml(attrName(calc, attr))}</th><td>${h.escapeHtml(formatAttr(calc, attr, raw, h))}</td><td><b>${h.escapeHtml(formatAttr(calc, attr, value, h))}</b>${boundary}</td><td>${sources.map((line) => `<div>${h.escapeHtml(line)}</div>`).join("") || `<span class="muted">-</span>`}</td></tr>`;
     }).join("");
     return `<div class="gameplay-loadout-block gameplay-loadout-stats">
       <div class="gameplay-loadout-block-title">${h.escapeHtml(h.text("loadoutStats"))} ${h.renderEvidenceBadge("recoveryExact", "loadoutFormulaNote", "exact")}</div>
@@ -407,14 +527,14 @@
     }
     if (!(entry.attributeRows || []).length) return `<p class="muted">${h.escapeHtml(h.text("loadoutNoRows"))}</p>`;
     h.STATE.loadouts ||= {};
-    const state = h.STATE.loadouts[entry.id] ||= defaultState(entry, h);
+    const state = h.STATE.loadouts[entry.id] ||= restoreState(entry, h);
     const inputs = gatherInputs(entry, state, h);
     return `<div class="gameplay-loadout" data-loadout-root="${h.escapeHtml(entry.id)}">
       <div class="gameplay-loadout-controls">
         ${renderCharacterControls(entry, state, inputs, h)}
         ${renderWeaponControls(entry, state, inputs, h)}
-        ${renderEquipmentControls(entry, state, inputs, h)}
       </div>
+      ${renderEquipmentControls(entry, state, inputs, h)}
       ${renderStats(entry, calc, inputs, h)}
     </div>`;
   }
@@ -427,6 +547,7 @@
       const kind = control.dataset.loadout;
       const value = control.value;
       if (kind === "pos") state.pos = Number(value);
+      else if (kind === "favorTalent") state.favorTalent = Number(value);
       else if (kind === "potential") state.potential = Number(value);
       else if (kind === "weaponId") { state.weaponId = value; state.weaponPos = null; }
       else if (kind === "weaponPos") state.weaponPos = Number(value);
@@ -434,11 +555,50 @@
       else if (kind === "skill") state.skillLevels[`${state.weaponId}:${control.dataset.skillIndex}`] = Number(value);
       else if (kind === "slot") { state.slots[control.dataset.slot] = value; state.enhance[control.dataset.slot] = {}; }
       else if (kind === "enhance") state.enhance[control.dataset.slot][control.dataset.line] = Number(value);
+      saveState(entry, state);
     };
     const rerender = () => {
       container.outerHTML = render(entry, h);
       bind(root, entry, h);
     };
+    container.querySelectorAll("[data-copy-accessory]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.copyAccessory;
+        if (target !== "acc1" && target !== "acc2") return;
+        const source = target === "acc1" ? "acc2" : "acc1";
+        if (!state.slots[source]) return;
+        state.slots[target] = state.slots[source];
+        state.enhance[target] = { ...state.enhance[source] };
+        saveState(entry, state);
+        rerender();
+        root.querySelector(`[data-copy-accessory="${target}"]`)?.focus();
+      });
+    });
+    container.querySelectorAll("[data-picker-kind]").forEach((picker) => {
+      const search = picker.querySelector("input");
+      picker.addEventListener("toggle", () => { if (picker.open) search.focus(); });
+      search.addEventListener("input", () => {
+        const tokens = WebUI.parseQuery(search.value);
+        let matches = 0;
+        picker.querySelectorAll("[data-picker-value]").forEach((button) => {
+          button.hidden = Boolean(button.dataset.pickerValue) && !WebUI.queryMatches(button.dataset.pickerSearch, tokens);
+          if (!button.hidden && button.dataset.pickerValue) matches += 1;
+        });
+        picker.querySelector("[data-picker-empty]").hidden = matches > 0;
+      });
+      search.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") { picker.open = false; picker.querySelector("summary").focus(); }
+      });
+      picker.querySelectorAll("[data-picker-value]").forEach((button) => {
+        button.addEventListener("click", () => {
+          apply({ dataset: { loadout: picker.dataset.pickerKind, slot: picker.dataset.pickerSlot }, value: button.dataset.pickerValue });
+          const kind = picker.dataset.pickerKind;
+          const slot = picker.dataset.pickerSlot;
+          rerender();
+          root.querySelector(`[data-picker-kind="${kind}"][data-picker-slot="${slot}"] summary`)?.focus();
+        });
+      });
+    });
     // While a slider moves only the stats table is replaced, so the dragged
     // control survives; releasing it re-renders labels, bounds and costs.
     const refreshStats = () => {
@@ -460,5 +620,5 @@
     });
   }
 
-  WebUI.gameplayLoadout = { render, bind, createCalculator };
+  WebUI.gameplayLoadout = { render, bind, createCalculator, pickerSearchText, restoreState };
 })();

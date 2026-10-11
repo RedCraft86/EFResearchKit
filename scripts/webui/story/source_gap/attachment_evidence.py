@@ -258,7 +258,7 @@ def build_quest_attachment_diagnostic_index(
             and safe_key((quest.get("source") or {}).get("file"))
             == expected_source_file
             and tuple(_string_list(quest.get("prevQuestIds")))
-            == declaration["prevQuestIds"]
+            == tuple(declaration["prevQuestIds"])
             and objective.get("index") == 1
             and safe_key(leaf.get("type")) == declaration["conditionType"]
             and set(_string_list(objective.get("conditionTypes")))
@@ -421,7 +421,7 @@ def build_quest_attachment_diagnostic_index(
                     "membership": membership_by_start.get(
                         getter_records[0].get("start")
                     ),
-                    "texts": record_texts(getter_records[0]),
+                    "texts": list(record_texts(getter_records[0])),
                 }
                 if len(getter_records) == 1
                 else {}
@@ -536,7 +536,7 @@ def build_quest_attachment_diagnostic_index(
                     },),
                 )
                 and proxy_dialog_rows
-                == declaration["npcProxyDialogRows"]
+                == tuple(tuple(row) for row in declaration["npcProxyDialogRows"])
                 and isinstance(proxy_definition, dict)
                 and proxy_definition.get("subDataParentId") == 22800780000
                 and safe_key(proxy_definition.get("proxyId")) == proxy_id
@@ -600,7 +600,7 @@ def build_quest_attachment_diagnostic_index(
                 )
                 and not flow_quest.get("proxyDialogs")
                 and proxy_dialog_rows
-                == declaration["npcProxyDialogRows"]
+                == tuple(tuple(row) for row in declaration["npcProxyDialogRows"])
                 and all(
                     leveldata_data.count(value.encode("utf-8")) == count
                     for value, count in byte_counts.items()

@@ -119,6 +119,26 @@ The source-only graph is intentionally sparse. Accepted edges preserve evidence
 type, direction, source hash, and validation status. It must remain acyclic;
 incomparable files remain incomparable.
 
+Hash-shaped CallServer labels that equal the owning action UID are retained as
+non-ordering callback diagnostics. Their classification follows the selected
+build's reviewed action route, rather than a literal opcode from an older
+build. Removing such a label from unresolved Story nodes does not close the
+server handoff or add a timeline edge.
+
+DialogTree OpenUI controls retain every serialized outgoing arm. Named native
+ports, the native configured default index, and explicit shipped Lua result
+producers label those alternatives without choosing one. A UI closing without
+an explicit override can resume a configured nonzero outgoing ordinal; assuming
+that every default is the first arm loses the current native continuation
+policy. Missing producers remain a bounded shipped-corpus finding. The binary,
+Lua, and source-identity gates must all pass before publishing those labels.
+
+A Branch iterator's non-Story arms remain part of its action sequence. When
+only one arm reaches Story playback, its stored sequence adds useful local
+action context but cannot order two Story scenes. Scene-pair incomparability
+must therefore be examined by causal carrier, rather than treated as a request
+to sort every scene into a total timeline.
+
 Manual inputs are presentation, not source evidence:
 
 - `webui/overrides/story_order.json` is user-managed and never regenerated.
@@ -250,9 +270,12 @@ incoming property delivery; it does not identify the path actually taken by
 the earlier gathering session. The shared recipe adds receiver/packet identity
 at `InteractiveInfo.UpdateServerProperty` and supplied signed old/new state
 with explicit entity identity at `NavObstacleManager.OnInteractiveStateUpdate`.
-Selected-client preparation and host preflight have passed; these two entries
-still need live observation. Navigation dispatch is conditional, and its entry
-does not prove an applied property write or a Mission counter update. Delivered
+The later clean marker/photo interval retains both entries, with packet and
+stored entity identities agreeing within the property consumer and authored
+script ownership retained for marker-related entities. Navigation supplies its
+old/new states with explicit entity identity. Navigation dispatch is
+conditional, and its entry does not prove an applied property write or a
+Mission counter update. Delivered
 map members, concrete variable values and the incoming objective dictionary
 remain unread. Native claims and their limits belong to
 `memory/game_data/story_carriers.md`; no Story ordering or generated page-data
@@ -264,11 +287,50 @@ partial and combined-condition progress, authored action dispatch, branching,
 quest success/failure/pause, and final mission completion. Keep authored
 configuration, validated native consumer behavior, observed entries and a clean
 end-to-end session distinct. A hook firing once admits that observed case;
-  installing every hook does not establish coverage of every mission or condition
+installing every hook does not establish coverage of every mission or condition
 family. Prefer the next available mission that exercises an uncovered mechanism
 over repeating an already understood sequence. Preserve normal login, separate
 countable actions with visible progress, and retain the final transition and
 any separately performed claim.
+
+The maintained `mission_mechanism_audit` combines a selected exported mission
+set, an authenticated shared-native evaluation and admitted timeline receipts.
+It keeps stored family coverage, inheritance-based default selector
+applicability, quest-entry associations and uniquely owned condition entries
+separate. The nearest unreviewed getter prevents an inherited classification;
+a quest beside a family does not prove that leaf ran. Its generated census and
+offline review priorities belong under `reports/runtime_capture/`. Durable
+selector, dependency-graph and typed current-pair rules belong to
+`memory/game_data/story_carriers.md`; this audit publishes no Story order or
+page data and requires no canonical rebuild.
+
+Selector coverage now admits individually checked named overrides through the
+selected objective census, with default enum returns after the IFix guard's
+false path. Keep excluded local leaf lanes
+separate from combined traversal and from unreviewed families. The complete
+normal objective-copy caller has checked values/detail/nested-hash loops, but
+copied completion/count data still cannot substitute for a quest-state
+transition. The audit now joins selected enum names and reviewed state/AST
+consumer claims to those operands, and uses a separately authenticated ASCII
+native parser model. AND and OR reduce at equal precedence from left to right;
+the audit retains all supplied decision-wait children separately from expression
+inputs. Required-true, required-false and alternative roles remain conditional
+on live Param initialization, helper/context behavior and coherent nested caches;
+each objective is considered separately. References to other
+quests or missions do not move the owning objective or add a chronology edge.
+The native outer combined evaluator waits for every child to become decided
+before evaluating its short-circuit AST. Activation can match existing state,
+and a missing current quest record can inherit `Completed` from its completed
+owning mission. Reviewed source-zero Param resolvers copy constants before
+getter/blackboard dispatch, while typed producer/subscriber contexts and compiled
+packet lanes explain local state-event delivery. A changed active result is
+cached before its callback and subsequent parent evaluation; callback reentrancy
+keeps nested coherence unresolved. These rules explain restored eligibility,
+local publication and delayed handoffs; they do not observe a new completion
+event or fill a recording gap. Detailed proofs and their limits remain in
+`memory/game_data/story_carriers.md`, the shared-native claims contract and
+`mission_expression_native.json`. No chronological edge is promoted by this
+review, and no canonical rebuild is needed for its report-only audit.
 
 The retained `a1m15` sequence now reaches its final quest success, an explicit
 `CompleteMission` entry with a supplied succeed ID, and a `Processing` to
@@ -294,6 +356,21 @@ The offline inspector uses the retained profile, preserves raw scalar bits/nulls
 and reports observed/unobserved coverage separately from receipt completeness.
 Explicit quest membership can join a retained mission definition; pointer reuse,
 temporal proximity and concurrent observations do not establish ownership.
+
+`mission_capture_timeline` now makes these distinctions reproducible from a
+passing retained inspection. It keeps per-entry identities and fields, marks
+restoration separately from new quest entries, and reports configured
+predecessors beside the same-thread success/start entries that corroborate
+them. The explicit stored main-path list retains nonnumeric quest order as
+authored structure, while gaps in observed transitions stay gaps. Missing and
+ambiguous mission associations stay visible, including
+playback and condition-only objective copies. An optional current-source join
+checks observed mission definitions against selected native inputs and current
+exported bytes; missing or changed inputs withhold current reuse while leaving
+the historical observation labelled as such. These offline reports publish no
+Story ordering edges or page data. In the retained completion route, new quest
+entries and final mission completion precede the related dialogue exit
+callbacks, so exit callbacks cannot substitute for quest progression.
 
 Installation readiness is separate from observed health. The launcher waits
 for advancing atomic status snapshots, recorded rows and a sustained healthy
@@ -418,6 +495,16 @@ complete evidence.
   `mission_trace_inspect` and the shared native claims. Keep authored topology,
   observed quest handoffs, restoration, and unresolved ownership separate;
   collection completeness and hook coverage answer different questions.
+- The native expression/parameter review now distinguishes ordinary value
+  construction, full MemoryPack field loading and the mission loader's JSON
+  paths. Keep exported constants conditional until a capture joins the live
+  Param and effective source selector to its condition owner. Native activation
+  control paths verify quest subscription before its initial result and mission
+  subscription after its initial result. Both can match without a new event;
+  neither supplies a completion timestamp. Use the
+  [Mission timeline capture requirement](../runtime_capture_requirements.md#mission-timeline)
+  to target a continuous handoff and, separately, a state-predicate/combined
+  evaluation interval with invocation and outcome linkage.
 - The reviewed default Mission client selector and result binder admit only
   `ClientOnly` leaves. Talk-finish and script-property conditions have other
   virtual types, which explains how their specialized hooks can be absent
@@ -445,15 +532,25 @@ complete evidence.
   and event-rate bounds while preserving the no-getter/no-container-traversal
   boundary. Another capture is unnecessary for the already observed
   identification callback or these recovered default consumers.
-  A prepared extension observes named Boolean-property condition lifecycle,
-  check and event entries plus the packet and runtime property-sync entries.
-  Scope and condition identity come from bounded before-entry fields; supplied
-  map contents and evaluated values remain excluded. Live installation and
-  event rates require a clean run on an unfinished matching marker objective.
-  Missing entries leave a coverage gap, and a sync entry alone proves no write.
-  Use a still-unfinished `日常·寻机启事` for that observation, preserving its
-  initial state for a single marker advance and final completion. Free
-  exploration by itself lacks that before/after objective ownership join.
+  A clean retained `m1m15` marker run now observes the packet and runtime
+  property-sync entries naming its authored script, alongside explicit quest
+  refresh, predecessor success/new-start and completion entries. The selected
+  local Boolean-condition lifecycle/check/event hooks remain unhit. This
+  records the named delivery lane for that variant without reading its supplied
+  maps, child values or applied writes. The screen independently retains
+  partial counts, and root-copy entries remain condition candidates with no
+  live quest assignment. Repeating this completed task is unnecessary for that
+  identity question. Its displayed name and radio names reuse `m1m9`, so the
+  captured quest/script IDs must select the actual definition and graph.
+  The same clean run admits the repaired photo group payload at explicitly
+  owned condition entries for several active photo quests. Only the
+  stored-group matches (`m1m32`, then `m1m31`) have retained progress-one and
+  completion entries. A reused condition ID or `GetResult` entry alone cannot
+  select the completed quest, and the stored-constant match does not observe
+  the live bound parameter or returned comparison result. These observations
+  answer the payload/owner association question without another recording;
+  dynamic entity-to-marker mapping and numeric/objective-map contents remain
+  separate recovery gaps.
 - Extend clean completion coverage to other available routes and uncovered
   mechanisms, retaining the supplied completion identity. Select daily variants
   by explicit runtime carriers. Require a complete final receipt; startup

@@ -18,7 +18,7 @@ wrappers; direct CLI commands are for focused recovery and diagnostics.
 | --- | --- |
 | Installed VFS catalog, overlay, block reads, Unity objects, conversion | `tools/AnimeStudio/` |
 | Installed-game orchestration, scope, worker isolation, provenance | `scripts/game_data/extraction/export_full_from_game.py` |
-| Story/Text, Map, Characters, Gameplay, Production, Audio, Assets, Data publication | owning Python builders under `scripts/` |
+| Story/Text, Map, Characters, Gameplay, Audio, Assets, Data publication | owning Python builders under `scripts/` |
 | Stable CLI mechanics and VFS evidence index | `.codex/skills/animestudio-workflow/references/animestudio.md` |
 | Per-build counts, hashes, failures, and audits | `reports/animestudio/` and `reports/export/` |
 
@@ -135,9 +135,13 @@ render parity: consumers must verify the manifest and imported mip bytes.
   and converted media under `Unity/<Type>`; Sprite is a crop-document row over
   its Texture2D ([`unity_assets.md`](unity_assets.md)). Animator `.fbx` is a
   store row too: each cutscene bundle re-exports the characters it carries, so
-  the same meshes repeat across never-identical files; FBX property blocks of
+  the same meshes repeat across files; FBX property blocks of
   `FBX_CHUNK_MIN` bytes or more are stored once in `chunks` (37 chen exports:
-  373 MB loose, 35 MB packed). Stores have no loose
+  373 MB loose, 35 MB packed). The FBX SDK stamps every write with a time,
+  random ids and the file name, so the store keeps each FBX normalized
+  (`scripts/game_data/fbx_normalize.py`): equal content is equal bytes and one
+  SHA256, and only content that really differs (per-cutscene prefab variants)
+  stays distinct. Stores have no loose
   fallback; `pack_export_stores` upgrades a v2/v3 root and
   `migrate_export_layout` a v1 root, with rollback.
 - `meta/<Layer>/...`, `meta/cab_map` and `meta/extraction/` stay per layer,
@@ -160,6 +164,14 @@ source/CAB plus PathID, never a PathID or normalized name alone. Persistent
 overlays StreamingAssets while retaining fallback chunk resolution. Missing
 dependencies, ambiguous external targets, malformed objects, and unsupported
 schemas remain explicit.
+
+For a combined VFS audit, priority is positional despite the option's name:
+pass Persistent as `--streaming-assets` (the primary root) and StreamingAssets
+as `--fallback-assets`. The loader recognizes a newer compatible primary
+metadata catalog as a replacement. Reversing these roots puts the newer
+catalog in fallback and correctly yields `conflicting_metadata`; this does
+not by itself establish corrupted metadata. Audit the intended overlay order
+before attributing a combined census failure to the exporter or game bytes.
 
 **Exact-only output.** Non-exact sub-trees become `$undecoded` stubs; partial,
 metadata-only and TypeTree-less objects are not written, and the export
@@ -194,6 +206,14 @@ AnimatorOverrideController) with `--map_op CABMap,Load` when the layer's CAB map
 exists; the CLI loads dependencies only to resolve PPtrs and exports just the
 primary file's objects (`SelectPrimaryFiles`). It costs several times the load
 time per bundle.
+
+Animator conversion accounts for meshless results with a
+`.fbx.empty.json` document whose `animeStudio.reason` is `no_mesh`. This proves
+only that the converter resolved no mesh, not that the prefab has no particles,
+camera behavior or other presentation. `TryExportFile` reserves the `.fbx`
+path before that decision, so a manifest can contain both the proposed `.fbx`
+row and the actual marker. Count actual FBX store rows separately from markers;
+a clean output-accounting result is not a complete skill-presentation claim.
 
 **Rebuilding the CLI** can change the VFS audit's `inputSetSha256` (what it
 fingerprints is stated in `AGENTS.md`), so rerun the full audit and rebind
@@ -273,6 +293,91 @@ translator dependency needs license and target-framework review.
 4. Rebuild the CLI, rerun the smallest affected export, inspect object-level
    diagnostics; run broad extraction only when focused parity passes.
 5. Record only durable conclusions here; inventories and hashes go to reports.
+
+## Empty Mesh outputs
+
+A zero-vertex Mesh OBJ can represent a successfully parsed collision-only,
+baked Unity Mesh. Focused raw probes in separate source CABs consumed the
+complete modern Endfield Mesh objects: render vertex/index buffers and the
+stream payload were absent, while the baked triangle collision buffer was
+populated. `Mesh.cs` skips compressed render data and triangle assembly
+when the serialized baked flag is set (see
+[`Mesh.cs`](../../tools/AnimeStudio/AnimeStudio/Classes/Mesh.cs));
+[`Exporter.ExportEmptyMesh`](../../tools/AnimeStudio/AnimeStudio.CLI/Exporter.cs) preserves
+the identity as a diagnostic OBJ. An Assets no-geometry tag also includes meshes
+with vertices but no faces; it must not imply every tagged object is baked or
+has zero stored positions. Typed/raw joins and generic Dumps distinguish baked
+collision geometry, point stubs, index-free FX meshes and a baked object whose
+two cooked buffers are themselves empty.
+The generic embedded-type-tree Dump/ToType reader projects out the
+`m_CompressedMesh` subtree only for Endfield Mesh objects whose serialized
+`m_CollisionMeshBaked` prefix is true. It preserves the shared tree and requires
+complete object consumption for that branch; malformed/trailing data still
+fails. The typed reader was already correct about that omission. Mesh JSON,
+empty OBJ markers and no-output warnings retain the collision flags and bounded
+cooked-buffer diagnostics (byte count, header, SHA256), without retaining all
+cooked buffers in memory during bulk export.
+
+The cooked buffers match the versioned framing of NVIDIA's
+[PhysX triangle writer](https://github.com/NVIDIAGameWorks/PhysX/blob/4.1/physx/source/physxcooking/src/mesh/TriangleMeshBuilder.cpp),
+[serialization flags](https://github.com/NVIDIAGameWorks/PhysX/blob/4.1/physx/source/geomutils/src/mesh/GuMeshData.h)
+and [stream header](https://github.com/NVIDIAGameWorks/PhysX/blob/4.1/physx/source/geomutils/src/GuSerialize.cpp).
+The maintained readers consume the complete observed cooked buffers, with
+contiguous byte-span accounting and independent geometry checks:
+
+- [`cooked_collision.py`](../../scripts/game_data/cooked_collision.py) owns
+  version-15 `NXS`/`MESH`: positions, cooked-order triangle indices, optional
+  materials, original-face remap and adjacency framing, BV4 version-3 quantized
+  or float slabs, local sphere/bounds, geometric epsilon and per-triangle edge
+  masks. Every active BV4 node is reachable, and leaves cover cooked triangles
+  exactly once. Index widths follow serialization flags; remap width follows
+  the stored maximum. The edge byte names silhouette bits 0–2 and convex bits
+  3–5 in triangle edge order 01/12/20. RTree, GPU tails and other versions fail
+  closed; `--prefix-only` explicitly retains the earlier partial probe.
+- [`cooked_convex.py`](../../scripts/game_data/cooked_convex.py) owns version-13
+  `NXS`/`CVXM`, version-9 `ICE`/`CLHL`: hull vertices, polygon planes and loops,
+  minimum-projection indices, edge/vertex face maps, optional GPU endpoints,
+  bounds, mass, inertia, center and internal sphere/box. Closed oriented edge
+  topology and Euler checks agree with stored maps. Independent volume
+  integration reproduces unit-density mass, center and **origin** inertia;
+  treating the stored tensor as center inertia is wrong. Optional `SUPM`/`GAUS`
+  version 0 and `VALE` version 2 encode cubemap minimum/maximum support vertices
+  and valency lists; every sample agrees with hull extrema and every adjacency
+  list with polygon edges.
+
+Numerical details matter. PhysX's quantizer truncates small negative minima to
+zero and does not decrement that zero word; only this exact branch receives
+one stored dequantization unit of lower-bound allowance. Independently rounded
+parent/child bounds receive two units. Convex planes can have small residuals
+against their polygon vertices: the source hull checker uses a scale-dependent
+cooking tolerance, so exact coplanarity is not promised. Internal sphere/box
+heuristics reproduce the [convex writer](https://github.com/NVIDIAGameWorks/PhysX/blob/4.1/physx/source/physxcooking/src/convex/ConvexMeshBuilder.cpp)
+only when float32 operation boundaries are preserved; float64 cancellation
+changes the limiting box for nearly axis-aligned planes.
+
+[`cooked_collision_corpus.py`](../../scripts/game_data/cooked_collision_corpus.py)
+owns the reusable selected-corpus gate. It validates the VFS ledger and expected
+input-set fingerprint, authenticates selected Bundle chunks and metadata/native
+inputs, snapshots the full exporter output closure, performs a fresh typed/raw
+Mesh extraction and requires exact serialized-identity coverage. Each cooked
+buffer must have a unique raw length/SHA256/header match before decoding to EOF.
+The selection defines coverage, not all installed Meshes. A scoped Bundle audit
+can validate a primary-layer selection without certifying the full overlay.
+The combined current audit uses Persistent first. Its ledger retains shadowed
+fallback declarations; the selected-corpus gate admits only active verified
+rows, so a shadowed file cannot satisfy coverage or duplicate an active chunk.
+Version-2 receipts derive the Unity export input directory from authenticated
+physical source chunks, allowing selected fallback chunks beneath an overlaid
+catalog. Version-1 single-root receipts remain readable with their original
+input-directory check. Saved receipts are reusable only while the metadata,
+native inputs, physical chunks and exporter closure still agree. Inventories,
+hashes and run receipts stay in
+`reports/assets/cooked_collision_current_latest.json` and `reports/animestudio/`.
+
+This establishes stored collision surfaces and acceleration/physical-property
+metadata. Runtime collider ownership, selected transforms/scales, renderer
+materials and collision behavior remain separate joins. Collision OBJs retain
+local coordinates and winding and are not published as render replacements.
 
 ## Remaining gaps
 

@@ -103,9 +103,20 @@ allocation descriptor goes into a callback payload whose command binds its
 first word through a native helper and requests a virtual dispatch of
 `ceil(nx*ny*nz/64)`, 1, 1 groups. This directly supports the offline header
 and stride framing and identifies a command-side consumer of the records.
-The record fields and tuple axes, the live root, the selected installed
-file, GPU execution and the texture format remain open. The room branch is
-separate from the V3 index parser.
+
+The property-table constructor and the callback's references establish the
+selected command's generic slot names: the configuration allocation's three
+descriptor words reach `_Input0`, the copied-record allocation's first word
+reaches `_Input1`, and the first words of two resolved resource handles reach
+`_Output0` and `_Output1`. `_Input0` does not receive grid dimensions directly.
+Before these bindings, the callback selects an operation by comparing its
+supplied key to native entry first words; it reuses the matched ordinal for
+record/output bindings and dispatch. This narrows the next consumer search
+to the operation reached through that key and its `_Input1` access. The
+generic input/output names do not decode individual records or identify a
+shader/kernel. The record fields and tuple axes, the live root, the selected
+installed file, GPU execution and the texture format remain open. The room
+branch is separate from the V3 index parser.
 
 ## Evidence boundary
 
@@ -114,12 +125,13 @@ separate from the V3 index parser.
 - **Direct (conditional):** scene, Gacha and proxy path construction; the
   path-keyed stream, queued exact-size read gate, V3 cursor widths and absent
   EOF check; the default Windows-file provider fallback; and the room path,
-  header parse, record copy, command binding and dispatch.
+  header parse, record copy, named command bindings, keyed operation selection
+  and dispatch.
 - **Structural only:** the Gacha character/weapon shared key and order.
 - **Unresolved:** directory words beyond offset and length, payload record
   fields and encoding, room record fields and tuple axes, the live roots and
   property value, the runtime provider and VFS file identity, renderer
-  upload, GPU execution and texture format.
+  upload, the selected room shader/kernel, GPU execution and texture format.
 
 ## Eliminated readings
 
@@ -136,6 +148,9 @@ docstrings).
   names (clipmaps, hash tables, indirection, physical blocks, basis,
   coefficients) describe runtime configuration; no read joins them to an
   `iv_*.bytes` offset, a one-file LOD layout or an index word.
+- **Generic bindings as a record schema.** `_Input0`/`_Input1` and
+  `_Output0`/`_Output1` are authenticated command-slot names. Their names
+  provide no record field, spherical-harmonic order or texture format.
 - **Directory words as splits.** Neither additive relation is an interval or
   physical split.
 - **`ReloadIndexFileV3` as the parser.** It stores a path; the parse happens
@@ -163,7 +178,7 @@ docstrings).
    the default Windows-file provider or a registered provider.
 2. Only then look for a native read of a specific opaque directory word that
    supports a renderer meaning.
-3. For room records, find a consumer of the bound allocation descriptor or
-   the dispatched operation that reads individual record words.
+3. For room records, resolve the callback's operation key to its selected
+   shader/kernel, then trace individual record-word reads through `_Input1`.
 4. Promote the existing runtime capture candidate only with exact build,
    entry, caller, buffer-length and cursor provenance.

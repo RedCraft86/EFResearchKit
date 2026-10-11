@@ -130,6 +130,66 @@ The current projection preserves the broader boundary
 in `scripts/webui/audio/semantics/runtime_observations.py`; the request and
 native source evidence is documented in [`audio_native_hooks.md`](audio_native_hooks.md).
 
+The native queue companion now authenticates the posted Event's exact registry
+lookup and the retained Event node/descriptor pair in one queue record. Its
+drain forwards the same descriptor allocation and playback serial through that
+node's eligible registered Actions. The checked Play Action bank reader and
+target setter supply the complete target ID to the execution-time registry
+lookup, which returns the retained target primary object. The bank registration
+loaders now close authored Action construction and new Event list creation:
+resolved distinct Actions retain authored order through intrusive links.
+Existing Event IDs skip rereading, missing Actions fail on a partial prefix,
+and duplicate/shared Actions can mutate links. Selected node subtype, actual
+bank loading and live registry generations remain separate.
+
+The companion also closes the bank source-record to descriptor
+match-word join: the node loader installs the stored source ID in the same
+source the playback wrapper supplies to the selector. External Source Events
+therefore reach an authored slot whose cookie chooses a usable descriptor from
+the posted allocation. The supplied descriptor chooses the path or memory;
+an Event ID alone does not choose a unique voice file. Stored descriptor order,
+skipped incomplete matches, raw codec-argument conversion and provisional
+success after failed path allocation are covered by the reviewed
+[`queue contract`](../../scripts/game_data/contracts/wwise_source_queue_native.json)
+and its [`validator`](../../scripts/game_data/wwise_source_queue_native.py).
+They establish a conditional native route, with live queue ownership and
+Event selection still open.
+
+The separate
+[`codec factory contract`](../../scripts/game_data/contracts/wwise_codec_factory_native.json)
+authenticates selected source-kind/full-plugin dispatch and codec registration,
+shared media-source construction, native RIFF-prefix parsing and distinct codec
+initialization/sample-processing targets.
+Original codec initialization reads the selected WEM format prefixes and
+produces metadata agreeing with offline PCM rate, channels and sample count.
+Selected original Opus code now computes samples from a physical WEM and the
+whole media wrapper returns them with correct pre-skip, trim and playback
+geometry; the external reference differs by at most one signed-16-bit
+quantization step. This is conditional offline PCM evidence with explicit
+platform models that compute no samples. Native Vorbis buffers reach the
+expected geometry but differ materially from the reference; sample parity
+and live provider/mixer/device output remain open. Details stay in
+[`audio_native_hooks.md`](audio_native_hooks.md).
+
+Representative complete external rows now have fresh physical-package,
+encoded-entry, clear-WEM, decoded-FLAC and exact PCM comparisons across Vorbis
+and Opus. These extend playable-file provenance for the selected rows. Saved
+source-bridge text is an input to the conditional full-path key calculation;
+string equality does not join its source lifetime to a different recording's
+file handle or establish which eligible Event was posted. Retain the full
+package-qualified receipt and that distinction when composing the layers.
+[`audio_native_hooks.md`](audio_native_hooks.md) owns the selection and
+current offline comparison boundary; changing receipts remain in
+`reports/audio/`.
+
+Direct authored UI Event routes now also have physical-bank Event/Play/Sound
+and numeric sound-package row witnesses with exact offline WEM/FLAC PCM
+agreement. Their memory-labelled sources occur in banks without embedded
+media sections; the sound bytes live in a separate package. Buffering policy
+therefore cannot choose physical storage. These are selected bank/package
+occurrences and playable source content, with live bank/media selection,
+source data-pointer acquisition, effects and output still outside the proof.
+
 ## The structural lanes
 
 **One proof pattern.** Each numeric HIRC type has a current-corpus lane bound to
@@ -288,16 +348,115 @@ selected-leaf probability gate, so siblings need not sum to 100). Open inside
 them: plug-in-specific value tables, leaves with no same-bank declaration,
 runtime bus and leaf selection.
 
-1. **Plug-in parameter meanings.** Convolution Reverb and Mastering Suite now
-   have exact anonymous native read partitions after the selected registration
-   -> factory -> vtable -> `SetParamsBlock` join. The reviewed effect contract
-   records each load or byte zero-test and its instruction witness; the reader
-   exposes offset, width and raw bits under `structuralOnly`. Scalar loads may
-   show a float32 representation view, which proves no control name, unit,
-   transformed value or DSP role. Names still need plug-in-specific parameter
-   definitions or exact native consumers ([`audio_hirc_graph.md`](audio_hirc_graph.md));
-   never fit them from corpus correlation. Short serialized blocks and malformed
-   partitions produce bounded diagnostics and no read rows.
+1. **Plug-in meanings and processing.** Anonymous bulk-read partitions and
+   numeric update transformations are authenticated for Convolution Reverb and
+   Mastering Suite. Convolution also has parameter-copy/media-consumer joins,
+   a partial IR header/pointer layout, a conditional upper-half-float32 kernel,
+   and partial named `powf` correspondence
+   ([`audio_hirc_graph.md`](audio_hirc_graph.md)). Mastering's complete serialized
+   source joins, parameter retention and section callback bindings are proved;
+   the first bank bytes conditionally suppress anonymous sections in its local
+   engine. The current-revision section-two consumer is a mapped channel gain,
+   with conversion clamps, bounded mask-derived control indices and the native
+   sample multiplication proved. Rounded channel width fits the checked stride;
+   frame padding and caller allocation remain conditional. Section zero's
+   series of second-order IIR kernels, persistent channel histories and identity
+   skip are also proved. Its bounded trailing-frame fill is joined to the shared
+   byte-fill primitive, and histories advance through those zero frames;
+   caller allocation remains open. Section one's
+   parallel filtered bands, squared power and smoothed gain histories, periodic
+   nonlinear target calculation and band summation are authenticated. All
+   section-three kernels are also closed under admitted state: threshold clip,
+   asymmetric peak smoothing with unit clip, and delayed window-peak processing
+   with gain smoothing and final clip. SIMD constants have proved initializer
+   writes into mutable storage. The PE process-attach route and initializer
+   pointer table are joined to every needed initializer; successful prerequisites,
+   unchanged loader dispatch and later constant lifetime remain conditional.
+   An earlier error-returning initializer table also joins the power/time CPU
+   selector's writer and its CPUID/XGETBV predicate; modeled hardware responses
+   verify the original route while actual selection remains unobserved.
+   These are static native facts; the page retains structural read evidence.
+   Current section-one and section-three conversion and application also join
+   serialized controls to state reads and helper arguments, preserving numerical
+   helper boundaries. Crossover coefficient arithmetic, normalization and filter
+   history retention are proved; active band histories persist across updates,
+   while inactive histories reset. Complete numeric coefficient dispatch now has
+   a scalar instruction/expression proof, including both quality-threshold paths
+   and the root-zero/unordered skip-division branches;
+   helper returns and names remain separate boundaries. The time helper's finite
+   scalar and FMA expressions, range predicates and special-value candidates are
+   now proved independently, with partial named CRT exponential correspondence.
+   Its table and selector join the power helper's authenticated data. NaNs bypass
+   the external error routine, while finite overflow/underflow call it. Original
+   scalar checks and an explicit AVX floating model preserve those evidence tiers;
+   sampled exponential agreement does not establish arbitrary-input equivalence.
+   Stored default selection and forwarding are now joined: the band initializer
+   passes its legacy payload directly, and the peak initializer compares a fixed
+   key against one stored entry using an exact named CRT comparison body before
+   forwarding its selector/payload. Application failure and no-match exits are
+   distinct. Legacy application has its own arithmetic/routing proof lane;
+   mutable pointer lifetime remains a separate gap.
+   Converter revision routing is now proved separately: recognized destination
+   headers retain an unchecked length word, unknown destinations copy the source
+   header, and current-to-old conversion rejects. Legacy control guards expose
+   an old-to-current band special/link exception. The old/current peak loops
+   correspond after their explicit mode/link and amplitude steps: old application
+   retains the extra amplitude array, which delayed mode consumes. The stored
+   old default uses mode zero and the normal control pipeline supplies current
+   records. Synthetic execution demonstrates that state dependency without
+   establishing legacy delayed-mode reachability or a live fault. Legacy active
+   and inactive band-array arithmetic, including zero/unordered time paths and
+   unsigned frequency conversion, is now independently decoded. Inactive attack
+   and power smoothing share a coefficient; release uses its own factor. Legacy
+   crossover routing also has symbolic argument/destination joins across every
+   admitted band position. Conversion failures stop later work and retain earlier
+   writes; single-band counts remain unused and filter histories survive.
+   Arbitrary-input helper parity and allocation/lifetime remain open. The maintained
+   revision and legacy contracts are linked in the HIRC graph guide.
+   The packed crossover helper's tiny pair and both finite fast-vector paths
+   now have direct instruction-order arithmetic proofs. The crossover wrapper's
+   normalized-cutoff guard and the generator's cleared unused lanes place its
+   admitted calls within that recovered domain for either selector branch.
+   Original composed coefficient checks agree with independently computed helper
+   returns. Other callers' large-argument reduction, exceptional handlers and
+   arbitrary-input sine/cosine parity remain separate gaps.
+   The band pair exception is now joined to admitted descriptor maps. It uses
+   mapped parity to select an adjacent logical slot without looking up or
+   checking its partner. Sparse maps can select unrelated channels, padding or
+   an unsigned predecessor outside target scratch. Original finite-input kernel
+   paths confirm the local arithmetic; host selection and live reachability remain
+   unresolved. Descriptor admission must not be treated as pair safety.
+   Remaining work is the complete IR extent/encoding and alternate kernels,
+   Mastering's helper equivalence, exceptional floating behavior and allocation,
+   remaining startup/constant lifetime conditions, shared-context counter meaning
+   and concurrent ownership, public control names, and live selection. The later
+   shared-state routine's polynomial sample blend, history capture, identity
+   matching and timer arithmetic are proved under admitted storage. Its producer,
+   duration calculation, unit-counter transition trigger, discontinuity reset,
+   local termination and separate global cleanup are now joined. Reallocation
+   writes capacity and returned pointers before success checks; allocator recovery
+   remains conditional. The normal local-engine caller also joins prepared
+   channel count, rounded stride, fixed local DSP rate, internal frame capacity
+   and scratch requests. Refresh rejects channel-format changes. Shared transition
+   duration uses the separately supplied rate. Wider standalone strides, actual
+   external buffer capacity and the word-sized frame-offset wrap boundary retain
+   explicit admission gaps. Primary maxima must be divisible by four, which still
+   admits aligned values beyond finite traversal; complete original refresh checks
+   reach their wrapping paths with downstream effects modeled. Complete local buffer setup reuses nonnull main
+   pointers without checking capacity, retains earlier allocations after a later
+   failure and overwrites the optional pointer on every enabled setup. Its
+   request arithmetic and return paths are proved, while allocator capacity,
+   retry cleanup and ownership remain conditional. Every valid old/current peak
+   mode also reaches its shared delay-storage tail after coefficient writes.
+   Existing delay storage is retained; only successful new storage is cleared.
+   Optional side storage is requested at most once when enabled. Failures retain
+   earlier writes, and initial histories reset only after successful application.
+   The complete local request/return behavior is proved with helper and allocator
+   models; actual capacity and ownership remain separate gaps. Band optional storage
+   likewise retains existing first-channel pointers, requests once per active band
+   in order and stops on failure while preserving earlier writes. Update clamps cannot constrain
+   bulk-loaded values. Do not substitute corpus correlation or sampled numerical
+   agreement for the missing consumer or whole-implementation proofs.
 2. **Layers 5 and 6 need a host, not a reader**: link the SDK Profile libraries,
    load the game's `.pck` files through the sample file-package I/O, register
    the plug-ins the game compiles in, and use the Query API and output capture

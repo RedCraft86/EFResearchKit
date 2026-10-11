@@ -17,19 +17,20 @@ corpus projection.
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import re
 import struct
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
 
-from scripts.game_data.il2cpp import protocol as il2cpp_protocol
+from scripts.game_data.il2cpp.body_claims import BodyIndex, ClaimError
+from scripts.game_data.il2cpp.context import usage_method_spec, unresolved_usage_index
+from scripts.game_data.il2cpp.native_image import open_native_image
+from scripts.game_data.il2cpp import static_dictionary
 from scripts.repo_paths import REPO_ROOT
 
 ROOT = REPO_ROOT
@@ -44,8 +45,6 @@ from scripts.game_data.ifix_patch_native import (
     project_current_ifix_evidence,
 )
 
-MAPPER_PATH = ROOT / "tools" / "endfield-il2cpp" / "map_body_targets_to_gameassembly.py"
-CATALOG_PATH = ROOT / "tools" / "endfield-il2cpp" / "catalog_option_flow_metadata.py"
 DEFAULT_GAME_ROOT = resolve_installed_game_data_root()
 DEFAULT_GAME_ASSEMBLY = DEFAULT_GAME_ROOT.parent / "GameAssembly.dll"
 DEFAULT_METADATA = DEFAULT_GAME_ROOT / "il2cpp_data" / "Metadata" / "global-metadata.dat"
@@ -53,7 +52,6 @@ DEFAULT_ANIMESTUDIO_CLI = (
     ROOT / "tools" / "AnimeStudio" / "AnimeStudio.CLI" / "bin" / "Release"
     / "net9.0-windows" / "AnimeStudio.CLI.exe"
 )
-MAX_METHOD_BYTES = 0x10000
 
 RUNTIME_PRIMITIVES = {
     0x01: "void", 0x02: "bool", 0x03: "char", 0x04: "sbyte",
@@ -84,6 +82,7 @@ class ExternalResultRouterSpec:
     override_message: str
     defaults_table: str
     native_next_expression: str
+    native_default_expression: str = ""
 
 
 @dataclass(frozen=True)
@@ -104,6 +103,9 @@ class StaticPortFamilySpec:
     selector_action_type: str = ""
     selector_string_method: str = ""
     external_result_router: ExternalResultRouterSpec | None = None
+    static_default_map_field: str = ""
+    default_index_method: str = ""
+    default_index_by_name_method: str = ""
 
 
 OPEN_UI_RESULT_ROUTER = ExternalResultRouterSpec(
@@ -114,6 +116,7 @@ OPEN_UI_RESULT_ROUTER = ExternalResultRouterSpec(
     override_message="DIALOG_CHANGE_NEXT_INDEX",
     defaults_table="DIALOG_PHASE_2_NEXT_INDEX",
     native_next_expression="GameWorld.dialogManager:Next",
+    native_default_expression="CS.Beyond.Gameplay.DialogTreeOpenUINode.GetDefaultNextIndexByPanelName",
 )
 
 
@@ -134,21 +137,14 @@ OPEN_UI_FAMILY = StaticPortFamilySpec(
     selector_action_type="Beyond.Gameplay.DialogOpenUIAction",
     selector_string_method="get_panelId",
     external_result_router=OPEN_UI_RESULT_ROUTER,
+    static_default_map_field="s_defaultNextIndexes",
+    default_index_method="GetDefaultNextIndex",
+    default_index_by_name_method="GetDefaultNextIndexByPanelName",
 )
 
 
 _CONTRACT_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 _CONTRACT_FAILURE_CACHE: dict[tuple[Any, ...], str] = {}
-
-
-def _load_module(name: str, path: Path) -> Any:
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ContractError(f"cannot load required helper: {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def repo_path(path: Path) -> str:
@@ -357,37 +353,6 @@ def _method_rows(metadata: Any, type_name: str, method_name: str) -> list[Any]:
     return rows
 
 
-def _method_pointer(
-    method: Any,
-    *,
-    metadata: Any,
-    mapper: Any,
-    ranges: dict[str, dict[str, int]],
-    pointers_by_image: dict[str, list[int]],
-    generic_index: dict[int, list[dict[str, Any]]],
-) -> tuple[int, str]:
-    method_index = int(method.index)
-    image = next(
-        (
-            image_name
-            for image_name, image_range in ranges.items()
-            if image_range["methodStart"] <= method_index < image_range["methodEnd"]
-        ),
-        "",
-    )
-    if not image:
-        raise ContractError(f"method {method_index} has no codegen image")
-    pointer = pointers_by_image[image][method_index - ranges[image]["methodStart"]]
-    if pointer:
-        return pointer, "codegen_module"
-    candidates = mapper.generic_body_candidates(generic_index, method_index)
-    if len(candidates) != 1:
-        raise ContractError(
-            f"method {method_index} has {len(candidates)} generic bodies"
-        )
-    return int(candidates[0]["methodPointerVa"], 16), "generic_method_pointer"
-
-
 def _method_record(metadata: Any, method: Any, pointer: int, source: str) -> dict[str, Any]:
     owner = metadata.type_full_name(metadata.types[method.declaring_type])
     return {
@@ -456,21 +421,28 @@ def parse_static_enum_string_list_initializer(
     *,
     dictionary_add_targets: set[int],
     decode_literal_slot: Any,
+    expected_dictionary_type: str,
+    decode_add_context: Any,
 ) -> list[dict[str, Any]]:
     """Parse repeated ``Dictionary.Add(enum, List<string>)`` initializer blocks.
+
+    Each Add's R9 MethodSpec must name the selected closed dictionary. Shared
+    generic code addresses alone cannot distinguish another dictionary in the
+    same initializer. Unknown or clobbered contexts fail closed.
 
     The parser depends only on calling convention and metadata-handle shape.
     It does not contain enum values, strings, method addresses, or content ids.
     """
     rows: list[dict[str, Any]] = []
-    block_start = 0
-    for call_index, instruction in enumerate(instructions):
-        call_match = re.fullmatch(
-            r"call 0x([0-9a-f]+)", str(instruction.get("text") or "")
-        )
-        if not call_match or int(call_match.group(1), 16) not in dictionary_add_targets:
-            continue
-        block = instructions[block_start:call_index]
+    try:
+        blocks = list(static_dictionary.dictionary_add_blocks(
+            instructions, add_targets=dictionary_add_targets,
+            expected_type=expected_dictionary_type, decode_context=decode_add_context,
+            validator="dialog_tree_static_port_contract",
+        ))
+    except ValueError as exc:
+        raise ContractError(str(exc)) from exc
+    for instruction, block, context in blocks:
         selector: int | None = None
         for row in reversed(block):
             text = str(row.get("text") or "")
@@ -515,8 +487,8 @@ def parse_static_enum_string_list_initializer(
             "selectorValue": selector,
             "labels": labels,
             "dictionaryAddCallVa": instruction.get("va"),
+            "dictionaryAddContext": context,
         })
-        block_start = call_index + 1
     if not rows:
         raise ContractError("static initializer contains no enum/list dictionary rows")
     selectors = [row["selectorValue"] for row in rows]
@@ -763,6 +735,8 @@ def _lua_formal_literal_call_paths(
 def parse_lua_external_result_router(
     lua_sources: dict[str, bytes],
     spec: ExternalResultRouterSpec,
+    *,
+    native_defaults: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Recover defaults and producers from a complete shipped Lua corpus.
 
@@ -788,7 +762,6 @@ def parse_lua_external_result_router(
         "selector_string_to_phase": r"PhaseId\s*\[\s*panelIdStr\s*\]",
         "temporary_result_write": r"m_tempNextIndex\s*=\s*args\.nextIndex",
         "temporary_result_read": r"m_tempNextIndex\s*>=\s*0",
-        "configured_default_read": r"s_nextIndexConfig\s*\[\s*phaseId\s*\]\s*or\s*0",
         "transition_calls_next": r"self:Next\s*\(\s*nextIndex\s*\)",
         "native_next_bridge": rf"{re.escape(spec.native_next_expression)}\s*\(\s*num\s*\)",
     }
@@ -796,10 +769,47 @@ def parse_lua_external_result_router(
     for gate, pattern in router_checks.items():
         count = len(re.findall(pattern, router_text))
         checks.append({"gate": gate, "expected": 1, "actual": count, "passed": count == 1})
+    native_mode = bool(spec.native_default_expression and spec.native_default_expression in router_text)
+    if native_mode:
+        owner = Path(spec.router_path).stem
+        functions = {f"{row['owner']}.{row['method']}": row
+                     for row in _hl_lua_function_definitions(router_text)}
+        expected_bodies = {
+            f"{owner}.GetNextIndex": (
+                "local suc, phaseDialog = PhaseManager:IsOpen(PHASE_ID) if not suc then return 0 end "
+                "if phaseDialog.m_tempNextIndex >= 0 then return phaseDialog.m_tempNextIndex end "
+                f"return {owner}.GetDefaultNextIndex(phaseId) end"
+            ),
+            f"{owner}.GetDefaultNextIndex": (
+                "local phaseName = PhaseManager:GetPhaseName(phaseId) "
+                f'return {spec.native_default_expression}(phaseName or "") end'
+            ),
+        }
+        for name, expected_body in expected_bodies.items():
+            definition = functions.get(name)
+            actual = (router_text[definition["bodyStart"]:definition["end"]]
+                      if definition else "")
+            actual = " ".join(re.sub(r"--[^\n]*", "", actual).split())
+            checks.append({"gate": f"native_default_function:{name}",
+                           "expected": expected_body, "actual": actual[:800],
+                           "passed": actual == expected_body})
+        bridge_pattern = rf"local\s+nextIndex\s*=\s*{re.escape(owner)}\.GetNextIndex\(self\.m_openedPhaseId\)"
+        bridge_count = len(re.findall(bridge_pattern,router_text))
+        checks.extend([
+            {"gate": "transition_uses_native_default_router", "expected": 1,
+             "actual": bridge_count, "passed": bridge_count == 1},
+            {"gate": "native_defaults_authenticated", "expected": "validated",
+             "actual": (native_defaults or {}).get("status"),
+             "passed": (native_defaults or {}).get("status") == "validated"},
+        ])
+    else:
+        count = len(re.findall(r"s_nextIndexConfig\s*\[\s*phaseId\s*\]\s*or\s*0", router_text))
+        checks.append({"gate": "configured_default_read", "expected": 1,
+                       "actual": count, "passed": count == 1})
     failed = next((row for row in checks if not row["passed"]), None)
     if failed:
         raise ContractError(
-            f"validator={validator} gate={failed['gate']} expected=1 actual={failed['actual']} "
+            f"validator={validator} gate={failed['gate']} expected={str(failed['expected'])[:800]!r} actual={str(failed['actual'])[:800]!r} "
             f"source={spec.router_path} sha256={hashlib.sha256(normalized[spec.router_path]).hexdigest().upper()}"
         )
 
@@ -809,13 +819,13 @@ def parse_lua_external_result_router(
         defaults_text,
         re.S,
     )
-    if not table_match:
+    if not native_mode and not table_match:
         raise ContractError(
             f"validator={validator} gate=defaults_table expected={spec.defaults_table!r} "
             f"actual=missing source={spec.defaults_path}"
         )
-    defaults: dict[str, int] = {}
-    body = table_match.group("body")
+    defaults: dict[str, int] = dict(native_defaults["phaseDefaults"]) if native_mode else {}
+    body = "" if native_mode else table_match.group("body")
     consumed = []
     for match in re.finditer(r"\b([A-Za-z_]\w*)\s*=\s*(-?\d+)\s*,?", body):
         phase, raw_index = match.groups()
@@ -973,10 +983,11 @@ def parse_lua_external_result_router(
     for producer in producers:
         by_phase.setdefault(producer["phaseName"], []).append(producer)
     return {
-        "schema": "dialogExternalResultRouter.v1",
+        "schema": "dialogExternalResultRouter.v2",
         "status": "validated",
         "defaultIndex": 0,
         "phaseDefaults": defaults,
+        "defaultPolicySource": "native_dictionary" if native_mode else "lua_table",
         "producers": producers,
         "producersByPhase": by_phase,
         "sourceCorpus": {
@@ -991,7 +1002,7 @@ def parse_lua_external_result_router(
             source_root_marker=spec.source_root_marker,
             relationship="dialog_ui_result_router",
         ),
-        "defaultsSource": _lua_source_record(
+        "defaultsSource": native_defaults["source"] if native_mode else _lua_source_record(
             spec.defaults_path,
             normalized[spec.defaults_path],
             source_root_marker=spec.source_root_marker,
@@ -1011,6 +1022,7 @@ def recover_installed_lua_external_result_router(
     *,
     game_root: Path = DEFAULT_GAME_ROOT,
     animestudio_cli: Path = DEFAULT_ANIMESTUDIO_CLI,
+    native_defaults: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Target-dump and validate the complete installed Lua corpus."""
     validator = "dialog_tree_external_result_router"
@@ -1073,7 +1085,7 @@ def recover_installed_lua_external_result_router(
             path.relative_to(source_root).as_posix(): path.read_bytes()
             for path in lua_paths
         }
-        result = parse_lua_external_result_router(sources, spec)
+        result = parse_lua_external_result_router(sources, spec, native_defaults=native_defaults)
     result["sourceCorpus"].update({
         "dumpedFileCount": expected_count,
         "animeStudioCli": str(animestudio_cli.resolve()),
@@ -1104,25 +1116,11 @@ def _recover_static_port_family_contract_uncached(
         if not path.is_file():
             raise ContractError(f"missing original input: {path}")
 
-    catalog = _load_module("dialog_tree_control_catalog", CATALOG_PATH)
-    mapper = _load_module("dialog_tree_control_mapper", MAPPER_PATH)
-    metadata = catalog.Metadata(metadata_path)
-    pe = mapper.PeImage(game_assembly_path)
-    code_registration = il2cpp_protocol.locate_code_registration(mapper, pe, metadata)
-    metadata_registration = mapper.find_metadata_registration(pe, code_registration)
-    if metadata_registration is None:
-        raise ContractError("could not derive MetadataRegistration from the selected GameAssembly")
-    modules = mapper.parse_codegen_modules(pe, code_registration)
-    ranges = mapper.image_method_ranges(metadata)
-    pointers_by_image, method_by_pointer = mapper.build_pointer_indexes(
-        pe, metadata, modules, ranges
-    )
-    generic_index = mapper.build_generic_method_index(
-        pe, metadata, code_registration, metadata_registration
-    )
-    for pointer, rows in generic_index.items():
-        method_by_pointer.setdefault(pointer, []).extend(rows)
-    all_pointers = sorted(method_by_pointer)
+    image = open_native_image(game_assembly_path, metadata_path)
+    body_index = BodyIndex(image)
+    mapper, metadata, pe = image.mapper, image.metadata, image.pe
+    metadata_registration = image.metadata_registration
+    method_by_pointer = body_index.names_by_pointer
 
     def one_method(type_name: str, method_name: str, parameter_count: int | None = None) -> Any:
         matches = _method_rows(metadata, type_name, method_name)
@@ -1135,20 +1133,33 @@ def _recover_static_port_family_contract_uncached(
         return matches[0]
 
     def pointer_record(method: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        pointer, pointer_source = _method_pointer(
-            method,
-            metadata=metadata,
-            mapper=mapper,
-            ranges=ranges,
-            pointers_by_image=pointers_by_image,
-            generic_index=generic_index,
-        )
-        next_pointer = next((value for value in all_pointers if value > pointer), pointer + 0x1000)
-        size = min(max(next_pointer - pointer, 1), MAX_METHOD_BYTES)
-        instructions = mapper.decode_x64_subset(
-            pe.bytes_at_va(pointer, size), pointer, stop_offset=size
-        )
-        return _method_record(metadata, method, pointer, pointer_source), instructions
+        pointer = image.method_pointer_va(method)
+        pointer_source = "codegen_module"
+        owner = metadata.type_full_name(metadata.types[method.declaring_type])
+        try:
+            body = body_index.body(owner, metadata.string(method.name_index), parameters=[
+                metadata.metadata_type_name(parameter.type_index)
+                for parameter in metadata.parameters_for(method)
+            ])
+        except ClaimError as exc:
+            raise ContractError(str(exc)) from exc
+        if not pointer:
+            pointer = body.pointer
+            pointer_source = "generic_method_pointer"
+        if body.pointer != pointer or pointer not in body_index.extents:
+            raise ContractError(
+                "validator=dialog_tree_static_port_contract gate=owned_method_body "
+                f"expected='registered pointer with pdata extent' actual={body.pointer:#x} "
+                f"source={owner}.{metadata.string(method.name_index)}"
+            )
+        record = _method_record(metadata, method, pointer, pointer_source)
+        record["bodyRange"] = {
+            "startVa": f"0x{pointer:x}", "endVa": f"0x{pointer + body.size:x}",
+            "sha256": hashlib.sha256(pe.bytes_at_va(pointer, body.size)).hexdigest().upper(),
+            "boundary": "registered primary pdata body; owned/followed fragments included in checks",
+        }
+        record["fragmentInstructionCount"] = len(body.fragment_rows)
+        return record, body.all_rows
 
     type_matches = [
         type_def
@@ -1197,12 +1208,60 @@ def _recover_static_port_family_contract_uncached(
             for row in rows
         )
     }
+    spec_va = int(image.registration["methodSpecs"], 16)
+    spec_records = pe.bytes_at_va(spec_va, image.registration["methodSpecsCount"] * 12)
+
+    def decode_generic_context(slot: int, target: int, method_name: str) -> dict[str, Any]:
+        raw = pe.bytes_at_va(slot, 8)
+        context = usage_method_spec(
+            raw, spec_records, len(metadata.methods), image.instantiations.count,
+            source=str(game_assembly_path), usage_offset=slot, records_offset=spec_va,
+        )
+        spec_index = context["index"]
+        definition = context["definition"]
+        method = metadata.methods[definition]
+        owner = metadata.type_full_name(metadata.types[method.declaring_type])
+        # A concrete MethodSpec need not have its own canonical registration.
+        # The direct call independently names the same open Add definition;
+        # only the exact R9 usage supplies the closed arguments, never the
+        # Object instantiation sharing that native body.
+        matching_definition = any(row.get("methodIndex") == definition
+                                  for row in method_by_pointer.get(target, []))
+        expected_return = {"Add": "System.Void", "TryGetValue": "System.Boolean", "TryParse": "System.Boolean"}[method_name]
+        if (metadata.string(method.name_index) != method_name
+                or not matching_definition
+                or metadata.metadata_type_name(method.return_type) != expected_return):
+            raise ValueError(f"MethodSpec={spec_index} target={target:#x} expected=matching open {method_name} definition actual={owner}.{metadata.string(method.name_index)} matched={matching_definition}")
+        def arguments(index: int) -> list[str]:
+            if index < 0:
+                return []
+            return [_runtime_type_name(pe, metadata, arg.type_pointer_va)
+                    for arg in image.instantiations.resolve(index).arguments]
+        closed_args = arguments(context["classInstantiationIndex"])
+        return {
+            "usageSlotVa": f"0x{slot:x}", "usageRawHex": raw.hex().upper(),
+            "methodSpecIndex": spec_index, "methodPointerVa": f"0x{target:x}",
+            "methodDefinitionIndex": definition, "methodSpecRawHex": context["rawHex"],
+            "declaringType": f"{owner}<{','.join(closed_args)}>" if closed_args else owner,
+            "classArguments": closed_args,
+            "methodArguments": arguments(context["methodInstantiationIndex"]),
+            "methodName": method_name,
+            "evidenceBoundary": "exact call target open definition and supplied closed MethodSpec; no canonical concrete entry or runtime MethodInfo resolution inferred",
+        }
+    def decode_add_context(slot: int, target: int) -> dict[str, Any]:
+        context = decode_generic_context(slot, target, "Add")
+        if (not context["declaringType"].startswith("System.Collections.Generic.Dictionary")
+                or len(context["classArguments"]) != 2 or context["methodArguments"]):
+            raise ValueError(f"expected=closed two-argument Dictionary.Add actual={context!r}")
+        return context
     initializer_rows = parse_static_enum_string_list_initializer(
         cctor_instructions,
         dictionary_add_targets=dictionary_add_targets,
         decode_literal_slot=lambda slot: _decode_string_literal_handle(
             pe, metadata, slot
         ),
+        expected_dictionary_type=port_field_type,
+        decode_add_context=decode_add_context,
     )
     enum_rows = _enum_members(metadata, spec.selector_enum_type)
     enum_by_value = {int(row["value"]): row for row in enum_rows}
@@ -1228,6 +1287,11 @@ def _recover_static_port_family_contract_uncached(
             spec.selector_string_method,
             0,
         ))
+    if spec.static_default_map_field:
+        method_specs.extend([
+            ("defaultIndex", spec.node_type, spec.default_index_method, 1),
+            ("defaultIndexByName", spec.node_type, spec.default_index_by_name_method, 1),
+        ])
     native_methods: dict[str, dict[str, Any]] = {}
     decoded_methods: dict[str, list[dict[str, Any]]] = {}
     for key, type_name, method_name, parameter_count in method_specs:
@@ -1293,6 +1357,130 @@ def _recover_static_port_family_contract_uncached(
         source=ifix_contract_path,
     )
 
+    native_defaults = None
+    if spec.static_default_map_field:
+        defaults_field = [field for field in metadata.fields_for(node_type)
+                          if metadata.string(field.name_index) == spec.static_default_map_field]
+        expected_default_type = f"System.Collections.Generic.Dictionary`2<{spec.selector_enum_type},int>"
+        if len(defaults_field) != 1 or _metadata_runtime_type_name(
+                pe, metadata, mapper, metadata_registration, defaults_field[0].type_index) != expected_default_type:
+            raise ContractError("validator=dialog_tree_native_default gate=declared_dictionary expected=enum_Int32 actual=missing_or_changed")
+        default_rows = static_dictionary.parse_enum_int_initializer(
+            cctor_instructions, add_targets=dictionary_add_targets,
+            expected_type=expected_default_type, decode_context=decode_add_context,
+            validator="dialog_tree_native_default",
+        )
+        field_offset = body_index.field_offset(f"{spec.node_type}::{spec.static_default_map_field}")
+
+        def static_field_program(rows: list[dict], store: bool) -> list[int]:
+            matches = []
+            operand = f"[rcx+0x{field_offset:x}]" if field_offset else "[rcx]"
+            terminal = f"mov {operand}, rbx" if store else f"mov rcx, {operand}"
+            for ordinal, (first, second, third) in enumerate(zip(rows, rows[1:], rows[2:])):
+                load = re.fullmatch(r"mov rax, \[rip[+-]0x[0-9a-f]+ => 0x([0-9a-f]+)\]", str(first.get("text") or ""))
+                if (not load or second.get("text") != "mov rcx, [rax+0xb8]"
+                        or third.get("text") != terminal):
+                    continue
+                cell = int(load.group(1), 16)
+                type_index = unresolved_usage_index(pe.bytes_at_va(cell, 8), image.registration["typesCount"],
+                                                   tag=1, source=str(game_assembly_path), offset=cell)
+                if _metadata_runtime_type_name(pe, metadata, mapper, metadata_registration, type_index) == spec.node_type:
+                    matches.append(ordinal+2)
+            return matches
+
+        getter = decoded_methods["defaultIndex"]
+        by_name = decoded_methods["defaultIndexByName"]
+        lookup_proofs = []
+        for index, row in enumerate(getter):
+            call = re.fullmatch(r"call 0x([0-9a-f]+)", str(row.get("text") or ""))
+            if not call or index < 3:
+                continue
+            target = int(call.group(1), 16)
+            if not any(r.get("method") == "TryGetValue" for r in method_by_pointer.get(target, [])):
+                continue
+            context_load = re.fullmatch(r"mov r9, \[rip[+-]0x[0-9a-f]+ => 0x([0-9a-f]+)\]", str(getter[index-3].get("text") or ""))
+            out = re.fullmatch(r"lea r8, \[rsp\+0x([0-9a-f]+)\]", str(getter[index-2].get("text") or ""))
+            if not context_load or not out or getter[index-1].get("text") != "mov edx, ebx":
+                continue
+            context = decode_generic_context(int(context_load.group(1),16), target, "TryGetValue")
+            displacement = int(out.group(1),16)
+            if (context["declaringType"] != expected_default_type or context["methodArguments"]
+                    or not any(r.get("text") == "mov ebx, ecx" for r in getter[:index])
+                    or not any(r.get("text") == f"and [rsp+0x{displacement:x}], 0x0" for r in getter[:index])):
+                continue
+            raw = pe.bytes_at_va(int(row["va"],16)+5,14)
+            mask = static_dictionary.prove_masked_int32_lookup_return(raw, displacement)
+            field_reads = static_field_program(getter[:index-3],False)
+            if (len(field_reads) != 1 or mask["stackReleaseBytes"] != 0x20
+                    or [r.get("text") for r in getter[:2]] != ["push rbx", "sub rsp, 0x20"]
+                    or any(re.match(r"(?:mov|lea|xor|pop|add|sub|and|or) (?:rcx|ecx)(?:,|$)", str(r.get("text") or ""))
+                           for r in getter[field_reads[0]+1:index-3])):
+                continue
+            lookup_proofs.append({"context": context, **mask})
+        parse_proofs = []
+        for index, row in enumerate(by_name):
+            call = re.fullmatch(r"call 0x([0-9a-f]+)", str(row.get("text") or ""))
+            if not call or index < 3 or index+6 >= len(by_name):
+                continue
+            target = int(call.group(1),16)
+            if not any(r.get("type") == "System.Enum" and r.get("method") == "TryParse" for r in method_by_pointer.get(target, [])):
+                continue
+            context_load = re.fullmatch(r"mov r8, \[rip[+-]0x[0-9a-f]+ => 0x([0-9a-f]+)\]", str(by_name[index-3].get("text") or ""))
+            out = re.fullmatch(r"lea rdx, \[rsp\+0x([0-9a-f]+)\]", str(by_name[index-2].get("text") or ""))
+            if not context_load or not out or by_name[index-1].get("text") != "mov rcx, rbx":
+                continue
+            context = decode_generic_context(int(context_load.group(1),16), target, "TryParse")
+            if context["methodArguments"] != [spec.selector_enum_type] or context["classArguments"]:
+                continue
+            follow = [r.get("text") for r in by_name[index+1:index+7]]
+            branch = re.fullmatch(r"jne 0x([0-9a-f]+)", str(follow[1]))
+            normal = follow[0] == "test al, al" and branch and follow[2:] == ["xor eax, eax", "add rsp, 0x20", "pop rbx", "ret"]
+            tail = f"jmp {native_methods['defaultIndex']['address']}"
+            if (normal and int(branch.group(1),16) == int(by_name[index+7]["va"],16)
+                    and any(r.get("text") == "mov rbx, rcx" for r in by_name[:index])
+                    and any(r.get("text") == f"mov ecx, [rsp+0x{out.group(1)}]" for r in by_name[index+7:])
+                    and tail in [r.get("text") for r in by_name[index+7:]]):
+                parse_proofs.append({"context": context, "falseReturn": 0, "trueContinuation": native_methods["defaultIndex"]})
+        field_stores = static_field_program(cctor_instructions,True)
+        first_add = min(int(row["dictionaryAddCallVa"],16) for row in default_rows)
+        first_index = next(i for i,r in enumerate(cctor_instructions) if int(r["va"],16) == first_add)
+        retained_dictionary = len(field_stores) == 1 and field_stores[0] > first_index
+        if retained_dictionary:
+            retained_dictionary = not any(
+                re.match(r"(?:mov|lea|xor|pop|add|sub|and|or) (?:rbx|ebx)(?:,|$)", str(r.get("text") or ""))
+                for r in cctor_instructions[first_index+1:field_stores[0]])
+            for entry in default_rows:
+                call_index = next(i for i,r in enumerate(cctor_instructions)
+                                  if r["va"] == entry["dictionaryAddCallVa"])
+                if call_index >= field_stores[0]:
+                    retained_dictionary = False
+                for r in reversed(cctor_instructions[first_index-4:call_index]):
+                    text = str(r.get("text") or "")
+                    if text == "mov rcx, rbx":
+                        break
+                    if text.startswith("call ") or re.match(r"(?:mov|lea|xor|and|or|add|sub) (?:rcx|ecx)(?:,|$)",text):
+                        retained_dictionary = False
+                        break
+                else:
+                    retained_dictionary = False
+        if len(lookup_proofs) != 1 or len(parse_proofs) != 1 or not retained_dictionary:
+            raise ContractError("validator=dialog_tree_native_default gate=default_consumer "
+                                "expected='one typed lookup, one enum parse and same static field write/read' "
+                                f"actual={(len(lookup_proofs),len(parse_proofs),retained_dictionary)!r} source={game_assembly_path}")
+        phase_defaults = {}
+        for row in default_rows:
+            enum = enum_by_value.get(row["selectorValue"])
+            if enum is None:
+                raise ContractError(f"validator=dialog_tree_native_default gate=enum_selector actual={row['selectorValue']}")
+            row["selectorName"] = enum["name"]
+            phase_defaults[enum["name"]] = row["value"]
+        native_defaults = {"status": "validated", "defaultIndex": 0, "phaseDefaults": phase_defaults,
+                           "field": spec.static_default_map_field, "fieldOffset": field_offset,
+                           "initializerRows": default_rows, "lookupProofs": lookup_proofs, "panelNameProofs": parse_proofs,
+                           "source": {"kind": "original_game_binary", "sourceFile": str(game_assembly_path.resolve()),
+                                      "sha256": sha256_file(game_assembly_path)},
+                           "evidenceBoundary": "exact stored defaults and unpatched native getter programs; actual UI result, initialization and execution remain unobserved"}
+
     external_result_router = None
     if spec.external_result_router is not None:
         try:
@@ -1305,12 +1493,13 @@ def _recover_static_port_family_contract_uncached(
         external_result_router = recover_installed_lua_external_result_router(
             spec.external_result_router,
             game_root=installed_game_root,
+            native_defaults=native_defaults,
         )
 
     game_hash = sha256_file(game_assembly_path)
     metadata_hash = sha256_file(metadata_path)
     contract = {
-        "schema": "dialogTreeStaticPortFamilyContract.v2",
+        "schema": "dialogTreeStaticPortFamilyContract.v3",
         "status": "validated",
         "family": spec.family,
         "nodeType": spec.node_type,
@@ -1329,6 +1518,7 @@ def _recover_static_port_family_contract_uncached(
                 "labels": [literal["value"] for literal in row["labels"]],
                 "literalEvidence": row["labels"],
                 "dictionaryAddCallVa": row["dictionaryAddCallVa"],
+                "dictionaryAddContext": row["dictionaryAddContext"],
             }
             for row in initializer_rows
         ],
@@ -1346,10 +1536,11 @@ def _recover_static_port_family_contract_uncached(
         },
         "currentIFix": current_ifix,
         "externalResultRouter": external_result_router,
+        "nativeDefaults": native_defaults,
         "selectionRule": (
             "A nonnegative DialogManager.Next(index) reaches DialogTreeController.Next(index), "
             "which uses that explicit serialized outgoing ordinal. Negative indexes use the "
-            "node's GetNextIndex fallback. The shipped Lua phase router supplies a phase default "
+            "node's GetNextIndex fallback. The shipped Lua phase router supplies a validated phase default "
             "and accepts explicit result-index overrides before calling that native continuation. "
             "Named static port-list order labels the matching serialized outgoing ordinal."
         ),

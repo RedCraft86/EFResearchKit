@@ -403,3 +403,42 @@ all goods provenance when grouping matching shop configurations; see the
 Item storage limits appear in header metadata only for finite values greater than one. Equal storage/backpack limits share one label; different limits retain explicit storage/backpack labels. Building buffer limits remain separately labeled. Sentinel/default values are omitted without claiming unlimited storage. Raw item/building/recipe configuration remains available behind Show debug info; source identifiers, booleans and anonymous enums are not normal-view metadata.
 
 Weapon and equipment records link both ways between Gameplay’s Items and their respective datasets using exact matching IDs in the displayed language. Header buttons appear only when the target exists in the current publication, share the Story Wiki button style, and sit beside it in one wrapping row using shared dataset routing.
+
+Gameplay character Loadout uses searchable image choices for weapons and
+slot-compatible equipment. Name fragments, suit names, record aliases and
+pinyin initials filter the choices; published Gameplay asset links provide
+thumbnails. Browser pinyin collation supplies initials without external data,
+with polyphonic-name aliases remaining explicit. Search and image selection do
+not change the validated attribute formula or its excluded 基质词条 boundary.
+
+Gameplay character metadata and facets distinguish elemental type from main
+and secondary abilities (`mainAttrType` / `subAttrType`). Loadout equipment
+terms keep the authored main/secondary target label beside its resolved ability;
+changing character changes the resolved label, never the original target scope.
+
+Assets publishes Story Wiki's authored item-to-icon bindings as `wikiItemIcons`
+in `story_media.json`, read from the current exported ItemTable. Gameplay's
+weapon rows publish the same `iconId`, and the asset join follows that exact
+binding. This keeps Items, weapons, Loadout and Story Wiki thumbnails consistent
+when a weapon's icon basename differs from its entity ID.
+
+Local preferences use optional browser storage. `core/storage.js` owns shared
+sidebar search/sort controls; `ui/facets.js` separates stored groups by stable
+container ID and removes stale locally restored values against the loaded
+catalog. Reloading resumes saved choices; newly opened explicit page links override saved
+sidebar state. Existing page-specific
+storage (SQL drafts, language/theme, dimensions, disclosures and page size) stays
+with its owner. Gameplay Loadout stores validated per-character choices and its
+Info/Loadout view; affinity talents use a stage slider. The wide Loadout layout has character settings plus weapon in the first column,
+equipment in the second and attributes in the third; narrow detail panels stack
+these columns. All named player attributes remain visible in the requested
+ability/core/secondary order. Metadata expressions convert scalar values to
+bonuses or reductions. Unmodelled derived hooks show explicitly partial
+configuration values instead of silently disappearing or claiming completeness.
+Gameplay publications with the v2 native formula include Will healing,
+Agi/Wisd resistance, movement and combo-cooldown conversion stages. Code-window,
+literal and enum authentication owns that calculation boundary; older
+publications keep their partial-value labels until rebuilt.
+Accessory 1/2 offer reciprocal copy buttons for equipment and enhancement
+choices. Copying creates independent enhancement state, refreshes calculations
+and saves the destination; an empty source disables its copy button.

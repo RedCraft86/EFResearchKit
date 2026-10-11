@@ -822,3 +822,12 @@ ambiguous targets produce no model. Exact render-resource/config joins are
 direct; segmented config names under a resource prefix remain conditional
 owner candidates even though their Mesh PPtrs are explicit. The evidence is
 stored configuration, not a claim about runtime assembly or placement.
+
+Character attribute talent nodes store their modifiers directly in
+`attributeNodeInfo.attributeModifiers`, not a nested `attributeModifier` object.
+The base builder publishes these under each talent level's
+`attributeModifier.attributeModifiers`. Loadout affinity-talent selection sums
+unlocked nodes through the chosen stage, bounded by the selected breakthrough;
+the default selects every available stage. Affinity requirements and modifier
+sources remain visible. Concrete authored targets are retained rather than
+replaced with an assumed main-ability target or parsed from localized prose.

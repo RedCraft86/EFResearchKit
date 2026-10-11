@@ -42,14 +42,18 @@ Story rebuild.
 Story's own `conv/*.json` never carries voice. Controls and rendering rules are
 in the header comment of `webui/app.js`.
 
+The right-pane title's metadata line lists Mission Maps as small gray links from Map's published `index.json`
+(`maps[].missions`), so Story reads that sidecar and never builds Map data.
+Missions absent from the index show no map links.
+
 Mission sidecars also carry `extras.completionReward`: the exact mission-level
 `MissionRuntimeAsset.rewardId` joins `RewardTable.itemBundles` to localized
 `ItemTable` names, authored `iconId` values and stored quantities. Story media
 includes exact icon matches from these mission sidecars; focused media extraction
-uses the same icon collector. The summary renders it even without
+uses the same icon collector. A separate block titled Mission Completion Rewards renders it even without
 mission notes and links items to Gameplay. Quest-level rewards do not enter this
-completion list; missing reward rows stay unavailable and random bundles are
-identified separately. These are configured rewards, not observed player grants.
+completion list; empty or unavailable item lists hide the reward block. Random
+bundles are identified alongside resolved items. These are configured rewards, not observed player grants.
 The language's `search.json` includes the same localized item names and item/reward
 IDs for every entry owned by that mission, including in the lean profile. Reward
 search works before mission sidecars are loaded and retains existing regex and

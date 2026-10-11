@@ -1083,6 +1083,36 @@ def is_levelscript_hash_key(node_key: str) -> bool:
     return re.match(r"^#[0-9a-fA-F]{8}$", str(node_key or "")) is not None
 
 
+def _step_source(step: dict) -> dict:
+    source = step.get("source")
+    if not isinstance(source, dict):
+        source = ((step.get("_debug") or {}).get("source") or {})
+    return source if isinstance(source, dict) else {}
+
+
+def _step_matches_named_action(step: dict, name: str, member_count: int) -> bool:
+    """Match the selected build's reviewed route in either stored envelope."""
+    source = _step_source(step)
+    current = union_tags.routes("ActionBase", {name: member_count})
+    if not current or source.get("actionName") not in (None, "", name):
+        return False
+    try:
+        code = source.get("code")
+        kind = source.get("kind")
+        code = int(str(code), 0) if not isinstance(code, int) else code
+        kind = int(str(kind), 0) if not isinstance(kind, int) else kind
+    except (TypeError, ValueError):
+        return False
+    for tag, members in current:
+        if source.get("layout") == "plain" and tag < 0xFA:
+            if (code, kind) == (tag | members << 8, 0):
+                return True
+        elif source.get("layout") == "fa" and tag >= 0xFA:
+            if (code, kind) == (tag, members):
+                return True
+    return False
+
+
 def is_call_server_self_uid_callback(node_key: str, step: dict | None) -> bool:
     """Return whether a hash-like payload is the owning CallServer record UID.
 
@@ -1094,23 +1124,12 @@ def is_call_server_self_uid_callback(node_key: str, step: dict | None) -> bool:
     """
     if not is_levelscript_hash_key(node_key) or not isinstance(step, dict):
         return False
-    source = step.get("source")
-    if not isinstance(source, dict):
-        source = ((step.get("_debug") or {}).get("source") or {})
-    if not isinstance(source, dict):
+    if not _step_matches_named_action(step, "CallServer", 14):
         return False
-    code = source.get("code")
-    kind = source.get("kind")
-    try:
-        code_value = int(str(code), 0) if not isinstance(code, int) else code
-        kind_value = int(str(kind), 0) if not isinstance(kind, int) else kind
-    except (TypeError, ValueError):
-        return False
+    source = _step_source(step)
     uid = str(source.get("uid") or "").strip()
     return (
-        code_value == 0x0E34
-        and kind_value == 0x00
-        and re.fullmatch(r"[0-9a-fA-F]{8}", uid) is not None
+        re.fullmatch(r"[0-9a-fA-F]{8}", uid) is not None
         and str(node_key).casefold() == f"#{uid}".casefold()
     )
 
@@ -1137,21 +1156,10 @@ def is_play_dialog_hide_non_identifier_payload(
         or not isinstance(step, dict)
     ):
         return False
-    source = step.get("source")
-    if not isinstance(source, dict):
-        source = ((step.get("_debug") or {}).get("source") or {})
-    if not isinstance(source, dict):
-        return False
+    source = _step_source(step)
     if not str(source.get("actionMapRole") or "").startswith("actionList#"):
         return False
-    code = source.get("code")
-    kind = source.get("kind")
-    try:
-        code_value = int(str(code), 0) if not isinstance(code, int) else code
-        kind_value = int(str(kind), 0) if not isinstance(kind, int) else kind
-    except (TypeError, ValueError):
-        return False
-    if code_value != 0x035A or kind_value != 0x0F:
+    if not _step_matches_named_action(step, "PlayDialogAndHideSceneObjectAction", 15):
         return False
     return any(
         isinstance(payload, dict)
@@ -2928,7 +2936,8 @@ def source_backed_hash_terminals_from_scene_bindings(
                         "nextId": step.get("nextId"),
                         "source": {
                             key: step_source.get(key)
-                            for key in ("layout", "code", "kind", "uid", "start")
+                            for key in ("layout", "code", "kind", "uid", "start",
+                                        "actionMapRole", "actionName", "recordClass")
                             if step_source.get(key) not in (None, "", [], {})
                         },
                     }
@@ -3597,13 +3606,18 @@ def mission_files(mra_dir: Path, selected: set[str]) -> list[Path]:
     return sorted(files, key=lambda path: natural_key(path.stem))
 
 
-EXPECTED_HASH_TERMINAL_PATTERN = {
-    "direction": "story->hash",
-    "layout": "plain",
-    "code": "0x0e34",
-    "kind": "0x00",
-    "nextId": -1,
-}
+def _expected_hash_terminal_pattern() -> dict | None:
+    route = next(iter(union_tags.routes("ActionBase", {"CallServer": 14})), None)
+    if route is None:
+        return None
+    tag, members = route
+    return {
+        "direction": "story->hash",
+        "layout": "plain" if tag < 0xFA else "fa",
+        "code": f"0x{(tag | members << 8) if tag < 0xFA else tag:04x}",
+        "kind": f"0x{0 if tag < 0xFA else members:02x}",
+        "nextId": -1,
+    }
 
 
 def _terminal_hash_step(terminal: dict) -> dict:
@@ -3638,10 +3652,9 @@ def _pattern_counter_key(pattern: dict) -> tuple:
     )
 
 
-def _terminal_matches_expected_pattern(pattern: dict) -> bool:
-    return all(
-        pattern.get(key) == expected
-        for key, expected in EXPECTED_HASH_TERMINAL_PATTERN.items()
+def _terminal_matches_expected_pattern(pattern: dict, expected: dict | None) -> bool:
+    return expected is not None and all(
+        pattern.get(key) == value for key, value in expected.items()
     )
 
 
@@ -3662,6 +3675,7 @@ def _hash_terminal_catalog_sample(mission_id: str, terminal: dict) -> dict:
 
 
 def build_hash_terminal_catalog(recovered: list[dict]) -> dict:
+    expected_pattern = _expected_hash_terminal_pattern()
     pattern_counter: Counter = Counter()
     hash_counter: Counter = Counter()
     missions_by_hash: dict[str, set[str]] = defaultdict(set)
@@ -3701,7 +3715,7 @@ def build_hash_terminal_catalog(recovered: list[dict]) -> dict:
                 sample_signatures_by_hash[hash_key].add(sample_signature)
                 samples_by_hash[hash_key].append(sample)
 
-            if not _terminal_matches_expected_pattern(pattern):
+            if not _terminal_matches_expected_pattern(pattern, expected_pattern):
                 exception_count += 1
                 if len(exceptions) < 50:
                     exceptions.append(sample)
@@ -3733,13 +3747,14 @@ def build_hash_terminal_catalog(recovered: list[dict]) -> dict:
         })
 
     return {
-        "expectedTerminalPattern": EXPECTED_HASH_TERMINAL_PATTERN,
+        "expectedTerminalPattern": expected_pattern,
+        "nativeRouteAudit": union_tags.union_tags_audit(),
         "uniqueHashes": len(hash_counter),
         "patternCounts": pattern_counts,
         "topHashes": top_hashes,
         "exceptionCount": exception_count,
         "exceptions": exceptions,
-        "allMatchExpectedTerminalPattern": exception_count == 0,
+        "allMatchExpectedTerminalPattern": expected_pattern is not None and exception_count == 0,
     }
 
 

@@ -13,6 +13,78 @@ the binding evidence order that several pages and the source graph reuse.
 
 ## Current status
 
+Stored collision geometry has a direct prefab-binding lane beside render
+assets. [`unity_scene.py`](../../scripts/game_data/unity_scene.py) reads the
+observed Endfield player GameObject, Transform and MeshCollider bodies through
+EOF. It retains the GameObject tag/art-tag/active suffix that the handwritten
+AnimeStudio GameObject JSON omits, and rejects another layout rather than
+guessing. Raw hashes and selected VFS identity coverage belong to the caller's
+gate. Local references join by physical source, offset, CAB and PathID.
+
+A collider binding requires its GameObject component backlink, exactly one
+declared Transform, each Transform's GameObject backlink, and reciprocal
+parent/child edges through the full stored hierarchy. Composing root-to-leaf
+TRS preserves parent rotation and scale; one child position alone is not a
+placement, and opposite ancestor translations can cancel. A MeshCollider's
+local Mesh PPtr can join a cooked triangle object with equal raw SHA256. This is a
+serialized prefab relationship, not a live world instance or evidence of
+activation. Per-object hashes, matrices and inventories stay in
+`reports/assets/collision_prefab_review.json`; the reusable reader and source
+class implementations preserve the durable interpretation.
+
+[`unity_scene_corpus.py`](../../scripts/game_data/unity_scene_corpus.py) extends
+that bounded probe into a reusable selected-Bundle gate. It authenticates the
+current VFS ledger, selected physical chunks and exporter closure before fresh
+scene/Mesh JSON and raw exports, then independently compares stored PPtrs,
+TRS and collider settings with typed JSON. A saved extraction can be reanalysed
+only after the same source, command/log and object identity/raw/JSON-hash checks.
+Warnings, malformed bodies and incomplete selected-Mesh coverage are visible
+failures. Export coverage alone never proves an absent class in a serialized
+object directory. The GameObject layer is read but not retained by AnimeStudio's
+handwritten class, so its absence from JSON is not a raw-body disagreement.
+
+Wider stored-hierarchy checks establish that one exact cooked Mesh can be referenced by
+several MeshColliders with different full ancestor transforms. Store the
+binding and composed transform per collider identity; never assign a single
+placement to the Mesh or infer its owner from the catalog container label.
+Composed matrices derive from the stored float32 TRS values, and do not prove
+the live engine's floating-point evaluation or later animation. MeshCollider's
+`convex` setting selects which cooked buffer belongs to that component;
+a stored hull without a checked consumer does not acquire runtime ownership.
+The generated wider inventory is `reports/assets/collision_scene_current.json`.
+The separate DynamicStreaming model placement and collider-control consumer
+boundary is documented in
+[`world_dynamic_streaming.md`](world_dynamic_streaming.md#model-instantiation-and-collider-control).
+Its grid/parent transform route and collider-enable calls must not be promoted
+to a live instance join merely because a stored prefab link is exact.
+
+Convex consumer recovery requires crossing the referring prefab's serialized
+external table. Its raw Mesh PPtr, the export's exact external slot and CAB
+name, and a unique fresh target CAB jointly select the full physical Mesh
+identity. A missing target remains unavailable; duplicate physical locations
+for one CAB are ambiguous. A bare PathID or a catalog container label never
+substitutes for this check. The selected scene gate accepts `AssetBundle`
+physical selectors with `PathID=0` for container discovery; those selectors
+assert no Unity object identity. The current widened inventory is
+`reports/assets/collision_convex_owners_current.json`.
+
+[`unity_asset_bundle.py`](../../scripts/game_data/unity_asset_bundle.py) reads
+the Endfield AssetBundle name, path flags, preload table and container prefix
+independently of typed JSON. It bounds each preload span and retains the rest
+as an opaque tail. Only a container entry's actual GameObject PPtr can label
+a proved hierarchy root as a prefab asset; a preload dependency is not
+ownership. The scene gate checks the prefix against JSON and protects both
+raw and JSON bytes in its extraction receipt. This closes stored triangle and
+convex prefab bindings without claiming to decode unrelated Bundle tail fields.
+
+The stored model-to-collider join also requires the native-gated Model path
+hash, the manifest's unique asset path and logical Bundle, the active physical
+Bundle identity, and that declared prefab root. It preserves Model placement
+and prefab-local collider matrix separately. Runtime registration matrices,
+instantiated GameObjects, parenting, animation and enabled state need the
+bounded capture described in the DynamicStreaming topic; more static owner
+coverage cannot establish those live facts.
+
 Asset extraction and discovery are strong: the project indexes every asset
 kind, resolves many PathID-backed dependencies, and connects authored gameplay
 or Story records to asset candidates with explicit provenance. The main gap is
@@ -115,6 +187,15 @@ AnimatorOverrideController, PlayableDirector, Material, MonoBehaviour and
 TextAsset as JSON; Mesh as FBX; Texture2D as images; Sprite as crop documents.
 No binary framing is left to recover here, which is why MonoBehaviour
 *semantics*, not parsing, is what this file records as open.
+
+Binary FBX normalization is owned by `scripts/game_data/fbx_normalize.py` and
+shared by the Unity store and Updates comparison. It removes exporter-generated
+timestamps and identities while preserving byte lengths and node offsets;
+normalized equality is an exported-content comparison, not original Unity
+object identity. Node ends must advance within their parent and property blocks
+must consume their declared bounds. Unsupported, truncated or malformed trees
+return their original bytes, so a corrupt offset cannot hang normalization or
+produce a partially normalized comparison.
 
 ## Evidence order
 
@@ -451,3 +532,12 @@ substituting retail's screen-shadow mask. Do not fit lighting strength from the
 fine-detail residual or generalize this owner to hair and stones. The portrait
 uses point/clamp depth sampling. Its actual bound depth must be inspected;
 the lab's separate DOF depth readback is not a substitute for that identity.
+
+The UI export contains separate `reading_`/`read_` illustrations alongside inventory icons. Full suffix equality after removing an authored `item_mission_`, `item_quest_` or `item_` prefix can supply a conditional display association for quest items; it does not establish a native reading consumer or mission ownership. `media_resolver.quest_reading_image_tokens` centralizes this naming rule, and consumers must require exact complete asset basenames. Original Texture2D images may be larger and wider than their Sprite crops, so reading illustration selection ranks source pixel dimensions before shape.
+`media_resolver.quest_inventory_image_tokens` supplies conditional quest display names: the exact item ID first, then the complete unnumbered basename when only a final letter-only word has variant digits. Mission IDs and underscore-separated record numbers remain intact.
+
+Weapon entity IDs do not establish icon ownership. `ItemTable.iconId` is the
+explicit inventory image binding and may cross-bind differently named weapon
+assets; `WeaponBasicTable.modelPath` can likewise reference another basename.
+Gameplay weapon pictures and Story Wiki pictures must follow the authored
+inventory icon binding, matching Items, rather than assume ID/basename identity.

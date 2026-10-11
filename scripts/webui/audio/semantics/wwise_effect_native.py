@@ -33,6 +33,13 @@ and the shipped ``uSize`` distribution is not proved by this contract.
 Convolution's impulse-response media ids stay exact bank data and never become
 playable WEM leaves.
 
+The anonymous Convolution update method is separately re-proved by
+``wwise_effect_updates``: complete numeric dispatch, finite-input clamps,
+opaque scalar-helper arguments and shared bulk-loader destinations. This
+does not promote the stored fields to named settings. Unknown selectors
+return success without writing, and the bulk loader does not share the
+update method's clamps.
+
 Claims from an older ``AkSoundEngine.dll`` (private SetParam ids, consumer or
 forwarding roles) are withheld until re-derived on the selected build: a
 constant that pinned an older DLL without checking the pin had no current
@@ -52,6 +59,9 @@ from typing import Any
 
 from scripts.common import check_installed_native_inputs, sha256_file
 from scripts.game_data.contracts import CONTRACTS_DIR
+from scripts.webui.audio.semantics.wwise_effect_updates import (
+    EffectUpdateError, validate_effect_update,
+)
 
 
 CONTRACT_PATH = CONTRACTS_DIR / "wwise_effect_parameters_native.json"
@@ -60,7 +70,7 @@ CONTRACT_PATH = CONTRACTS_DIR / "wwise_effect_parameters_native.json"
 @lru_cache(maxsize=1)
 def load_effect_parameter_contract() -> dict[str, Any]:
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
-    if contract.get("schema") != "endfield.wwise-effect-parameters-native.v3":
+    if contract.get("schema") != "endfield.wwise-effect-parameters-native.v4":
         raise ValueError("unsupported Wwise effect parameter contract")
     return contract
 
@@ -215,6 +225,8 @@ def decode_effect_parameter_native_reads(
 
 def _pe_body(image: bytes, rva: int, length: int) -> bytes:
     """Read a bounded RVA window from one PE image without another dependency."""
+    if type(rva) is not int or type(length) is not int or rva < 0 or length < 0:
+        raise ValueError("invalid PE RVA window")
     if len(image) < 0x40 or image[:2] != b"MZ":
         raise ValueError("invalid PE DOS header")
     pe_offset = struct.unpack_from("<I", image, 0x3C)[0]
@@ -225,6 +237,12 @@ def _pe_body(image: bytes, rva: int, length: int) -> bytes:
     section_offset = pe_offset + 24 + optional_size
     if not 0 < section_count <= 96 or section_offset + section_count * 40 > len(image):
         raise ValueError("invalid PE section table")
+    # PE headers are mapped at RVA zero. Startup audits need the selected
+    # image's entry point; keep that read inside the declared header extent.
+    if optional_size >= 64:
+        header_size = struct.unpack_from("<I", image, pe_offset + 24 + 60)[0]
+        if section_offset + section_count * 40 <= header_size <= len(image) and rva + length <= header_size:
+            return image[rva:rva + length]
     for index in range(section_count):
         at = section_offset + index * 40
         virtual_size, virtual_address, raw_size, raw_offset = struct.unpack_from(
@@ -316,6 +334,8 @@ def check_effect_parameter_native_inputs(game_root: Path) -> dict[str, Any]:
         "expectedAkSoundEngineSize": expected["akSoundEngineFileSize"],
         "validatedClassIds": [],
         "validatedStructuralClassIds": [],
+        "validatedUpdateClassIds": [],
+        "parameterUpdates": {},
     }
     if contract.get("status") != "reviewedCurrentBuild":
         result.update(status="mismatched", detail="Wwise effect parameter contract is not reviewed")
@@ -376,11 +396,48 @@ def check_effect_parameter_native_inputs(game_root: Path) -> dict[str, Any]:
             else:
                 raise ValueError(f"unknown effect registration role for {class_id}")
             _validate_registration_witness(image, image_base, class_id, witness, int(method["rva"], 16))
+        parameter_updates = {}
+        for class_id, schema in contract.get("parameterUpdates", {}).items():
+            if class_id not in validated_structural_class_ids:
+                raise ValueError(f"unreviewed structural update class {class_id}")
+            parameter_updates[class_id] = validate_effect_update(
+                class_id, schema, structural_rows[class_id], witnesses[class_id], image_base,
+                lambda rva, length: _pe_body(image, rva, length),
+            )
     except (KeyError, TypeError, ValueError, struct.error) as exc:
         result.update(status="mismatched", detail=str(exc))
-        if isinstance(exc, EffectReadLayoutError):
+        if isinstance(exc, (EffectReadLayoutError, EffectUpdateError)):
             result["diagnostic"] = exc.diagnostic
         return result
     result["validatedClassIds"] = sorted(validated_class_ids)
     result["validatedStructuralClassIds"] = sorted(validated_structural_class_ids)
+    result["validatedUpdateClassIds"] = sorted(parameter_updates)
+    result["parameterUpdates"] = parameter_updates
+    return result
+
+
+def check_effect_native_extension(game_root: Path, *, evidence_key: str, validate) -> dict[str, Any]:
+    """Run a focused effect audit after the shared selected-build gate.
+
+    These focused audits do not publish a page. Recheck the bytes opened after
+    the gate so a concurrently replaced DLL cannot inherit its earlier result.
+    The callback receives the reviewed parent contract, image base and bounded
+    RVA reader; it must not select another installed root.
+    """
+    gate = check_effect_parameter_native_inputs(game_root)
+    result = {"status": gate["status"], "detail": gate["detail"], "nativeGate": gate}
+    if gate["status"] != "validated":
+        return result
+    try:
+        image = Path(gate["akSoundEnginePath"]).read_bytes()
+        if hashlib.sha256(image).hexdigest() != gate["akSoundEngineSha256"]:
+            raise ValueError("selected AkSoundEngine changed after effect gate")
+        result[evidence_key] = validate(
+            load_effect_parameter_contract(), _pe_image_base(image),
+            lambda rva, size: _pe_body(image, rva, size),
+        )
+    except (OSError, KeyError, TypeError, ValueError, struct.error) as exc:
+        result.update(status="mismatched", detail=str(exc))
+        if isinstance(exc, EffectUpdateError):
+            result["diagnostic"] = exc.diagnostic
     return result

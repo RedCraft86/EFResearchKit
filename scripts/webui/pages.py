@@ -229,6 +229,7 @@ def build_tasks(options: BuildOptions) -> dict[str, TaskSpec]:
         "story_media",
         (module("scripts.webui.assets.build_assets", "--mode", options.asset_mode, "--publish", "story-media"),),
         after=("story",),
+        reads=of(("table",)),
         optional=of(("video", "audit-video"), convert_types=("Texture2D", "Sprite")),
     ))
 

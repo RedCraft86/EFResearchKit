@@ -1208,6 +1208,8 @@ def build_weapon_entries(
             "weaponTypeLabel": weapon_type,
             "maxLv": row.get("maxLv"),
             "modelPath": normalize_id(row.get("modelPath")),
+            "iconId": normalize_id(item_row.get("iconId")),
+            "iconCompositeId": normalize_id(item_row.get("iconCompositeId")),
             "description": clean_text(desc),
             "skills": skills,
             "breakthrough": breakthrough_payload,
@@ -2999,7 +3001,7 @@ def build_talent_level_payload(
         return base_payload
 
     if node_type == 3:
-        attr_mod = (attr.get("attributeModifier") or {}) if isinstance(attr, dict) else {}
+        attr_mod = {"attributeModifiers": attr.get("attributeModifiers") or []} if isinstance(attr, dict) else {}
         base_payload.update({
             "kind": "attribute",
             "kindLabel": TALENT_KIND_LABELS["attribute"],

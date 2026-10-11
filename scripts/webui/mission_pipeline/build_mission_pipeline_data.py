@@ -2630,6 +2630,29 @@ def parse_args() -> argparse.Namespace:
 
 
 
+def _inactive_source_boundary(validator: str, status: dict[str, Any]) -> bool:
+    """Accept only audited empty indexes from the two source-pinned catalogs.
+
+    Their readers reopen gaps on source drift. This is a successful fail-closed
+    outcome, unlike a failed parser or generated-shape validator. Missing
+    receipts, nonempty indexes and independent failures still stop publication.
+    """
+    count = status.get("sourceBoundEvidenceRowCount")
+    return (
+        validator in {
+            "report.offlineExhaustionEvidence",
+            "report.questAttachmentDiagnosticEvidence",
+        }
+        and status.get("status") == "inactive_source_validation_failed"
+        and type(count) is int and count == 0
+        and status.get("graphEffect") == "none"
+        and isinstance(status.get("sourceHashMismatches"), list)
+        and bool(status["sourceHashMismatches"])
+        and not status.get("validationFailures")
+        and not status.get("validationFailureDetails")
+    )
+
+
 def refresh_source_story_gap_queue(
     language: str,
     queue_path: Path,
@@ -2709,6 +2732,17 @@ def refresh_source_story_gap_queue(
             else []
         )
         state = str(status.get("status") or "")
+        if _inactive_source_boundary(validator, status):
+            source_key = str(hash_mismatches[0])
+            print(
+                "Source Story gap boundary inactive: "
+                f"validator={validator} check=source_hash "
+                f"mismatches={len(hash_mismatches)} rows=0 "
+                f"expected={(status.get('expectedSourceHashes') or {}).get(source_key)} "
+                f"actual={(status.get('sourceHashes') or {}).get(source_key)} "
+                f"source={(status.get('sourcePaths') or {}).get(source_key)}"
+            )
+            continue
         if (
             validation_failures
             or hash_mismatches
@@ -2753,6 +2787,9 @@ def refresh_source_story_gap_queue(
                 "gate": "validator",
                 "validator": validator,
                 "status": state,
+                "check": diagnostic.get("gate") or (
+                    "source_hash" if hash_mismatches else "status"
+                ),
                 "validationFailureCount": len(validation_failures),
                 "sourceHashMismatchCount": len(hash_mismatches),
                 "expected": diagnostic.get("expected"),
@@ -2768,6 +2805,9 @@ def refresh_source_story_gap_queue(
                     or diagnostic.get("source")
                     or status.get("source")
                 ),
+                "sourceSha256": diagnostic.get("sourceSha256") or (
+                    (status.get("sourceHashes") or {}).get(hash_mismatch_key)
+                ),
                 "firstFailure": first_validation_failure,
                 "firstSourceHashMismatch": first_hash_mismatch,
             })
@@ -2777,11 +2817,13 @@ def refresh_source_story_gap_queue(
             "source Story gap validation failed: "
             f"gate={first.get('gate')} "
             f"validator={first.get('validator') or '-'} "
+            f"check={first.get('check') or '-'} "
             f"mission={first.get('missionId') or '-'} "
             f"story={first.get('storyKey') or '-'} "
             f"expected={first.get('expected')} "
             f"actual={first.get('actual')} "
             f"source={first.get('sourceFile') or '-'} "
+            f"sourceSha256={first.get('sourceSha256') or '-'} "
             f"queue={repo_path(queue_path)}"
         )
     print(

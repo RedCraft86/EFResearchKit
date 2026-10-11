@@ -726,7 +726,19 @@ attributes and template fields remain expandable, and effect recovery status
 stays visible. Damage and Poise calculations retain their individual native
 gates and describe configuration inputs rather than final combat results. The
 Loadout view computes final attributes only from a validated
-`attributeCalculation` (`loadout.js`). Evidence limits:
+`attributeCalculation` (`loadout.js`). Weapon and equipment pickers show published
+asset thumbnails and filter names, suit names, aliases and pinyin initials
+(for example, 骑士精神 → qsjs). Weapon type and equipment slot restrictions
+remain in force. Missing images leave the name selectable. Pinyin initials use
+browser Chinese collation; polyphonic readings may need explicit record aliases.
+The excluded essence modifiers are labelled 基质词条. Character metadata lists
+主能力 followed by 副能力; separate character facets filter these authored
+ability types alongside the element facet. Loadout equipment terms retain
+主能力/副能力 when resolving to the selected character's concrete ability
+(for example 副能力（敏捷）), without changing their calculation. The affinity-talent selector chooses the
+unlocked attribute-node stage (or none), defaults to all nodes available at the
+selected breakthrough, shows each node's affinity requirement, and accumulates
+its authored attribute modifiers with separate source labels. Evidence limits:
 [`memory/webui/gameplay.md`](../memory/webui/gameplay.md) and
 [`memory/game_data/gameplay_semantics.md`](../memory/game_data/gameplay_semantics.md).
 
@@ -1277,3 +1289,37 @@ The page smoke-test checklist is in
 [`memory/webui_recovery.md`](../memory/webui_recovery.md). Its Story media step
 uses the fixtures `test_sns_emojicomment`, `test_sns_sticker`, and
 `sns_topic_map02_lv005_12002`.
+
+Weapon portraits and galleries follow the exact `ItemTable.iconId` binding,
+which may differ from the weapon ID. Story Wiki media follows the same binding
+through `assets/story_media.json`'s `wikiItemIcons` map; item IDs and names are
+unchanged. Missing authored icon assets do not fall back to the weapon's ID.
+
+Local browser state: Loadout automatically remembers each character's level,
+potential, affinity-talent stage, weapon progression/skills, equipment and line
+enhancements, plus the character Info/Loadout view.
+Accessory slots can copy the other slot's equipment and line enhancements;
+the two copies remain independently editable and are saved locally.
+Saved IDs and numeric bounds are checked against the current catalog on restore. Affinity talents use the
+same stage slider as progression. Wide displays use three columns: character
+settings and weapon together, equipment, then all named player attributes.
+Abilities precede HP/ATK/DEF; critical stats, Arts Intensity, resistances,
+healing/cooldown/charge/poise efficiencies and elemental damage follow.
+Remaining named stats appear even without a modifier. Narrow detail panels stack
+the columns. Metadata display expressions (including scalar-to-bonus conversion)
+are respected. Healing includes Will conversion; physical resistance includes
+Agi conversion and the four elemental resistances include Wisd conversion.
+Ether has no ability conversion in the native default dispatcher. Movement and
+combo cooldown use their separate native scalar attributes at the armed/final
+stages. Conversion code/literal/enum drift fails closed pending native review.
+Older publications retain configuration-only values with an explicit
+ability-conversion exclusion; internal resistance scalar rows do not
+duplicate the named resistance rows.
+Shared sidebar search, display checkboxes, sort category/direction and facet selections also persist
+locally. Reloading resumes local choices; opening explicit page links takes
+precedence over saved search/facets. Reset
+filters updates the saved values. Existing language/theme, sidebar dimensions,
+filter disclosures, page size and SQL-draft storage remain in their own owners.
+Storage is optional and scoped to the browser origin; malformed or unavailable
+storage falls back to defaults. Pinyin search supports initials such as qsjs,
+not full pinyin spellings.

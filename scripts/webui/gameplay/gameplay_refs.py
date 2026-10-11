@@ -783,7 +783,8 @@ def _select_weapon_images(
 
     Model paths can legitimately alias a differently named prefab.  Those
     aliases are useful for model lookup but are not image ownership evidence;
-    only candidates matched through the entry's own weapon id may contribute
+    only candidates matched through the authored inventory icon ID (or the
+    weapon ID when no icon binding exists) may contribute
     to its gallery.
     """
     assets = _dedupe_asset_candidates(
@@ -916,7 +917,7 @@ def build_gameplay_asset_refs(
         if kind == "character":
             selected_images = _select_character_images(image_candidates, max(0, max_images))
         elif kind == "weapon":
-            selected_images = _select_weapon_images(image_candidates, _clean_token(entry.get("id")))
+            selected_images = _select_weapon_images(image_candidates, _clean_token(entry.get("iconId") or entry.get("id")))
         elif kind == "enemy":
             # Enemy exports commonly contain 256px/128px Texture2D copies and
             # their cropped Sprite counterparts. The semantic/resolution rank

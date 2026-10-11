@@ -34,6 +34,8 @@ Keep the active documentation hierarchy concise:
   installed-data evidence family.
 - `memory/game_data/` contains one file per installed-data evidence lane,
   including the extraction pipeline and Unity object identity.
+- `memory/runtime_capture_requirements.md` owns the shared backlog of required
+  runtime captures across evidence lanes.
 
 Fold durable observations, conclusions, and recovery status into the existing
 topic documents under `memory/`. Do not recreate one-file-per-investigation or
@@ -51,7 +53,7 @@ Know which side a path is on before routing content to it:
 | `scripts/`, `webui/` sources | tracked, except `scripts/tests/` | code, docs, and reviewed contracts |
 | `scripts/tests/` | ignored, stays in place | the suite still runs locally; it is not part of the repo |
 | `webui/overrides/*.json`, `scripts/**/*.json` | tracked | the correction layer and the reviewed data-structure contracts |
-| every other `*.json` | ignored | generated data and run output, regenerated not committed |
+| JSON outside ignored roots | tracked | reviewed source; generated JSON must stay inside an ignored root |
 | `reports/` | ignored | generated reports are local-only; writing one does not commit it |
 | `webui/data/`, `export*/` | ignored | generated data, never reviewable output |
 | `scratch/`, `tmp/`, `tools/` (except tracked helpers) | ignored | disposable; may vanish between sessions |
@@ -810,6 +812,15 @@ receipts withhold claims. Entry-only observations cannot supply the return or
 nesting claims of historical paired recordings. Store raw sessions in ignored
 paths and record durable conclusions in the owning memory topic.
 
+Append every newly identified required game-data capture to
+[`memory/runtime_capture_requirements.md`](memory/runtime_capture_requirements.md).
+Extend a matching entry instead of duplicating it. Record the unresolved
+question, required fields and phases, representative cases, acceptance
+criteria, and owning-topic/contract links. Keep accepted entries with their
+evidence boundary so later agents can reuse them; native addresses and hashes
+remain in contracts or generated reports. Do not create separate capture
+backlogs or rely on chat-only checklists.
+
 The current checkout does not ship a separate `endfield-story-recovery`
 skill folder. For that workflow, use the active docs (`README.md`,
 `scripts/README.md`, and `webui/README.md`) plus the existing source-graph
@@ -965,14 +976,16 @@ from that layout:
   execution with a `SystemExit` naming its `-m` command.
 - `scripts/webui/gameplay/build_gameplay.py` owns every Gameplay page dataset. Its stage modules
   sit beside it in `scripts/webui/gameplay/`, and its `asset-refs` stage is the sole
-  writer of `webui/data/assets/gameplay_refs.json`.
+  writer of `webui/data/assets/gameplay_refs.json`. Its asset joins live in
+  `gameplay/gameplay_refs.py` and `gameplay/factory_models.py`; the output folder
+  does not transfer their ownership to the Assets builder.
 - `scripts/webui/audio/build_audio.py` is the Audio command;
   `build_audio_semantics.py` is its internal semantic orchestrator/publisher;
   reusable Audio evidence owners live under `scripts/webui/audio/semantics/`.
 - `scripts/webui/story/lua_consumer_references.py` owns the canonical
   fingerprinted Lua consumer index that Mission Pipeline reads directly.
   Refreshing it requires an explicit complete plaintext-Lua extraction, because
-  standard extraction omits Lua.
+  Story-only extraction omits Lua; Data and all-page extraction include it.
 - `scripts/game_data/contracts/` holds every reviewed contract JSON, and the
   `scripts/game_data/*_native.py` loaders gate the current-build native facts
   builders consume. Recovery hooks must reference or validate those contracts
@@ -988,8 +1001,9 @@ from that layout:
   cookies, and is outside the stdlib-only export path.
 - `scripts/game_data/memorypack/` holds the maintained stdlib-only MemoryPack
   codecs.
-- The retired Data, Factory, World, and Presentation page builders remain
-  removed. Do not restore those pages or their generated outputs, and do not
+- The retired legacy Data, Factory, World, and Presentation page builders remain
+  removed. The active Decoded page lives in `scripts/webui/data_inspector/`.
+  Do not restore the retired pages or their generated outputs, and do not
   recreate an archived-script bucket: disposable scripts go to `scratch/` or
   `tmp/`, and only maintained workflow code is promoted.
 

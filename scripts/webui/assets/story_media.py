@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts.game_data import media_resolver
-from scripts.common import ASSET_DIR, OUT_DIR, write_json
+from scripts.common import ASSET_DIR, OUT_DIR, TABLE_DIR, write_json
 
 
 STORY_FILE_IMAGE_PREFIXES = ("cg_image_", "dlg_biglogo_", "remotecomm_image_")
@@ -49,6 +50,16 @@ def build_story_media_payload(asset_payload: dict, video_payload: dict) -> dict:
 
     inline_image_ids = media_resolver.collect_inline_image_ids(webui_root)
     wiki_image_ids = media_resolver.collect_wiki_media_image_ids(webui_root)
+    # ItemTable's explicit icon binding may differ from the item/weapon ID.
+    item_table_path = TABLE_DIR / "ItemTable.json"
+    item_table = json.loads(item_table_path.read_text(encoding="utf-8")) if item_table_path.is_file() else {}
+    wiki_item_icons = {
+        f"wiki_{item_id}": media_resolver.normalize_inline_image_id(row["iconId"])
+        for item_id, row in item_table.items()
+        if isinstance(row, dict) and isinstance(row.get("iconId"), str) and row["iconId"]
+        and item_id in wiki_image_ids
+    }
+    wiki_image_ids.update(wiki_item_icons.values())
     reward_icon_ids = media_resolver.collect_story_reward_icon_ids(webui_root)
     video_refs = media_resolver.collect_wiki_video_refs(webui_root)
 
@@ -101,6 +112,7 @@ def build_story_media_payload(asset_payload: dict, video_payload: dict) -> dict:
     entries = images + videos
     story_media_path = ASSET_DIR / "story_media.json"
     payload = {
+        "wikiItemIcons": wiki_item_icons,
         "generated": asset_payload.get("generated") or video_payload.get("generated"),
         "root": asset_payload.get("root") or video_payload.get("root") or "export_full",
         "sourceRoots": source_roots_for_entries([asset_payload, video_payload]),

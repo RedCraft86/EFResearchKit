@@ -117,8 +117,18 @@
       binding.direction = source.dataset.sortDirection;
       binding.value = source.value;
     }
+    if (!previous && !window.WebUI.linkedState) {
+      const savedDirection = window.WebUI.storageGet(`endfield.sort.direction:${source.id}`);
+      if (["asc", "desc"].includes(savedDirection)) {
+        binding.direction = savedDirection;
+        binding.value = source.value;
+      }
+    }
     bindings.set(source.id, binding);
-    const notify = () => source.dispatchEvent(new Event("change", { bubbles: true }));
+    const notify = () => {
+      window.WebUI.storageSet(`endfield.sort.direction:${source.id}`, binding.direction);
+      source.dispatchEvent(new Event("change", { bubbles: true }));
+    };
     category.addEventListener("change", () => {
       const values = pairs[category.value];
       binding.direction = (values && category.value !== "title") || defaultsDescending(category.value) ? "desc" : "asc";
@@ -159,6 +169,7 @@
     for (const binding of bindings.values()) {
       if (!button.closest("[role=tabpanel]")?.contains(binding.source)) continue;
       binding.direction = "asc";
+      window.WebUI.storageSet(`endfield.sort.direction:${binding.source.id}`, "asc");
       binding.value = null;
     }
     queueMicrotask(refresh);

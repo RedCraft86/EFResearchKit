@@ -8,13 +8,15 @@ ownership, not by investigation date.
 - [`webui_recovery.md`](webui_recovery.md): WebUI-wide export flow, shared
   contracts, verification, and links to each page guide.
 - [`webui/`](webui/README.md): one recovery guide for each active WebUI page:
-  Story, Gameplay, Activities, Map, Characters, Text, Audio, Assets, Data,
+  Story, Gameplay (including Activities), Map, Characters, Text, Audio, Assets, Data,
   Updates, and Recovery, plus
   [`webui/story_recovery.md`](webui/story_recovery.md): Story evidence,
   ownership, branches, ordering, validation, and remaining reconstruction gaps,
   shared by every consumer of Story evidence.
 - [`game_data_recovery.md`](game_data_recovery.md): installed formats, gameplay
   and audio semantics, native evidence, and source graph.
+- [`runtime_capture_requirements.md`](runtime_capture_requirements.md): shared
+  backlog of required runtime observations; append future capture needs here.
 - [`game_data/`](game_data/README.md): one detail file per installed-data
   evidence domain below that topic: payload families, gameplay semantics, the
   Wwise/HIRC chain, irradiance volumes, terrain layers, chunk/streaming

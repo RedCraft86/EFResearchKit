@@ -115,14 +115,19 @@ previous build, and do not restore module-global default game paths.
   and the trailing-space counterexample. Other PlaySound routes, live execution,
   runtime patch state and audibility stay open; see also
   [`ifix_patch.md`](ifix_patch.md).
-- **Codec argument: raw propagation, no conversion.** `Beyond.Audio.AudioCodec`
+- **Declared codec enum and raw propagation.** `Beyond.Audio.AudioCodec`
   (`PCM=-1`, `ADPCM=1`, `VORBIS=2`, `ATRAC9=6`, `OPUS_WEM=10`) flows unchanged
   from serialized `VoiceData.codec` through `RuntimeVoiceData.codec` and the
   adapter's typed parameter into `AkExternalSourceInfo.set_idCodec`, whose export
-  stores it directly in the descriptor's codec slot. **It is not the public
-  `AKCODECID_*` domain** (`PCM=1`, `VORBIS=4`, `ATRAC9=12`, `AKOPUS_WEM=20`).
-  Native interpretation of the slot is open; the nearby sourceInfo/provider
-  fallback field is a stream byte bound with no static edge from `idCodec`.
+  stores it directly in the descriptor's codec slot. The enum's named values
+  differ from the public `AKCODECID_*` constants (`PCM=1`, `VORBIS=4`,
+  `ATRAC9=12`, `AKOPUS_WEM=20`).
+  These enum labels do not restrict the integers actually stored in
+  AudioDialog. Preserve its raw values rather than translating through the
+  enum names. The reviewed external selector now proves the later conversion
+  into the prepared source argument, described below; the concrete game codec
+  implementation remains open. The nearby sourceInfo/provider fallback field
+  is a stream byte bound with no static edge from `idCodec`.
 - **External Source cookie.** Every serialized External Source record carries
   the constant the VoicePlayer helper writes before `PostEventExternal`
   (recorded in `mono_behaviour.py`); that closes callback-family selection, not
@@ -221,17 +226,19 @@ That storage proof does not equate Beyond enum values with Wwise codec IDs.
   [`../game_data_recovery.md`](../game_data_recovery.md); voice media is read by
   a path these hooks do not see.
 
-## Which codec path voice takes is open
+## Codec selection and the remaining output gap
 
-SDK symbol matching (`scripts/game_data/wwise_sdk_symbols.py`, rows annotated on
-every re-pin) shows three source families in this build: `CAkSrcFileBase` /
+Historical SDK symbol matching (`scripts/game_data/wwise_sdk_symbols.py`, rows
+annotated on every re-pin) identified three source families: `CAkSrcFileBase` /
 `CAkSrcFileOpus` (Opus streamed from a file), `CAkSrcBankVorbis` (Vorbis
 resident in a bank or prepared media, no stream), and `CAkSrcMedia` with
 `CAkSrcMediaCodecVorbis`/`PCM` (the media-source interface). The catalog's
 three codec rows are the Opus file path and were never enabled.
-`SourceProviderPreparation` is `CAkSrcFileBase::CreateStream`, and it recorded
-nothing while voice posted, with no `.wem` opened. So either voice is not the
-Opus file path, or the stream was created outside the window.
+The historical `SourceProviderPreparation` correspondence was
+`CAkSrcFileBase::CreateStream`. Its absence during a recorded voice window is
+not a negative playback or file-opening claim. The current selected-byte
+factory proof below supplies a conditional family choice independently of
+these historical SDK labels.
 
 The next observation sits above the family choice. The reviewed
 [`wwise_source_native.json`](../../scripts/game_data/contracts/wwise_source_native.json)
@@ -305,6 +312,197 @@ and unwind extents, transport instructions, dispatch-table bytes and actual
 address-point targets gate this route; neighboring pointers supply no ownership
 claim. The selector branch, preparation success and chosen address points remain
 conditions, rather than observations of a runtime instance.
+
+### Event to source to playable file
+
+Bank HIRC dispatch now binds authored Action and Event records to their native
+registration loaders. The Action category factory selects the normal Play
+constructor, preserving the full stored type; its target and per-class readers
+then populate the registered object. A newly inserted Event reads its
+high-chunk-first variable count and resolves the authored Action IDs in order
+against the shared Action registry. Each successful lookup retains that Action
+object and appends it through its intrusive next field to the Event head.
+These are the same head/next fields later read by the queue drain.
+
+This order correspondence requires distinct resolved Action objects and no
+later link mutation. A zero Action ID or missing registry entry stops reading,
+leaving the constructed prefix before failure handling. Duplicate IDs can
+create a cycle or shorten the visible list; another Event using the same
+Action can change its next link. Existing Event IDs reuse their current object
+and skip the new authored list. Neither registry is qualified by physical bank
+occurrence, so same-bank parser identity is stronger than the native global
+key match. Original-byte offline checks cover these distinctions, including
+complete registration loaders with explicit helper models.
+
+The posted Event ID has a direct native identity edge before queueing. The
+engine uses its unsigned remainder to choose a registry bucket, walks collision
+links, and compares the full Event DWORD. It retains the matching registered
+node and carries that node together with the external allocation in the same
+queue record. The admitted drain case walks that node's registered Action
+links. Each eligible, successfully allocated Action argument receives the same
+descriptor allocation and playback serial; missing required object data or
+failed allocation skips an Action and continues. The Event reference is released
+after traversal. Original-byte offline checks cover these branches. The
+registered-list correspondence above is conditional; neither it nor reference
+counter arithmetic proves live queue allocation generations or assigns a
+saved source capture to a posted Event.
+
+The normal Play Action now has a checked target edge as well. Its bank reader
+requires the constructed and stored Action types to agree, then passes the
+stored target DWORD and normalized nonzero target flag through the checked
+address-point setter. The setter replaces only the target registry-selection
+bit. Execution calls a lookup which selects one of two registry tables, tests
+the complete target key through its collision chain, retains the matching node
+and returns its primary object. A missing target has no fallback to the other
+namespace. The selected target supplies the existing preparation and node-play
+route. Complete code/unwind extents and a separately authenticated complete
+leaf setter gate this interpretation; offline checks also feed representative
+physical bank Action bytes through the original reader and target lookup.
+Target presence, node subtype, selected address points and preparation success
+remain conditions, rather than an observation of live bank selection.
+
+The queue companion now also authenticates the bank source-record reader and
+the node's bank-loading body. On the admitted codec branch, the reader takes
+the source ID from the typed bank prefix and copies it into both the lookup
+and match words of its temporary info aggregate. The node loader passes this
+aggregate and the separately read plug-in argument to the independently owned
+`sourceSetInfo` method. That setter installs the source words in the same
+node-relative source which the reviewed node-play wrapper supplies to the
+selector. This closes the stored source-ID to native match-word edge. For an
+External Source Sound, the ID is the descriptor cookie; it is not the key of
+a packaged voice file. The loader's node-type, reader-success and no-parameter
+branches remain explicit conditions, and this does not observe live bank
+loading or Event selection.
+
+The selector tests the original source argument's high word before entering
+external selection. It requires an allocation, clones the source, and scans
+the descriptors in stored order. A matching row is usable first by a nonzero
+selection word, otherwise by a wide-text pointer, otherwise by a nonzero byte
+count together with a memory pointer. A matching but unusable row is skipped;
+the first usable match wins. There is no choice of a voice path from the Event
+ID alone. Missing usable descriptors discard the clone; clone allocation
+failure has a different local status. The contract and its offline plan keep
+these outcomes separate from downstream construction and playback.
+
+Preparation changes the source's original match word: the ordinary wide-text
+and memory routes replace it with their sentinel, while the selection-word
+route installs that word. Therefore a later source snapshot need not retain
+the cookie which selected it. The lookup word is a separate field. The
+wide-text setter resets its storage and only installs the supplied argument
+when that lookup input is nonzero. It returns no status, and failed text
+allocation still rejoins the selector's provisional success branch. A selected
+descriptor is consequently insufficient evidence of a retained path, opened
+file or decoded output.
+
+The raw descriptor codec argument supplies the prepared source argument by
+moving its low halfword into the high halfword and adding the codec-kind tag
+in unsigned DWORD arithmetic. This is not a conversion through the managed
+enum's labels. Current authored raw values agree with the bank's Vorbis and
+Opus source arguments under this rule; saved native source chains corroborate
+the Vorbis conversion. The
+conditional implementation factory is now checked below, while the selected
+live decoder and its lifetime remain unproved. The exact operand declarations
+and bank/source joins live in
+[`wwise_source_queue_native.json`](../../scripts/game_data/contracts/wwise_source_queue_native.json),
+not in a second native catalog.
+
+Representative physical bank bytes now close the Event → Play Action → Sound
+→ external slot chain, and selected path hashes resolve to complete external
+rows in a freshly authenticated package. Offline conversion of those encoded
+rows produces exactly the same PCM as the existing voice FLACs, covering both
+Vorbis and Opus. Each comparison retains package, sector, full key, row ordinal,
+language and extents plus separate encoded, clear-WEM, FLAC and PCM hashes.
+This establishes playable file content and conditional descriptor eligibility
+for the Event. Shared cookies or matching paths still do not assign a saved
+native source chain to a particular posted Event, connect separate capture
+sessions, or identify the live backing file. Changing cohorts and receipts are
+under `reports/audio/`; the native companion and shared package/codec readers
+own the durable rules.
+
+Representative ordinary codec Sounds now also have a complete physical-bank
+Event → Play Action → Sound → numeric sound-row → WEM → FLAC PCM comparison.
+These direct authored routes contain no container alternative or supplied
+external descriptor. The selected banks have no embedded media sections even
+though their sources are labelled memory; the complete audio bytes occur in a
+separate sound package. This checks the existing rule that stream type describes
+buffering policy, not physical media location. The source's stored media count
+agrees with the selected WEM extent, and offline PCM agrees exactly with the
+existing decoded file. Keep both bank and sound-package occurrence identities:
+the numeric media ID alone does not identify a physical file across packages,
+languages or overlays. This is authored playable-file provenance, with live
+media residency, source-pointer acquisition, voice admission and audible output
+still open. The reusable readers are
+[`wwise_package.py`](../../scripts/game_data/wwise_package.py),
+[`hirc_v150.py`](../../scripts/webui/audio/semantics/hirc_v150.py) and
+[`package_decode_witness.py`](../../scripts/webui/audio/semantics/package_decode_witness.py).
+
+Selected physical bank records also pass one continuous offline native
+registration, post, drain, target-lookup and source-loading cohort. This joins
+the authored Event to the registered Action actually forwarded by the modeled
+scheduler. The Sound registry object and registration/queue helper outcomes
+are supplied conditions; this does not execute actual scheduling, voice
+admission or a live provider. Existing file-to-PCM receipts remain separate
+offline content evidence.
+
+### Selected source to codec construction and sample buffers
+
+The independently owned
+[`codec factory contract`](../../scripts/game_data/contracts/wwise_codec_factory_native.json)
+and [`validator`](../../scripts/game_data/wwise_codec_factory_native.py) now
+authenticate the owner-held source read, source-kind extraction, full plugin-ID
+dispatch, static codec registration, wrapper construction and codec activation.
+The registry scans complete plugin keys in stored order. An earlier matching
+registration wins without replacing its factory pointers; source kind selects
+one of the retained factory slots. A separate built-in branch and a fallback
+header branch remain explicit, including the latter's ability to change the
+source argument or kind before dispatch.
+
+The selected authored Vorbis and Opus raw arguments register the same
+media-source wrapper factory shape with distinct codec instance factories.
+Both constructors retain the same primary owner and install the same wrapper
+address point. The wrapper stores its codec factory separately; preparation
+later calls it, stores the constructed codec instance and invokes that
+instance's initialization slot. These codec instances have distinct address
+points. This closes a conditional implementation route and distinguishes it
+from the separately instrumented streamed-file preparation family. It does
+not identify a saved live voice's allocation or prove singleton/registry
+stability. Raw arguments remain separate from managed enum labels.
+
+Original selected initialization bytes consume authenticated format prefixes
+from the same external and numeric WEM witnesses. Their rate, channel and
+sample-count metadata agree with the existing offline PCM receipts. Wrong
+format tags and sizes take distinct original failure paths without writing
+that metadata. Format output remains separate from sample output.
+
+The media wrapper's preparation caller reaches the original RIFF-prefix
+reader. It returns format, encoded-data, loop, auxiliary and seek views and
+can succeed at a data header before its payload is available. It does not
+enforce the RIFF declared whole-file length. First format wins, odd-chunk
+padding is conditional on a readable zero byte, and a legacy channel branch
+can rewrite the supplied format bytes. Readable chunk substructures and
+provider lifetime remain separate conditions; this is not a safe arbitrary
+RIFF decoder. The selected physical WEMs also pass this original reader.
+
+A selected Opus WEM now follows that native RIFF reader, the complete original
+codec initializer, packet collection, original Opus sample computation and
+planar sample writes. The whole media wrapper returns the same sample buffers
+and advances its cursor through pre-skip and final trim to the stored frame
+count. The independently decoded reference agrees in frame geometry, and every
+sample is within one signed-16-bit quantization step. This is an offline native
+PCM witness, with explicit resident input, owner/descriptor state, allocations,
+byte copies and emulated CPU/thread storage. Platform models calculate no
+sample values. WAV packaging performs a separately declared float-to-integer
+conversion; it is not device output or byte-identical decoder equality.
+
+Original Vorbis setup, packet and sample code also produces native buffers.
+The selected complete stereo file reaches the expected frame count, and a
+mono voice supplies another bounded prefix, but both differ materially from
+the external decoder reference. Original byte copies, native CPU feature
+initialization and the real RIFF format views do not explain that difference.
+Keep native context/setup and reference reconstruction under investigation;
+do not label this comparison successful or infer a game defect. Native Vorbis
+sample parity, provider buffer identity/lifetime, mixer/device output and
+audibility still need distinct proofs.
 
 An opt-in `--include-source-bridge` recipe uses that companion to capture the
 selector, clone, wide-text setter, owner factory and constructor alongside the
@@ -818,9 +1016,17 @@ dictionary selection, argument transport or live action execution.
 
 ## Recovery queue
 
-1. Reuse the audited source-bridge route when tracing the selected owner toward
-   provider and codec setup. The separate live join from the managed external
-   path through its queued allocation into that native source remains open;
+1. Prioritize the Event identity through its registered Action list, queued
+   descriptor allocation and selected source, then the actual backing bytes,
+   codec and output. Static registry/target/cookie transport and selected
+   offline package-to-PCM comparisons are checked. Authored registration/list
+   creation, conditional codec construction and selected format metadata now
+   have original-byte proofs. Selected Opus sample computation and its media
+   wrapper consumer now execute offline. Prioritize native Vorbis sample parity
+   and the PCM transfer into voice/mixer processing, then close live allocation generations
+   and provider buffers without bypassing voice/mixer admission. Reuse the
+   audited source-bridge route when tracing the selected owner. The separate live join from the
+   managed external path through its queued allocation into that native source remains open;
    repeated cookie values, timestamp order and cross-thread pointer equality do
    not establish allocation generation or lifetime. Request a new capture only
    for a concrete owner/carrier, provider/codec or allocation-lifecycle edge that existing
