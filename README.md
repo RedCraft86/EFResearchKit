@@ -174,7 +174,7 @@ pages, client build, and worker count. Use `--asset-jobs 4` (or lower) with
 
 - `webui/`: static browser, runtime overrides, and generated data.
 - `scripts/`: maintained export, build, update, audio, and packaging tools.
-- `tools/AnimeStudio/`: tracked exporter fork.
+- `tools/AnimeStudio/`: tracked exporter fork, maintained on `endfield`.
 - `export_full/`: generated extraction from the installed client.
 - `reports/`: generated inventories and audits.
 - `memory/`: current conclusions, evidence boundaries, and recovery queues.

@@ -84,6 +84,12 @@ The wrappers load `endfield_paths.bat`, then apply explicit path flags.
 prints the page follow-ups (`--no-serve` skips starting `serve.py`).
 `tools/Cpp2IL-Endfield` is optional.
 
+AnimeStudio's tracked branch is `endfield` in `Variante/AnimeStudio`.
+Setup checks out the parent repository's pinned submodule commit. To explicitly
+advance that pin to the branch tip, run
+`git submodule update --remote tools/AnimeStudio`, validate and rebuild the CLI,
+then commit the updated `tools/AnimeStudio` gitlink in this repository.
+
 ## Export rules
 
 `export.bat` hands every argument to `python -m scripts.webui.export`. The one

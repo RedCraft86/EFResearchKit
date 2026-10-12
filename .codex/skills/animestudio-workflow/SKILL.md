@@ -14,6 +14,12 @@ it contains CLI details, code structure, and focused verification patterns.
 
 Initialize and build the tracked submodule:
 
+The exporter fork is `Variante/AnimeStudio`, maintained on `endfield` as
+declared in `.gitmodules`. Normal initialization uses the parent repository's
+pinned commit. Only an intentional exporter upgrade uses
+`git submodule update --remote tools/AnimeStudio`; validate and rebuild it,
+then commit the updated gitlink with the related integration changes.
+
 ```bat
 git submodule update --init tools/AnimeStudio
 .\scripts\game_data\extraction\animestudio\setup_dotnet9.bat
