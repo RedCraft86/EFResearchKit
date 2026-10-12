@@ -136,47 +136,33 @@ in `reports/assets/collision_live_capture_plan.json`.
 
 The first observer is prepared through
 `scripts.game_data.collision_capture_prepare` and the standalone collision
-target in `tools/EndfieldCapture/collision/`. It uses EndfieldCapture's existing
+target in `tools/EndfieldCapture/providers/collision/`. It uses EndfieldCapture's existing
 prelaunch host and strict MinHook transaction implementation. The reviewed
 `collision_capture_native.json` contract proves selected metadata signatures,
 by-reference parameters, carrier/field layouts and bounded native bodies.
 Preparation preserves the explicit output pointers of `_GetModelTransform`,
 the hidden Matrix4x4 and FAssetProxyHandle return carriers, and the public
-IL2CPP getter slots in provider order. Disabled trampoline preparation against
-an offline image tests hook entry decoding without executing client code;
-synthetic detours separately exercise forwarding, nesting, return carriers,
-observer failures, original C++/Windows exception propagation and strict rollback.
-Callback scopes unwind on either exception kind, restore the thread-local parent
-and mark missing returns as incomplete. Synthetic process/runtime tests exercise
-the shared host handshake and acknowledged stop on normal, startup-failure and
-recording-failure exits; the collision host requests stop after every attempted
-attachment even when it exits through an exception. Managed string reads are
-also gated against selected metadata field offsets. A delayed-loader synthetic
-test covers the startup module-enumeration race: the shared host retries transient
-partial-copy results within its existing deadline, rechecking retained process
-identity and never repeating attachment. These checks do not establish live
-activation or coverage.
+IL2CPP getter slots in provider order. Callback scopes unwind on either
+exception kind, restore the thread-local parent and mark missing returns as
+incomplete. The shared host retains process identity and the acknowledged stop
+protocol; the collision host requests stop after an attempted attachment even
+when it exits through an exception.
 
-Runtime executable and loaded-GameAssembly gates compare filesystem identity,
-not case-folded path text: generated forward slashes and Windows module-path
-backslashes can identify the same file. The first live startup rejected that
-spelling difference before installing hooks; synthetic shared-host tests had
-not exercised this separate production runtime gate. Its regression test now
-checks native/generated module-path forms and rejects different or missing
-files. Runtime failures retain the failing role and bounded diagnostics:
-path mismatches include actual/expected paths, and loaded native-byte mismatches
-include the role, reviewed RVA and expected/observed bytes in session-local JSON.
-The host displays the saved runtime reason before asking for another capture.
+The recorder now consumes prepared declarations without comparing installed
+file fingerprints or native body windows. Its file inventory is not an evidence
+admission report. Keep the selected-build contract and independent recovery
+inspector as the source/native admission boundary; existing admitted sessions
+retain their earlier evidence and do not need to be recaptured for this refactor.
 
-Start `tools/EndfieldCapture/StartCollisionCapture.bat` with the game closed.
+Start `tools/EndfieldCapture/Capture.ps1 -Preset collision` with the game closed.
 Launch manually after `COLLISION WAITING`, then log in or enter **OMV Dijiang /
 O.M.V.帝江号 (`base01_lv001`)** only after `COLLISION ARMED`. The target scene
 name is checked against LevelDescTable and SpaceshipConst; the selected light
 prefab has exact authored Model rows in this hub. Let it load and walk until
 every retained live object reaches the final displayed checkpoint and pending
 is zero, then type `stop` and keep the game open until saved. The launcher
-checks a sealed source/binary/profile receipt before attachment and archives
-the selected source reports and raw Model files with the session.
+uses the already built recorder and archives the selected source reports and
+raw Model files with the session; it does not seal or verify them.
 
 `scripts.game_data.collision_capture_inspect` authenticates the saved native
 inputs, staged runtime, source archives, completion/loss counters and paired

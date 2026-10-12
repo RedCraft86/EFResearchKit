@@ -319,8 +319,11 @@ Owner: [lab capture queue](../endfield_reconstruction_lab/docs/capture-queue.md)
 Durable rendering interpretation:
 [lab rendering boundary](../endfield_reconstruction_lab/docs/rendering-pipeline-and-shadows.md).
 Internal observer schemas, preparation and operator steps remain in the
-EndfieldCapture checkout. Its launcher builds current binaries before preparing
-and sealing the selected protocol; source/native drift still withholds admission.
+EndfieldCapture checkout. Build with `Build.ps1`, then select a recipe with
+`Capture.ps1`. The recorder consumes the supplied native declarations without
+producer-side fingerprint, code-window or receipt verification; collection only
+inventories files. Required source/native admission remains an independent
+recovery-consumer concern and is not established by a successful capture.
 
 Required ordered phases in one own Present:
 
