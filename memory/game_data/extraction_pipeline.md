@@ -12,6 +12,13 @@ AnimeStudio is the maintained extraction boundary between installed Endfield
 data and the repository's builders. Production users enter through the root
 wrappers; direct CLI commands are for focused recovery and diagnostics.
 
+VFS metadata code version 5 uses eight-byte fields in place of the legacy
+four-byte chunk/file tags. The loader preserves them as opaque
+`MetadataExtension` bytes, published as `metadataExtensionHex`; legacy tags
+are unavailable for this version. CRC, declared counts and lengths, file
+ranges, and metadata-trailer checks still govern admission. This establishes
+stored framing, not the new fields' runtime meaning.
+
 ## Ownership
 
 | Layer | Owner |

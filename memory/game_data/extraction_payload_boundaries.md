@@ -160,12 +160,22 @@ is a `direct` measure for its own input set and promotes no reviewed row.
 
 Each rule is enforced in code; the module named carries the reasoning.
 
+Current VolumeTools LevelData recovery validates the selected
+`MemoryPack.BeyondStringFormatter.Deserialize` int32-reference path, including
+its null/empty sentinels, instead of treating every declared string as inline
+UTF-8. Reference IDs are retained without resolved text. The evidence also
+records native unmanaged sizes: fixed serialized fields alone do not prove
+raw framing (`EntityPtr` still has an object header). VolumeTools closes only
+the native-declared prefix through function areas, leaving later LevelData
+fields outside its geometry claim.
+
 - **Union tags are ranks**: the case-insensitive rank of the wrapped type's
   full name among the family's wrappers (`levelscript_union_layouts`), read
   whole from large native switches (`memorypack.union_dispatch`, which also
-  reads a table kept in a cold section behind a hot-case compare, as in
-  `SpawnerActionData`, and a short linear compare chain when no table
-  resolves, as in `PatrolSubActionData`, under the same one-for-one rule) and
+  reads tables reusing a hoisted image-base load, a table kept in a cold
+  section behind a hot-case compare, as in `SpawnerActionData`, and a short
+  linear compare chain when no table resolves, as in `PatrolSubActionData`,
+  under the same one-for-one rule) and
   ranked for other compare-chain unions (`memorypack.union_subtypes`,
   `structuralOnly`).
   Reviewed rows are `exact`, derived rows `direct`.

@@ -9,6 +9,11 @@ reads the compact tag and dispatches through one MSVC jump table::
     add   r64, base
     jmp   r64
 
+The image-base load may be hoisted to the formatter's entry and reused much
+later. Candidate discovery therefore matches the mov/add/jmp sequence and
+range guard; only complete, unique resolution onto the wrapper family admits
+the table, regardless of where the base register was initialized.
+
 Each entry reaches, through at most one ``e9 rel32`` thunk, a branch whose
 first ``mov rdx, [rip+disp32]`` loads the concrete wrapper's type-usage cell.
 Resolving every cell names every tag from the build itself -- the evidence the
@@ -136,8 +141,9 @@ def _formatter_deserialize_va(image: NativeImage, base: str) -> int:
 def _table_dispatch(blob: bytes, index: int, blob_va: int, image_base: int) -> tuple[int, int] | None:
     """``(mov offset, table rva)`` when ``blob[index]`` ends a table dispatch.
 
-    The shape is ``lea base, [ImageBase]; mov r32, [base + tag*4 + rva];
-    add r64, base; jmp r64``, with ``blob`` loaded from ``blob_va``.
+    The shape is ``mov r32, [base + tag*4 + rva]; add r64, base; jmp r64``.
+    The base load may precede the scanned window. This discovers a candidate;
+    the caller must still validate its guard and exact wrapper-family mapping.
     """
     if index < 12 or index + 1 >= len(blob) or blob[index] != 0xFF:
         return None
@@ -155,12 +161,8 @@ def _table_dispatch(blob: bytes, index: int, blob_va: int, image_base: int) -> t
     if modrm >> 6 != 2 or modrm & 7 != 4 or sib >> 6 != 2:
         return None
     table_rva = struct.unpack_from("<I", blob, mov + 3)[0]
-    if not any(
-        blob[lea] in (0x48, 0x4C) and blob[lea + 1] == 0x8D and (blob[lea + 2] & 0xC7) == 0x05
-        and blob_va + lea + 7 + struct.unpack_from("<i", blob, lea + 3)[0] == image_base
-        for lea in range(mov - 7, max(mov - 24, 0), -1)
-    ):
-        return None
+    # Fix: a hoisted image-base load need not be adjacent to this dispatch.
+    # Exact family resolution in read_union_switch remains the acceptance gate.
     return mov, table_rva
 
 
@@ -273,6 +275,10 @@ def _entry_at(image: NativeImage, target: int, tag: int) -> SwitchEntry | None:
         return None
     type_pointer = pe.u64_at_va(int(registration["types"], 16) + index * 8)
     definition = struct.unpack_from("<Q", pe.bytes_at_va(type_pointer, 16))[0]
+    # Fix: unrelated candidates can load non-definition types; reject their
+    # payload instead of indexing metadata with an arbitrary native value.
+    if definition >= len(image.metadata.types):
+        return None
     return SwitchEntry(
         tag=tag, wrapper_name=image.type_name(definition), type_definition=definition,
         target_va=target, body_va=body, usage_cell_va=usage, registered_type_index=index,
